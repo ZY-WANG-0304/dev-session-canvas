@@ -860,3 +860,8 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 本次独立补充验证已完成：Webview426/426、默认干净npm ci/140文件主VSIX/八场景安装、notifier类型/14文件独立包/companion/en与zh-cn locale均exit0。默认安装ETXTBSY未重现，不等于原根因修复；源码聚合SSH首败仍阻断。12条命令证据固定在docs/references/release-0-26-1-refresh/evidence.json。main无branch protection的只读查询结果不撤销仓库完整verify/review要求，草稿不会触发非草稿release workflow。
 
 2026-10-13接续：PR328的双状态正式修复已合入main22803dd8，PR327 rebase后重跑最新预合并完整门禁。上节旧输入的SSH首败不作为新输入状态，原记录保留；当前门禁结果关联PR327真实head/base/预合并SHA及checks。
+
+
+## PR329合入后的0.26.1正式发布门禁（2026-10-14）
+
+PR329已合入main72338331，PR327由原head42d87b3d rebase到该主线。上述“待合入”“未修复”及失败均为其固定历史输入状态；自有socket、末次诊断观察、fake probe、fallback短IPC和截图依赖已有集中修复与组合完整通过证据。正式发布准备仍必须在最新PR预合并SHA重新生成六平台资产并通过完整release:verify；当前结果以PR327最新head对应的描述/checks为准，不以旧临时组合代证。真实provider、跨平台共享接管、公开市场自动依赖及桌面点击等有限验收边界保留，不因门禁通过扩张支持承诺。
