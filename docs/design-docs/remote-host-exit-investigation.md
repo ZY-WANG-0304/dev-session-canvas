@@ -1,11 +1,11 @@
 ---
 title: localhost SSH 真实重开的旧远端 Host 退出调查
-decision_status: 比较中
+decision_status: 已选定
 validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/remote-host-exit-investigation.md, docs/exec-plans/completed/remote-host-two-state-validation.md]
+related_plans: [docs/exec-plans/completed/remote-host-exit-investigation.md, docs/exec-plans/completed/remote-host-two-state-validation.md, docs/exec-plans/active/remote-host-two-state-fix.md]
 updated_at: 2026-10-13
 ---
 
@@ -33,9 +33,13 @@ Remote SSH0.128.0 返回 `Managed(1)` 连接。drain 经 `MainThreadManagedSocke
 
 R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志正常通过。C1 在独立 VS Code副本仅 setup 阶段抑制 Terminate/Disconnect，确认旧 Host 保留；verify 却先在 Canvas ready45秒超时，没有进入 completed 联合断言，故不把 C1 计为原失败的同症状负对照。C2/C3 保持同样受控消息缺失，只在本地 setup 退出后核对旧 Host 的 UID、私有 server 路径、extensionHost 类型与 startTicks，再只结束该 Host，等待原进程消失后重开。C2在身份核验后已只向旧 Host1843101发 SIGKILL，Supervisor1849519保留；其后诊断读 cmdline时遇到退出瞬间的 zombie空命令行，错误报告 PID scope mismatch，因此没有启动 verify。C2属于诊断自身失败，不计为产品失败或有效正对照。C3改用发送前严核身份、发送后按原 startTicks观察消失，不再将 zombie空命令行当作新进程身份。C3完整两阶段通过：本地setup退出后只对Host2006731/startTicks248934378发SIGKILL，等待原进程消失，然后原verify全部通过。完成第三终端已closed、snapshot-only、historyDiscarded，Agent/普通Terminal仍按原sessionId恢复并接受重开后输入；这些是未改动的正式断言。最后清理前仍保留Supervisor2012368（startTicks248934998），没有以清理Supervisor换取通过。
 
-## 待确认的修复提案
+## 正式方案
 
-2026-10-13 用户进一步询问旧 Host 是否可能不退出，以及门禁是否应覆盖两种情况。建议将候选方案补齐为两条确定性场景，而不是把“远端 Host 必须退出”设为所有重开的前提。此提案尚待确认，当前没有实现。短暂断连时远端 Host 保留等待重连是上游允许的行为；本固定版本配置三小时，不能把它表述为永久不退出的保证。正常关闭的消息递送失败则是另一个尚未定位到具体层的边界。
+正式实现限定 `scripts/smoke/run-vscode-smoke.mjs`、Linux localhost fixture 和 `tests/vscode-smoke/real-reopen-tests.cjs`。聚合场景依次运行具名 exit/retain 两分支。setup 写入原 Host/Supervisor 身份后保持测试未返回；runner 核验本次 spawn 的本地 Electron 私有 user-data 根、UID 和后代启动身份，只终止这个客户端进程树制造异常断连。确认本地退出及原远端 Host 仍同身份运行后，exit 仅结束已核验旧 Host 并等待原身份消失，retain 保留到业务完成。不修改上游源码缓存，也不改变产品行为。
+
+两分支第三终端等待私有完成文件；runner 确认前提后释放并观察离开期间输出/完成，然后启动 verify。verify 共同核验原 Supervisor/session/storage、原恢复/输入/完成历史断言及正式 resize helper 的 Host、Webview、原 Supervisor attachSession 尺寸。既有非 SSH 两阶段路径保持原语义，ready45秒/恢复35秒/resize20秒不放宽。身份错误、失败或未知均有界失败，信号发出前严格核验；最终清理只回收本次私有资源，不能代替业务通过。执行过程见 `docs/exec-plans/active/remote-host-two-state-fix.md`。
+
+2026-10-13 用户进一步询问旧 Host 是否可能不退出，以及门禁是否应覆盖两种情况。建议将候选方案补齐为两条确定性场景，而不是把“远端 Host 必须退出”设为所有重开的前提。用户于2026-10-13批准实施，正式接线与验证正在进行。短暂断连时远端 Host 保留等待重连是上游允许的行为；本固定版本配置三小时，不能把它表述为永久不退出的保证。正常关闭的消息递送失败则是另一个尚未定位到具体层的边界。
 
 第一条明确验证旧 Host 退出：修复限定在 Linux localhost SSH 的 smoke fixture 与 orchestration，不改变产品恢复、resize、ready45秒或 completed35秒预算。setup 成功时把真实远端 Host PID及 Linux startTicks 写入本次私有工件；本地 Electron 退出后先检查它是否已消失。在这条指定离线的场景中，若仍存活，核对 UID、私有 server 根、extensionHost 角色和启动身份，仅对这个旧 Host 制造真实离线，等待原进程消失，再启动 verify。未知身份或无法确认退出须提前失败并保存证据；PID重用不得向新进程发信号。
 
