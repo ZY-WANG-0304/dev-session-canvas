@@ -1,0 +1,160 @@
+{
+  "root": "/tmp/d261r/source",
+  "files": [
+    {
+      "path": "local-links-and-stop/artifacts/last-webview-probe.json",
+      "bytes": 5014,
+      "sha256": "cebf684b90912967d5860963670165ead65136fba482e29e966f14a8c5283c97"
+    },
+    {
+      "path": "local-pty-robustness/artifacts/last-webview-probe.json",
+      "bytes": 5530,
+      "sha256": "c0a2a8bab9a096e8cd97aaad0797d1a472c1c876e77aff8f26122e6b732b09dd"
+    },
+    {
+      "path": "local-surface-cutover/artifacts/last-webview-probe.json",
+      "bytes": 4853,
+      "sha256": "b8d4312232118469cc8e53c749f345e3175eab9c3ecb3404b0e3352737efe7b6"
+    },
+    {
+      "path": "multi-root-real-reopen/artifacts/multi-root-real-reopen-control.json",
+      "bytes": 324,
+      "sha256": "f5b2dba082b6cd4503ccb82fe82df311e94bbba1489dc3664733df4d226b20d9"
+    },
+    {
+      "path": "multi-root-real-reopen/artifacts/multi-root-real-reopen-state.json",
+      "bytes": 1413,
+      "sha256": "61d686d34d06608934fcf0f0f740420b36536bf65f7d7b7404d2644b7cc21017"
+    },
+    {
+      "path": "multi-root-real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 9257,
+      "sha256": "7ac8a760e6f0e58ce5aa942227826b1066562d4a3d86f03ea3cc772178b22375"
+    },
+    {
+      "path": "real-reopen/artifacts/real-reopen-control.json",
+      "bytes": 165,
+      "sha256": "901f93aebd4380eff640d876f154e6abf420e2658c1f414f0456f571ac83ee88"
+    },
+    {
+      "path": "real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 8128,
+      "sha256": "3a71f2ee21fcc4c00ea427aa72c878d45c482ca8b034bebb7ff893b922cc5b83"
+    },
+    {
+      "path": "real-reopen/artifacts/real-reopen-state.json",
+      "bytes": 1295,
+      "sha256": "2b84288ce052f0a1771c59e8a590c1ba9548734d96e52c274675bbde23e3e718"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 8575,
+      "sha256": "0afd9d50b32b67aecca24b8ac10e2c1b84443004b867cef2fcc7335d55e73013"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/real-reopen-verify-failure-diagnostics.json",
+      "bytes": 65702,
+      "sha256": "dfda3bfb4d9ad08ded2204accb0c679932c976cb27b03d7669a7b93c0aa2e04d"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/real-reopen-verify-failure-error.txt",
+      "bytes": 7905,
+      "sha256": "745d81ca30942ca2ec34a2939c492c4c5abf942b13ec5c6788e240db2062082b"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/real-reopen-verify-failure-runtime-supervisor.json",
+      "bytes": 25288,
+      "sha256": "64070b3e95994d73d8e4660f6ef852f681acd47087d16860bfb3241ed52cdec2"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/real-reopen-verify-failure-snapshot.json",
+      "bytes": 9883,
+      "sha256": "778d1d644107bcb781111f11d50f0f362b9294a213c759d5ca592e35b4add14b"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/remote-ssh-real-reopen-control.json",
+      "bytes": 198,
+      "sha256": "dba0bc8feba4b490932a17e362b83a88cafed3de9d650b893d64dde2c1b66896"
+    },
+    {
+      "path": "remote-ssh-real-reopen/artifacts/remote-ssh-real-reopen-state.json",
+      "bytes": 1401,
+      "sha256": "fed2315340a9524419af8c05c70b3779c9bdec8b80f84643ce801b65cf00836f"
+    },
+    {
+      "path": "restricted/artifacts/last-webview-probe.json",
+      "bytes": 4350,
+      "sha256": "e6c90ac4bd67ab23ed64f1be897f21b641230d659f750cdc18a04a5a9d19efb8"
+    },
+    {
+      "path": "runtime-checkpoint-refresh/artifacts/last-webview-probe.json",
+      "bytes": 4096,
+      "sha256": "0a4debc453d60b7ff9beeecf0e2a2331c54c6cf254c46a35beb4673dda622ae0"
+    },
+    {
+      "path": "single-to-multi-root-real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 8213,
+      "sha256": "e0d59d1cad9b307eba1a70210826731d7f064b57c8ba4eda5ebb2b10b4fc2e5e"
+    },
+    {
+      "path": "single-to-multi-root-real-reopen/artifacts/single-to-multi-root-real-reopen-control.json",
+      "bytes": 354,
+      "sha256": "479f414eda636a5381d7d30c03ea8e2010979890eecdff5097b57c8b5ee5358b"
+    },
+    {
+      "path": "single-to-multi-root-real-reopen/artifacts/single-to-multi-root-real-reopen-state.json",
+      "bytes": 1337,
+      "sha256": "545ea84cce00ed27d4c9941406adca4bf6ac43600c465106c3816a57d0d0f2d7"
+    },
+    {
+      "path": "snapshot-only-manual-recovery/artifacts/last-webview-probe.json",
+      "bytes": 4188,
+      "sha256": "8ba28cf2dbde7d6b1e8b5f9828107c04e95ca05a800834a9b332790d47c0683d"
+    },
+    {
+      "path": "systemd-fallback-real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 8213,
+      "sha256": "7cbdb520f0fd1c9ce69bb6c5be4bd5b3d8eb88ec21d36077d0dcf2ef17b576cf"
+    },
+    {
+      "path": "systemd-fallback-real-reopen/artifacts/systemd-fallback-real-reopen-control.json",
+      "bytes": 216,
+      "sha256": "7794b9b7eb085715f0a8fd640f194f02591b3435bfd875e99f7ff5683bbd1186"
+    },
+    {
+      "path": "systemd-fallback-real-reopen/artifacts/systemd-fallback-real-reopen-state.json",
+      "bytes": 1329,
+      "sha256": "b69a822ffd26113e15d5bf145e2eb4fe9d240d60ae91dbc9b63741c89431b180"
+    },
+    {
+      "path": "systemd-user-real-reopen/artifacts/fake-systemd-state/dev-session-canvas-runtime-supervisor-1b59ca21aa06af8f26d42fcb.service.json",
+      "bytes": 152,
+      "sha256": "33bca32144a56dcf8e83bab7609eded04eda3b35c4d13178981e26ac19f2d5d2"
+    },
+    {
+      "path": "systemd-user-real-reopen/artifacts/real-reopen-flush-result.json",
+      "bytes": 8169,
+      "sha256": "815ac7916fc9e548d5397a14e30c0812e9065f3c1ac74a0e3bf5e0017db4b685"
+    },
+    {
+      "path": "systemd-user-real-reopen/artifacts/systemd-user-real-reopen-control.json",
+      "bytes": 204,
+      "sha256": "32a0a1867534635f80c27ba1550ec5d4125ca2ac20e570279cf00f6f732f267b"
+    },
+    {
+      "path": "systemd-user-real-reopen/artifacts/systemd-user-real-reopen-state.json",
+      "bytes": 1321,
+      "sha256": "a21e6f83ed6b59f6e023188aff8eec47304d373335c1ea1b1f556aa2ad3343b3"
+    },
+    {
+      "path": "trusted/artifacts/last-webview-probe.json",
+      "bytes": 7827,
+      "sha256": "52e3f3cb02cc612d57f17c28f9d8d4de0f43cfbc833246f9bb728566c623819f"
+    },
+    {
+      "path": "trusted/artifacts/runtime-scrollback-history.json",
+      "bytes": 490,
+      "sha256": "9cf4e42cb9ddc518794b36411ab5696433818b51f1bb49bf9a9fe787cffa22b6"
+    }
+  ]
+}

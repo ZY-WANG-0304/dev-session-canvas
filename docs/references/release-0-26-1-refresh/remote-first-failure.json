@@ -1,0 +1,125 @@
+{
+  "validationCommit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+  "firstAggregateResult": "exit1 in npm test remote-ssh-real-reopen; Webview and clean-checkout not reached",
+  "ready": true,
+  "bootstrapAck": true,
+  "generation": 5,
+  "completedTerminal": {
+    "nodeId": "terminal-3-9eb60926-f40d-432b-be78-517323f804b6",
+    "sessionId": "10f7b111-665b-4d76-9325-cf7c17efd041",
+    "status": "live",
+    "liveSession": true,
+    "outputSequence": 2,
+    "recentOutput": "ziyang01.wang-al@hobot:/tmp/dsc261verify$ echo REAL_REOPEN_COMPLEETED_TERMINAL_SLEEPING; while kill -0 2613433 2>/dev/null; do sleeep 0.1; done; echo REAL_REOPEN_COMPLETED_TERMINAL; exit\nREAL_REOPEN_COMPLETED_TERMINAL_SLEEPING"
+  },
+  "expected": {
+    "agentNodeId": "agent-1-7bfcb8b1-d73f-429c-bcf3-299235c1df29",
+    "terminalNodeId": "terminal-2-1491acf1-d0ac-470f-a5ee-9d1922c13eb1",
+    "completedTerminalNodeId": "terminal-3-9eb60926-f40d-432b-be78-517323f804b6",
+    "agentSessionId": "31dbefa3-5b45-47c9-b1a7-dc4a37076511",
+    "terminalSessionId": "d85b496d-6e82-4297-b73c-ae397bc3d6f4",
+    "completedTerminalSessionId": "10f7b111-665b-4d76-9325-cf7c17efd041",
+    "agentRuntimeStoragePath": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/06e468ca9a9593c4c880c9630ada9e0028db771660130f145a824be1a3af0898/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+    "terminalRuntimeStoragePath": "/tmp/d261r/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/06e468ca9a9593c4c880c9630ada9e0028db771660130f145a824be1a3af0898/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+    "agentRuntimeStorageSlotName": "runtime-supervisor-generations",
+    "terminalRuntimeStorageSlotName": "runtime-supervisor-generations",
+    "workspaceRootPath": "/tmp/dsc261verify",
+    "workspaceFolderCount": 1
+  },
+  "remoteHost": {
+    "setupPid": 2613433,
+    "verifyPid": 2632892,
+    "configuredReconnectionGraceMs": 10800000,
+    "setupHostExitObservedInPreservedLog": false
+  },
+  "interpretation": "The fixture waits for setup process.pid to cease existing. Its original remote Extension Host has no exit record before verification and remote server retains connections for up to three hours. Only the target terminal predicate remains unmet; no evidence attributes this failure to resize or Webview readiness. A PID-only wait also cannot distinguish a zombie or PID reuse; neither was sampled at the exact timeout.",
+  "failureArtifactHashes": [
+    {
+      "file": "real-reopen-flush-result.json",
+      "sha256": "0afd9d50b32b67aecca24b8ac10e2c1b84443004b867cef2fcc7335d55e73013",
+      "bytes": 8575
+    },
+    {
+      "file": "real-reopen-verify-failure-diagnostics.json",
+      "sha256": "dfda3bfb4d9ad08ded2204accb0c679932c976cb27b03d7669a7b93c0aa2e04d",
+      "bytes": 65702
+    },
+    {
+      "file": "real-reopen-verify-failure-error.txt",
+      "sha256": "745d81ca30942ca2ec34a2939c492c4c5abf942b13ec5c6788e240db2062082b",
+      "bytes": 7905
+    },
+    {
+      "file": "real-reopen-verify-failure-runtime-supervisor.json",
+      "sha256": "64070b3e95994d73d8e4660f6ef852f681acd47087d16860bfb3241ed52cdec2",
+      "bytes": 25288
+    },
+    {
+      "file": "real-reopen-verify-failure-snapshot.json",
+      "sha256": "778d1d644107bcb781111f11d50f0f362b9294a213c759d5ca592e35b4add14b",
+      "bytes": 9883
+    },
+    {
+      "file": "remote-ssh-real-reopen-control.json",
+      "sha256": "dba0bc8feba4b490932a17e362b83a88cafed3de9d650b893d64dde2c1b66896",
+      "bytes": 198
+    },
+    {
+      "file": "remote-ssh-real-reopen-state.json",
+      "sha256": "fed2315340a9524419af8c05c70b3779c9bdec8b80f84643ce801b65cf00836f",
+      "bytes": 1401
+    },
+    {
+      "file": "remote-server/remoteagent.log",
+      "sha256": "e6a6b801d3321958c7973efc16d46b6a3f0dface5b6eb237a00bef6e7552ee6e",
+      "bytes": 2573207
+    },
+    {
+      "file": "remote-server/exthost1/remoteexthost.log",
+      "sha256": "6ce5feb52ea3394569a399837304a44b1fb84b1a3aa7adc650c805e1537406a2",
+      "bytes": 1450850
+    },
+    {
+      "file": "remote-server/exthost2/remoteexthost.log",
+      "sha256": "7441034024669e8a6034b3763de5de5c5a5d165d780278adea8b4de62b85a77a",
+      "bytes": 1487096
+    }
+  ],
+  "remoteServerLogExcerpts": [
+    "2026-10-13 11:21:31.668 [info] Extension host agent started.",
+    "2026-10-13 11:21:31.729 [info] [<unknown>][aae01685][ExtensionHostConnection] New connection established.",
+    "2026-10-13 11:21:31.730 [info] [<unknown>][aae01685][ExtensionHostConnection] Starting extension host process...",
+    "2026-10-13 11:21:31.868 [info] [<unknown>][18e2022b][ManagementConnection] New connection established.",
+    "2026-10-13 11:21:31.959 [info] [<unknown>][aae01685][ExtensionHostConnection] <2613433> Launched Extension Host Process.",
+    "2026-10-13 11:21:32.285 [info] [<unknown>][aae01685][ExtensionHostConnection] <2613433> [reconnection-grace-time] Extension host: read VSCODE_RECONNECTION_GRACE_TIME=10800000ms (10800s)",
+    "2026-10-13 11:21:48.056 [info] [<unknown>][2e579a10][ManagementConnection] New connection established.",
+    "2026-10-13 11:21:48.064 [trace] [<unknown>][dc0d8ba0][ExtensionHostConnection] - startParams language: en",
+    "2026-10-13 11:21:48.064 [trace] [<unknown>][dc0d8ba0][ExtensionHostConnection] - startParams env: {}",
+    "2026-10-13 11:21:48.064 [info] [<unknown>][dc0d8ba0][ExtensionHostConnection] New connection established.",
+    "2026-10-13 11:21:48.064 [info] [<unknown>][dc0d8ba0][ExtensionHostConnection] Starting extension host process...",
+    "2026-10-13 11:21:48.077 [info] [<unknown>][dc0d8ba0][ExtensionHostConnection] <2632892> Launched Extension Host Process.",
+    "2026-10-13 11:21:48.396 [info] [<unknown>][dc0d8ba0][ExtensionHostConnection] <2632892> [reconnection-grace-time] Extension host: read VSCODE_RECONNECTION_GRACE_TIME=10800000ms (10800s)",
+    "2026-10-13 11:22:10.673 [info] [<unknown>][18e2022b][ManagementConnection] The client has disconnected, will wait for reconnection 3h before disposing...",
+    "2026-10-13 11:21:33.462 [info] Extension host with pid 2613433 started",
+    "2026-10-13 11:21:49.118 [info] Extension host with pid 2632892 started"
+  ],
+  "priorMainContrast": {
+    "baselineCommit": "ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b",
+    "logRoot": "/tmp/dmr13/source/remote-ssh-real-reopen/remote-ssh-fixture/remote-agent/.vscode-server/data/logs/20261013T102553",
+    "setupPid": 2714632,
+    "setupHostTerminateMessage": "2026-10-13 10:26:01.664",
+    "setupHostExit": "2026-10-13 10:26:03.989",
+    "verifyHostLaunch": "2026-10-13 10:26:08.196",
+    "interpretation": "Prior main passed with an explicitly observed setup remote Host exit before verification. Current first-failure lacks that boundary; neither main pass nor reconnect grace alone proves why its terminate message was absent.",
+    "logHashes": [
+      {
+        "file": "remoteagent.log",
+        "sha256": "9bf64212b86b8fd7668ad68b5e8683cd9e7c567d739e88e564b9c92b580a0143"
+      },
+      {
+        "file": "exthost1/remoteexthost.log",
+        "sha256": "2cd91afbe3fa80aaa0314c680465f64f3242e784cc3f9a6e837fcee99d38dc61"
+      }
+    ]
+  }
+}
