@@ -14,7 +14,7 @@ SSH 重开门禁必须独立建立旧远端扩展 Host 已退出和原身份仍�
 - [x] (2026-10-13) 原版缓存 native-2双分支全部通过：exit Host2078814退出、retain Host2189996持续原身份，原Supervisor/session及输入/resize/终态/cleanup通过；首轮客户端argv误拒绝保留。
 - [x] (2026-10-13) 最终原生 SSH 双分支与全部source smoke通过；共享单root/多root/切换、双窗口、systemd与fallback两阶段回归通过。
 - [x] (2026-10-13) 临时预合并7d33f664完整preflight/verify通过：全部npm test、426项Webview和clean-checkout VSIX安装后八场景通过，exitCode=0。
-- [ ] 同步正式设计、证据和技术债，提交、rebase、推送创建 PR，未经授权不合并或发布。
+- [x] (2026-10-13) 同步正式设计、证据和技术债，提交并rebase最新main，推送创建PR #328；未合并或发布。
 
 ## 意外与发现
 
@@ -30,11 +30,11 @@ SSH 原 filter remote-ssh-real-reopen 保留为两分支的聚合入口，默认
 
 ## 结果与复盘
 
-正式修复及验证已完成。原版缓存native-2与最终source smoke两分支均通过，17项控制回归与9项resize回归通过，共享本地重开矩阵通过；临时预合并7d33f664完整0.26.1 release:verify通过。具体上游消息丢失层、其他平台/真实网络、原Host复用和显式重复start拒绝保持未验证。修复合入后PR327按最新输入重验，不合并、打tag或发布。PR交付正在收口。
+正式修复及验证已完成。原版缓存native-2与最终source smoke两分支均通过，17项控制回归与9项resize回归通过，共享本地重开矩阵通过；临时预合并7d33f664完整0.26.1 release:verify通过。具体上游消息丢失层、其他平台/真实网络、原Host复用和显式重复start拒绝保持未验证。修复合入后PR327按最新输入重验，不合并、打tag或发布。PR #328已创建：https://github.com/ZY-WANG-0304/dev-session-canvas/pull/328。
 
 ## 上下文与定向
 
-worktree /tmp/dscsshdiag，分支 smoke-remote-host-two-state-fix，main ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b。scripts/smoke/run-vscode-smoke.mjs 组织 SSH setup/verify；vscode-smoke-runner.mjs 暴露 spawn handle；vscode-remote-ssh-fixture.mjs 提供私有 server 根和可观察清理。tests/vscode-smoke/real-reopen-tests.cjs 调查基线中第三终端等待 Host PID 消失；修复后 SSH 使用独立信号并记录身份，业务验收后核对原 session resize。新增纯 Node 共用 helper 放 tests/vscode-smoke，runner 用 createRequire 引入，随 staged suite 一同复制。
+修复 worktree /tmp/dscsshdiag，分支 smoke-remote-host-two-state-fix，main ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b。scripts/smoke/run-vscode-smoke.mjs 组织 SSH setup/verify；vscode-smoke-runner.mjs 暴露 spawn handle；vscode-remote-ssh-fixture.mjs 提供私有 server 根和可观察清理。tests/vscode-smoke/real-reopen-tests.cjs 调查基线中第三终端等待 Host PID 消失；修复后 SSH 使用独立信号并记录身份，业务验收后核对原 session resize。新增纯 Node 共用 helper 放 tests/vscode-smoke，runner 用 createRequire 引入，随 staged suite 一同复制。
 
 ## 里程碑
 
@@ -65,3 +65,5 @@ worktree /tmp/dscsshdiag，分支 smoke-remote-host-two-state-fix，main ea0c9b1
 修订记录：2026-10-13 补齐17项回归（包括Supervisor静默连接总预算），修正本地argv作用域文案，记录完整发布验证的环境前提和保留的失败尝试。
 
 修订记录：2026-10-13 最终source smoke双分支和共享回归通过；426项Webview与clean-checkout VSIX八场景全部通过，完整verify退出码0；结果与残余范围已同步。
+
+修订记录：2026-10-13 完成正式设计、测试和证据收口，创建PR #328，将计划移入completed；合并及发布由后续授权流程处理。

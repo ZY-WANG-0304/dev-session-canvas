@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/remote-host-exit-investigation.md, docs/exec-plans/completed/remote-host-two-state-validation.md, docs/exec-plans/active/remote-host-two-state-fix.md]
+related_plans: [docs/exec-plans/completed/remote-host-exit-investigation.md, docs/exec-plans/completed/remote-host-two-state-validation.md, docs/exec-plans/completed/remote-host-two-state-fix.md]
 updated_at: 2026-10-13
 ---
 
@@ -37,7 +37,7 @@ R1 原版通过，R2 日志自然复现原35秒断言失败，R3 可落盘日志
 
 正式实现限定 `scripts/smoke/run-vscode-smoke.mjs`、Linux localhost fixture 和 `tests/vscode-smoke/real-reopen-tests.cjs`。聚合场景依次运行具名 exit/retain 两分支。setup 写入原 Host/Supervisor 身份后保持测试未返回；runner 核验本次 spawn 的本地 Electron 私有 user-data 根、UID 和后代启动身份，只终止这个客户端进程树制造异常断连。确认本地退出及原远端 Host 仍同身份运行后，exit 仅结束已核验旧 Host 并等待原身份消失，retain 保留到业务完成。不修改上游源码缓存，也不改变产品行为。
 
-两分支第三终端等待私有完成文件；runner 确认前提后释放并观察离开期间输出/完成，然后启动 verify。verify 共同核验原 Supervisor/session/storage、原恢复/输入/完成历史断言及正式 resize helper 的 Host、Webview、原 Supervisor attachSession 尺寸。既有非 SSH 两阶段路径保持原语义，ready45秒/恢复35秒/resize20秒不放宽。身份错误、失败或未知均有界失败，信号发出前严格核验；最终清理只回收本次私有资源，不能代替业务通过。执行过程见 `docs/exec-plans/active/remote-host-two-state-fix.md`。
+两分支第三终端等待私有完成文件；runner 确认前提后释放并观察离开期间输出/完成，然后启动 verify。verify 共同核验原 Supervisor/session/storage、原恢复/输入/完成历史断言及正式 resize helper 的 Host、Webview、原 Supervisor attachSession 尺寸。既有非 SSH 两阶段路径保持原语义，ready45秒/恢复35秒/resize20秒不放宽。身份错误、失败或未知均有界失败，信号发出前严格核验；最终清理只回收本次私有资源，不能代替业务通过。执行过程见 `docs/exec-plans/completed/remote-host-two-state-fix.md`。
 
 本地客户端作用域使用本次真实 spawnargs 的私有 user-data-dir、/proc/exe、UID 和启动时记录的 PID/startTicks。Electron 会在启动后重写 argv，不能从运行中的 cmdline 缺少原启动参数推断进程越界。终止客户端后既等待根进程回收，也核验记录的同身份后代不再运行。远端信号单独核验 UID、私有 server 路径、extensionHost 角色和前后两次 startTicks；身份不符拒绝发送。retain 在重开前、verify ready 和业务完成均检查原身份仍非 Z/X；exit 必须证明原身份消失，僵尸也不算已消失。重开实际使用的新 Host 身份另行记录。
 

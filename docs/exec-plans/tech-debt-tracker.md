@@ -22,7 +22,7 @@
 
 遗留范围：上游具体丢失层未知。VS Code1.141.0 disconnect确有await；Remote SSH0.128.0 Managed(1) drain只等本地写回调，不等远端确认/Host退出。R3 drain返回unacked=3仍正常通过，不能把计数本身定因。无需等三小时或扩大completed35秒换取绿色。正式覆盖Linux localhost固定版本；其他平台、真实网络故障、原Host复用与显式重复start拒绝需各自验证，原会话数/绑定保持不变不代证拒绝命令。遇到新的退出消息丢失时继续采集具体传输层证据。
 
-关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/active/remote-host-two-state-fix.md`、`docs/references/remote-host-two-state-fix/README.md`；历史调查与双状态研究证据分别保留在`remote-host-exit-investigation/`和`remote-host-two-state-validation/`。
+关联：`docs/design-docs/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-two-state-fix.md`、`docs/references/remote-host-two-state-fix/README.md`；历史调查与双状态研究证据分别保留在`remote-host-exit-investigation/`和`remote-host-two-state-validation/`。
 
 ## 2026-10-13：真实窗口重开 ready 预算缓解与上游资源责任
 
