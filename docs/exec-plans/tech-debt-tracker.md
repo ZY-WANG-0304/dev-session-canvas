@@ -71,6 +71,18 @@
 建议时机：下一轮发布准备前收口 Canvas ready 首败及旧升级 resize 一致性原因，再验证完整门禁。resize 现场缺少期望 probe 和时间线，后续先补保存实际 Host/Page/原 Supervisor 的尺寸与请求顺序，不能直接归为页面 fit、测试竞态或产品丢 resize。CI 冷 runner/系统依赖及实际路径按发布输入验证；本机系统依赖已齐备，不代证全新 OS 的缺库安装。用户态 fixture 不代证真实 systemd、真实 provider、macOS/Windows、真实远端长断开、多 root 双窗口或完整 UI 接管矩阵；不构成 0.26.1 发布豁免。
 
 关联：`docs/design-docs/release-gate-fixture-ci-alignment.md`、`docs/exec-plans/completed/release-gate-fixture-ci-alignment.md`、前轮报告 PR #320。
+## 2026-10-12：PR319 后主线完整门禁仍有遗留失败
+背景与触发条件：用户要求在 PR #319 合入后复验最新 `origin/main`。本轮固定 `c32437ac008b1d933e9e13975e60c869e7bb33d4`，Linux x64、Node 22.23.3、VS Code 1.141.0，正式产品、测试、workflow、版本和发布契约保持原输入。原 `npm test` 与完整源码 `test:smoke` 均 exit 1，不能以独立补验通过代替完整门禁。
+影响范围与待收口项：
+- `scripts/test/test-canvas-execution-context.mjs:708`：关闭模式仍期待 root 绑定允许重连，实际按 PR #319 规则返回 `runtime-persistence-disabled`；相邻后续断言也需按正式契约校准，失败脚本未触达的段落仍待验。
+- `tests/vscode-smoke/extension-tests.cjs:390`：checkpoint 首个 8192 字符分页到达时就要求声明的 104842 字符总长度；PR #317 的收齐等待修正未进 main，后续内容断言未通过，不能认定产品丢失内容。
+- `systemd-fallback-real-reopen`：fixture 的 fake systemctl `fail-start` 已提交，保留 intent 且无 started receipt，却仍要求切换 backend；与提交后 unknown 禁止二次提交的正式契约冲突。提交前明确 unavailable 的纯回归通过，真实该语义的重开 fixture 尚待对齐验证，不能放宽产品保护。
+- `.github/workflows/release-preflight.yml`、`.github/workflows/publish-marketplace-release.yml`：没有为早期市场浏览器 E2E 预装 Chromium，空 `PLAYWRIGHT_BROWSERS_PATH` 的原入口实际报缺 revision 1217 executable。PR #317 的浏览器/cache/短 TMP 准备未合入；完整冷 runner、系统依赖及默认长路径仍待正式 CI 验证。
+- `tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs:318`：新 root 会话使用旧 socket resolver，下一步 ready 连接报 `ENOENT`。新 root owner/started receipt 已保留，正确地址为 root `d-*` socket；PR #317 的 resolver 修正未进 main，旧升级与退役后续断言尚未取得完整通过。
+独立待定位项：旧升级换目录业务复验在第 259 行等 Terminal resize 与捕获 probe 一致，20 秒超时。原 Terminal live、85x28，Webview/Host input marker 均到达 PTY，但 expected probe 没有持久快照，不能确定产品 resize 故障或瞬时几何夹具问题。仅追加一次原参数稳定性复验越过该段，随后停在新 root socket 错误；越过不覆盖首败。更早一次运行停在 `127.0.0.1:24084` commit lease 占用，退出后只读观察仍有 listener，未停止该 listener。没有一次完整旧升级通过，不能将全部失败归为纯 fixture。
+当前处理与边界：保留三次旧升级停点、全部首次失败日志及 85 条执行记录，未修改测试期待、产品准入或等待预算。完整 Webview 424/424、Host 634/634、56 项后续非完整 UI 组成检查、八场景 clean-checkout VSIX、双窗口共享、systemd user 重开及 localhost Remote SSH 重开均通过。此前 systemd Canvas ready 和主题超时本轮未重现，旧根因仍未知。浏览器下载准备中断发生在用例开始前，单独记账。
+建议修复时机：下一轮发布准备前，对齐确定的测试契约、分页等待、新 root resolver 及 CI 浏览器准备，补齐旧 resize 的请求/probe/应用时序证据并定位；之后重新执行完整门禁。登记不构成发布豁免，本轮未准备 0.26.1 发布输入、未执行其预合并/tag verify，macOS/Windows、真实 provider、真实远端长断开、完整 UI 接管矩阵及真实多 root 双窗口不由本轮代证。
+关联：`docs/design-docs/main-validation-2026-10-12.md`、`docs/exec-plans/completed/main-validation-2026-10-12.md`、`docs/references/main-validation-2026-10-12/evidence.json`、`docs/design-docs/runtime-root-ownership.md`、`docs/design-docs/runtime-shared-root-canvas-sync.md`。
 
 ## 2026-10-09：活动本地执行在画布重读和 workspace root 重组时失去绑定
 
