@@ -143,8 +143,8 @@ function runtimePaths(storageDir) {
     registryPath: path.join(resolved, 'registry.json') };
 }
 
-async function requestSession(storageDir, sessionId, timeoutMs = 5000) {
-  const socket = net.createConnection(runtimePaths(storageDir).socketPath);
+async function requestSession(storageDir, sessionId, timeoutMs = 5000, options = {}) {
+  const socket = net.createConnection(options.socketPath ?? runtimePaths(storageDir).socketPath);
   const id = randomUUID();
   return new Promise((resolve, reject) => {
     let buffer = '', done = false;

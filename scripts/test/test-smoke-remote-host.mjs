@@ -116,16 +116,48 @@ if (process.platform === 'linux') test('local client with rewritten argv is kill
 
 if (process.platform === 'linux') test('Supervisor request has a total deadline even when socket stays silent', async () => {
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-host-request-'));
-  const socketPath = control.runtimePaths(storage).socketPath;
-  await fs.mkdir(path.dirname(socketPath), { recursive: true });
+  const socketPath = path.join(storage, 'control.sock');
   const sockets = new Set();
   const server = net.createServer(socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
   try {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); });
     const started = Date.now();
-    await assert.rejects(control.requestSession(storage, 'original', 80), /timeout/);
+    await assert.rejects(control.requestSession(storage, 'original', 80, { socketPath }), /timeout/);
     assert.ok(Date.now() - started < 2000, 'Request did not respect total deadline');
   } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise(resolve => server.close(resolve)); await fs.rm(storage, { recursive: true, force: true });
+  }
+});
+
+if (process.platform === 'linux') test('Supervisor request uses the runtime socket by default and preserves attachSession RPC', async () => {
+  const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-host-rpc-'));
+  const socketPath = path.join(storage, 'control.sock');
+  const sockets = new Set();
+  let request, requestedPath;
+  const server = net.createServer(socket => {
+    sockets.add(socket); socket.on('close', () => sockets.delete(socket));
+    let buffer = '';
+    socket.on('data', chunk => {
+      buffer += chunk.toString();
+      if (!buffer.includes('\n')) return;
+      request = JSON.parse(buffer.slice(0, buffer.indexOf('\n')));
+      socket.end(JSON.stringify({ type: 'response', id: request.id, ok: true, result: { sessionId: 'original' } }) + '\n');
+    });
+  });
+  const createConnection = net.createConnection;
+  try {
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); });
+    // Observe the default address without connecting to the real shared runtime directory.
+    net.createConnection = address => { requestedPath = address; return createConnection(socketPath); };
+    assert.deepEqual(await control.requestSession(storage, 'original', 2500), { sessionId: 'original' });
+    assert.equal(requestedPath, control.runtimePaths(storage).socketPath);
+    assert.equal(request.type, 'request');
+    assert.equal(request.method, 'attachSession');
+    assert.deepEqual(request.params, { sessionId: 'original' });
+    assert.match(request.id, /^[0-9a-f-]{36}$/);
+  } finally {
+    net.createConnection = createConnection;
     for (const socket of sockets) socket.destroy();
     await new Promise(resolve => server.close(resolve)); await fs.rm(storage, { recursive: true, force: true });
   }

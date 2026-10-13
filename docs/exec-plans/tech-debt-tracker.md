@@ -763,3 +763,11 @@ Stop 用例仍期待旧 session 的固定摘要及 stopRequested/exited 诊断�
 `npm run test:runtime-completed-history` 的 `verifyCompletedBindingOwner` 原先将所有诊断数组断言为空；main a39cd8c1 新增正常 `execution/deleteBoundary` 后，本地与独立原 main 工作树均在同一 legacy Terminal 项失败。历史基线日志 `/tmp/dsc-shared-completed-history-baseline.log` 保留。
 
 用户授权修正后，测试精确断言 `execution/deleteBoundary` 的 `runtime-delete-requested` 阶段、kind、sessionId 和 backendKind，不泛化过滤诊断。root 缺失 owner 的拒绝用例单独校验请求诊断及零派发，然后清空收集器再验证正常完成。原完整绑定相等、owner 传递、保存先于删除与无终态历史断言全部保留；额外 completedCleanupFailed 等诊断仍使测试失败。Node 22 下完整 `test:runtime-completed-history` 通过，覆盖 Agent/Terminal、legacy/root 及后续 reader 退役场景；只修改测试与文档，没有修改生产删除行为，也不宣称全量 npm test 通过。
+
+## PR327 发布门禁两个首败：已定位、修复验证中（2026-10-13）
+
+原head42d87b3d/main22803dd8，GitHub预合并7e659ce6与本地ec4afba3树相同。本地local-links-and-stop缺失文件搜索9592ms接近10000ms等待；原诊断helper在取回跨deadline时漏检末批精确匹配事件，原Host时序及受控五例确认。建议明确末次观察与deadline契约、覆盖首读/末读/负例，不扩预算。搜索--no-ignore范围已证，但历史文件数/冷缓存/负载贡献未量化。
+
+CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smoke-remote-host.mjs静默socket测试污染真实/tmp/dsc-root-<uid>目录：未指定mode创建、未清理父目录。固定输入完整诊断38382436173捕获原生产socket-directory私有权限拒绝且尚未native-assets；原17测试私有目录两组对照与干净CI38384582823直接stat确认absent→当前uid/0755被拒绝、同inode0700接受。本机已有0700掩盖污染。应让测试使用自有socket目录并自行清理，保留正式地址默认值、原deadline/17用例与生产0700要求；不能通过chmod共享目录或放宽生产检查修复门禁。
+
+用户已授权自有socket夹具和末次观察修复，执行计划docs/exec-plans/active/release-gate-repair.md。修复和最新预合并全量门禁仍为发布阻塞，PR327草稿/head不变；临时组合输入验证不能代替修复合入后PR327正式门禁。通用catch与失败工件缺少有界错误阶段是可观测性后续项，错误类别不得泄露敏感路径/环境。调查设计docs/design-docs/release-gate-root-cause.md与完成计划docs/exec-plans/completed/release-gate-root-cause.md记录run、input、摘要/hash和残余限制；两个临时workflow已归档并移除自动入口。受控因果对照通过不等于完整release:verify通过，历史未记录的stat不补造。

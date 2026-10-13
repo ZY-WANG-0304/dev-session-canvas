@@ -1,0 +1,20 @@
+{
+  "baselineRegression": [
+    {
+      "test": "test-smoke-wait-boundary",
+      "baseline": "origin/main 22803dd8",
+      "expectedExitNonzero": true,
+      "actualExit": 1,
+      "logSha256": "d9ca3bed7f83e0d093b4700ab679067505f3cadfa85e4544427fcc8126fff25b",
+      "failureExcerpt": "PASS waitForSnapshot: first observation matches\nnode:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Timed out while waiting for smoke test state. Last snapshot: {\"marker\":\"observation-1\",\"matches\":true}\n    at waitForSnapshot (evalmachine.<anonymous>:14:10)\n    at async file:///tmp/dsc-gate-baseline-mbzt2evp/scripts/test/test-smoke-wait-boundary.mjs:64:20 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: undefined,\n  expected: undefined,\n  operator: 'fail',\n  diff: 'simple'\n}\n\nNode.js v22.23.3\n"
+    },
+    {
+      "test": "test-smoke-remote-host-isolation",
+      "baseline": "origin/main 22803dd8",
+      "expectedExitNonzero": true,
+      "actualExit": 1,
+      "logSha256": "c2d1dbf24deb4b490e296fe82f5952d069bada1f6f0cd247bc44cd4a3b71ef1e",
+      "failureExcerpt": "node:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nAssertionError [ERR_ASSERTION]: Remote Host suite must leave absent namespace unchanged\n+ actual - expected\n\n+ {\n+   device: '2050',\n+   files: [],\n+   gid: '1115017707',\n+   inode: '9936911',\n+   mode: '16877',\n+   mtime: '1791888992734783605',\n+   sentinel: null,\n+   uid: '1115017707'\n+ }\n- null\n\n    at file:///tmp/dsc-gate-baseline-mbzt2evp/scripts/test/test-smoke-remote-host-isolation.mjs:56:14 {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: {\n    inode: '9936911',\n    device: '2050',\n    mode: '16877',\n    uid: '1115017707',\n    gid: '1115017707',\n    mtime: '1791888992734783605',\n    files: [],\n    sentinel: null\n  },\n  expected: null,\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n\nNode.js v22.23.3\n"
+    }
+  ]
+}

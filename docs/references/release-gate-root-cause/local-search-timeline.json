@@ -1,0 +1,83 @@
+{
+  "input": "ec4afba3adf888b12fd86650e3f376a4d4b24167",
+  "scenario": "local-links-and-stop",
+  "timezone": "Asia/Shanghai renderer/Host; diagnostic event UTC",
+  "sources": [
+    {
+      "path": "/tmp/g327b/local-links-and-stop/artifacts/vscode-logs/window1/renderer.log",
+      "sha256": "d2879f95f69ca2217a1ddd40cd8136ddac55f14abbdba0994c0c74262f9d34b0",
+      "excerpts": [
+        {
+          "line": 1400,
+          "text": "2026-10-13 16:35:47.344 [trace] SearchService#search {\"_reason\":\"startFileSearch\",\"folderQueries\":[{\"folder\":{\"$mid\":1,\"fsPath\":\"/tmp/sf26\",\"external\":\"file:///tmp/sf26\",\"path\":\"/tmp/sf26\",\"scheme\":\"file\"},\"excludePattern\":[{\"pattern\":{\"**/.git\":true,\"**/.svn\":true,\"**/.hg\":true,\"**/.jj\":true,\"**/.DS_Store\":true,\"**/Thumbs.db\":true}}],\"fileEncoding\":\"utf8\",\"disregardIgnoreFiles\":true,\"disregardGlobalIgnoreFiles\":true,\"disregardParentIgnoreFiles\":true,\"ignoreSymlinks\":false}],\"usingSearchPaths\":false,\"includePattern\":{\"**/missing-target.ts\":true},\"maxResults\":64,\"type\":1}"
+        },
+        {
+          "line": 1586,
+          "text": "2026-10-13 16:35:56.938 [trace] SearchService#search: 9592ms"
+        },
+        {
+          "line": 1587,
+          "text": "2026-10-13 16:35:56.939 [trace] SearchService#search {\"_reason\":\"startFileSearch\",\"folderQueries\":[{\"folder\":{\"$mid\":1,\"fsPath\":\"/tmp/sf26\",\"external\":\"file:///tmp/sf26\",\"path\":\"/tmp/sf26\",\"scheme\":\"file\"},\"excludePattern\":[{\"pattern\":{\"**/.git\":true,\"**/.svn\":true,\"**/.hg\":true,\"**/.jj\":true,\"**/.DS_Store\":true,\"**/Thumbs.db\":true}}],\"fileEncoding\":\"utf8\",\"disregardIgnoreFiles\":true,\"disregardGlobalIgnoreFiles\":true,\"disregardParentIgnoreFiles\":true,\"ignoreSymlinks\":false}],\"usingSearchPaths\":false,\"includePattern\":{\"**/missing-target.ts*\":true},\"maxResults\":2,\"type\":1}"
+        },
+        {
+          "line": 1588,
+          "text": "2026-10-13 16:35:57.262 [trace] SearchService#search: 321ms"
+        },
+        {
+          "line": 1621,
+          "text": "2026-10-13 16:35:57.494 [error] AssertionError [ERR_ASSERTION]: Timed out while waiting for diagnostic events. Last events: [{\"timestamp\":\"2026-10-13T08:35:57.295Z\",\"kind\":\"execution/linkOpened\",\"detail\":{\"kind\":\"terminal\",\"nodeId\":\"terminal-2-152d872a-9dd5-4daf-8344-e30a05f94116\",\"linkKind\":\"search\",\"text\":\"missing-target.ts:9:3\",\"openerKind\":\"workbench.action.quickOpen\",\"targetUri\":\"missing-target.ts:9:3\",\"error\":null,\"shellPath\":\"/usr/bin/bash\",\"cwd\":\"/tmp/sf26\"}}]"
+        }
+      ]
+    },
+    {
+      "path": "/tmp/g327b/local-links-and-stop/artifacts/vscode-logs/window1/exthost/exthost.log",
+      "sha256": "6d471762fcef03f32855ab7edb911ddff943f44b84b18783b1ebf8f42fcb6b81",
+      "excerpts": [
+        {
+          "line": 1100,
+          "text": "2026-10-13 16:35:47.334 [trace] ExtHostCommands#executeCommand devSessionCanvas.__test.getDiagnosticEvents"
+        },
+        {
+          "line": 1104,
+          "text": "2026-10-13 16:35:47.518 [debug] ExtHostSearch /tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/node_modules.asar.unpacked/@vscode/ripgrep-universal/bin/linux-x64/rg --files --hidden --case-sensitive --no-require-git -g '**/missing-target.ts' -g '!**/.git' -g '!**/.svn' -g '!**/.hg' -g '!**/.jj' -g '!**/.DS_Store' -g '!**/Thumbs.db' --no-ignore --follow --no-config --no-ignore-global"
+        },
+        {
+          "line": 1210,
+          "text": "2026-10-13 16:35:56.937 [debug] ExtHostSearch Search finished. Stats: {\"cmdTime\":9591,\"fileWalkTime\":9591,\"directoriesWalked\":0,\"filesWalked\":0,\"cmdResultCount\":0}"
+        },
+        {
+          "line": 1215,
+          "text": "2026-10-13 16:35:57.040 [debug] ExtHostSearch /tmp/dsc0261v/.vscode-test/vscode-linux-x64-1.141.0/resources/app/node_modules.asar.unpacked/@vscode/ripgrep-universal/bin/linux-x64/rg --files --hidden --case-sensitive --no-require-git -g '**/missing-target.ts*' -g '!**/.git' -g '!**/.svn' -g '!**/.hg' -g '!**/.jj' -g '!**/.DS_Store' -g '!**/Thumbs.db' --no-ignore --follow --no-config --no-ignore-global"
+        },
+        {
+          "line": 1220,
+          "text": "2026-10-13 16:35:57.241 [trace] ExtHostCommands#executeCommand devSessionCanvas.__test.getDiagnosticEvents"
+        },
+        {
+          "line": 1221,
+          "text": "2026-10-13 16:35:57.261 [debug] ExtHostSearch Search finished. Stats: {\"cmdTime\":320,\"fileWalkTime\":321,\"directoriesWalked\":0,\"filesWalked\":0,\"cmdResultCount\":0}"
+        },
+        {
+          "line": 1223,
+          "text": "2026-10-13 16:35:57.262 [trace] ExtHostCommands#executeCommand workbench.action.quickOpen"
+        },
+        {
+          "line": 1229,
+          "text": "2026-10-13 16:35:57.341 [trace] ExtHostCommands#executeCommand devSessionCanvas.__test.getDiagnosticEvents"
+        },
+        {
+          "line": 1233,
+          "text": "2026-10-13 16:35:57.353 [trace] ExtHostCommands#executeCommand devSessionCanvas.__test.getDiagnosticEvents"
+        },
+        {
+          "line": 1249,
+          "text": "2026-10-13 16:35:57.472 [trace] ExtHostCommands#executeCommand devSessionCanvas.__test.getDiagnosticEvents"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Source logs record command invocations, not exact helper entry/return time.",
+    "Missing-file rg scans without ignore exclusions; historical directory count/load not measured."
+  ]
+}

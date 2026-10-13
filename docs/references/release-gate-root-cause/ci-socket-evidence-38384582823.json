@@ -1,0 +1,33 @@
+{
+  "diagnostic_only": true,
+  "input": "7e659ce6af2f713a64031eeb4daacf705977e851",
+  "directory": "/tmp/dsc-root-1001",
+  "note": "Original 17 tests are unmodified. Changing only the freshly created empty directory mode is a causal control, not a product fix or release gate.",
+  "before": null,
+  "testSha256": "ac4898dc70b954b4476eaecf490c63b2971f93e0c82c5b646fd58be785d04fa0",
+  "testExit": 0,
+  "afterOriginalTest": {
+    "uid": 1001,
+    "mode": "755",
+    "inode": 9479320,
+    "device": 66305,
+    "isDirectory": true,
+    "entries": []
+  },
+  "originalDirectoryCheck": {
+    "outcome": "rejected",
+    "error": "Root runtime owner storage must be private to the current OS user."
+  },
+  "permissionOnlyControl": {
+    "outcome": "accepted",
+    "state": {
+      "uid": 1001,
+      "mode": "700",
+      "inode": 9479320,
+      "device": 66305,
+      "isDirectory": true,
+      "entries": []
+    }
+  },
+  "cleaned": true
+}

@@ -12821,12 +12821,15 @@ async function waitForSnapshot(predicate, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   let lastSnapshot = await getDebugSnapshot();
 
-  while (Date.now() < deadline) {
+  // Inspect every completed observation, including the final read across the deadline.
+  while (true) {
     if (predicate(lastSnapshot)) {
       return lastSnapshot;
     }
 
-    await sleep(100);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(100, remaining));
     lastSnapshot = await getDebugSnapshot();
   }
 
@@ -12837,12 +12840,15 @@ async function waitForDiagnosticEvents(predicate, timeoutMs = 8000) {
   const deadline = Date.now() + timeoutMs;
   let lastEvents = await getDiagnosticEvents();
 
-  while (Date.now() < deadline) {
+  // The budget limits polling; an already-started read is always inspected once.
+  while (true) {
     if (predicate(lastEvents)) {
       return lastEvents;
     }
 
-    await sleep(100);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await sleep(Math.min(100, remaining));
     lastEvents = await getDiagnosticEvents();
   }
 

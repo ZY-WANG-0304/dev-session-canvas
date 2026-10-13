@@ -1,0 +1,63 @@
+{
+  "input": "7e659ce6af2f713a64031eeb4daacf705977e851",
+  "diagnostic_only": true,
+  "phases": [
+    {
+      "at": "2026-10-13T10:25:05.710Z",
+      "pid": 10412,
+      "phase": "socket-directory",
+      "storageDir": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/e472def6594c4618dee940035efc3c5af92925728c4a22a90ef12508b15656d8/dab2015f5741ae2432030ae68cbfb843a0ce013877d4311a183cd0d861c231e8/runtime-supervisor-generations/terminal-root-owner-linux-v1/runtime-supervisor",
+      "preferredBackends": [
+        "legacy-detached"
+      ],
+      "kind": "stage"
+    },
+    {
+      "at": "2026-10-13T10:25:05.711Z",
+      "pid": 10412,
+      "phase": "socket-directory",
+      "storageDir": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/e472def6594c4618dee940035efc3c5af92925728c4a22a90ef12508b15656d8/dab2015f5741ae2432030ae68cbfb843a0ce013877d4311a183cd0d861c231e8/runtime-supervisor-generations/terminal-root-owner-linux-v1/runtime-supervisor",
+      "preferredBackends": [
+        "legacy-detached"
+      ],
+      "kind": "caught-error",
+      "name": "Error",
+      "message": "Root runtime owner storage must be private to the current OS user.",
+      "stack": [
+        "Error: Root runtime owner storage must be private to the current OS user.",
+        "    at assertPrivateStorage (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:2399:11)",
+        "    at ensurePrivateOwnerDirectory (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:2361:3)",
+        "    at async ensureRuntimeRootSocketDirectory (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:2241:3)",
+        "    at async prepareRuntimeRootSupervisor (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:10122:5)",
+        "    at async process.<anonymous> (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:10371:24)"
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "at": "2026-10-13T10:25:05.711Z",
+      "pid": 10412,
+      "phase": "socket-directory",
+      "storageDir": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/e472def6594c4618dee940035efc3c5af92925728c4a22a90ef12508b15656d8/dab2015f5741ae2432030ae68cbfb843a0ce013877d4311a183cd0d861c231e8/runtime-supervisor-generations/terminal-root-owner-linux-v1/runtime-supervisor",
+      "preferredBackends": [
+        "legacy-detached"
+      ],
+      "kind": "caught-error",
+      "name": "Error",
+      "message": "Root runtime owner storage must be private to the current OS user.",
+      "stack": [
+        "Error: Root runtime owner storage must be private to the current OS user.",
+        "    at assertPrivateStorage (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:2399:11)",
+        "    at ensurePrivateOwnerDirectory (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:2361:3)",
+        "    at async ensureRuntimeRootSocketDirectory (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:2241:3)",
+        "    at async prepareRuntimeRootSupervisor (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:10122:5)",
+        "    at async process.<anonymous> (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/runtime-checkpoint-refresh/smoke-host/dist/runtime-supervisor-launcher.js:10371:24)"
+      ]
+    }
+  ],
+  "disk": [
+    154894188544,
+    77360414720,
+    77516996608
+  ]
+}

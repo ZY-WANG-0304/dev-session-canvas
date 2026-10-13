@@ -1,0 +1,35 @@
+{
+  "input": "/tmp/sf26",
+  "diagnostic_only": true,
+  "mapping": "Only the fixed socket directory is mapped; original test/assertions and production directory validation are unchanged.",
+  "originalTestSha256": "ac4898dc70b954b4476eaecf490c63b2971f93e0c82c5b646fd58be785d04fa0",
+  "rootOwnerSourceSha256": "ec0269f11f07975d088bfbe3455642cd299e9c5aff7f7117e6e54d27ece594d9",
+  "results": [
+    {
+      "initial": "absent",
+      "testExit": 0,
+      "testCases": 17,
+      "beforeMode": null,
+      "afterMode": "755",
+      "ownerMatches": true,
+      "parentRetained": true,
+      "remaining": [],
+      "rootCheck": "rejected",
+      "error": "Root runtime owner storage must be private to the current OS user.",
+      "afterInode": 9912344
+    },
+    {
+      "initial": "private-0700",
+      "testExit": 0,
+      "testCases": 17,
+      "beforeMode": "700",
+      "afterMode": "700",
+      "ownerMatches": true,
+      "parentRetained": true,
+      "remaining": [],
+      "rootCheck": "accepted",
+      "beforeInode": 9912338,
+      "afterInode": 9912338
+    }
+  ]
+}
