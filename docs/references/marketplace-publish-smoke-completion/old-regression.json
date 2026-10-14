@@ -1,0 +1,16 @@
+[
+  {
+    "kind": "new",
+    "exit_code": 1,
+    "captures_original_notification_assertion": true,
+    "log_bytes": 1020,
+    "log_sha256": "7731179c9dcd403a936f8c6239b8a4639696a330d27a9dfbe91d526d1a0c3ce2"
+  },
+  {
+    "kind": "version",
+    "exit_code": 1,
+    "captures_original_notification_assertion": true,
+    "log_bytes": 883,
+    "log_sha256": "6b6f5e649bef4dda5d51596cc762f0b82173a9478127872d93eaf69618c9e339"
+  }
+]

@@ -205,7 +205,12 @@ async function verifyMarketplacePanelPublish(fixture) {
                   15000
                 );
                 await performMarketplaceAction({ kind: 'submitPublishForm' }, 10000);
-                await waitForCondition(() => fixture.publishedRequests.length === 1, 20000, 'publish request');
+                await waitForCondition(() =>
+                  fixture.publishedRequests.length === 1 &&
+                  informationCalls.some((call) => String(call.message).includes('Template "VS Code Publish Smoke" has been published to Template Marketplace v1.')),
+                  20000,
+                  () => `publish request and success information message. Requests: ${fixture.publishedRequests.length}. Messages: ${JSON.stringify(informationCalls.map((call) => call.message))}`
+                );
                 assert.strictEqual(quickPickCalls.length, 0);
                 assert.strictEqual(inputBoxCalls.length, 0);
                 assert.strictEqual(authCalls.length, 1);
@@ -293,7 +298,12 @@ async function verifyMarketplacePanelPublishVersion(fixture) {
           10000
         );
         await performMarketplaceAction({ kind: 'submitPublishForm' }, 10000);
-        await waitForCondition(() => fixture.publishedVersionRequests.length === 1, 20000, 'publish version request');
+        await waitForCondition(() =>
+          fixture.publishedVersionRequests.length === 1 &&
+          informationCalls.some((call) => String(call.message).includes('Template "Panel Review Loop" has been published to Template Marketplace v3.')),
+          20000,
+          () => `publish version request and success information message. Requests: ${fixture.publishedVersionRequests.length}. Messages: ${JSON.stringify(informationCalls.map((call) => call.message))}`
+        );
         assert.strictEqual(authCalls.length, 1);
         assert.ok(
           informationCalls.some((call) => String(call.message).includes('Template "Panel Review Loop" has been published to Template Marketplace v3.')),

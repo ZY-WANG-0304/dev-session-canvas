@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/marketplace-publish-smoke-completion.md` | 首次/版本发布等待唯一请求及原准确成功提示；受控响应阻塞确认旧门禁竞态，保持原预算与内容/UI验收 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/marketplace-publish-smoke-completion.md` | 2026-10-14 |
 | `docs/design-docs/release-gate-root-cause.md` | PR327两个首败：Remote Host测试污染真实socket目录与诊断等待截止漏检；自有socket夹具与末次观察修复回归/原首败场景通过；后续systemd夹具修复已纳入同PR，最新完整组合验证进行中 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/release-gate-repair.md` | 2026-10-13 |
 | `docs/design-docs/systemd-smoke-scope-root-cause.md` | fake systemd 重开后端不匹配：固定输入确认fake夹具缺scope替代，真实bus不可用导致legacy fallback；原因果证据保留；补齐probe/短IPC/固定CJK字体依赖，集中PR329修复及临时组合完整门禁通过（38426726365），PR327合入后正式门禁待执行 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/systemd-smoke-scope-root-cause.md`、`docs/exec-plans/completed/release-gate-consolidated-repair.md` | 2026-10-14 |
 | `docs/design-docs/remote-host-exit-investigation.md` | localhost SSH 重开第三终端仍 live，调查旧远端 Host 未退出与测试结束链路；正式客户端异常断连、退出/保留双分支及独立完成信号；原生与临时发布预合并完整验证通过 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/remote-host-exit-investigation.md`、`docs/exec-plans/completed/remote-host-two-state-validation.md`、`docs/exec-plans/completed/remote-host-two-state-fix.md` | 2026-10-13 |
