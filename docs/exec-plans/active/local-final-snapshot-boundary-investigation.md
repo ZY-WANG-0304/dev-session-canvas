@@ -10,15 +10,16 @@
 
 - [x] (2026-10-14) 保存原门禁输入与完整日志，核验最新 main eee25291 与发布 head20d237c5。
 - [x] (2026-10-14) 从最新 main 创建独立调查分支，保护用户主工作区 WORKFLOW.md 与 PR327。
-- [ ] 定位 trusted 中触发错误的具名测试、命令与原执行。
+- [x] (2026-10-15) 同输入CI观察复现，定位verifyCanvasTemplatesTrusted:1138；原Agent保存在拒绝后8ms完成。
 - [x] (2026-10-15) 真实Host/正式持久化8项对照捕获即时拒绝、saved后二次操作、failed保留。
 - [x] (2026-10-15) 本地1.141.0原trusted整套通过，模板五次reset无records；未复现原失败。
-- [ ] Ubuntu22.04原发布head/同输入六资产的packaged trusted观察，确认具名触发。
+- [x] (2026-10-15) 原发布head/同输入六资产/Ubuntu22.04/VSCode1.141.2观察复现；普通control完整trusted通过但目标无records，不算目标先红后绿。
+- [ ] 同启动前提与受控保存结果交接gate的probe/control确定性验证。
 - [ ] 同步根因文档、索引和未修复事项，收口调查。
 
 ## 意外与发现
 
-原错误是 `assertNonNativeHostPersistenceComplete` 的即时检查，不是 20 秒最终保存等待超时。`closeNonNativeHostExecutions` 在 owner 关闭 settled 后可直接检查保存，也可选择等待；`simulateRuntimeReloadForTest` 请求等待，而 reset/模板路径未请求。仅凭代码尚不能确定原门禁走了哪个入口。
+原错误是 `assertNonNativeHostPersistenceComplete` 的即时检查，不是 20 秒最终保存等待超时。`closeNonNativeHostExecutions` 在 owner 关闭 settled 后可直接检查保存，也可选择等待；`simulateRuntimeReloadForTest` 请求等待，而 reset/模板路径未请求。CI原产品重建观察已复现模板保存导出后的reset；原正式runner缺现场，复现身份与原失败身份保持分别登记。普通control通过时目标无records，不能作为触达保存窗口的证据。
 
 ## 决策记录
 
@@ -26,7 +27,7 @@
 
 ## 结果与复盘
 
-调查进行中，根因未确认。PR327 仍为草稿；本任务没有合并、发布或正式代码修复。
+机制与具名触发已确认；确定性原生对照及最终文档收口仍进行中。PR327 仍为草稿；本任务没有合并、发布或正式代码修复。
 
 ## 上下文与定向
 
@@ -59,3 +60,7 @@
 修订记录：2026-10-14 建立调查计划，明确即时检查与保存等待尚需因果验证。
 
 修订记录：2026-10-15记录受控机制证据及本地未复现，新增固定原输入CI观察。
+
+2026-10-15决策：普通control没有触达目标pending，追加同启动屏障与保存结果交接gate的两个对照格；不以非触达通过作因果修复证据。
+
+2026-10-15观察：首轮受控gate run38603542973，probe目标pending复现；control在新增“两个执行都started”前提失败，原Terminal已按准入拒绝/not-required。该前提超出模板测试所需，属于诊断错误；两格统一只等待原Agent started，Terminal保持原排队/拒绝语义。首轮失败保留，不作为产品新卡点或control通过。

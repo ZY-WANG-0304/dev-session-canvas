@@ -1,0 +1,13 @@
+{
+  "run": 38603542973,
+  "head": "cc0c68a272e7d46dfb84f4761ddb140b487d0124",
+  "probe": {
+    "artifact": 11915280452,
+    "conclusion": "expected pending refusal at1138, both original saves subsequently saved"
+  },
+  "control": {
+    "artifact": 11914356950,
+    "conclusion": "failure before reset: diagnostic required Terminal started but original concurrent start was rejected-before-acquire/not-required"
+  },
+  "correction": "Require only original Agent started in both probe/control; Terminal natural queued/not-required outcome unchanged. No product or test assertion changes."
+}

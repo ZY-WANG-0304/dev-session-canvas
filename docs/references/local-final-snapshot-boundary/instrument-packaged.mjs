@@ -15,7 +15,7 @@ function recordSaveTrace(phase,m,rs,extra={}) {
 async function observeOriginalReset(line) {
  if(process.env.DSC_FINAL_SAVE_GATED==='1' && line===1138) {
   const base=await getDebugSnapshot();
-  for(const kind of ['agent','terminal']) await waitForLocalExecutionStarted(kind,findNodeByKind(base,kind).id);
+  await waitForLocalExecutionStarted('agent',findNodeByKind(base,'agent').id);
  }
  await getDebugSnapshot();const m=globalThis.__dscFinalManager;assert.ok(m);const rs=[...m.nonNativeHostExecutions.values()];
  let releaseSave,originalPersist;

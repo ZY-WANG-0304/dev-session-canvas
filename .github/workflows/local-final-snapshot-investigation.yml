@@ -1,4 +1,4 @@
-name: Temporary Local Final Snapshot Gated Comparison
+name: Temporary Local Final Snapshot Original Agent Gated Comparison
 on:
   push:
     branches: [investigate-local-final-snapshot-boundary]
