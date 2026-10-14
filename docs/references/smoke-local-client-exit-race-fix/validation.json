@@ -1,0 +1,236 @@
+{
+  "createdAt": "2026-10-14T12:29:55.130094+00:00",
+  "base": "f3bb442526b1f5eb57171a5b24c9a6bca868756f",
+  "productionHelperSha256": "81e4b5f900b38faf56421774b188d35e02486e7a65d9778592064b82b9a26225",
+  "scope": "Local descendant ESRCH fix; not full release verification",
+  "tests": {
+    "control": {
+      "passed": 39,
+      "total": 39
+    },
+    "isolation": {
+      "passed": 3,
+      "total": 3
+    },
+    "resize": {
+      "passed": 9,
+      "total": 9
+    },
+    "runnerEnvironment": "passed"
+  },
+  "builds": {
+    "main": "passed",
+    "notifier": "passed"
+  },
+  "node": "22.23.3",
+  "vscode": "1.141.1",
+  "remoteSSH": "0.128.0",
+  "workbenchSha256": "1ca421d08f757de833ddb45c0939daedffcdb2d48204edf04424c49b3ad7a1a0",
+  "source": [
+    "tests/vscode-smoke/remote-host-control.cjs",
+    "scripts/test/test-smoke-remote-host.mjs"
+  ],
+  "native": [
+    {
+      "scenario": "exit",
+      "setupHost": {
+        "pid": 2398678,
+        "startTicks": "260422004",
+        "state": "S",
+        "ppid": 2398316
+      },
+      "verifyHost": {
+        "pid": 2416799,
+        "startTicks": "260424170",
+        "state": "R",
+        "ppid": 2398316
+      },
+      "supervisor": {
+        "pid": 2403868,
+        "startTicks": "260422466",
+        "state": "S",
+        "ppid": 1
+      },
+      "phases": [
+        {
+          "stage": "verify-ready",
+          "host": {
+            "pid": 2398678,
+            "startTicks": "260422004",
+            "state": "original-absent"
+          },
+          "supervisor": {
+            "pid": 2403868,
+            "startTicks": "260422466",
+            "state": "S",
+            "ppid": 1
+          }
+        },
+        {
+          "stage": "business-complete",
+          "host": {
+            "pid": 2398678,
+            "startTicks": "260422004",
+            "state": "original-absent"
+          },
+          "supervisor": {
+            "pid": 2403868,
+            "startTicks": "260422466",
+            "state": "S",
+            "ppid": 1
+          }
+        }
+      ],
+      "resize": {
+        "baseline": [
+          {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "cols": 67,
+            "rows": 21
+          },
+          {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "cols": 64,
+            "rows": 20
+          }
+        ],
+        "resized": [
+          {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "cols": 82,
+            "rows": 27
+          },
+          {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "cols": 85,
+            "rows": 28
+          }
+        ]
+      },
+      "successfulLocalSignals": 14,
+      "localSignalErrors": [],
+      "businessPass": true,
+      "cleanupPass": true
+    },
+    {
+      "scenario": "retain",
+      "setupHost": {
+        "pid": 2648916,
+        "startTicks": "260459766",
+        "state": "S",
+        "ppid": 2648253
+      },
+      "verifyHost": {
+        "pid": 2663582,
+        "startTicks": "260462043",
+        "state": "R",
+        "ppid": 2648253
+      },
+      "supervisor": {
+        "pid": 2652208,
+        "startTicks": "260460300",
+        "state": "S",
+        "ppid": 1
+      },
+      "phases": [
+        {
+          "stage": "verify-ready",
+          "host": {
+            "pid": 2648916,
+            "startTicks": "260459766",
+            "state": "S",
+            "ppid": 2648253
+          },
+          "supervisor": {
+            "pid": 2652208,
+            "startTicks": "260460300",
+            "state": "S",
+            "ppid": 1
+          }
+        },
+        {
+          "stage": "business-complete",
+          "host": {
+            "pid": 2648916,
+            "startTicks": "260459766",
+            "state": "S",
+            "ppid": 2648253
+          },
+          "supervisor": {
+            "pid": 2652208,
+            "startTicks": "260460300",
+            "state": "S",
+            "ppid": 1
+          }
+        }
+      ],
+      "resize": {
+        "baseline": [
+          {
+            "sessionId": "9c551ac5-5433-447e-be18-adc6b80d8410",
+            "cols": 67,
+            "rows": 21
+          },
+          {
+            "sessionId": "cc5fb15f-cbaa-4fa0-b1d9-65e01d2e0dc7",
+            "cols": 64,
+            "rows": 20
+          }
+        ],
+        "resized": [
+          {
+            "sessionId": "9c551ac5-5433-447e-be18-adc6b80d8410",
+            "cols": 82,
+            "rows": 27
+          },
+          {
+            "sessionId": "cc5fb15f-cbaa-4fa0-b1d9-65e01d2e0dc7",
+            "cols": 85,
+            "rows": 28
+          }
+        ]
+      },
+      "successfulLocalSignals": 13,
+      "localSignalErrors": [],
+      "businessPass": true,
+      "cleanupPass": true
+    }
+  ],
+  "commands": {
+    "aggregate": "npm run test:smoke, filter remote-ssh-real-reopen; exit passed, retain preparation ENOSPC",
+    "retain": "node scripts/smoke/run-vscode-smoke.mjs, filter remote-ssh-real-reopen-retain; exitCode0"
+  },
+  "fullReleaseVerify": "not run on this fix branch; latest PR327 input must be verified after merge",
+  "logs": [
+    {
+      "path": "/tmp/lcfix-before-regression.log",
+      "bytes": 2938,
+      "sha256": "88f89ed2592014e3de79b2c6f15775cd4edb66a260e6b2991c7367ff06069582"
+    },
+    {
+      "path": "/tmp/lcfix-control-final.log",
+      "bytes": 2529,
+      "sha256": "367a0bfdcd6b82a1f7174517f7dfccb897810dc970a9aaceb349046ecb3a93ec"
+    },
+    {
+      "path": "/tmp/lcfix-isolation.log",
+      "bytes": 253,
+      "sha256": "d0b3136ba32e0c44db8e479d3646134232d98c63ec7e640030822429b9f06686"
+    },
+    {
+      "path": "/tmp/lcfix-real-race-final.log",
+      "bytes": 688,
+      "sha256": "f223e84b028de77a53298d273b926de14f8f3a72e9f846185f8e9ca723620f1e"
+    },
+    {
+      "path": "/tmp/lcfix-native.log",
+      "bytes": 674931,
+      "sha256": "f96b242e84efe000bcc95e0777b2436866abf1cd6f8e42056fb6bbda7d22883f"
+    },
+    {
+      "path": "/tmp/lcfix-native-retain.log",
+      "bytes": 656033,
+      "sha256": "8521a3db28b109aa00e2ed585c94ef33ce51432c70aaf2f2d07ed304ad390bec"
+    }
+  ]
+}

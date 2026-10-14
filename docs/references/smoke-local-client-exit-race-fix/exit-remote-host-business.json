@@ -1,0 +1,337 @@
+{
+  "scenario": "exit",
+  "setupHost": {
+    "pid": 2398678,
+    "startTicks": "260422004",
+    "state": "S",
+    "ppid": 2398316
+  },
+  "verifyHost": {
+    "pid": 2416799,
+    "startTicks": "260424170",
+    "state": "R",
+    "ppid": 2398316
+  },
+  "supervisor": {
+    "pid": 2403868,
+    "startTicks": "260422466",
+    "state": "S",
+    "ppid": 1
+  },
+  "phases": [
+    {
+      "stage": "verify-ready",
+      "host": {
+        "pid": 2398678,
+        "startTicks": "260422004",
+        "state": "original-absent"
+      },
+      "supervisor": {
+        "pid": 2403868,
+        "startTicks": "260422466",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "business-complete",
+      "host": {
+        "pid": 2398678,
+        "startTicks": "260422004",
+        "state": "original-absent"
+      },
+      "supervisor": {
+        "pid": 2403868,
+        "startTicks": "260422466",
+        "state": "S",
+        "ppid": 1
+      }
+    }
+  ],
+  "resize": {
+    "baseline": [
+      {
+        "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+        "cols": 67,
+        "rows": 21
+      },
+      {
+        "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+        "cols": 64,
+        "rows": 20
+      }
+    ],
+    "resized": [
+      {
+        "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+        "cols": 82,
+        "rows": 27
+      },
+      {
+        "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+        "cols": 85,
+        "rows": 28
+      }
+    ]
+  },
+  "pass": true,
+  "resizeSamples": [
+    {
+      "elapsedMs": 16,
+      "observations": [
+        {
+          "nodeId": "agent-1-7bbd829b-48a1-4814-9fe3-694c30af1a4b",
+          "hostSize": {
+            "width": 560,
+            "height": 430
+          },
+          "binding": {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "runtimeStoragePath": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/a034ef7d85cb478a28960a1ff6f17058164064ac0053118070e86a8c7f6cfaa0/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+          },
+          "page": {
+            "width": 560,
+            "height": 430,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 67,
+            "fitRows": 21,
+            "pending": false,
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d"
+          },
+          "session": {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "kind": "agent",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "[fake-agent] REAL_REOPEN_AGENT",
+                true
+              ],
+              [
+                "[fake-agent] AFTER_REOPEN_AGENT",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        },
+        {
+          "nodeId": "terminal-2-1904d021-b2bd-40e1-b099-f63fb109c578",
+          "hostSize": {
+            "width": 540,
+            "height": 420
+          },
+          "binding": {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "runtimeStoragePath": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/a034ef7d85cb478a28960a1ff6f17058164064ac0053118070e86a8c7f6cfaa0/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+          },
+          "page": {
+            "width": 540,
+            "height": 420,
+            "cols": 64,
+            "rows": 20,
+            "fitCols": 64,
+            "fitRows": 20,
+            "pending": false,
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd"
+          },
+          "session": {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "kind": "terminal",
+            "live": true,
+            "cols": 64,
+            "rows": 20,
+            "markers": [
+              [
+                "REAL_REOPEN_TERMINAL",
+                true
+              ],
+              [
+                "AFTER_REOPEN_TERMINAL",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        }
+      ]
+    },
+    {
+      "elapsedMs": 50,
+      "observations": [
+        {
+          "nodeId": "agent-1-7bbd829b-48a1-4814-9fe3-694c30af1a4b",
+          "hostSize": {
+            "width": 680,
+            "height": 520
+          },
+          "binding": {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "runtimeStoragePath": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/a034ef7d85cb478a28960a1ff6f17058164064ac0053118070e86a8c7f6cfaa0/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+          },
+          "page": {
+            "width": 680,
+            "height": 520,
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27,
+            "pending": false,
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d"
+          },
+          "session": {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "kind": "agent",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "[fake-agent] REAL_REOPEN_AGENT",
+                true
+              ],
+              [
+                "[fake-agent] AFTER_REOPEN_AGENT",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": false
+        },
+        {
+          "nodeId": "terminal-2-1904d021-b2bd-40e1-b099-f63fb109c578",
+          "hostSize": {
+            "width": 700,
+            "height": 540
+          },
+          "binding": {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "runtimeStoragePath": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/a034ef7d85cb478a28960a1ff6f17058164064ac0053118070e86a8c7f6cfaa0/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+          },
+          "page": {
+            "width": 700,
+            "height": 540,
+            "cols": 64,
+            "rows": 20,
+            "fitCols": 85,
+            "fitRows": 28,
+            "pending": false,
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd"
+          },
+          "session": {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "kind": "terminal",
+            "live": true,
+            "cols": 64,
+            "rows": 20,
+            "markers": [
+              [
+                "REAL_REOPEN_TERMINAL",
+                true
+              ],
+              [
+                "AFTER_REOPEN_TERMINAL",
+                true
+              ]
+            ]
+          },
+          "changed": false,
+          "matches": false
+        }
+      ]
+    },
+    {
+      "elapsedMs": 217,
+      "observations": [
+        {
+          "nodeId": "agent-1-7bbd829b-48a1-4814-9fe3-694c30af1a4b",
+          "hostSize": {
+            "width": 680,
+            "height": 520
+          },
+          "binding": {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "runtimeStoragePath": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/a034ef7d85cb478a28960a1ff6f17058164064ac0053118070e86a8c7f6cfaa0/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+          },
+          "page": {
+            "width": 680,
+            "height": 520,
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27,
+            "pending": false,
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d"
+          },
+          "session": {
+            "sessionId": "403daf6b-493e-4b25-91fc-70b5cc60018d",
+            "kind": "agent",
+            "live": true,
+            "cols": 82,
+            "rows": 27,
+            "markers": [
+              [
+                "[fake-agent] REAL_REOPEN_AGENT",
+                true
+              ],
+              [
+                "[fake-agent] AFTER_REOPEN_AGENT",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        },
+        {
+          "nodeId": "terminal-2-1904d021-b2bd-40e1-b099-f63fb109c578",
+          "hostSize": {
+            "width": 700,
+            "height": 540
+          },
+          "binding": {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "runtimeStoragePath": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent/.vscode-server/data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/29ae0f56d64b0632916d877786f9319e58f4cf4eb35cd7ecaf93ab44f21b4649/a034ef7d85cb478a28960a1ff6f17058164064ac0053118070e86a8c7f6cfaa0/runtime-supervisor-generations/terminal-root-owner-linux-v1"
+          },
+          "page": {
+            "width": 700,
+            "height": 540,
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28,
+            "pending": false,
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd"
+          },
+          "session": {
+            "sessionId": "e8d2a3c5-5b4d-4530-898c-df943a0f70dd",
+            "kind": "terminal",
+            "live": true,
+            "cols": 85,
+            "rows": 28,
+            "markers": [
+              [
+                "REAL_REOPEN_TERMINAL",
+                true
+              ],
+              [
+                "AFTER_REOPEN_TERMINAL",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        }
+      ]
+    }
+  ],
+  "sourceArtifact": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/artifacts/remote-host-business.json",
+  "sourceSha256": "c7895f842dde246f7548683b940db2cb79928923c9660252668820b1751ff5ff"
+}

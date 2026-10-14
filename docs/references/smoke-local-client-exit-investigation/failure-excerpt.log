@@ -1,0 +1,11 @@
+2026-10-14T09:26:36.9166515Z [real-reopen] phase=setup ready-for-exit
+2026-10-14T09:26:37.1231361Z Exit code:   SIGKILL
+2026-10-14T09:26:37.1671517Z Smoke test artifacts saved to /home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/remote-ssh-real-reopen-exit/artifacts
+2026-10-14T09:26:37.2999099Z Error: kill ESRCH
+2026-10-14T09:26:37.3000008Z     at process.kill (node:internal/process/per_thread:281:13)
+2026-10-14T09:26:37.3001603Z     at Object.abortLocalClient (/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/remote-host-control.cjs:114:13)
+2026-10-14T09:26:37.3003323Z     at async runRemoteSSHRealReopenScenario (file:///home/runner/work/dev-session-canvas/dev-session-canvas/scripts/smoke/run-vscode-smoke.mjs:688:28)
+2026-10-14T09:26:37.3004896Z     at async main (file:///home/runner/work/dev-session-canvas/dev-session-canvas/scripts/smoke/run-vscode-smoke.mjs:195:7) {
+2026-10-14T09:26:37.3005779Z   errno: -3,
+2026-10-14T09:26:37.3006122Z   code: 'ESRCH',
+2026-10-14T09:26:37.3006484Z   syscall: 'kill'

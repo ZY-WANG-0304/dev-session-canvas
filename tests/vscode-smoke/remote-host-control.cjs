@@ -111,7 +111,18 @@ async function abortLocalClient(handle, userDataDir, report, root) {
   for (const expected of processes.slice(1).reverse()) {
     const actual = await readProcessIdentity(expected.pid);
     if (!sameIdentity(expected, actual) || ['Z', 'X'].includes(actual.state)) continue;
-    process.kill(expected.pid, 'SIGKILL');
+    try {
+      process.kill(expected.pid, 'SIGKILL');
+    } catch (error) {
+      const observation = { ...expected, signal: 'SIGKILL', code: error.code };
+      (report.localSignalErrors ??= []).push(observation);
+      if (error.code !== 'ESRCH') throw error;
+      // A descendant can exit after the live /proc read. Confirm the original
+      // identity is no longer running; ESRCH alone must not bypass cleanup checks.
+      observation.actual = await readProcessIdentity(expected.pid) ?? null;
+      if (sameIdentity(expected, observation.actual) && !['Z', 'X'].includes(observation.actual.state)) throw error;
+      continue;
+    }
     report.localSignals.push({ ...expected, signal: 'SIGKILL' });
   }
   let exitTimer;

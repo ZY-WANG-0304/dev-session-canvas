@@ -1,0 +1,13 @@
+{
+  "scope": "Only this completed exit fixture duplicate dependencies/server and retain preparation partial dependency copy",
+  "exitCleanupPassed": true,
+  "retainStarted": false,
+  "removed": [
+    "/tmp/lcfix-native/remote-ssh-real-reopen-exit/smoke-host/node_modules",
+    "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+    "/tmp/lcfix-native/remote-ssh-real-reopen-retain/smoke-host/node_modules",
+    "/tmp/lcfix-native-retain/remote-ssh-real-reopen-retain/smoke-host/node_modules",
+    "/tmp/lcfix-native-retain/remote-ssh-real-reopen-retain/remote-ssh-fixture/remote-agent"
+  ],
+  "retainCompletedCleanupPassed": true
+}

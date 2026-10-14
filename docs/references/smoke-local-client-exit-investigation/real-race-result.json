@@ -1,0 +1,55 @@
+{
+  "purpose": "controlled real-kernel reproduction; production helper unchanged",
+  "scenario": "race",
+  "helperSha256": "656a9e734f9feb6d14d601a018aead91349d706ea32ea207d7c065bef439792f",
+  "createdAt": "2026-10-14T10:35:37.006Z",
+  "root": {
+    "pid": 3182498,
+    "startTicks": "259801768",
+    "state": "S",
+    "ppid": 3182317
+  },
+  "leaf": {
+    "pid": 3182499,
+    "startTicks": "259801771",
+    "state": "R",
+    "ppid": 3182498
+  },
+  "error": "Error: kill ESRCH\n    at process.kill (node:internal/process/per_thread:281:13)\n    at Object.kill (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/real-probe.mjs:63:15)\n    at Object.abortLocalClient (/dev/shm/dsc-local-exit-rca/tests/vscode-smoke/remote-host-control.cjs:114:13)\n    at async file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/real-probe.mjs:77:9",
+  "errorCode": "ESRCH",
+  "localSignals": [
+    {
+      "pid": 3182498,
+      "startTicks": "259801768",
+      "state": "S",
+      "ppid": 3182317,
+      "signal": "SIGKILL"
+    }
+  ],
+  "events": [
+    {
+      "event": "real-kill",
+      "pid": 3182498,
+      "signal": "SIGKILL",
+      "result": "success"
+    },
+    {
+      "event": "real-live-stat-read",
+      "pid": 3182499,
+      "startTicks": "259801771",
+      "state": "S"
+    },
+    {
+      "event": "real-leaf-reaped-before-returning-snapshot",
+      "response": "reaped",
+      "pid": 3182499,
+      "exitCode": 0
+    },
+    {
+      "event": "real-kill",
+      "pid": 3182499,
+      "signal": "SIGKILL",
+      "result": "ESRCH"
+    }
+  ]
+}

@@ -1,0 +1,552 @@
+{
+  "purpose": "root-cause reproduction; production helper unchanged",
+  "helperPath": "/dev/shm/dsc-local-exit-rca/tests/vscode-smoke/remote-host-control.cjs",
+  "helperSha256": "656a9e734f9feb6d14d601a018aead91349d706ea32ea207d7c065bef439792f",
+  "createdAt": "2026-10-14T10:34:47.858Z",
+  "results": [
+    {
+      "scenario": "normal",
+      "outcome": "completed",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        },
+        {
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "ppid": 41001,
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": true
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41002,
+          "signal": "SIGKILL"
+        }
+      ]
+    },
+    {
+      "scenario": "gone-before-read",
+      "outcome": "completed",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        }
+      ]
+    },
+    {
+      "scenario": "zombie",
+      "outcome": "completed",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "Z",
+          "rootKilled": true
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "Z",
+          "rootKilled": true
+        }
+      ]
+    },
+    {
+      "scenario": "dead",
+      "outcome": "completed",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "X",
+          "rootKilled": true
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "X",
+          "rootKilled": true
+        }
+      ]
+    },
+    {
+      "scenario": "pid-reused",
+      "outcome": "completed",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "201",
+          "state": "S",
+          "rootKilled": true
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "201",
+          "state": "S",
+          "rootKilled": true
+        }
+      ]
+    },
+    {
+      "scenario": "gone-after-read",
+      "outcome": "ESRCH",
+      "error": "Error: kill ESRCH\n    at errorWithCode (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:17:45)\n    at Object.kill (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:55:39)\n    at Object.abortLocalClient (/dev/shm/dsc-local-exit-rca/tests/vscode-smoke/remote-host-control.cjs:114:13)\n    at async probe (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:74:9)\n    at async file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:103:16",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": true
+        },
+        {
+          "event": "reaped-between-read-and-signal",
+          "pid": 41002
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41002,
+          "signal": "SIGKILL"
+        }
+      ]
+    },
+    {
+      "scenario": "permission-denied",
+      "outcome": "EPERM",
+      "error": "Error: kill EPERM\n    at errorWithCode (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:17:45)\n    at Object.kill (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:56:72)\n    at Object.abortLocalClient (/dev/shm/dsc-local-exit-rca/tests/vscode-smoke/remote-host-control.cjs:114:13)\n    at async probe (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:74:9)\n    at async file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:103:16",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": true
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41002,
+          "signal": "SIGKILL"
+        }
+      ]
+    },
+    {
+      "scenario": "root-esrch",
+      "outcome": "ESRCH",
+      "error": "Error: kill ESRCH\n    at errorWithCode (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:17:45)\n    at Object.kill (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:54:64)\n    at Object.abortLocalClient (/dev/shm/dsc-local-exit-rca/tests/vscode-smoke/remote-host-control.cjs:109:11)\n    at async probe (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:74:9)\n    at async file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:103:16",
+      "localSignals": [],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        }
+      ]
+    },
+    {
+      "scenario": "still-running",
+      "outcome": "postcondition-failure",
+      "error": "Error: Local client descendants still running: [{\"pid\":41002,\"startTicks\":\"200\",\"state\":\"S\",\"ppid\":41001}]\n    at Object.abortLocalClient (/dev/shm/dsc-local-exit-rca/tests/vscode-smoke/remote-host-control.cjs:133:39)\n    at async probe (file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:74:9)\n    at async file:///dev/shm/dsc-local-exit-rca/docs/references/smoke-local-client-exit-investigation/controlled-probe.mjs:103:16",
+      "localSignals": [
+        {
+          "pid": 41001,
+          "ppid": 1,
+          "startTicks": "100",
+          "state": "S",
+          "signal": "SIGKILL"
+        },
+        {
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "ppid": 41001,
+          "signal": "SIGKILL"
+        }
+      ],
+      "events": [
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "read",
+          "pid": 41001,
+          "startTicks": "100",
+          "state": "S",
+          "rootKilled": false
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41001,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": true
+        },
+        {
+          "event": "signal-attempt",
+          "pid": 41002,
+          "signal": "SIGKILL"
+        },
+        {
+          "event": "read",
+          "pid": 41002,
+          "startTicks": "200",
+          "state": "S",
+          "rootKilled": true
+        }
+      ]
+    }
+  ],
+  "raceRepetitions": 100
+}

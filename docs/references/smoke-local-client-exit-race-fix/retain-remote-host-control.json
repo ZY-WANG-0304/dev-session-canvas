@@ -1,0 +1,179 @@
+{
+  "scenario": "retain",
+  "localSignals": [
+    {
+      "pid": 2618076,
+      "startTicks": "260455492",
+      "state": "R",
+      "ppid": 2592662,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2650733,
+      "startTicks": "260460007",
+      "state": "S",
+      "ppid": 2618080,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2621435,
+      "startTicks": "260455866",
+      "state": "S",
+      "ppid": 2621300,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2621300,
+      "startTicks": "260455866",
+      "state": "S",
+      "ppid": 2621015,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2621015,
+      "startTicks": "260455843",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2619990,
+      "startTicks": "260455747",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2619892,
+      "startTicks": "260455732",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2619877,
+      "startTicks": "260455731",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2618787,
+      "startTicks": "260455549",
+      "state": "S",
+      "ppid": 2618080,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2618746,
+      "startTicks": "260455525",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2618742,
+      "startTicks": "260455524",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2618080,
+      "startTicks": "260455495",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 2618079,
+      "startTicks": "260455495",
+      "state": "S",
+      "ppid": 2618076,
+      "signal": "SIGKILL"
+    }
+  ],
+  "observations": [
+    {
+      "stage": "client-disconnected",
+      "host": {
+        "pid": 2648916,
+        "startTicks": "260459766",
+        "state": "S",
+        "ppid": 2648253
+      },
+      "supervisor": {
+        "pid": 2652208,
+        "startTicks": "260460300",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-terminal-completion",
+      "host": {
+        "pid": 2648916,
+        "startTicks": "260459766",
+        "state": "S",
+        "ppid": 2648253
+      },
+      "supervisor": {
+        "pid": 2652208,
+        "startTicks": "260460300",
+        "state": "S",
+        "ppid": 1
+      }
+    },
+    {
+      "stage": "before-verify",
+      "host": {
+        "pid": 2648916,
+        "startTicks": "260459766",
+        "state": "S",
+        "ppid": 2648253
+      },
+      "supervisor": {
+        "pid": 2652208,
+        "startTicks": "260460300",
+        "state": "S",
+        "ppid": 1
+      }
+    }
+  ],
+  "setupHost": {
+    "pid": 2648916,
+    "startTicks": "260459766",
+    "state": "S",
+    "ppid": 2648253
+  },
+  "supervisor": {
+    "pid": 2652208,
+    "startTicks": "260460300",
+    "state": "S",
+    "ppid": 1
+  },
+  "localClient": {
+    "pid": 2618076,
+    "startTicks": "260455492",
+    "state": "R",
+    "ppid": 2592662
+  },
+  "offlineSessions": [
+    {
+      "sessionId": "9c551ac5-5433-447e-be18-adc6b80d8410",
+      "kind": "agent",
+      "live": true,
+      "cols": 67,
+      "rows": 21
+    },
+    {
+      "sessionId": "cc5fb15f-cbaa-4fa0-b1d9-65e01d2e0dc7",
+      "kind": "terminal",
+      "live": true,
+      "cols": 64,
+      "rows": 20
+    }
+  ],
+  "sourceArtifact": "/tmp/lcfix-native-retain/remote-ssh-real-reopen-retain/artifacts/remote-host-control.json",
+  "sourceSha256": "cc9f9f0dc65a72a546137821e08e8bba51053417ea72bda373313e54e061989d"
+}

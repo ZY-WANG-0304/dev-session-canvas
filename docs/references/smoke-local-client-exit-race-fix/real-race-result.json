@@ -1,0 +1,65 @@
+{
+  "purpose": "controlled real-kernel fix verification; original race and successful final cleanup",
+  "scenario": "race",
+  "mode": "fixed",
+  "helperSha256": "81e4b5f900b38faf56421774b188d35e02486e7a65d9778592064b82b9a26225",
+  "createdAt": "2026-10-14T12:19:40.805Z",
+  "root": {
+    "pid": 2430723,
+    "startTicks": "260426165",
+    "state": "S",
+    "ppid": 2430694
+  },
+  "leaf": {
+    "pid": 2430724,
+    "startTicks": "260426168",
+    "state": "R",
+    "ppid": 2430723
+  },
+  "localSignals": [
+    {
+      "pid": 2430723,
+      "startTicks": "260426165",
+      "state": "S",
+      "ppid": 2430694,
+      "signal": "SIGKILL"
+    }
+  ],
+  "localSignalErrors": [
+    {
+      "pid": 2430724,
+      "startTicks": "260426168",
+      "state": "S",
+      "ppid": 2430723,
+      "signal": "SIGKILL",
+      "code": "ESRCH",
+      "actual": null
+    }
+  ],
+  "events": [
+    {
+      "event": "real-kill",
+      "pid": 2430723,
+      "signal": "SIGKILL",
+      "result": "success"
+    },
+    {
+      "event": "real-live-stat-read",
+      "pid": 2430724,
+      "startTicks": "260426168",
+      "state": "S"
+    },
+    {
+      "event": "real-leaf-reaped-before-returning-snapshot",
+      "response": "reaped",
+      "pid": 2430724,
+      "exitCode": 0
+    },
+    {
+      "event": "real-kill",
+      "pid": 2430724,
+      "signal": "SIGKILL",
+      "result": "ESRCH"
+    }
+  ]
+}
