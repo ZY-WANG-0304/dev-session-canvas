@@ -1135,7 +1135,12 @@ async function verifyCanvasTemplatesTrusted() {
   await exportCanvasTemplateToPathForTest(savedTemplate.template.id, exportPath);
   assert.ok(fsSync.existsSync(exportPath), 'Expected exported canvas template JSON to exist.');
 
-  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await resetCanvasAfterFinalPersistence({
+    reset: () => vscode.commands.executeCommand(COMMAND_IDS.testResetState),
+    getSnapshot: getDebugSnapshot,
+    getDiagnosticEvents,
+    expectedExecutions: [agentNode, terminalNode]
+  });
   await ensureEditorCanvasReady();
   await applyCanvasTemplateForTest(savedTemplate.template.id);
 

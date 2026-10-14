@@ -1,0 +1,1937 @@
+{
+  "run": 38605013416,
+  "head": "879c4e399b0491050dbbfc549a864130e14d1b9e",
+  "original_head": "20d237c5176a6cd05486d5b58c5ecf4f55f7bcd9",
+  "vscode": "1.141.2",
+  "asset_input": "9f602fed177070b0b017dd195f09dfcd7d7ad0a3",
+  "results": {
+    "final-probe": {
+      "artifact_id": 11915437142,
+      "artifact_sha256": "201e22a6a8bb2a5476c92213eee4584ac15585e054225c4222b5076ac8737ccd",
+      "production_bundle_sha256": "2b3d4c38b488a382caa588d9334de0d75a258d51c210bff4129c7dfe5ddc0eb5",
+      "target_trace": [
+        {
+          "phase": "reset-enter",
+          "at": "2026-10-14T17:15:49.968Z",
+          "nodes": [
+            {
+              "id": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-f76cb344-7d13-49c7-bed4-4bf320879665",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "identity": {
+                "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                  "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                },
+                "key": "agent:agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+                "adapter": {
+                  "identity": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                  },
+                  "state": "running",
+                  "acceptedThrough": 1,
+                  "consumedThrough": 0,
+                  "pendingBytes": 233,
+                  "pendingFrames": 1,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "transport": {
+                    "disconnected": false,
+                    "exited": false,
+                    "dataEnded": false,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {},
+                    "pty-master": {},
+                    "pty-child": {},
+                    "pty-source": {}
+                  }
+                },
+                "readerOutcome": "pending",
+                "settled": false,
+                "retired": false,
+                "admissionPending": false,
+                "stopRequested": false
+              },
+              "persistence": {
+                "submitted": false
+              }
+            },
+            {
+              "nodeId": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "identity": {
+                "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                  "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                },
+                "key": "terminal:terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+                "adapter": {
+                  "identity": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                  },
+                  "state": "starting",
+                  "acceptedThrough": 0,
+                  "consumedThrough": 0,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "transport": {
+                    "disconnected": false,
+                    "exited": false,
+                    "dataEnded": false,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {}
+                  }
+                },
+                "readerOutcome": "pending",
+                "settled": false,
+                "retired": false,
+                "admissionPending": true,
+                "stopRequested": false
+              },
+              "persistence": {
+                "submitted": false
+              }
+            }
+          ],
+          "line": 1138,
+          "stack": "Error: \n\tat observeOriginalReset (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:188:49)\n\tat runNextTicks (node:internal/process/task_queues:65:5)\n\tat process.processTimers (node:internal/timers:615:9)\n\tat async verifyCanvasTemplatesTrusted (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1179:3)\n\tat async runTrustedSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1368:3)\n\tat async runSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:347:3)\n\tat async Object.run (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:214:5)"
+        },
+        {
+          "phase": "immediate-check",
+          "at": "2026-10-14T17:15:50.039Z",
+          "nodes": [
+            {
+              "id": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-f76cb344-7d13-49c7-bed4-4bf320879665",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "identity": {
+                "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                  "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                },
+                "key": "agent:agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+                "adapter": {
+                  "identity": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4130.456861,
+                  "forceAt": 9130.456860999999,
+                  "cancelAt": 11130.456860999999,
+                  "finishAt": 17130.456861,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15130.456860999999,
+                    "termDeadline": 16130.456860999999,
+                    "killDeadline": 17130.456861
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true
+              }
+            },
+            {
+              "nodeId": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "identity": {
+                "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                  "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                },
+                "key": "terminal:terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+                "adapter": {
+                  "identity": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 0,
+                  "consumedThrough": 0,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGHUP"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 0
+                  },
+                  "seal": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGHUP"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 0
+                    },
+                    "lastDataSequence": 0
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 0,
+                  "throughDataSequence": 0
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4131.896904,
+                  "forceAt": 9131.896904000001,
+                  "cancelAt": 11131.896904000001,
+                  "finishAt": 17131.896904,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15131.896904000001,
+                    "termDeadline": 16131.896904000001,
+                    "killDeadline": 17131.896904
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true
+              }
+            }
+          ],
+          "line": 1138
+        },
+        {
+          "phase": "reset-threw",
+          "at": "2026-10-14T17:15:50.041Z",
+          "nodes": [
+            {
+              "id": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-f76cb344-7d13-49c7-bed4-4bf320879665",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "identity": {
+                "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                  "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                },
+                "key": "agent:agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+                "adapter": {
+                  "identity": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4130.456861,
+                  "forceAt": 9130.456860999999,
+                  "cancelAt": 11130.456860999999,
+                  "finishAt": 17130.456861,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15130.456860999999,
+                    "termDeadline": 16130.456860999999,
+                    "killDeadline": 17130.456861
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true
+              }
+            },
+            {
+              "nodeId": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "identity": {
+                "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                  "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                },
+                "key": "terminal:terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+                "adapter": {
+                  "identity": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 0,
+                  "consumedThrough": 0,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGHUP"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 0
+                  },
+                  "seal": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGHUP"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 0
+                    },
+                    "lastDataSequence": 0
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 0,
+                  "throughDataSequence": 0
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4131.896904,
+                  "forceAt": 9131.896904000001,
+                  "cancelAt": 11131.896904000001,
+                  "finishAt": 17131.896904,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15131.896904000001,
+                    "termDeadline": 16131.896904000001,
+                    "killDeadline": 17131.896904
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true
+              }
+            }
+          ],
+          "line": 1138,
+          "error": "Local final snapshot persistence is pending: agent:agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4"
+        },
+        {
+          "phase": "save-settled",
+          "at": "2026-10-14T17:15:50.092Z",
+          "nodes": [
+            {
+              "id": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-f76cb344-7d13-49c7-bed4-4bf320879665",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "identity": {
+                "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                  "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                },
+                "key": "agent:agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+                "adapter": {
+                  "identity": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4130.456861,
+                  "forceAt": 9130.456860999999,
+                  "cancelAt": 11130.456860999999,
+                  "finishAt": 17130.456861,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15130.456860999999,
+                    "termDeadline": 16130.456860999999,
+                    "killDeadline": 17130.456861
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              }
+            }
+          ],
+          "line": 1138
+        },
+        {
+          "phase": "save-settled",
+          "at": "2026-10-14T17:15:50.103Z",
+          "nodes": [
+            {
+              "id": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-f76cb344-7d13-49c7-bed4-4bf320879665",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "identity": {
+                "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                  "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                },
+                "key": "terminal:terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+                "adapter": {
+                  "identity": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 0,
+                  "consumedThrough": 0,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGHUP"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 0
+                  },
+                  "seal": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGHUP"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 0
+                    },
+                    "lastDataSequence": 0
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 0,
+                  "throughDataSequence": 0
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4131.896904,
+                  "forceAt": 9131.896904000001,
+                  "cancelAt": 11131.896904000001,
+                  "finishAt": 17131.896904,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15131.896904000001,
+                    "termDeadline": 16131.896904000001,
+                    "killDeadline": 17131.896904
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              }
+            }
+          ],
+          "line": 1138
+        },
+        {
+          "phase": "after-rejected-reset-save",
+          "at": "2026-10-14T17:15:50.107Z",
+          "nodes": [
+            {
+              "id": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-f76cb344-7d13-49c7-bed4-4bf320879665",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+              "kind": "agent",
+              "identity": {
+                "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                  "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                },
+                "key": "agent:agent-1-33a38e41-81ae-4f07-b0fa-cf3c728ff1c4",
+                "adapter": {
+                  "identity": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "9eb1b27d-9f1e-4a5f-bae6-d8605c2db2cf",
+                    "generation": "3005da8a-ff68-49f4-90db-bbc4fd285d37",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4130.456861,
+                  "forceAt": 9130.456860999999,
+                  "cancelAt": 11130.456860999999,
+                  "finishAt": 17130.456861,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15130.456860999999,
+                    "termDeadline": 16130.456860999999,
+                    "killDeadline": 17130.456861
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              }
+            },
+            {
+              "nodeId": "terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+              "kind": "terminal",
+              "identity": {
+                "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                  "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                },
+                "key": "terminal:terminal-2-aa37468e-e108-4380-933d-3d20ad0a7189",
+                "adapter": {
+                  "identity": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 0,
+                  "consumedThrough": 0,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGHUP"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 0
+                  },
+                  "seal": {
+                    "executionId": "4f34304e-146e-4ccf-b2f4-236eff870048",
+                    "generation": "f64bb114-d14b-47bc-bfd6-2d82b3f66d6d",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGHUP"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 0
+                    },
+                    "lastDataSequence": 0
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 0,
+                  "throughDataSequence": 0
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 4131.896904,
+                  "forceAt": 9131.896904000001,
+                  "cancelAt": 11131.896904000001,
+                  "finishAt": 17131.896904,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 15131.896904000001,
+                    "termDeadline": 16131.896904000001,
+                    "killDeadline": 17131.896904
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              }
+            }
+          ],
+          "line": 1138
+        }
+      ],
+      "fixture_logs": [],
+      "passed_trusted": false
+    },
+    "final-control": {
+      "artifact_id": 11914204147,
+      "artifact_sha256": "fff3bd95baaad50034275d7d359c46fa496545932a12d02e2d16a21703252940",
+      "production_bundle_sha256": "2b3d4c38b488a382caa588d9334de0d75a258d51c210bff4129c7dfe5ddc0eb5",
+      "target_trace": [
+        {
+          "phase": "reset-enter",
+          "at": "2026-10-14T17:15:48.918Z",
+          "nodes": [
+            {
+              "id": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-eb0e9627-6968-42fb-b6a7-44a8996a09c8",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-4b49561d-cbac-4efa-86a9-ff53fe555b93",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "identity": {
+                "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                  "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                },
+                "key": "agent:agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+                "adapter": {
+                  "identity": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                  },
+                  "state": "running",
+                  "acceptedThrough": 1,
+                  "consumedThrough": 0,
+                  "pendingBytes": 233,
+                  "pendingFrames": 1,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "transport": {
+                    "disconnected": false,
+                    "exited": false,
+                    "dataEnded": false,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {},
+                    "pty-master": {},
+                    "pty-child": {},
+                    "pty-source": {}
+                  }
+                },
+                "readerOutcome": "pending",
+                "settled": false,
+                "retired": false,
+                "admissionPending": false,
+                "stopRequested": false
+              },
+              "persistence": {
+                "submitted": false
+              }
+            }
+          ],
+          "line": 1138,
+          "stack": "Error: \n\tat observeOriginalReset (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:188:49)\n\tat runNextTicks (node:internal/process/task_queues:65:5)\n\tat process.processTimers (node:internal/timers:615:9)\n\tat async verifyCanvasTemplatesTrusted (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1179:3)\n\tat async runTrustedSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1368:3)\n\tat async runSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:347:3)\n\tat async Object.run (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:214:5)"
+        },
+        {
+          "phase": "immediate-check",
+          "at": "2026-10-14T17:15:48.959Z",
+          "nodes": [
+            {
+              "id": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-eb0e9627-6968-42fb-b6a7-44a8996a09c8",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-4b49561d-cbac-4efa-86a9-ff53fe555b93",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "identity": {
+                "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                  "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                },
+                "key": "agent:agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+                "adapter": {
+                  "identity": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 3951.722651,
+                  "forceAt": 8951.722651,
+                  "cancelAt": 10951.722651,
+                  "finishAt": 16951.722651,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 14951.722651,
+                    "termDeadline": 15951.722651,
+                    "killDeadline": 16951.722651
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true
+              }
+            }
+          ],
+          "line": 1138
+        },
+        {
+          "phase": "save-settled",
+          "at": "2026-10-14T17:15:49.022Z",
+          "nodes": [
+            {
+              "id": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-eb0e9627-6968-42fb-b6a7-44a8996a09c8",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-4b49561d-cbac-4efa-86a9-ff53fe555b93",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [
+            {
+              "nodeId": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "identity": {
+                "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                  "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                },
+                "key": "agent:agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+                "adapter": {
+                  "identity": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 3951.722651,
+                  "forceAt": 8951.722651,
+                  "cancelAt": 10951.722651,
+                  "finishAt": 16951.722651,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 14951.722651,
+                    "termDeadline": 15951.722651,
+                    "killDeadline": 16951.722651
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              }
+            }
+          ],
+          "line": 1138
+        },
+        {
+          "phase": "immediate-check",
+          "at": "2026-10-14T17:15:49.065Z",
+          "nodes": [
+            {
+              "id": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "title": "Template Save Agent"
+            },
+            {
+              "id": "terminal-2-eb0e9627-6968-42fb-b6a7-44a8996a09c8",
+              "kind": "terminal",
+              "title": "Template Save Terminal"
+            },
+            {
+              "id": "note-3-4b49561d-cbac-4efa-86a9-ff53fe555b93",
+              "kind": "note",
+              "title": "Template Save Note"
+            }
+          ],
+          "records": [],
+          "line": 1138
+        },
+        {
+          "phase": "reset-return",
+          "at": "2026-10-14T17:15:49.072Z",
+          "nodes": [],
+          "records": [
+            {
+              "nodeId": "agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+              "kind": "agent",
+              "identity": {
+                "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+              },
+              "owner": {
+                "identity": {
+                  "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                  "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                },
+                "key": "agent:agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80",
+                "adapter": {
+                  "identity": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2"
+                  },
+                  "state": "settled",
+                  "acceptedThrough": 2,
+                  "consumedThrough": 2,
+                  "pendingBytes": 0,
+                  "pendingFrames": 0,
+                  "rawBytes": 0,
+                  "rejectedDataBytes": 0,
+                  "interactions": {
+                    "pending": 0,
+                    "inputBytes": 0,
+                    "closedReason": "Execution graceful requested"
+                  },
+                  "resourceLedgerIncomplete": false,
+                  "process": {
+                    "kind": "signaled",
+                    "signal": "SIGINT"
+                  },
+                  "source": {
+                    "kind": "eof",
+                    "lastDataSequence": 2
+                  },
+                  "seal": {
+                    "executionId": "1a4e0dd1-4ae4-4656-827a-87fff0e179dc",
+                    "generation": "48cf048a-b5b3-4dc5-b799-86057f9094d2",
+                    "process": {
+                      "kind": "signaled",
+                      "signal": "SIGINT"
+                    },
+                    "source": {
+                      "kind": "eof",
+                      "lastDataSequence": 2
+                    },
+                    "lastDataSequence": 2
+                  },
+                  "transport": {
+                    "disconnected": true,
+                    "exited": true,
+                    "dataEnded": true,
+                    "dataClosed": false
+                  },
+                  "resources": {
+                    "provider-control": {
+                      "operationId": "provider-control-release",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-master": {
+                      "operationId": "release-pty-master",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-child": {
+                      "operationId": "release-pty-child",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    },
+                    "pty-source": {
+                      "operationId": "release-pty-source",
+                      "current": {
+                        "kind": "released"
+                      },
+                      "first": {
+                        "kind": "released"
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "kind": "applied",
+                  "finalRevision": 2,
+                  "throughDataSequence": 2
+                },
+                "readerOutcome": "settled",
+                "settled": true,
+                "retired": true,
+                "admissionPending": true,
+                "stopRequested": true,
+                "closeObservation": {
+                  "trigger": "stop",
+                  "reason": "host-boundary",
+                  "startedAt": 3951.722651,
+                  "forceAt": 8951.722651,
+                  "cancelAt": 10951.722651,
+                  "finishAt": 16951.722651,
+                  "first": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "parentCleanup": {
+                    "at": 14951.722651,
+                    "termDeadline": 15951.722651,
+                    "killDeadline": 16951.722651
+                  },
+                  "current": {
+                    "kind": "settled",
+                    "pending": []
+                  },
+                  "pendingDomains": []
+                }
+              },
+              "persistence": {
+                "submitted": true,
+                "result": {
+                  "kind": "saved"
+                }
+              }
+            }
+          ],
+          "line": 1138
+        }
+      ],
+      "fixture_logs": [
+        "[reset-fixture] Rejected while final persistence is pending for agent:agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80.",
+        "[reset-fixture] Original final persistence settled: [{\"kind\":\"agent\",\"nodeId\":\"agent-1-ea94da0b-e117-4ad5-9c31-24f0e1657d80\",\"executionId\":\"1a4e0dd1-4ae4-4656-827a-87fff0e179dc\",\"generation\":\"48cf048a-b5b3-4dc5-b799-86057f9094d2\",\"submitted\":true,\"result\":{\"kind\":\"saved\"}}]",
+        "[reset-fixture] Empty canvas confirmed after 2 reset call(s).",
+        "[reset-fixture] Empty canvas confirmed after 1 reset call(s).",
+        "[reset-fixture] Rejected while final persistence is pending for agent:agent-2-df359df9-a544-446a-b172-8a2d6d7c157f.",
+        "[reset-fixture] Original final persistence settled: [{\"kind\":\"agent\",\"nodeId\":\"agent-1-92b6d284-1eb7-43b5-a758-d69024a8f32c\",\"executionId\":\"ce93e68e-8298-4e41-895e-8c9e304b3bdf\",\"generation\":\"e2cacd4a-0157-4029-a876-5e099dc20ebd\",\"submitted\":false,\"result\":{\"kind\":\"not-required\"}},{\"kind\":\"agent\",\"nodeId\":\"agent-2-df359df9-a544-446a-b172-8a2d6d7c157f\",\"executionId\":\"8d57fff4-a56d-446c-a3fe-e4b659a2034c\",\"generation\":\"af6acd41-7aec-4a6f-a5e7-44f9618b22fc\",\"submitted\":true,\"result\":{\"kind\":\"saved\"}}]",
+        "[reset-fixture] Empty canvas confirmed after 2 reset call(s).",
+        "[reset-fixture] Empty canvas confirmed after 1 reset call(s).",
+        "[reset-fixture] Rejected while final persistence is pending for agent:agent-1-aad459a6-72c7-4bdc-b29e-a2868fd5fd40.",
+        "[reset-fixture] Original final persistence settled: [{\"kind\":\"agent\",\"nodeId\":\"agent-1-aad459a6-72c7-4bdc-b29e-a2868fd5fd40\",\"executionId\":\"fc1dae27-7f48-4992-b90d-4d4b5a6dde03\",\"generation\":\"bd12a7fa-7fa5-4ede-8583-714bb42e94ea\",\"submitted\":true,\"result\":{\"kind\":\"saved\"}}]",
+        "[reset-fixture] Empty canvas confirmed after 2 reset call(s)."
+      ],
+      "passed_trusted": true
+    }
+  }
+}

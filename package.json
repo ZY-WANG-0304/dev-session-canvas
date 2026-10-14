@@ -100,7 +100,7 @@
     "test:smoke-terminal-resize": "node scripts/test/test-smoke-terminal-resize.mjs",
     "test:smoke-terminal-history": "node scripts/test/test-smoke-terminal-history.mjs",
     "test:smoke-execution-output": "node scripts/test/test-smoke-execution-output.mjs",
-    "test:smoke-reset-fixture": "node scripts/test/test-smoke-reset-fixture.mjs",
+    "test:smoke-reset-fixture": "node scripts/test/test-smoke-reset-fixture.mjs && node scripts/test/test-smoke-template-reset.mjs",
     "test:smoke": "npm run build && npm run build:notifier && node scripts/smoke/run-vscode-smoke.mjs",
     "test:ui-copy-locale-smoke": "npm run build && node scripts/smoke/run-vscode-ui-copy-locale-smoke.mjs",
     "test:smoke:windows-real-codex": "npm run build && npm run build:notifier && node scripts/smoke/run-windows-real-codex-smoke.mjs",
