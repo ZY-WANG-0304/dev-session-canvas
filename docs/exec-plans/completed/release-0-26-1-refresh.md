@@ -53,6 +53,12 @@
 
 历史正式run38485499547在Marketplace版本发布成功提示断言失败，后续未触达。PR332修正原预算内完成反馈等待并保留准确断言，单项和真实1.141.1对照已有证据。本轮按正式非草稿PR流程固定最新预合并SHA，重新构建六平台同输入资产、默认npm ci、完整release:verify；实际输入/结果在PR327描述和checks绑定，失败保留首败，成功也不代替最终tag验证。本轮不合并、打tag或发布。
 
+## PR333合入后的正式完整复验
+
+2026-10-14用户要求rebase #327并重跑完整门禁。fetch确认PR333正常合入，main eee25291109e7e3bad27e6841520f3f4a5d14dcc；保留原发布head cfe1ab40和本地backup/pr327-before-pr333-rebase，七个发布提交rebase无冲突，发布PR不新增产品/测试/workflow修改。
+
+历史正式run38539427680在SSH exit本地后代SIGKILL的ESRCH失败，根已实际SIGKILL，SSH业务及Webview/clean-checkout未触达。PR333已限定后代ESRCH复查不再运行才能继续，保留异常和最终退出检查，39项/实际内核/原生exit-retain定向通过。本轮保持完整未过滤release:verify，在最新PR预合并输入重新构建六平台资产并默认npm ci/浏览器准备；实际head/base/input/run与结果在PR327描述和checks登记。单项/历史输入通过不代证新完整验证，原首败保留。转为非草稿只用于门禁，不授权合并/tag/发布。
+
 ## 历史结果与复盘（PR328合入前）
 
 本次静态输入已完成。预合并默认安装和 preflight 通过，完整 verify 在 localhost SSH 离线完成条件失败；独立 Webview426/426、干净安装包八场景、notifier 类型/联动/语言/包均通过。发布准备以草稿 PR 交付，完整门禁未通过仍禁止合并/发布。原首败保留并登记技术债；此次计划收口的是重新准备与可 review 材料，实际发布并未完成。后续结果写入本计划和正式发布准备设计记录，禁止将候选 commit、工件 hash 或测试状态放进 CHANGELOG/发布契约。
@@ -98,6 +104,8 @@
 2026-10-13 修订：本机 Git 不支持 merge-tree --write-tree，采用已验证目标祖先关系与相同 HEAD tree 构造预合并结果，不跳过合并输入验证。
 
 2026-10-13 修订：固定实际准备 head 与预合并 commit，记录默认安装和前置检查通过，完整 verify 尚未完成。
+
+2026-10-14 修订：PR333合入后接续最新预合并完整门禁，登记主线/旧head/备份和ESRCH历史范围，保持静态发布材料与正式验证分离。
 
 2026-10-13 修订：记录完整 verify 首败与未触达范围，定位到远端 setup Host PID 消失前提；继续独立补证，不放宽断言或把首败覆盖为通过。
 

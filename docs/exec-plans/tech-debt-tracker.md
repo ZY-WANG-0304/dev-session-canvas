@@ -1001,3 +1001,5 @@ PR329已合入main72338331，PR327由原head42d87b3d rebase到该主线。上述
 ## PR332合入后的发布输入复验（2026-10-14）
 
 Marketplace完成等待修复PR332已合入main f3bb4425。其“待review/合入”为修复交付时的历史状态；PR327由a95b69b0 rebase到最新主线并重跑正式完整发布门禁。原run38485499547首败与未触达范围保留，不以20项回归或真实1.141.1单项通过代证全量；当前输入与结果以PR327最新head/base/预合并SHA/checks为准。
+
+2026-10-14：本地后代ESRCH修复PR333正常合入main eee25291，PR327从cfe1ab40 rebase后运行新的正式预合并完整门禁。run38539427680的ESRCH原首败保持原输入/日志hash，未记录的具体后代角色仍未知；39项/真实内核/SSH两状态定向通过不代证发布闭环。本轮必须实际完成全量npm test、Webview与clean-checkout VSIX八场景，结果绑定PR327当前head/base/预合并/run，未通过前不合并或发布。

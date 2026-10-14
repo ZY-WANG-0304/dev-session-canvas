@@ -27,11 +27,13 @@ Linux x64 验证使用 Node22.23.3、VS Code1.141.0、fake Agent 与原生 PTY�
 
 ## 当前验证输入
 
-PR #328、集中修复 PR #329 与 Marketplace 门禁修复 PR #332 均已合入。2026-10-14 fetch 后 main 为 `f3bb442526b1f5eb57171a5b24c9a6bca868756f`（PR332 merge commit）；发布分支从原远端 head `a95b69b0577587d44519208e7cc9b19947c4f6ae` rebase 到该主线。冲突仅涉及设计原则与技术债，两边材料保留；发布 PR 相对 main 不增加产品实现、测试或 workflow 修改。
+PR #328、集中修复 PR #329、Marketplace 门禁修复 PR #332 与本地后代 ESRCH 修复 PR #333 均已合入。2026-10-14 fetch 后 main 为 `eee25291109e7e3bad27e6841520f3f4a5d14dcc`（PR333 merge commit）；发布分支从原远端 head `cfe1ab40e121bc31689f474e2e6f7cbb9bad4f48` rebase 到该主线，无冲突。原远端 head 保留在本地 backup/pr327-before-pr333-rebase。发布 PR 相对 main 不增加产品实现、测试或 workflow 修改。
 
 主线已包含 SSH 退出/保留双状态门禁、自有 socket 夹具、诊断等待末次观察、fake systemd 前置 probe、fallback 短 IPC 路径，以及 Linux 截图字体/发布验证 OS 依赖修复。原因与集中验证见 `remote-host-exit-investigation.md` 和 `systemd-smoke-scope-root-cause.md`；组合 run38426726365 的完整通过仅证明其记录的旧输入，不能代替本次正式 PR 门禁。
 
 上一正式run38485499547在历史预合并217fd693的Marketplace发布成功提示断言失败，后续source smoke/SSH/Webview/clean-checkout未触达。PR332已将首次与版本发布等待改为原单个20秒预算内同时确认唯一请求和原准确成功提示，真实VSCode1.141.1自然/响应延迟对照及20项回归通过；根因边界见 `marketplace-publish-smoke-completion.md`。本轮必须重新完整验证，不以单项修复通过代证发布门禁。
+
+PR332合入后的正式run38539427680在预合并b0198184的SSH exit本地后代SIGKILL处报ESRCH，setup已ready、根Electron实际SIGKILL，后续SSH业务/Webview/clean-checkout未完成。PR333确认并修复后代身份检查与发信号间退出回收竞态，只允许ESRCH后复查原身份不再运行才继续，其他错误与最终退出检查保持；默认39项回归、实际内核与原生exit/retain通过。根因和验收见`smoke-local-client-exit-root-cause.md`，具体首败后代角色/退出触发原因仍未知。该单项验收不代证本轮完整发布门禁。
 
 本次使用正式 `Release Preflight` workflow：PR #327 转为非草稿后，由最新 head 与 main 生成预合并 commit；先固定该 SHA，再为六个平台构建同输入资产，最后在 ubuntu-22.04 执行默认 npm ci、浏览器准备与完整 `release:verify`。verify 内部先执行静态 preflight，随后运行发布回归、未过滤的完整 npm test 和 clean-checkout VSIX 八场景 smoke。最新 head/base/预合并 SHA、run 与最终结果统一关联 PR #327 描述和 checks，不另建验证或文档 PR。成功前仍禁止合并；合并、tag 和发布需后续授权。
 
