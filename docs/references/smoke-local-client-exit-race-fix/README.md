@@ -39,3 +39,5 @@ exit原Host2398678/startTicks260422004在verify-ready和business-complete均orig
 ## 边界
 
 本修复原生验证覆盖Linux localhost固定版本两状态；受控内核实验确定ESRCH路径修复，原生成功不意味着自然执行每次触发ESRCH。聚合首轮因磁盘失败仍保持exit1，单独retain通过不追认为首轮完整通过。没有执行完整release:verify、全套Webview或packaged smoke；#327在本修复合入后须按最新预合并输入完整重验。CI具体失败后代身份与自行退出触发原因仍未知，未归为产品/上游缺陷，未合并/tag/发布。
+
+修复PR：[ #333](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/333)，初始实现head `e0482d897051e16b8125a4757f8dda2a7974b720`，CI run38564849589的Resolve release input与Verify release contract成功、native-assets跳过；这是无发布契约的明确跳过，不执行完整release:verify。后续文档收口提交不改变已验收helper SHA，PR最终head checks以GitHub为准。
