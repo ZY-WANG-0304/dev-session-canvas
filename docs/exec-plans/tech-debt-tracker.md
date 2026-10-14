@@ -838,3 +838,5 @@ PR327/run38485499547在原版本发布提示断言失败；请求计数不能证
 ## PR327 packaged trusted 最终保存 pending（2026-10-15，调查中）
 
 run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通过，最后trusted最终保存即时检查pending失败。真实Host8项对照证明owner settled不等于save settled，当前reset拒绝符合§26.3；本地1.141.0整套trusted通过，原具名调用及后续保存结果仍需CI观察。未修改产品、未解锁发布。设计local-final-snapshot-boundary-root-cause.md，active计划记录输入和边界。后续修复/根因/回归集中一个修复PR，PR327保留。
+
+接续收口（2026-10-15）：同输入CI38596179995复现模板verifyCanvasTemplatesTrusted:1138，Agent关闭与保存submitted后即时pending，8ms后同执行saved。38605013416同Agent started/保存结果交接gate确定性probe pending、control原saved后二次reset及完整trusted通过；38603542973诊断Terminal started前提失败保留，不当作新产品首败。根因为本例cleanup未接入既有reset最终保存夹具；原S8安全拒绝符合契约，不延长超时。调查已完成，正式修复待授权和实施，PR327完整发布门禁仍阻断。证据docs/references/local-final-snapshot-boundary/，completed计划local-final-snapshot-boundary-investigation.md；后续代码/回归/根因集中一个修复PR，不单建文档或验证PR。

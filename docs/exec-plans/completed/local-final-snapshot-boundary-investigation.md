@@ -14,12 +14,12 @@
 - [x] (2026-10-15) 真实Host/正式持久化8项对照捕获即时拒绝、saved后二次操作、failed保留。
 - [x] (2026-10-15) 本地1.141.0原trusted整套通过，模板五次reset无records；未复现原失败。
 - [x] (2026-10-15) 原发布head/同输入六资产/Ubuntu22.04/VSCode1.141.2观察复现；普通control完整trusted通过但目标无records，不算目标先红后绿。
-- [ ] 同启动前提与受控保存结果交接gate的probe/control确定性验证。
-- [ ] 同步根因文档、索引和未修复事项，收口调查。
+- [x] (2026-10-15) run38605013416 probe按预期pending拒绝，control目标pending后原saved/第二次reset及完整trusted通过。
+- [x] (2026-10-15) 根因、索引、核心信念与债务同步；临时workflow归档移除；未创建PR或改正式代码。
 
 ## 意外与发现
 
-原错误是 `assertNonNativeHostPersistenceComplete` 的即时检查，不是 20 秒最终保存等待超时。`closeNonNativeHostExecutions` 在 owner 关闭 settled 后可直接检查保存，也可选择等待；`simulateRuntimeReloadForTest` 请求等待，而 reset/模板路径未请求。CI原产品重建观察已复现模板保存导出后的reset；原正式runner缺现场，复现身份与原失败身份保持分别登记。普通control通过时目标无records，不能作为触达保存窗口的证据。
+原错误是 `assertNonNativeHostPersistenceComplete` 的即时检查，不是20秒最终保存等待超时。`closeNonNativeHostExecutions` 在 owner 关闭 settled 后可直接检查保存，也可选择等待；`simulateRuntimeReloadForTest` 请求等待，而 reset/模板路径未请求。CI原产品重建观察已复现模板保存导出后的reset；原正式runner缺现场，复现身份与原失败身份保持分别登记。普通control通过时目标无records，不能作为触达保存窗口的证据。
 
 ## 决策记录
 
@@ -27,7 +27,7 @@
 
 ## 结果与复盘
 
-机制与具名触发已确认；确定性原生对照及最终文档收口仍进行中。PR327 仍为草稿；本任务没有合并、发布或正式代码修复。
+调查完成。根因是模板测试1138行清理未适配reset最终保存pending拒绝策略；同输入CI自然复现、8ms后saved和确定性保存窗口probe/control均支持。control完整trusted通过，但只是隔离实验，正式修复和最终完整release:verify仍未完成。PR327 仍为草稿；本任务没有合并、发布或正式代码修复。
 
 ## 上下文与定向
 
@@ -39,7 +39,7 @@
 
 ## 具体步骤
 
-所有源码读取和实验在 `/tmp/persist-rca`；原门禁日志与 receipt 保持 `/tmp/pr327-after333-gate/` 不变。依赖和 VS Code 缓存从现有工作树复用，不重复无关完整门禁。执行命令、输入与结果随具体实验补入本文。
+所有源码读取和实验在 `/tmp/persist-rca`；原门禁日志与 receipt 保持 `/tmp/pr327-after333-gate/` 不变。依赖和 VS Code 缓存从现有工作树复用，不重复无关完整门禁。具体命令为 `PATH=/tmp/dsc-release-node22/node_modules/node/bin:$PATH node docs/references/local-final-snapshot-boundary/host-investigation.mjs`（8项捕获预期，日志/tmp/persist-rca-host.log）；同Node执行 `node scripts/test/test-smoke-reset-fixture.mjs`（19/19）。本地生产构建用 `node scripts/build/build.mjs --production --execution-assets-set /home/users/ziyang01.wang-al/projects/dev-session-canvas/generated/execution-assets`，独立native-investigation.mjs probe整套通过但未触发目标。CI临时workflow从原releasehead正常打包，注入instrument-packaged.mjs，执行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted npm run test:vsix-smoke`。最终两格设DSC_FINAL_SAVE_GATED=1、DSC_FINAL_SAVE_CONTROL=0/1，原Agent started后控制保存结果交接。完整输入/脱敏时序保存在同目录ci-probe-result/ci-control-result/first-gated-result/final-gated-result.json。临时workflow归档到同目录gated-comparison.workflow.yml，后续不会自动执行。
 
 ## 验证与验收
 
@@ -64,3 +64,5 @@
 2026-10-15决策：普通control没有触达目标pending，追加同启动屏障与保存结果交接gate的两个对照格；不以非触达通过作因果修复证据。
 
 2026-10-15观察：首轮受控gate run38603542973，probe目标pending复现；control在新增“两个执行都started”前提失败，原Terminal已按准入拒绝/not-required。该前提超出模板测试所需，属于诊断错误；两格统一只等待原Agent started，Terminal保持原排队/拒绝语义。首轮失败保留，不作为产品新卡点或control通过。
+
+2026-10-15最终决策与结果：保留产品reset即时保护，建议正式修复只将本例cleanup接到原身份/20秒总预算的reset helper。受控gate不改文件写入，原检查后下一tick释放，仅证明有限窗口中的差异，不将人为延迟当作原CI自然延迟。未授权正式修复，本任务停在可审查的根因与对照证据。原完整gate及全部诊断失败保持，不创建PR、不修改PR327。
