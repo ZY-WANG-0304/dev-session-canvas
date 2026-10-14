@@ -1,0 +1,66 @@
+name: Temporary Local Final Snapshot Investigation
+on:
+  push:
+    branches: [investigate-local-final-snapshot-boundary]
+    paths: [.github/workflows/local-final-snapshot-investigation.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-packaged-trusted:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: diagnostic
+      - uses: actions/checkout@v4
+        with:
+          ref: 20d237c5176a6cd05486d5b58c5ecf4f55f7bcd9
+          path: original
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install original dependencies
+        working-directory: original
+        run: npm ci
+      - name: Reuse original same-input native assets
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38579057915
+          pattern: execution-native-*-38579057915
+          merge-multiple: true
+          path: archives
+      - name: Assemble exact original assets
+        working-directory: original
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source ../archives --output ../platform --input-sha 9f602fed177070b0b017dd195f09dfcd7d7ad0a3
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
+      - name: Add observation to isolated packaged runner
+        working-directory: original
+        run: |
+          cp ../diagnostic/docs/references/local-final-snapshot-boundary/instrument-packaged.mjs scripts/smoke/instrument-packaged.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/smoke/run-vscode-vsix-smoke.mjs')
+          s=p.read_text()
+          anchor="  const packagedExtensionTestsPath = resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs');"
+          assert s.count(anchor)==1
+          s="import { instrumentPackaged } from './instrument-packaged.mjs';\n"+s.replace(anchor,"  await instrumentPackaged(smokeHostRoot);\n"+anchor)
+          p.write_text(s)
+          PY
+      - name: Original packaged trusted with observations
+        working-directory: original
+        env:
+          DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: trusted
+        run: npm run test:vsix-smoke > ../original-trusted.log 2>&1
+      - name: Archive observation and payload identities
+        if: always()
+        run: |
+          tar -czf evidence.tar.gz original-trusted.log original/.debug/vscode-vsix-smoke/smoke-runtime/artifacts original/.debug/vscode-vsix-smoke/smoke-runtime/user-data/logs original/.debug/vscode-vsix-smoke/smoke-host/dist/extension.js original/.debug/vscode-vsix-smoke/smoke-host/dist/runtime-supervisor.js original/.debug/vscode-vsix-smoke/smoke-host/dist/webview.js original/.debug/vscode-vsix-smoke/packaged-extension/extension/dist/extension.js original/*.vsix
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-trusted-observation-${{ github.run_id }}
+          path: evidence.tar.gz

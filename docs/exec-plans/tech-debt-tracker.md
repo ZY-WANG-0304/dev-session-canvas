@@ -833,3 +833,8 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 PR327/run38485499547在原版本发布提示断言失败；请求计数不能证明客户端响应解析/Webview消息/用户提示已完成。两处等待从2026-06-26起未变，近期只更新文案，相关四文件与旧成功input相同；响应阻塞对照确认可确定复现的门禁竞态，但原CI具体调度因素/VSCode1.141.1因果未采样确认。
 
 用户授权独立修复PR后，两处场景在同一原20秒预算等待唯一请求和原准确提示，保留认证/请求内容/发布结果与v3 UI验收。实际场景VM回归20/20通过，旧代码两类延迟反例均失败，缺失/错误提示和请求数量负例继续按期失败并恢复拦截器；真实VSCode1.141.1自然与临时300ms延迟响应E2E均通过，正式HTTP夹具未改。设计与证据见docs/design-docs/marketplace-publish-smoke-completion.md；生产逻辑及版本不变。修复仍待review/合入，PR327保持独立发布准备及正式最新预合并完整门禁要求；定向通过不代证全量npm test或最终发布。
+
+
+## PR327 packaged trusted 最终保存 pending（2026-10-15，调查中）
+
+run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通过，最后trusted最终保存即时检查pending失败。真实Host8项对照证明owner settled不等于save settled，当前reset拒绝符合§26.3；本地1.141.0整套trusted通过，原具名调用及后续保存结果仍需CI观察。未修改产品、未解锁发布。设计local-final-snapshot-boundary-root-cause.md，active计划记录输入和边界。后续修复/根因/回归集中一个修复PR，PR327保留。
