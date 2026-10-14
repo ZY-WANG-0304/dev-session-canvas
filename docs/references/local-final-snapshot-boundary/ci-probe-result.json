@@ -1080,5 +1080,12 @@
     }
   ],
   "artifact_id": 11910510961,
-  "artifact_zip_sha256": "c01cdd17dc8d6a47a6901d966f8cad059e09ef3440d39b2574897891721eea76"
+  "artifact_zip_sha256": "c01cdd17dc8d6a47a6901d966f8cad059e09ef3440d39b2574897891721eea76",
+  "vscode": "1.141.2",
+  "original_suite_call": "verifyCanvasTemplatesTrusted:1138",
+  "matching_bundle_offsets": [
+    "extension.js:229:144027",
+    "extension.js:229:169889",
+    "extension.js:227:411"
+  ]
 }

@@ -1,4 +1,4 @@
-name: Temporary Local Final Snapshot Investigation Control
+name: Temporary Local Final Snapshot Gated Comparison
 on:
   push:
     branches: [investigate-local-final-snapshot-boundary]
@@ -8,6 +8,10 @@ permissions:
   actions: read
 jobs:
   original-packaged-trusted:
+    strategy:
+      fail-fast: false
+      matrix:
+        control: ['0', '1']
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -54,7 +58,8 @@ jobs:
         working-directory: original
         env:
           DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: trusted
-          DSC_FINAL_SAVE_CONTROL: '1'
+          DSC_FINAL_SAVE_CONTROL: ${{ matrix.control }}
+          DSC_FINAL_SAVE_GATED: '1'
         run: npm run test:vsix-smoke > ../original-trusted.log 2>&1
       - name: Archive observation and payload identities
         if: always()
@@ -63,5 +68,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: original-trusted-observation-${{ github.run_id }}
+          name: original-trusted-observation-${{ github.run_id }}-${{ matrix.control }}
           path: evidence.tar.gz

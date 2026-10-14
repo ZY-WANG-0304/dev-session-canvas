@@ -1,7 +1,7 @@
 ---
 title: PR327 packaged trusted 最终保存 pending 调查
-decision_status: 比较中
-validation_status: 验证中
+decision_status: 已选定
+validation_status: 已验证
 domains: [执行编排域, 项目状态域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
@@ -19,15 +19,29 @@ updated_at: 2026-10-15
 
 `CanvasPanelManager.ts::closeNonNativeHostExecutions` 等owner settled后，默认立即执行 `assertNonNativeHostPersistenceComplete`。资源结束不涵盖最终保存Promise；提交保存后仍可以未登记saved。原错误没有进入20秒保存等待，故不是等待耗尽。正式设计 `runtime-exit-integrity-production-integration.md` §26.3选择reset/清组/模板pending时拒绝，保存完成后允许新的操作。单节点删除为显式等待例外。`reset-canvas.cjs` 为四个smoke清理入口适配此契约，不涵盖所有直接reset。
 
-## 当前结论与待验证项
+## 正式结论与修复方向
 
 真实Host及正式持久化8项受控验证（Agent/Terminal × 即时检查/等待对照 × saved/failed）捕获预期结果：暂扣原workspaceState.update后owner已settled/retired、submitted=true、result未登记；原reset提前拒绝保留节点。释放后saved不续行原reset，显式第二次可清空；failed保留节点。等待对照仅启用既有等待，成功才清空，失败仍拒绝。脚本 `docs/references/local-final-snapshot-boundary/host-investigation.mjs`，日志 `/tmp/persist-rca-host.log`。这证明机制，尚未证明原门禁具名触发点。
 
 本地生产bundle、发布manifest、原suite加观察钩子，以VS Code1.141.0运行trusted整套通过。模板五次reset没有owned records，未复现首败，不能将模板cleanup推测定为根因。本轮重建bundle不声称是原CI VSIX字节。
 
-## 下一受控验证
+## CI 因果证据
 
-临时分支无PR，Ubuntu22.04从原发布head重建正常VSIX，复用原run的同输入六资产，执行原trusted。仅为直接reset增加调用位置与原执行/保存观察；失败后有界观察原保存，不重试reset、不改保存检查。实际VS Code版本单独登记。完整失败保持，不追加无界重跑。
+观察run [38596179995](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38596179995) 使用诊断head4e787d61，另checkout原发布head20d237c5、默认npm ci、同原run六资产/预合并9f602fed，Ubuntu22.04、实际VS Code1.141.2。正常生产VSIX解包后只增加观察；生产extension bundle SHA256为2b3d4c38b488a382caa588d9334de0d75a258d51c210bff4129c7dfe5ddc0eb5。复现原三处bundle栈位置229:144027、229:169889、227:411。
+
+具名触发是 `tests/vscode-smoke/extension-tests.cjs::verifyCanvasTemplatesTrusted` 第1138行。该函数创建Agent/Terminal/Note，等待节点存在，改title/content、保存并导出模板；随后直接调用testResetState。没有先按原执行完成清理，也没有使用已有最终保存reset夹具。
+
+16:13:52.193Z进入reset时，原Agent为starting/admissionPending、未提交保存，Terminal尚排队；16:13:52.235Z Terminal取消后结算not-required。16:13:57.228Z Agent已settled/retired、四资源released、seal/terminal尾部确认、最终保存submitted=true，但result尚未登记；原即时检查抛pending并保留三个节点。16:13:57.236Z，同executionId43f14e29/generation3fdcbab5保存为saved，距拒绝8ms。保存完成只释放记录，不续行已失败reset；最终failure snapshot零records但三个节点仍保留。没有保存失败、挂起或超时证据。该8ms是复现样本的结果间隔，不作为新预算依据。
+
+原完整门禁现场未上传，不能恢复原node94167的逐项时间线；固定原产品/同版本环境复现的具名调用与三处原栈、受控Host机制共同支持本根因，不伪造原runner现场。脱敏原身份时序见 `docs/references/local-final-snapshot-boundary/ci-probe-result.json`，artifact11910510961/ZIP SHA256 c01cdd17dc8d6a47a6901d966f8cad059e09ef3440d39b2574897891721eea76。
+
+单变量control [38597464423](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38597464423) 只将第1138行reset交给既有 `resetCanvasAfterFinalPersistence`，捕获本次原records作为期望执行，保留全部原trusted顺序和断言。job与完整trusted成功，生产bundle同probe。回收发现1138处无records且一次reset成功，未触发目标pending；这不是目标处跨保存窗口的原生先红后绿。增加同一启动前提与最终保存结果交接gate的probe/control，确定性检验原策略和夹具，实际磁盘写入不改。
+
+## 正式结论的适用范围
+
+直接原因是模板测试单次reset假定与产品既有“保存pending则拒绝”策略不一致，属于测试夹具遗漏。该调用来自2026-05-07的e826ee9e7；已有reset helper来自898b326f，此入口没有接入，不能归因PR328/333或VS Code上游缺陷。包和源码共用测试，是否撞到保存窗口取决于执行启动与页面调度，源码或本地通过不证明该前提成立。
+
+建议修复只为本例按自身Agent/Terminal身份复用既有20秒总预算的最终保存reset夹具，最多一次原保存成功后的新reset；failed/unconfirmed、错误身份、替换节点、超时和第二次拒绝仍失败。不删产品保护、不固定sleep、不抬预算。该处之后都是无自动启动的模板副本；其余直接reset若有活跃执行需具名审查，不做全局无条件重试。产品单次reset体验属于不同策略决定，本调查不改变它。
 
 ## 修复边界
 

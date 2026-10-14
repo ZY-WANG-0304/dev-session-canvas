@@ -13,11 +13,28 @@ function recordSaveTrace(phase,m,rs,extra={}) {
  console.log('[final-save-observation] '+JSON.stringify(trace));
 }
 async function observeOriginalReset(line) {
+ if(process.env.DSC_FINAL_SAVE_GATED==='1' && line===1138) {
+  const base=await getDebugSnapshot();
+  for(const kind of ['agent','terminal']) await waitForLocalExecutionStarted(kind,findNodeByKind(base,kind).id);
+ }
  await getDebugSnapshot();const m=globalThis.__dscFinalManager;assert.ok(m);const rs=[...m.nonNativeHostExecutions.values()];
+ let releaseSave,originalPersist;
+ if(process.env.DSC_FINAL_SAVE_GATED==='1' && line===1138) {
+  const gate=new Promise(resolve=>{releaseSave=resolve;});
+  originalPersist=m.persistState.bind(m);
+  m.persistState=options=>{
+   const saved=originalPersist(options);
+   if(options?.reason!=='local-final-snapshot') return saved;
+   return Promise.resolve(saved).then(async result=>{await gate;return result;});
+  };
+ }
  recordSaveTrace('reset-enter',m,rs,{line,stack:new Error().stack});
  for(const r of rs)if(r.persistence)void r.persistence.promise.then(()=>recordSaveTrace('save-settled',m,[r],{line}));
  const original=m.assertNonNativeHostPersistenceComplete.bind(m);
- m.assertNonNativeHostPersistenceComplete=records=>{recordSaveTrace('immediate-check',m,records,{line});return original(records);};
+ m.assertNonNativeHostPersistenceComplete=records=>{
+  recordSaveTrace('immediate-check',m,records,{line});
+  try{return original(records);}finally{if(releaseSave)setTimeout(releaseSave,0);}
+ };
  try{
   if(process.env.DSC_FINAL_SAVE_CONTROL==='1' && line===1138) {
    await resetCanvasAfterFinalPersistence({reset:()=>vscode.commands.executeCommand(COMMAND_IDS.testResetState),getSnapshot:getDebugSnapshot,getDiagnosticEvents,expectedExecutions:rs.map(r=>({kind:r.kind,id:r.nodeId}))});
@@ -26,7 +43,7 @@ async function observeOriginalReset(line) {
  catch(error){recordSaveTrace('reset-threw',m,rs,{line,error:error.message});
   await Promise.race([Promise.all(rs.flatMap(r=>r.persistence?[r.persistence.promise]:[])),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Original save observation timed out')),10000))]);
   recordSaveTrace('after-rejected-reset-save',m,rs,{line});throw error;
- }finally{m.assertNonNativeHostPersistenceComplete=original;}
+ }finally{releaseSave?.();if(originalPersist)m.persistState=originalPersist;m.assertNonNativeHostPersistenceComplete=original;}
 }
 `;
  const lines=s.split('\n');
