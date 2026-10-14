@@ -1,0 +1,211 @@
+{
+  "input": "eee25291109e7e3bad27e6841520f3f4a5d14dcc",
+  "cases": [
+    {
+      "kind": "agent",
+      "mode": "probe",
+      "outcome": "saved",
+      "identity": {
+        "executionId": "2a05096b-dd35-47f3-852e-015a64112293",
+        "generation": "dd93aad4-2c13-4833-b182-848a055b8e6c"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "error": "Local final snapshot persistence is pending: agent:agent-1",
+      "afterFirst": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ],
+      "afterSecond": []
+    },
+    {
+      "kind": "agent",
+      "mode": "probe",
+      "outcome": "failed",
+      "identity": {
+        "executionId": "6fdb751d-4517-429a-b113-742d35226193",
+        "generation": "cfa20137-3844-45b8-a752-11627c861052"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "error": "Local final snapshot persistence is pending: agent:agent-1",
+      "afterFirst": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ],
+      "afterSecond": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ]
+    },
+    {
+      "kind": "agent",
+      "mode": "control",
+      "outcome": "saved",
+      "identity": {
+        "executionId": "cb63261c-b403-4ff5-b4dc-ac52fec793df",
+        "generation": "d1bdb728-6dcd-4742-8ea3-a3aa9d453f15"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "afterFirst": [],
+      "afterSecond": []
+    },
+    {
+      "kind": "agent",
+      "mode": "control",
+      "outcome": "failed",
+      "identity": {
+        "executionId": "0e65f74e-eec2-4263-9aa6-be1a90a52e6b",
+        "generation": "e5faa305-cd38-4ec8-9f54-c8db3415d7bc"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "error": "Local final snapshot persistence is failed: agent:agent-1",
+      "afterFirst": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ],
+      "afterSecond": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ]
+    },
+    {
+      "kind": "terminal",
+      "mode": "probe",
+      "outcome": "saved",
+      "identity": {
+        "executionId": "4e1f919e-07de-4aa9-9c82-1289040d1830",
+        "generation": "cc7bbacc-9d9f-4b3e-95c7-04d45208c92b"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "error": "Local final snapshot persistence is pending: terminal:terminal-1",
+      "afterFirst": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ],
+      "afterSecond": []
+    },
+    {
+      "kind": "terminal",
+      "mode": "probe",
+      "outcome": "failed",
+      "identity": {
+        "executionId": "a23cd9a8-4ec7-4811-a88f-c2e6392a5247",
+        "generation": "469bbe7d-af70-4a6b-8296-ad6c8921869f"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "error": "Local final snapshot persistence is pending: terminal:terminal-1",
+      "afterFirst": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ],
+      "afterSecond": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ]
+    },
+    {
+      "kind": "terminal",
+      "mode": "control",
+      "outcome": "saved",
+      "identity": {
+        "executionId": "19d3f6cd-77b9-407d-90b0-aafa9bc28e45",
+        "generation": "cc5fe39b-60de-487e-a566-788b63fe4cc9"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "afterFirst": [],
+      "afterSecond": []
+    },
+    {
+      "kind": "terminal",
+      "mode": "control",
+      "outcome": "failed",
+      "identity": {
+        "executionId": "00c84e84-6543-4b96-8117-f0bab862402b",
+        "generation": "fbee0ff2-75d4-43ed-b7a7-48c3c983571b"
+      },
+      "held": {
+        "ownerSettled": true,
+        "ownerRetired": true,
+        "submitted": true,
+        "saveResult": null,
+        "nodeKeys": [
+          "agent:agent-1",
+          "terminal:terminal-1"
+        ]
+      },
+      "error": "Local final snapshot persistence is failed: terminal:terminal-1",
+      "afterFirst": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ],
+      "afterSecond": [
+        "agent:agent-1",
+        "terminal:terminal-1"
+      ]
+    }
+  ],
+  "status": "8/8 expected observations",
+  "log_sha256": "fd01fa9cb527641ff588b697023d18a524e7bbab78c6e7036f65b0bc2f3d344b"
+}

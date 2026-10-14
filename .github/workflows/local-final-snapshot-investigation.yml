@@ -1,4 +1,4 @@
-name: Temporary Local Final Snapshot Investigation
+name: Temporary Local Final Snapshot Investigation Control
 on:
   push:
     branches: [investigate-local-final-snapshot-boundary]
@@ -54,6 +54,7 @@ jobs:
         working-directory: original
         env:
           DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: trusted
+          DSC_FINAL_SAVE_CONTROL: '1'
         run: npm run test:vsix-smoke > ../original-trusted.log 2>&1
       - name: Archive observation and payload identities
         if: always()

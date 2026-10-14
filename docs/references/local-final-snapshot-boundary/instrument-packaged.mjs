@@ -18,7 +18,11 @@ async function observeOriginalReset(line) {
  for(const r of rs)if(r.persistence)void r.persistence.promise.then(()=>recordSaveTrace('save-settled',m,[r],{line}));
  const original=m.assertNonNativeHostPersistenceComplete.bind(m);
  m.assertNonNativeHostPersistenceComplete=records=>{recordSaveTrace('immediate-check',m,records,{line});return original(records);};
- try{await vscode.commands.executeCommand(COMMAND_IDS.testResetState);recordSaveTrace('reset-return',m,rs,{line});}
+ try{
+  if(process.env.DSC_FINAL_SAVE_CONTROL==='1' && line===1138) {
+   await resetCanvasAfterFinalPersistence({reset:()=>vscode.commands.executeCommand(COMMAND_IDS.testResetState),getSnapshot:getDebugSnapshot,getDiagnosticEvents,expectedExecutions:rs.map(r=>({kind:r.kind,id:r.nodeId}))});
+  } else await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  recordSaveTrace('reset-return',m,rs,{line});}
  catch(error){recordSaveTrace('reset-threw',m,rs,{line,error:error.message});
   await Promise.race([Promise.all(rs.flatMap(r=>r.persistence?[r.persistence.promise]:[])),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Original save observation timed out')),10000))]);
   recordSaveTrace('after-rejected-reset-save',m,rs,{line});throw error;
