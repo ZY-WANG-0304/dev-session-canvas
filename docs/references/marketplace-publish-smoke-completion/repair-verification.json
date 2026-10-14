@@ -1,0 +1,66 @@
+{
+  "base": "72338331d0d90a40efea1a2ed3ef311512d57b5d",
+  "input_files": [
+    {
+      "path": "package.json",
+      "sha256": "e52443b0e7211d0b2d60c0e2e163f4a969fc392a029ea302092d0f588ce9dfe0"
+    },
+    {
+      "path": "tests/vscode-smoke/template-marketplace-tests.cjs",
+      "sha256": "83f0737b37ca684a1cbc4d23a63ebe8ba7b164b3aa396ec2ee39d19fe4ff17d4"
+    },
+    {
+      "path": "scripts/test/test-smoke-marketplace-publish.mjs",
+      "sha256": "2cd848f8399235c8b84ff3064113ae31ed2742b0cfaebeea122f106d6f079b39"
+    }
+  ],
+  "node": "22.23.3",
+  "vscode": "1.141.1",
+  "production_source_changes": false,
+  "fixture_changes_committed": false,
+  "tests": [
+    {
+      "name": "vscode-natural",
+      "exit_code": 0,
+      "log_bytes": 321079,
+      "log_sha256": "60bd21c29a04852ba942a89373632793cd93cc6fac5174c0b5cf7d933d9a3c6d",
+      "log_path": "/tmp/mpfix-vscode-natural.log"
+    },
+    {
+      "name": "vscode-response-delay-300ms",
+      "exit_code": 0,
+      "log_bytes": 279424,
+      "log_sha256": "d5cd6af7f91916f54c5d66aeb0f78ef9073b24f8b6eb79f245a9c3686d143367",
+      "log_path": "/tmp/mpfix-vscode-delay.log"
+    },
+    {
+      "name": "build",
+      "exit_code": 0,
+      "log_bytes": 77,
+      "log_sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "log_path": "/tmp/mpfix-build.log"
+    },
+    {
+      "name": "deterministic scenario regressions",
+      "exit_code": 0,
+      "passed": 20,
+      "log_path": "/tmp/mpfix-regression.log",
+      "log_bytes": 1725,
+      "log_sha256": "ed8738c4670e58e0956933bc7e69c35fe525e02c2f51bca6834e2ffa03bd011b"
+    },
+    {
+      "name": "marketplace production deploy workflow regression",
+      "exit_code": 0
+    },
+    {
+      "name": "release preflight workflow regression",
+      "exit_code": 0
+    },
+    {
+      "name": "old new/version scenario delayed-feedback counterexamples",
+      "exit_code": 1,
+      "expected_failure": true
+    }
+  ],
+  "limitations": "本地既有同lock依赖和默认原生资产、隔离宿主；非干净CI。响应延迟仅临时对照，未提交；PR327修复合入后的正式完整门禁仍待执行。"
+}

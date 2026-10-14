@@ -818,3 +818,10 @@ CI checkpoint基础Agent准备失败已收敛至PR328新增scripts/test/test-smo
 截图单变量结论：固定字体Ubuntu24.04仍24像素；同输入、同Chromium切22.04/run38426201759严格断言通过，正式preflight和tag prepare固定22.04。原失败证据保留，最终同输入六平台+完整release门禁重跑中；不将截图单项通过当完整发布通过。
 
 最终集中修复验证（2026-10-14）：第四轮38426726365固定32ec277b同输入六平台资产与原完整release:verify exit0，SSH退出/保留、systemd/fallback零提交、Webview426/426、clean-checkout生产VSIX及八场景packaged smoke通过。PR329正式夹具修复已验证，原失败限定历史输入；PR327仍独立draft，修复合入后rebase及正式最新预合并门禁仍是发布前要求，不追认已发布。最终证据full-gate-fourth-result-38426726365.json。
+
+
+## Marketplace 发布提示门禁竞态修复（2026-10-14）
+
+PR327/run38485499547在原版本发布提示断言失败；请求计数不能证明客户端响应解析/Webview消息/用户提示已完成。两处等待从2026-06-26起未变，近期只更新文案，相关四文件与旧成功input相同；响应阻塞对照确认可确定复现的门禁竞态，但原CI具体调度因素/VSCode1.141.1因果未采样确认。
+
+用户授权独立修复PR后，两处场景在同一原20秒预算等待唯一请求和原准确提示，保留认证/请求内容/发布结果与v3 UI验收。实际场景VM回归20/20通过，旧代码两类延迟反例均失败，缺失/错误提示和请求数量负例继续按期失败并恢复拦截器；真实VSCode1.141.1自然与临时300ms延迟响应E2E均通过，正式HTTP夹具未改。设计与证据见docs/design-docs/marketplace-publish-smoke-completion.md；生产逻辑及版本不变。修复仍待review/合入，PR327保持独立发布准备及正式最新预合并完整门禁要求；定向通过不代证全量npm test或最终发布。

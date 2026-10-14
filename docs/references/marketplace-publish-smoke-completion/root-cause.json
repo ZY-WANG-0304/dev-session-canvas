@@ -1,0 +1,94 @@
+{
+  "input": "217fd6938408453382f881793cd93661dffa5c90",
+  "previous_success_input": "32ec277bd7eb1d177fb9f188a8425e62b36e8f79",
+  "vscode_version": "1.141.0",
+  "node_version": "22.23.3",
+  "production_source_changed": false,
+  "method": "仅诊断：fixture登记请求后、写201前阻塞；记录原精确提示断言，释放响应后按原20秒预算等同一提示并继续原请求/v3 UI断言。",
+  "source_identity": [
+    {
+      "path": "tests/vscode-smoke/template-marketplace-tests.cjs",
+      "previous_success_blob": "cd0f543d5e8644c0256c8029b1c1cccb7339a76e",
+      "current_failure_blob": "cd0f543d5e8644c0256c8029b1c1cccb7339a76e",
+      "same": true
+    },
+    {
+      "path": "tests/vscode-smoke/template-marketplace-fixture.cjs",
+      "previous_success_blob": "249f83ef85834afb80a3a832c73e58e5bbd85dfd",
+      "current_failure_blob": "249f83ef85834afb80a3a832c73e58e5bbd85dfd",
+      "same": true
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasTemplateMarketplacePanel.ts",
+      "previous_success_blob": "ceb1fe52a171356666f819318209cf66366fb942",
+      "current_failure_blob": "ceb1fe52a171356666f819318209cf66366fb942",
+      "same": true
+    },
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/TemplateMarketplaceClient.ts",
+      "previous_success_blob": "2ee33cf3af58f172a81a50a0119f203b8c4f32c0",
+      "current_failure_blob": "2ee33cf3af58f172a81a50a0119f203b8c4f32c0",
+      "same": true
+    }
+  ],
+  "runs": [
+    {
+      "kind": "natural",
+      "exit_code": 0,
+      "original_e2e_completed": true,
+      "observations": [
+        {
+          "phase": "original-assertion",
+          "holdResponse": false,
+          "requestCount": 1,
+          "authCalls": 1,
+          "informationCalls": [
+            "Template \"Panel Review Loop\" has been published to Template Marketplace v3."
+          ],
+          "originalAssertionFailed": false,
+          "at": 1791936369654
+        },
+        {
+          "phase": "notification-after-response",
+          "holdResponse": false,
+          "elapsedMs": 0,
+          "informationCalls": [
+            "Template \"Panel Review Loop\" has been published to Template Marketplace v3."
+          ]
+        }
+      ],
+      "log_path": "/tmp/mprca-natural.log",
+      "log_bytes": 321379,
+      "log_sha256": "d750913f85a5ef0b1c02580843a2e71f195b26b834c99f6c7214d997720d7922"
+    },
+    {
+      "kind": "held-response",
+      "exit_code": 0,
+      "original_e2e_completed": true,
+      "observations": [
+        {
+          "phase": "original-assertion",
+          "holdResponse": true,
+          "requestCount": 1,
+          "authCalls": 1,
+          "informationCalls": [],
+          "originalAssertionFailed": true,
+          "at": 1791936424628
+        },
+        {
+          "phase": "notification-after-response",
+          "holdResponse": true,
+          "elapsedMs": 101,
+          "informationCalls": [
+            "Template \"Panel Review Loop\" has been published to Template Marketplace v3."
+          ]
+        }
+      ],
+      "log_path": "/tmp/mprca-held.log",
+      "log_bytes": 258506,
+      "log_sha256": "ec8178f7c3fc01784221ce5ad27d43a5481ede8e44443b301d4e2adc950804de"
+    }
+  ],
+  "conclusion": "测试等待条件存在可确定复现的竞态；请求到达不能证明客户端成功提示完成。同产品源码下原准确提示及v3结果验收均通过。",
+  "limits": "该对照在既有Linux/VSCode1.141.0上验证机制，非干净CI，未验证1.141.1差异；原CI缺少响应/提示时序采样，具体调度因素未确认，不追认正式门禁成功。未修复生产或正式测试。"
+}
