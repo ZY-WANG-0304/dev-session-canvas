@@ -9,8 +9,9 @@ import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
-const [pythonScript, scenario] = process.argv.slice(2);
+const [pythonScript, scenario, mode = 'original'] = process.argv.slice(2);
 assert.ok(['normal', 'race'].includes(scenario));
+assert.ok(['original', 'fixed'].includes(mode));
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const helperPath = path.resolve(directory, '../../../tests/vscode-smoke/remote-host-control.cjs');
 const source = await fs.readFile(helperPath, 'utf8');
@@ -77,16 +78,30 @@ try {
   try { await module.exports.abortLocalClient({ child, completed }, userDataDir, report, root); }
   catch (caught) { error = caught; }
   if (scenario === 'race') {
-    assert.ok(injected); assert.equal(error?.code, 'ESRCH');
-    assert.match(error.stack, /remote-host-control\.cjs:114:/);
+    assert.ok(injected);
+    if (mode === 'original') {
+      assert.equal(error?.code, 'ESRCH');
+      assert.match(error.stack, /remote-host-control\.cjs:114:/);
+    } else {
+      assert.equal(error, undefined);
+      assert.equal(report.localSignalErrors.length, 1);
+      assert.equal(report.localSignalErrors[0].pid, leaf.pid);
+      assert.equal(report.localSignalErrors[0].startTicks, leaf.startTicks);
+      assert.equal(report.localSignalErrors[0].code, 'ESRCH');
+      assert.equal(report.localSignalErrors[0].actual, null);
+    }
     assert.equal(report.localSignals.length, 1);
   } else { assert.equal(error, undefined); assert.equal(report.localSignals.length, 2); }
   await completed.catch(() => {});
   assert.equal(child.signalCode, 'SIGKILL');
-  const receipt = { purpose: 'controlled real-kernel reproduction; production helper unchanged', scenario,
+  const receipt = { purpose: mode === 'original' ? 'controlled real-kernel reproduction; production helper unchanged'
+    : 'controlled real-kernel fix verification; original race and successful final cleanup', scenario, mode,
     helperSha256: createHash('sha256').update(source).digest('hex'), createdAt: new Date().toISOString(),
-    root, leaf, error: error?.stack, errorCode: error?.code, localSignals: report.localSignals, events };
-  await fs.writeFile(path.join(directory, `real-${scenario}-result.json`), `${JSON.stringify(receipt, null, 2)}\n`);
+    root, leaf, error: error?.stack, errorCode: error?.code, localSignals: report.localSignals,
+    localSignalErrors: report.localSignalErrors, events };
+  const outputDirectory = mode === 'original' ? directory : path.join(directory, '../smoke-local-client-exit-race-fix');
+  await fs.mkdir(outputDirectory, { recursive: true });
+  await fs.writeFile(path.join(outputDirectory, `real-${scenario}-result.json`), `${JSON.stringify(receipt, null, 2)}\n`);
   emit({ diagnostic: 'PASS', scenario, outcome: error?.code ?? 'completed', root, leaf, events });
 } finally {
   for (const identity of [leaf, root]) {

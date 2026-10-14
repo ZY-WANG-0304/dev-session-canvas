@@ -19,15 +19,18 @@ if len(sys.argv) > 1 and sys.argv[1] == 'root':
     leaf.wait()
     sys.exit(0)
 
-if len(sys.argv) != 3:
-    sys.exit('usage: python3 real-probe.py /absolute/path/to/node normal|race')
-node_path, scenario = sys.argv[1:]
+if len(sys.argv) not in (3, 4):
+    sys.exit('usage: python3 real-probe.py /absolute/path/to/node normal|race [fixed]')
+node_path, scenario = sys.argv[1:3]
+mode = sys.argv[3] if len(sys.argv) == 4 else 'original'
+if mode not in ('original', 'fixed'):
+    sys.exit('mode must be original or fixed')
 if scenario not in ('normal', 'race'):
     sys.exit('scenario must be normal or race')
 libc = ctypes.CDLL(None, use_errno=True)
 if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
     raise OSError(ctypes.get_errno(), 'prctl subreaper failed')
-node = subprocess.Popen([node_path, str(Path(__file__).with_name('real-probe.mjs')), __file__, scenario],
+node = subprocess.Popen([node_path, str(Path(__file__).with_name('real-probe.mjs')), __file__, scenario, mode],
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 for line in node.stdout:
     message = json.loads(line)

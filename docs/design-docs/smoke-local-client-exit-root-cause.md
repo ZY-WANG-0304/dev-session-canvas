@@ -1,11 +1,11 @@
 ---
 title: SSH 发布门禁的本地后代进程 ESRCH 根因
-decision_status: 比较中
+decision_status: 已选定
 validation_status: 已验证
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-local-client-exit-investigation.md]
+related_plans: [docs/exec-plans/completed/smoke-local-client-exit-investigation.md, docs/exec-plans/completed/smoke-local-client-exit-race-fix.md]
 updated_at: 2026-10-14
 ---
 
@@ -13,7 +13,7 @@ updated_at: 2026-10-14
 
 ## 问题与范围
 
-PR #332 合并后，发布 PR #327 基于最新 main 重跑完整门禁，在 `remote-ssh-real-reopen-exit` 的本地客户端清理处失败。用户本轮要求定位；本文记录根因和候选修复边界，尚未实施正式修复。`已验证` 只指因果实验已完成，不表示发布门禁已通过；`比较中` 表示修复方案尚未实施与验收。
+PR #332 合并后，发布 PR #327 基于最新 main 重跑完整门禁，在 `remote-ssh-real-reopen-exit` 的本地客户端清理处失败。用户先要求定位，再于2026-10-14批准修复。正式修复、默认回归和原生SSH两状态定向验收已完成；验证状态只表示该修复已验证，不表示#327完整发布门禁通过。
 
 正式首败 run 为 [38539427680](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38539427680)，job `115772638697`，输入为 main `f3bb442526b1f5eb57171a5b24c9a6bca868756f` 与发布 head `cfe1ab40e121bc31689f474e2e6f7cbb9bad4f48` 的预合并 `b0198184496f30fc45532963998a2ae0aab16cb2`，tree `2233605b6e660fd48da8bd3bb7310d579f3e47fc`。Node22、Ubuntu22.04、VS Code1.141.1。
 
@@ -41,11 +41,21 @@ PR #332 合并后，发布 PR #327 基于最新 main 重跑完整门禁，在 `r
 
 本次正式 run 已通过六平台原生资产组装、静态/发布回归、Marketplace 及其20项回归、本地 smoke、旧升级含 resize、普通/多 root/共享双窗口重开、fake systemd 和提交前 unavailable fallback。SSH exit/retain 业务验收、完整 Webview、clean-checkout VSIX 与 packaged smoke 尚未完成。定位测试问题不能宣称剩余功能已通过，也不能拼接旧 run 为本轮完整成功。
 
-## 候选修复与取舍
+## 正式方案
 
-建议只处理本地后代 SIGKILL 的 ESRCH：记录原目标身份与错误，复查原身份是否已不再运行，继续原有退出后置检查；复查仍为原 live 身份则失败。根进程必须保持本次真实 spawn 和实际 SIGKILL 的要求，EPERM 等其他异常继续抛出，UID、私有作用域、PID/startTicks 核验和清理总预算保持。不能宽泛吞掉所有 kill 异常或仅凭错误就跳过最终确认。
+只在`tests/vscode-smoke/remote-host-control.cjs`的`abortLocalClient`后代SIGKILL调用处处理ESRCH：报告`localSignalErrors`记录原目标PID/startTicks、信号和错误code，ESRCH后读取原PID身份，确认原身份absent、Z/X或已被新身份取代才能继续；复查仍为原live身份则抛原ESRCH。`localSignals`只记录真正发出的成功信号。随后仍执行原根SIGKILL和根身份消失确认及全部后代不再live的后置条件。
 
-回归应覆盖后代身份检查后消失的时序，以及检查前消失、僵尸、新身份、正常信号、权限异常、根异常和信号后仍运行；正式修复还需原生 SSH exit/retain 两分支，并在最新 main 与 #327 预合并结果上重跑完整发布门禁。本轮未实施该候选方案，未修改 helper、发布 PR 或创建新 PR。
+根进程必须保持本次真实spawn和实际SIGKILL的要求，EPERM等其他异常记录后继续抛出，UID、私有作用域、PID/startTicks核验和清理总预算保持。处理局限本地后代，不改变旧远端Host退出/保留条件、产品行为或任何ready/恢复/resize等待。不能宽泛吞掉所有kill异常或仅凭ESRCH跳过最终确认。
+
+默认`test:smoke-remote-host`接入实际helper的受控回归，覆盖后代身份检查后消失，以及检查前消失、僵尸、新身份、正常信号、权限异常、根异常和信号后仍运行；不为测试增加正式helper的配置接口。原生SSH exit/retain分别验收原Host条件、Supervisor/session恢复、输入、真实resize和清理。代码、根因、测试和证据集中一个独立修复PR，#327保持发布PR，修复合入后按最新main与发布head重跑完整门禁。
+
+## 修复验收
+
+新增21项回归与旧18项共同39/39通过，读后消失回归在旧源码原114行ESRCH失败、新源码成功；EPERM、原根异常、原身份仍live的ESRCH、UID/私有作用域和仍运行后置条件反例保持失败。socket目录隔离3/3、resize9/9、runner环境过滤通过。修后实际Linux内核回收竞态产生真实ESRCH，复查actual=null并完成最终退出确认。
+
+主扩展/notifier构建通过。未修改VS Code1.141.1原生exit场景原Host2398678/startTicks260422004消失、Supervisor2403868/startTicks260422466保留；retain原Host2648916和Supervisor2652208同身份保留到业务完成。两分支原会话恢复、输出/输入、Agent82×27/Terminal85×28真实resize、第三终态及cleanup零残留通过。原聚合命令在exit通过后因retain准备复制依赖ENOSPC失败，首轮exit1保留；回收本次已结束复制载荷后用新debug根单独retain exit0，不能追写首轮聚合通过。
+
+证据在[修复验证](../references/smoke-local-client-exit-race-fix/README.md)，修后helper SHA256 `81e4b5f900b38faf56421774b188d35e02486e7a65d9778592064b82b9a26225`。本次未执行完整发布门禁；修复合入后#327必须rebase到最新main再运行正式预合并release:verify。原首败的具体后代PID/角色/退出触发原因仍未知。
 
 ## 证据保留
 

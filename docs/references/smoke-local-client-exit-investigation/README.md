@@ -24,3 +24,5 @@
 来源：[run38539427680](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38539427680)，job115772638697，预合并 `b0198184496f30fc45532963998a2ae0aab16cb2`。没有 verify 现场 artifact，因此具体失败后代 PID/角色/自行退出的原因仍未知。
 
 本轮仅本地记录，不另建诊断、验证或文档 PR；后续授权修复时与代码和回归集中收口。
+
+2026-10-14后续：用户批准修复，研究记录随`smoke-local-client-exit-race-fix`集中提交。原实验结果和helper SHA保持历史输入；在已修helper运行原诊断期待应使用历史ref，不能改写旧JSON为修后结果。`real-probe.py`新增可选`fixed`期待模式，执行当前实际helper并将结果写到`../smoke-local-client-exit-race-fix/`；旧默认模式和历史结果保持。修后验收见该目录README。

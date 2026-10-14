@@ -6,9 +6,13 @@ import path from 'node:path';
 import net from 'node:net';
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import vm from 'node:vm';
 const serverRoot = path.resolve('private-fixture-server');
 const serverNode = path.join(serverRoot, 'node');
 const control = createRequire(import.meta.url)('../../tests/vscode-smoke/remote-host-control.cjs');
+const helperPath = path.resolve('tests/vscode-smoke/remote-host-control.cjs');
+const helperSource = await fs.readFile(helperPath, 'utf8');
+const helperRequire = createRequire(helperPath);
 
 const expected = { pid: 12345, startTicks: '100', state: 'S' };
 const tests = [];
@@ -113,6 +117,131 @@ if (process.platform === 'linux') test('local client with rewritten argv is kill
     assert.equal(child.signalCode, 'SIGKILL');
   } finally { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await completed.catch(() => {}); }
 });
+
+// Execute the actual helper in an isolated Linux process table. No simulated PID is signalled on the OS.
+async function localClientProbe(scenario) {
+  const root = { pid: 41001, ppid: 1, startTicks: '100', state: 'S' };
+  const leaf = { pid: 41002, ppid: root.pid, startTicks: '200', state: 'S' };
+  const sibling = { pid: 41003, ppid: root.pid, startTicks: '300', state: 'S' };
+  const table = new Map([[root.pid, { ...root }], [leaf.pid, { ...leaf }]]);
+  if (scenario === 'esrch-with-running-sibling') table.set(sibling.pid, { ...sibling });
+  const userData = '/private/local-control-test';
+  const events = [], report = { localSignals: [] };
+  let rootSignalled = false, clock = 0, rejectCompleted;
+  const handle = { child: { pid: root.pid, spawnfile: '/private/node',
+    spawnargs: ['/private/node', `--user-data-dir=${userData}`], signalCode: null },
+    completed: new Promise((resolve, reject) => { rejectCompleted = reject; }) };
+  handle.completed.catch(() => {});
+  if (scenario === 'wrong-user-data') handle.child.spawnargs = ['/private/node'];
+  const codedError = code => Object.assign(new Error(`kill ${code}`), { code });
+  const fakeFs = {
+    readdir: async () => [...table.keys()].map(String),
+    stat: async location => ({ uid: (scenario === 'wrong-root-uid' && location === `/proc/${root.pid}`)
+      || (scenario === 'wrong-leaf-uid' && location === `/proc/${leaf.pid}`) ? 2000 : 1000 }),
+    realpath: async location => scenario === 'wrong-executable' && location.startsWith('/proc/')
+      ? '/another/node' : '/private/node',
+    readFile: async location => {
+      const pid = Number(location.split('/')[2]);
+      const actual = table.get(pid);
+      if (!actual) throw Object.assign(new Error('missing proc'), { code: 'ENOENT' });
+      if (location.endsWith('/cmdline')) {
+        if (scenario === 'root-reused') table.get(root.pid).startTicks = '101';
+        return '/private/node\0';
+      }
+      const snapshot = `${pid} (local control test) ${[
+        actual.state, actual.ppid, ...Array(17).fill('0'), actual.startTicks
+      ].join(' ')}`;
+      if (pid === leaf.pid && rootSignalled && scenario === 'gone-after-read') {
+        table.delete(pid); events.push({ kind: 'reaped-after-live-read', pid });
+      }
+      events.push({ kind: 'read', pid, startTicks: actual.startTicks, state: actual.state, rootSignalled });
+      return snapshot;
+    }
+  };
+  const fakeProcess = { getuid: () => 1000, kill: (pid, signal) => {
+    assert.equal(signal, 'SIGKILL');
+    events.push({ kind: 'signal', pid });
+    if (pid === root.pid && scenario.startsWith('root-error-')) throw codedError(scenario.slice(11));
+    if (!table.has(pid)) throw codedError('ESRCH');
+    if (pid === root.pid) {
+      table.delete(pid); rootSignalled = true; handle.child.signalCode = 'SIGKILL';
+      rejectCompleted(new Error('SIGKILL'));
+      if (scenario === 'gone-before-read') table.delete(leaf.pid);
+      if (scenario === 'zombie-before-read') table.get(leaf.pid).state = 'Z';
+      if (scenario === 'dead-before-read') table.get(leaf.pid).state = 'X';
+      if (scenario === 'reused-before-read') table.get(leaf.pid).startTicks = '201';
+      return;
+    }
+    if (scenario === 'permission-denied') throw codedError('EPERM');
+    if (pid === leaf.pid && ['esrch-gone', 'esrch-zombie', 'esrch-dead', 'esrch-reused',
+      'esrch-live', 'esrch-with-running-sibling'].includes(scenario)) {
+      if (['esrch-gone', 'esrch-with-running-sibling'].includes(scenario)) table.delete(pid);
+      if (scenario === 'esrch-zombie') table.get(pid).state = 'Z';
+      if (scenario === 'esrch-dead') table.get(pid).state = 'X';
+      if (scenario === 'esrch-reused') table.get(pid).startTicks = '201';
+      throw codedError('ESRCH');
+    }
+    if (scenario !== 'still-running' && scenario !== 'esrch-with-running-sibling') table.delete(pid);
+  } };
+  const module = { exports: {} };
+  vm.runInNewContext(helperSource, { module, exports: module.exports,
+    require: name => name === 'node:fs/promises' ? fakeFs : helperRequire(name),
+    process: fakeProcess, setTimeout, clearTimeout, Date: { now: () => { clock += 10000; return clock; } }
+  }, { filename: helperPath });
+  let error;
+  try { await module.exports.abortLocalClient(handle, userData, report, root); }
+  catch (caught) { error = caught; }
+  return { error, report, events, root, leaf, table };
+}
+
+for (const scenario of ['normal', 'gone-before-read', 'zombie-before-read', 'dead-before-read',
+  'reused-before-read', 'gone-after-read', 'esrch-gone', 'esrch-zombie', 'esrch-dead', 'esrch-reused']) {
+  test(`local descendant ${scenario} completes with verified root exit`, async () => {
+    const result = await localClientProbe(scenario);
+    assert.equal(result.error, undefined);
+    assert.equal(result.report.localSignals[0].pid, result.root.pid);
+    assert.equal(result.table.has(result.root.pid), false);
+    const signalErrors = result.report.localSignalErrors ?? [];
+    if (scenario === 'gone-after-read' || scenario.startsWith('esrch-')) {
+      assert.equal(signalErrors.length, 1);
+      assert.equal(signalErrors[0].pid, result.leaf.pid);
+      assert.equal(signalErrors[0].startTicks, result.leaf.startTicks);
+      assert.equal(signalErrors[0].code, 'ESRCH');
+      assert.equal(result.report.localSignals.length, 1, 'ESRCH must not count as a successful signal');
+      if (scenario === 'esrch-reused') assert.equal(signalErrors[0].actual.startTicks, '201');
+    } else {
+      assert.equal(signalErrors.length, 0);
+      assert.equal(result.report.localSignals.length, scenario === 'normal' ? 2 : 1);
+    }
+  });
+}
+for (const [scenario, code] of [['permission-denied', 'EPERM'], ['esrch-live', 'ESRCH'],
+  ['root-error-ESRCH', 'ESRCH'], ['root-error-EPERM', 'EPERM']]) {
+  test(`local client ${scenario} remains an error`, async () => {
+    const result = await localClientProbe(scenario);
+    assert.equal(result.error?.code, code);
+    if (scenario.startsWith('root-error-')) {
+      assert.equal(result.report.localSignals.length, 0);
+      assert.equal(result.events.filter(event => event.kind === 'signal').length, 1);
+    } else {
+      assert.equal(result.report.localSignalErrors[0].code, code);
+      if (scenario === 'esrch-live') assert.equal(result.report.localSignalErrors[0].actual.startTicks, result.leaf.startTicks);
+    }
+  });
+}
+for (const scenario of ['wrong-root-uid', 'wrong-leaf-uid', 'wrong-user-data', 'wrong-executable', 'root-reused']) {
+  test(`local client ${scenario} never authorizes a signal`, async () => {
+    const result = await localClientProbe(scenario);
+    assert.ok(result.error);
+    assert.equal(result.events.filter(event => event.kind === 'signal').length, 0);
+  });
+}
+for (const scenario of ['still-running', 'esrch-with-running-sibling']) {
+  test(`local descendants ${scenario} still fail the final exit confirmation`, async () => {
+    const result = await localClientProbe(scenario);
+    assert.match(result.error?.message ?? '', /Local client descendants still running/);
+  });
+}
 
 if (process.platform === 'linux') test('Supervisor request has a total deadline even when socket stays silent', async () => {
   const storage = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-host-request-'));

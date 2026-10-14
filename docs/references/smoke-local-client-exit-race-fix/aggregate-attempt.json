@@ -1,0 +1,10 @@
+{
+  "command": "npm run test:smoke with remote-ssh-real-reopen filter",
+  "exitCode": 1,
+  "logPath": "/tmp/lcfix-native.log",
+  "logBytes": 674931,
+  "logSha256": "f96b242e84efe000bcc95e0777b2436866abf1cd6f8e42056fb6bbda7d22883f",
+  "exitScenario": "passed all assertions and cleanup",
+  "retainScenario": "not started; ENOSPC during preparation dependency copy",
+  "helperSha256": "81e4b5f900b38faf56421774b188d35e02486e7a65d9778592064b82b9a26225"
+}

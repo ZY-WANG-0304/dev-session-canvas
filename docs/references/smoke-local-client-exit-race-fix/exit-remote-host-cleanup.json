@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "scope": "This loopback fixture server, private client roots and original sshd only; not product settlement.",
+  "signals": [
+    {
+      "pid": 2367581,
+      "starttime": "260417823",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2367857,
+      "starttime": "260417842",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2398312,
+      "starttime": "260421963",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2398316,
+      "starttime": "260421963",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2398720,
+      "starttime": "260422015",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2398724,
+      "starttime": "260422015",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2398725,
+      "starttime": "260422015",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2399258,
+      "starttime": "260422033",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2399765,
+      "starttime": "260422072",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2403868,
+      "starttime": "260422466",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2415540,
+      "starttime": "260424110",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2416892,
+      "starttime": "260424180",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2421857,
+      "starttime": "260424815",
+      "root": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/remote-ssh-fixture/remote-agent",
+      "signal": "SIGTERM",
+      "role": "fixture-server"
+    },
+    {
+      "pid": 2340991,
+      "signal": "SIGTERM",
+      "role": "fixture-sshd"
+    }
+  ],
+  "remaining": [],
+  "failures": [],
+  "pass": true,
+  "sourceArtifact": "/tmp/lcfix-native/remote-ssh-real-reopen-exit/artifacts/remote-host-cleanup.json",
+  "sourceSha256": "5dc0ac1cac6a192b8cdbd61d6b186b0a700522d8a2a2346b1acf692cf154fab9"
+}

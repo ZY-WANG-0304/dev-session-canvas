@@ -18,6 +18,8 @@ PR #332 合并后，#327 最新预合并 `b0198184` 的正式 run38539427680 在
 
 当前仅完成定位：实际 helper 的9种受控对照及100/100读后消失复现、真实内核正常/回收竞态对照确认；原18项仍通过。不修改正式代码、不扩大超时、不重跑或覆盖首败。CI未记录具体失败后代PID和角色，保留未知。建议在独立修复PR集中加入限定后代ESRCH复核、异常边界回归与原生exit/retain验证，再rebase #327重跑完整发布门禁；本条在完整门禁通过前仍是发布阻塞。根SIGKILL、UID/私有作用域/PID身份、EPERM和退出后置检查必须保持。关联：`docs/design-docs/smoke-local-client-exit-root-cause.md`、`docs/exec-plans/completed/smoke-local-client-exit-investigation.md`、`docs/references/smoke-local-client-exit-investigation/README.md`。
 
+2026-10-14修复跟进：用户批准正式修复，后代ESRCH复查原身份absent/Z/X/replacement才能继续，其他错误及仍live保持失败，成功/错误信号分别记录。默认39项、隔离3项、resize9项、runner环境、实际内核回收竞态通过；原版VSCode1.141.1原生exit/retain的原Host条件、Supervisor/session、输入/真实resize与cleanup零残留通过。聚合首轮exit成功后retain准备ENOSPC仍保持exit1，回收本次结束重复载荷后新debug根单独retain通过。证据`docs/references/smoke-local-client-exit-race-fix/`，计划`docs/exec-plans/completed/smoke-local-client-exit-race-fix.md`。代码缺口定向验收已收口；剩余是修复PRreview/合入后#327最新正式预合并完整门禁，具体首败后代身份仍未知。未运行全套Webview/packaged或宣称发布已可放行。
+
 ## 2026-10-13：localhost SSH 重开双状态门禁与上游消息边界
 
 0.26.1发布准备PR327的完整verify在SSH重开第三终端completed断言失败，Canvas已ready，原Agent/普通Terminal恢复。调查基于main ea0c9b19。R2自然复现同35秒失败，原setupHost1305563/startTicks248872585清理前持续S/R；runner仅等待本地Electron退出加三秒，不证明远端Host退出，第三终端kill -0循环因此不结束。R1原版、R3诊断正常退出通过，首败单独保留。
