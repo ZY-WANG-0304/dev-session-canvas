@@ -1,0 +1,74 @@
+{
+  "pr": 327,
+  "base": "f3bb442526b1f5eb57171a5b24c9a6bca868756f",
+  "previous_head": "a95b69b0577587d44519208e7cc9b19947c4f6ae",
+  "head": "cfe1ab40e121bc31689f474e2e6f7cbb9bad4f48",
+  "input": "b0198184496f30fc45532963998a2ae0aab16cb2",
+  "tree": "2233605b6e660fd48da8bd3bb7310d579f3e47fc",
+  "run": 38539427680,
+  "workflow": ".github/workflows/release-preflight.yml",
+  "event": "pull_request",
+  "run_attempt": 1,
+  "created_at": "2026-10-14T09:02:22Z",
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38539427680",
+  "status": "failure",
+  "local_validation": [
+    "release:preflight v0.26.1",
+    "release-preflight regression",
+    "release-preflight workflow regression",
+    "Marketplace completion regression20/20",
+    "actionlint release-preflight.yml",
+    "diff check"
+  ],
+  "scope": "正式最新PR预合并完整验证，不合并/tag/发布。",
+  "job": 115772638697,
+  "verify_exit_code": 1,
+  "started_at": "2026-10-14T09:09:27Z",
+  "failed_at": "2026-10-14T09:26:42Z",
+  "jobs_success": 7,
+  "jobs_failure": 1,
+  "log_bytes": 13552518,
+  "log_sha256": "5518ea6b22c6aaa7ae7924f51566ecf6c36cfe1f6945bb4e85f241c580cce5e8",
+  "vscode": "1.141.1",
+  "failure": "kill ESRCH at local client descendant SIGKILL",
+  "location": "tests/vscode-smoke/remote-host-control.cjs:114",
+  "passed": [
+    "six native target assets",
+    "default npm ci/browser/asset assembly",
+    "static preflight and release regressions",
+    "Marketplace host E2E and completion20",
+    "local links/checkpoint/PTY smoke",
+    "trusted/restricted",
+    "legacy upgrade including resize",
+    "ordinary/multi-root/shared two-window reopen",
+    "fake systemd and unavailable-before-submission fallback"
+  ],
+  "not_completed": [
+    "SSH exit/retain business verification",
+    "full Webview suite",
+    "clean-checkout VSIX and packaged smoke"
+  ],
+  "cause_boundary": "本地客户端子进程身份读取后signal目标已不存在；未捕获ESRCH中断夹具。具体子进程PID及退出原因未记录，未做本轮新修复；不归为resize/ready/产品退出缺陷。",
+  "diagnostic": {
+    "created_at": "2026-10-14T10:43:04.229001+00:00",
+    "branch": "smoke-local-client-exit-investigation",
+    "base": "f3bb442526b1f5eb57171a5b24c9a6bca868756f",
+    "helper_sha256": "656a9e734f9feb6d14d601a018aead91349d706ea32ea207d7c065bef439792f",
+    "production_helper_changed": false,
+    "controlled_scenarios": 9,
+    "controlled_race_repetitions": 100,
+    "real_kernel_scenarios": [
+      "normal",
+      "race"
+    ],
+    "existing_control_regression": {
+      "passed": 18,
+      "total": 18
+    },
+    "confirmed": "Local descendant identity check succeeded, then kill returned ESRCH. Actual unchanged helper reproduces this race deterministically and with real Linux process reaping.",
+    "unknown": "Exact failed CI descendant PID/startTicks/role and the trigger for its natural exit.",
+    "failure_excerpt_sha256": "40d7dd13593b28eb17945be944be9aeaf3051672a37adc3ae93a25cb605a4a38",
+    "repaired": false,
+    "full_release_gate_rerun": false
+  }
+}

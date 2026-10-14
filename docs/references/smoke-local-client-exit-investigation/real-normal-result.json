@@ -1,0 +1,48 @@
+{
+  "purpose": "controlled real-kernel reproduction; production helper unchanged",
+  "scenario": "normal",
+  "helperSha256": "656a9e734f9feb6d14d601a018aead91349d706ea32ea207d7c065bef439792f",
+  "createdAt": "2026-10-14T10:35:02.825Z",
+  "root": {
+    "pid": 3171645,
+    "startTicks": "259798350",
+    "state": "S",
+    "ppid": 3171605
+  },
+  "leaf": {
+    "pid": 3171646,
+    "startTicks": "259798353",
+    "state": "R",
+    "ppid": 3171645
+  },
+  "localSignals": [
+    {
+      "pid": 3171645,
+      "startTicks": "259798350",
+      "state": "S",
+      "ppid": 3171605,
+      "signal": "SIGKILL"
+    },
+    {
+      "pid": 3171646,
+      "startTicks": "259798353",
+      "state": "S",
+      "ppid": 3171645,
+      "signal": "SIGKILL"
+    }
+  ],
+  "events": [
+    {
+      "event": "real-kill",
+      "pid": 3171645,
+      "signal": "SIGKILL",
+      "result": "success"
+    },
+    {
+      "event": "real-kill",
+      "pid": 3171646,
+      "signal": "SIGKILL",
+      "result": "success"
+    }
+  ]
+}
