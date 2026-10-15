@@ -1,0 +1,76 @@
+name: Temporary Runtime Retirement Native Retry
+on:
+  push:
+    branches: [smoke-runtime-retirement-release-ci-temp]
+    paths: [.github/workflows/smoke-runtime-retirement-native-retry-temp.yml]
+permissions: {contents: read, actions: read}
+jobs:
+  delayed-original-retirement:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: trusted
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: b95d8d74854610f74f26772097927678f168c791}
+      - name: Extract finite validation from workflow ref
+        run: git fetch origin "${{ github.sha }}" && git show "${{ github.sha }}:retirement-validation-probe.py" > retirement-validation-probe.py
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38692163764
+          pattern: execution-native-*-38692163764
+          merge-multiple: true
+          path: archives
+      - run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source archives --output platform --input-sha b95d8d74854610f74f26772097927678f168c791
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
+          echo "DSC_RETIREMENT_TRACE=$RUNNER_TEMP/retirement-validation.jsonl" >> "$GITHUB_ENV"
+      - run: python3 retirement-validation-probe.py
+      - name: Original packaged trusted with actual helper and bounded old deletion
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=20s 420s npm run validate:clean-checkout:vsix -- --source working-tree --keep-temp > packaged.log 2>&1
+          code=$?
+          echo "$code" > packaged.exit
+          python3 - <<'PY'
+          import os,json
+          from pathlib import Path
+          code=int(Path('packaged.exit').read_text());log=Path('packaged.log').read_text()
+          trace=Path(os.environ['DSC_RETIREMENT_TRACE']);events=[json.loads(l) for l in trace.read_text().splitlines()] if trace.exists() else []
+          markers=[json.loads(l.split('[retirement-validation] ',1)[1]) for l in log.splitlines() if '[retirement-validation] ' in l]
+          Path('retirement-native-result.json').write_text(json.dumps({'exit':code,'events':events,'markers':markers},indent=2)+'\n')
+          assert code==0 and 'VSIX packaged-payload smoke passed (trusted).' in log
+          before=next(m for m in markers if m['stage']=='before-stop');after=next(m for m in markers if m['stage']=='original-helper-returned')
+          assert after['elapsedMs']<15000
+          for sid in before['ids']:
+            begin=next(e for e in events if e['stage']=='bounded-delete-delay' and e['detail']['sessionId']==sid)
+            end=next(e for e in events if e['stage']=='remove-finished' and e['detail']['sessionId']==sid)
+            assert any(e['stage']=='retirement-query' and e['detail']['sessionId']==sid and e['detail']['exists'] and begin['at']<=e['at']<end['at'] for e in events)
+            assert any(e['stage']=='retirement-query' and e['detail']['sessionId']==sid and e['detail']['exists'] is False and end['at']<=e['at']<=after['at'] for e in events)
+            assert end['at']<=after['at']
+          subsequent=[e for e in events if e['stage']=='create-admission' and e['at']>=after['at']]
+          assert subsequent and all(s['id'] not in before['ids'] for s in subsequent[0]['detail']['sessions'])
+          print(json.dumps({'smoke_exit':code,'original_ids':before['ids'],'elapsedMs':after['elapsedMs'],'causal_assertions':'passed'}))
+          PY
+      - name: Collect bounded native diagnostics
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os,re,tarfile
+          from pathlib import Path
+          files=[Path('packaged.log'),Path('packaged.exit'),Path('retirement-native-result.json'),Path('retirement-probe-input.json'),Path(os.environ.get('DSC_RETIREMENT_TRACE','/nonexistent'))]
+          log=Path('packaged.log').read_text() if Path('packaged.log').exists() else ''
+          for root in re.findall(r'准备隔离 clean checkout 验证目录: (.+)',log):
+            debug=Path(root)/'.debug'
+            if debug.exists():files += [p for p in debug.rglob('*') if p.is_file() and p.stat().st_size<16*1024*1024 and (p.suffix in ('.log','.json','.jsonl','.txt') or '/artifacts/' in str(p))]
+          with tarfile.open('retirement-native-evidence.tar.gz','w:gz') as tar:
+            for p in files:
+              if p.exists():tar.add(p,arcname=str(p).lstrip('/'))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'runtime-retirement-delayed-retry-${{ github.run_id }}', path: retirement-native-evidence.tar.gz}
