@@ -74,3 +74,44 @@ change(test, 'async function runRestrictedSmoke() {', """async function runRestr
   console.info('[restricted-ready-test]', JSON.stringify({time:Date.now(),stage:'restricted-start',snapshot:await getDebugSnapshot()}));""")
 (root/'probe-inputs.json').write_text(json.dumps(changes,indent=2)+'\n')
 print('Applied diagnostic-only stage records; no timeout or assertion changed.')
+
+# Finite causal control: defer only the real editor ready message, preserving its payload.
+if __import__('os').environ.get('DSC_READY_TIMING') == 'during':
+ change(manager, '    const lifecycle = extractWebviewMessageLifecycle(message);', """    const gate = (globalThis as any).__restrictedReadyGate ??= {delivering:false};
+    if (sourceSurface==='editor' && (message as any)?.type==='webview/ready' && !gate.delivering) {
+      if(gate.queued) throw new Error('Control expected exactly one original editor ready');
+      gate.queued={sourceSurface,message,sourceWebview};
+      console.info('[ready-gate]',JSON.stringify({time:Date.now(),stage:'original-ready-held',lifecycle:(message as any).lifecycle}));
+      return;
+    }
+    const lifecycle = extractWebviewMessageLifecycle(message);""")
+ change(manager, '      templateCatalogPostSettled = await this.waitForLifecycleRaceTemplateCatalogPost(oldFrame);', """      templateCatalogPostSettled = await this.waitForLifecycleRaceTemplateCatalogPost(oldFrame);
+      const gate = (globalThis as any).__restrictedReadyGate ??= {delivering:false};
+      const gateDeadline=Date.now()+20000;
+      while(!gate.queued && Date.now()<gateDeadline) await delay(10);
+      if(!gate.queued) throw new Error('Control did not observe original editor ready within 20000ms');
+      gate.delivering=true;
+      const original=gate.queued;
+      this.handleWebviewMessage(original.sourceSurface,original.message,original.sourceWebview);
+      console.info('[ready-gate]',JSON.stringify({time:Date.now(),stage:'original-ready-delivered-during-diagnostic',
+        active:this.activeSurface,ready:this.surfaceReady.editor,lifecycle:this.surfaceLifecycle.editor}));""")
+ change(manager, '      this.clearPendingWorkspaceRootFocusReplay();\n      this.renderedWebviewLifecycle.delete(oldFrame.webview);', """      console.info('[ready-gate]',JSON.stringify({time:Date.now(),stage:'before-diagnostic-restore',
+        active:this.activeSurface,ready:this.surfaceReady.editor,lifecycle:this.surfaceLifecycle.editor}));
+      this.clearPendingWorkspaceRootFocusReplay();
+      this.renderedWebviewLifecycle.delete(oldFrame.webview);""")
+ change(manager, '      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length, ...previousTestDiagnosticEvents);', """      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length, ...previousTestDiagnosticEvents);
+      console.info('[ready-gate]',JSON.stringify({time:Date.now(),stage:'after-diagnostic-restore',
+        active:this.activeSurface,ready:this.surfaceReady.editor,lifecycle:this.surfaceLifecycle.editor}));""")
+if __import__('os').environ.get('DSC_READY_TIMING') == 'before':
+ change(test, '  await verifyWebviewLifecycleRaceDiagnostics();', """  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady,'editor',20000);
+  const gateDeadline=Date.now()+20000;
+  let gateSnapshot=await getDebugSnapshot();
+  while(!gateSnapshot.surfaceLifecycle.editor.bootstrapAck && Date.now()<gateDeadline) {
+    await new Promise(resolve=>setTimeout(resolve,10));
+    gateSnapshot=await getDebugSnapshot();
+  }
+  assert.strictEqual(gateSnapshot.surfaceLifecycle.editor.bootstrapAck,true,'Control needs original editor bootstrap before diagnostic');
+  console.info('[ready-gate]',JSON.stringify({time:Date.now(),stage:'original-editor-ready-before-diagnostic',snapshot:gateSnapshot}));
+  await verifyWebviewLifecycleRaceDiagnostics();
+  console.info('[ready-gate]',JSON.stringify({time:Date.now(),stage:'after-diagnostic-preserved-ready',snapshot:await getDebugSnapshot()}));""")
+(root/'probe-inputs.json').write_text(json.dumps(changes,indent=2)+'\n')

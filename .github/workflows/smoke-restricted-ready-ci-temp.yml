@@ -7,13 +7,15 @@ permissions:
   contents: read
   actions: read
 jobs:
-  stage-restricted:
+  causal-restricted:
     strategy:
       fail-fast: false
       matrix:
-        sample: [1, 2, 3, 4]
+        timing: [during, before]
     runs-on: ubuntu-22.04
-    timeout-minutes: 14
+    timeout-minutes: 10
+    env:
+      DSC_READY_TIMING: ${{ matrix.timing }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,25 +39,49 @@ jobs:
           echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
       - name: Add read-only stage records
         run: python3 restricted-ready-probe.py
-      - name: Fixed-count fresh-profile restricted observations
+      - name: Control original ready delivery timing
         env:
           DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: restricted
         run: |
           set +e
-          for iteration in 1 2 3 4 5 6; do
-            export DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT="$GITHUB_WORKSPACE/.debug/restricted-stage-${iteration}"
-            timeout --signal=TERM --kill-after=20s 180s npm run test:smoke > "restricted-${iteration}.log" 2>&1
-            status=$?
-            echo "$status" > "restricted-${iteration}.exit"
-            tail -n 8 "restricted-${iteration}.log"
-            if test "$status" -ne 0; then exit "$status"; fi
-          done
+          timeout --signal=TERM --kill-after=20s 180s npm run test:smoke > restricted.log 2>&1
+          status=$?
+          echo "$status" > restricted.exit
+          python3 - <<'PYCONTROL'
+          from pathlib import Path
+          import json,os
+          code=int(Path('restricted.exit').read_text())
+          log=Path('restricted.log').read_text()
+          mode=os.environ['DSC_READY_TIMING']
+          gates=[json.loads(line.split('[ready-gate] ',1)[1]) for line in log.splitlines() if '[ready-gate] ' in line]
+          if mode=='during':
+            delivered=next(x for x in gates if x['stage']=='original-ready-delivered-during-diagnostic')
+            restored=next(x for x in gates if x['stage']=='after-diagnostic-restore')
+            assert delivered['ready'] and delivered['active']=='panel'
+            assert restored['ready'] is False and restored['active']=='editor'
+            assert code==1 and 'Timed out waiting for the editor Canvas to become ready (20000ms).' in log
+          else:
+            before=next(x for x in gates if x['stage']=='original-editor-ready-before-diagnostic')
+            after=next(x for x in gates if x['stage']=='after-diagnostic-preserved-ready')
+            assert before['snapshot']['surfaceReady']['editor'] and after['snapshot']['surfaceReady']['editor']
+            assert code==0 and 'Restricted workspace smoke passed.' in log
+          Path('control-result.json').write_text(json.dumps({'mode':mode,'smoke_exit':code,'causal_assertions':'passed','gates':gates},indent=2)+'\n')
+          print(json.dumps({'mode':mode,'smoke_exit':code,'causal_assertions':'passed'}))
+          PYCONTROL
+          exit "$?"
       - name: Preserve original restricted evidence
         if: always()
         run: |
-          tar -czf restricted-evidence.tar.gz --ignore-failed-read restricted-*.log restricted-*.exit probe-inputs.json .debug/restricted-stage-* .vscode-test/*/resources/app/out/vs/workbench/contrib/webview/browser/pre/index.html .vscode-test/*/resources/app/out/vs/workbench/contrib/webview/browser/pre/service-worker.js
+          python3 - <<'PYFILES'
+          from pathlib import Path
+          import tarfile
+          roots=[Path('restricted.log'),Path('restricted.exit'),Path('probe-inputs.json'),Path('control-result.json'),Path('.debug/vscode-smoke/restricted/artifacts'),Path('.debug/vscode-smoke/restricted/user-data/logs')]
+          with tarfile.open('restricted-evidence.tar.gz','w:gz') as tar:
+            for root in roots:
+              if root.exists():tar.add(root)
+          PYFILES
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stage-restricted-${{ matrix.sample }}-${{ github.run_id }}
+          name: causal-restricted-${{ matrix.timing }}-${{ github.run_id }}
           path: restricted-evidence.tar.gz
