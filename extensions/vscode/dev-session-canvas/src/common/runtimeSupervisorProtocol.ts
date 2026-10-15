@@ -242,6 +242,13 @@ export interface RuntimeSupervisorGetSessionSnapshotParams {
   sessionId: string;
 }
 
+/** Read-only smoke evidence; includes sessions hidden by ordinary retiring-session APIs. */
+export interface RuntimeSupervisorSessionRetirementForTest {
+  sessionId: string;
+  kind: ExecutionNodeKind;
+  exists: boolean;
+}
+
 export interface RuntimeSupervisorGetSessionCheckpointParams {
   sessionId: string;
   authorityId: string;
@@ -334,6 +341,12 @@ export interface RuntimeSupervisorDeleteSessionParams {
 }
 
 export type RuntimeSupervisorRequest =
+  | {
+      type: 'request';
+      id: string;
+      method: 'getSessionRetirementForTest';
+      params: { sessionId: string; kind: ExecutionNodeKind };
+    }
   | {
       type: 'request';
       id: string;
@@ -440,6 +453,7 @@ export type RuntimeSupervisorResponse =
         | TerminalStreamReadDescriptor
         | TerminalStreamPage
         | RuntimeSupervisorSessionSnapshot
+        | RuntimeSupervisorSessionRetirementForTest
         | RuntimeSupervisorSessionCheckpointResult
         | RuntimeSupervisorSubscribeSessionResult
         | RuntimeSupervisorAckSessionRevisionResult

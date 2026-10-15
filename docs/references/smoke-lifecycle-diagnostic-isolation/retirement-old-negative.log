@@ -1,0 +1,33 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The validation function is expected to return "true". Received false
+
+Caught error:
+
+AssertionError [ERR_ASSERTION]: Old storage must retire before any original start
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:64:24
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:126:38 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: AssertionError [ERR_ASSERTION]: Old storage must retire before any original start
+      at dispatchWebviewMessage (file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:52:14)
+      at verifyLiveRuntimePersistence (evalmachine.<anonymous>:13:11)
+      at async waitForActual (node:assert:644:5)
+      at async Function.rejects (node:assert:767:25)
+      at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:64:24
+      at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:126:38 {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  },
+  expected: [Function (anonymous)],
+  operator: 'rejects',
+  diff: 'simple'
+}
+
+Node.js v22.23.3

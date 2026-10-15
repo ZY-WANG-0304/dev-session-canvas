@@ -1,6 +1,6 @@
 ---
 title: packaged Runtime 重启准入拒绝根因调查
-decision_status: 比较中
+decision_status: 已选定
 validation_status: 验证中
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
@@ -35,11 +35,11 @@ run38688569741的真实VS Code packaged trusted受控对照已确认同入口可
 
 当前可确认：smoke把live=false当作可立即重启的前提，缺少Supervisor退役屏障；正式容量拒绝符合契约。原完整CI缺少逐事件计数，不能追认当时一定只有这一时序原因，也未证明VS Code上游或打包文件损坏。packaged是触发环境，非功能范围边界；普通用户过快启动且旧收尾达到2也可按契约收到拒绝。
 
-## 候选修复与验收
+## 正式方案
 
-优先在smoke停止/重启流程等待两份原Supervisor会话的存储退役结果，然后发起一次原新启动；屏障固定停止前的完整runtime身份，保存、读者或删除失败仍按失败退出，不延长产品容量、自动重试或清未知责任。实现要先确认现有诊断/RPC是否可证明`removeSession`完成，不能只等`runtime-delete-requested`、删除已提交或owner空数组。当前产品`preserveTerminalReads`删除RPC在reader尚未退休时可能成功返回而保留session，不能未经核对就把RPC成功等同实际删除。
+在`tests/vscode-smoke/extension-tests.cjs:verifyLiveRuntimePersistence`停止/重启流程等待两份原Supervisor会话的存储退役结果，然后发起一次原新启动；屏障固定停止前的完整runtime身份，保存、读者或删除失败仍按失败退出，不延长产品容量、自动重试或清未知责任。现有getSessionSnapshot的sessionNotFound与registry都隐藏retiring对象，不能证明`removeSession`完成。`supervisor/runtimeSupervisorMain.ts`增加仅显式smoke环境可调用的`getSessionRetirementForTest`只读RPC，直接查询sessions含retiring；返回原sessionId/kind/exists，不发停止、删除、订阅或变更准入。既有`getRuntimeSupervisorStateForTest`只补充registry入口socketPath。`tests/vscode-smoke/runtime-retirement.cjs`在停止前按原runtimeStoragePath选择socket，保持独立固定连接，核验hello/backend/owner/pid与原session存在，再在原15秒总预算内派发原停止消息、等待两节点live=false和exists=false；不复用会重置预算的ensureStopped等待。未知结果、断连、响应身份错误或原node被替换均失败，finally关闭观察连接；不增加生产重试或清理API。当前产品`preserveTerminalReads`删除RPC在reader尚未退休时可能成功返回而保留session，不能未经核对就把RPC成功等同实际删除。
 
-固定sleep不能证明退役，延长`waitForRuntimeExecutionStarted`预算也不会重新发起已拒绝请求；放宽pending容量会改变产品约束。这些不作为本次建议。是否需要产品层增加更清楚的瞬时容量提示属于独立判断，本次没有实施新修复。
+固定sleep不能证明退役，延长`waitForRuntimeExecutionStarted`预算也不会重新发起已拒绝请求；放宽pending容量会改变产品约束。这些不作为本次建议。是否需要产品层增加更清楚的瞬时容量提示属于独立判断，不在本次修复范围。
 
 验收需用实际停止助手证明其在旧删除责任保留时等待、旧身份释放后仅启动一次、缺失/失败退役仍失败，并保留Agent与Terminal原started证据及完整trusted后续断言。最终发布输入仍须rebase PR327并跑无过滤完整门禁；诊断或单项通过不放行发布。
 
@@ -47,4 +47,6 @@ run38688569741的真实VS Code packaged trusted受控对照已确认同入口可
 
 证据随PR335集中在`docs/references/smoke-lifecycle-diagnostic-isolation/`。原始完整首败是`packaged-first-failure.*`；本轮对照使用同固定组合源码、run38681093813同输入六资产、Ubuntu22.04、Node22、VS Code1.142.0、clean-checkout默认npmci及隔离HOME，测试对象是实际生产VSIX解包后的Host与原生provider。临时诊断记录Supervisor原身份、owner/authority计数和stop/delete/remove时序；有界workflow与插桩是验证输入，不进入正式实现。
 
-临时控制第一版run38688460456因JSONL转义缺陷取消；另一版run38688728706也因语法校验失败取消，均不作为产品证据。run38688569741与更严格run38688776387均完成，六份完整工件在devshm本地核验；精简入库证据保留后者三份完整ZIP来源、hash、输入hash和原身份时序。活动workflow和probe已在ea62310d移除，未新增PR或修改正式实现。
+临时控制第一版run38688460456因JSONL转义缺陷取消；另一版run38688728706也因语法校验失败取消，均不作为产品证据。run38688569741与更严格run38688776387均完成，六份完整工件在devshm本地核验；精简入库证据保留后者三份完整ZIP来源、hash、输入hash和原身份时序。调查活动workflow和probe已在ea62310d移除；后续修复获用户授权，仍集中PR335。
+
+正式修复已在PR335分支实施。本地原具名调用旧实现先红，修后17项夹具与真实socket回归、136项Supervisor含retiring/删除失败回归、36项原等待边界、类型检查和本地build通过。输入与日志hash见retirement-local-validation.json；本地依赖与原六资产复用不替代新完整门禁，原生延迟删除验收与无过滤组合release:verify待运行。

@@ -16,7 +16,10 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) 隔离与异常清理、10项回归、协议/CLI、类型检查及六资产本地构建通过。
 - [x] (2026-10-15) 组合f8d9ad53六资产、真实原ready三时序及none20秒负例完成；原样完整release:verify已运行并保留首次failure。
 - [x] (2026-10-15) 获取完整job首败与工件来源：packaged trusted执行启动rejected-before-acquire，editor ready/ack=true。
-- [ ] 实施关联packaged夹具修复并闭环完整门禁阻塞（根因定位已完成；本轮仅调查）。
+- [x] (2026-10-15) 用户授权后实施关联packaged夹具修复；完整门禁验证单独列下项。
+- [x] (2026-10-15) 只读测试RPC包含retiring；原socket/hello/owner/session固定，派发原停止消息和退役查询共用15秒预算。
+- [x] (2026-10-15) 原具名调用旧实现稳定抢跑；17/17夹具（含真实socket）及136/136Supervisor、类型检查、原等待36项回归通过。
+- [ ] 原生延迟删除trusted及完整组合门禁。
 - [x] (2026-10-15) 完成拒绝入口审计：容量检查与adapter启动准入均使用相同错误文案；停止助手没有等待Supervisor旧会话退役。
 - [x] (2026-10-15) 实际Supervisor134/134；两轮同输入packaged受控拒绝均原15秒exit1，等待两份实际退役与自然trusted均exit0，六份完整工件核验。
 - [x] (2026-10-15) 记录根因与产品契约边界，移除活动临时诊断；本阶段未实施新修复。
@@ -58,13 +61,13 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 结果与复盘
 
 
-隔离实现、旧源码负对照、10项实际类回归、Host owner wiring 全套、协议/CLI、类型检查及本地六资产构建通过。组合f8d9ad53/run38681093813六资产和真实before/during/after原bootstrapAck通过，none按原20秒失败且预期失败断言通过。完整release:verify已完成exit1，首败是packaged trusted Agent启动rejected-before-acquire；源码与Webview阶段通过。修复PR335已创建且CI通过，packaged单项run38685094467 exit0，已确认停止夹具遗漏Supervisor旧存储退役屏障；关联修复尚未实施，原完整CI缺少逐事件计数。最终正式发布门禁须在修复合入后PR327最新预合并输入重新验证。
+隔离实现、旧源码负对照、10项实际类回归、Host owner wiring 全套、协议/CLI、类型检查及本地六资产构建通过。组合f8d9ad53/run38681093813六资产和真实before/during/after原bootstrapAck通过，none按原20秒失败且预期失败断言通过。完整release:verify已完成exit1，首败是packaged trusted Agent启动rejected-before-acquire；源码与Webview阶段通过。修复PR335已创建且CI通过，packaged单项run38685094467 exit0，已确认停止夹具遗漏Supervisor旧存储退役屏障；关联退役屏障已实现并通过本地回归，原生与新完整门禁待验证；原完整CI缺少逐事件计数。最终正式发布门禁须在修复合入后PR327最新预合并输入重新验证。
 
 2026-10-15 环境记录：根分区 ENOSPC 使首次构建写共享 serializer 入口失败，已从原 pinned 源码在任务依赖副本重建，恢复共享入口为短 symlink。此后所有依赖写入及 TMPDIR 指向 devshm，借用安装的验证不冒充 default npmci。
 
 2026-10-15 完整组合结果：命令04:30:27–04:54:17Z以failure结束，首败栈与最终snapshot已核验，未取得clean-checkout原Host现场。另run38683788069两份fallback限时阶段均exit0，此前API日志静默属于取数滞后。完整发布门禁保持阻塞，关联问题继续同修复范围审计。
 
-修复交付状态：ready隔离已创建PR335，关联packaged根因已确认、尚未实施新修复；本计划保留active，因为packaged首次失败及最终PR327门禁尚未收口。发布验证待办登记技术债，不把单项通过写成完整通过。
+修复交付状态：ready隔离已创建PR335，关联packaged根因已确认、退役屏障已实现并通过本地回归；本计划保留active，因为packaged首次失败及最终PR327门禁尚未收口。发布验证待办登记技术债，不把单项通过写成完整通过。
 
 PR335 headbfd70dff的CI通过（无发布契约，六资产明确skip）；主工作区WORKFLOW.md保持。上一阶段临时workflow及probe在79ba3c0f移除并推送，原运行仍保留。
 
@@ -73,3 +76,5 @@ PR335 headbfd70dff的CI通过（无发布契约，六资产明确skip）；主�
 本次修订：收敛已结束run的过时运行中描述，新增packaged准入根因调查阶段，区分观察、候选与原现场缺口。调查入口是supervisor/runtimeSupervisorMain.ts:createSession/removeSession、panel/CanvasPanelManager.ts:applyCompletedRuntimeSupervisorSnapshot，以及tests/vscode-smoke/extension-tests.cjs:verifyLiveRuntimePersistence/ensureAgentStopped。已运行实际类原有production retirement回归；固定f8d9ad53临时诊断复用38681093813同输入六资产，两轮均验证旧删除责任保留时原创建被拒绝、实际退役后完整trusted通过。所有临时文件放devshm，活动workflow与probe已在ea62310d移除；结论与候选修复记packaged-runtime-restart-admission-root-cause.md。
 
 本次修订完成packaged调查：两个真实原生受控拒绝、两组等待退役与自然trusted对照，原15秒等待和无自动重试核准。原失败仅保留日志/snapshot范围，新的完整发布门禁仍是阻塞。
+
+2026-10-15 修复阶段决策：现有getSessionSnapshot的sessionNotFound及registry均隐藏retiring对象，不能用于退役证明。增加仅显式smoke环境可调用的getSessionRetirementForTest只读RPC，直接查sessions含retiring，不更改生产delete/准入。既有测试registry入口补socketPath；smoke在停止前以原runtimeStoragePath选择入口并打开独立固定socket，核验hello owner/backend/pid及原session存在，然后停止两执行并等待原查询exists=false。所有操作共享原15秒预算，未知/断连/错身份均失败，finally只关闭观察连接。只在verifyLiveRuntimePersistence显式重启调用接入，普通停止契约保持。新增实际Supervisor含慢/失败删除回归与原具名调用VM回归；旧实现稳定先红；修复/文档集中PR335。

@@ -8,6 +8,7 @@ const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { resetCanvasAfterFinalPersistence } = require('./reset-canvas.cjs');
 const { findExecutionOutput } = require('./execution-output.cjs');
+const { captureRuntimeExecution, stopRuntimeExecutionsAfterRetirement } = require('./runtime-retirement.cjs');
 const { collectTerminalHistory, restoreTerminalHistory } = require('./terminal-history.cjs');
 
 const FAKE_CLAUDE_PROVIDER_COMMAND = 'claude';
@@ -10119,8 +10120,15 @@ async function verifyLiveRuntimePersistence(agentNodeId, terminalNodeId) {
     // that launch before replacing it with the explicitly-sized persistence session.
     await waitForAgentLive(agentNodeId);
     await waitForTerminalLive(terminalNodeId);
-    await ensureAgentStopped(agentNodeId);
-    await ensureTerminalStopped(terminalNodeId);
+    const original = await getDebugSnapshot();
+    await stopRuntimeExecutionsAfterRetirement({
+      executions: [captureRuntimeExecution(original, 'agent', agentNodeId),
+        captureRuntimeExecution(original, 'terminal', terminalNodeId)],
+      stop: execution => dispatchWebviewMessage({ type: 'webview/stopExecutionSession',
+        payload: { kind: execution.kind, nodeId: execution.nodeId } }),
+      getSnapshot: getDebugSnapshot,
+      getRuntimeSupervisorState
+    });
 
     await dispatchWebviewMessage({
       type: 'webview/startExecutionSession',

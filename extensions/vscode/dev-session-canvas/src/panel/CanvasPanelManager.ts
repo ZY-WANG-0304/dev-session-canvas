@@ -1206,6 +1206,7 @@ interface RuntimeSupervisorRegistryForTest {
 interface RuntimeSupervisorRegistryEntryForTest {
   runtimeStoragePath: string;
   registryPath?: string;
+  socketPath?: string;
   exists: boolean;
   registry?: unknown;
   error?: string;
@@ -10899,14 +10900,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): RuntimeSupervisorRegistryEntryForTest {
     const normalizedRuntimeStoragePath = this.resolveRuntimeStoragePath(runtimeStoragePath);
     try {
-      const registryPath = this.getRuntimeHostBackend(
+      const { registryPath, socketPath } = this.getRuntimeHostBackend(
         backendKind,
         normalizedRuntimeStoragePath
-      ).paths.registryPath;
+      ).paths;
       if (!fs.existsSync(registryPath)) {
         return {
           runtimeStoragePath: normalizedRuntimeStoragePath,
           registryPath,
+          socketPath,
           exists: false
         };
       }
@@ -10914,6 +10916,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return {
         runtimeStoragePath: normalizedRuntimeStoragePath,
         registryPath,
+        socketPath,
         exists: true,
         registry: JSON.parse(fs.readFileSync(registryPath, 'utf8')) as unknown
       };

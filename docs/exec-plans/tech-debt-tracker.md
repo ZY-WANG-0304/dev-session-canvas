@@ -11,11 +11,11 @@ PR327正式9198cacb/run38665513172 attempt2在源码restricted首开editor ready
 
 关联：`docs/design-docs/smoke-restricted-ready-root-cause.md`、`docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/references/smoke-restricted-ready-root-cause/README.md`。
 
-## 2026-10-15：packaged Runtime重启夹具漏等旧会话退役（根因确认，待修复）
+## 2026-10-15：packaged Runtime重启夹具漏等旧会话退役（已实现，原生与完整验证待完成）
 
 ensureAgentStopped/ensureTerminalStopped只以live=false及localExecutions退休判断；live-runtime旧session仍可能等待读者、Host保存或journal删除，符合正式pending:2责任保护。真实Supervisor134/134通过；同固定f8d9ad53、原六资产、隔离HOME/default npmci/VS Code1.142.0，两轮受控旧删除均复现verifyLiveRuntimePersistence原15秒拒绝，释放后不会补发启动；等待原两份实际退役后完整trusted通过，自然样本亦通过。六份完整工件已核验，精简输入/hash/时序集中PR335，不新增诊断或文档PR。
 
-剩余修复是在停止/重启夹具按原完整runtime身份等待实际存储退役，覆盖延迟、失败及错误身份；不能仅等delete提交、owner空数组或增加sleep。本轮仅定位，未实施新修复。修复后仍需最终PR327预合并完整门禁，原完整CI缺少Supervisor逐事件事实。见docs/design-docs/packaged-runtime-restart-admission-root-cause.md与admission-investigation-result.json。
+已按用户授权实现：仅smoke模式的只读RPC直接查原Supervisor sessions含retiring；停止前捕获完整身份并固定原socket连接，原停止/查询/等待共用15秒，两个节点停止且原存储不存在才各启动一次。17项夹具及136项实际Supervisor回归、原等待36项、类型检查与本地六资产build通过，旧具名调用稳定先红。删除失败、断连和错身份保持失败。原生有界延迟删除及完整组合门禁待运行；修复合入后仍需最终PR327预合并完整门禁，原完整CI缺少Supervisor逐事件事实。见docs/design-docs/packaged-runtime-restart-admission-root-cause.md与admission-investigation-result.json。
 
 ## 记录字段
 

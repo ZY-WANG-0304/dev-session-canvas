@@ -645,6 +645,20 @@ export class RuntimeSupervisorServer {
   private async handleRequest(socket: net.Socket, request: RuntimeSupervisorRequest): Promise<void> {
     try {
       switch (request.method) {
+        case 'getSessionRetirementForTest': {
+          const testMode = process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE?.trim().toLowerCase();
+          if (testMode !== '1' && testMode !== 'true') throw new Error('Session retirement observation is only available in smoke test mode.');
+          const { sessionId, kind } = request.params;
+          if (typeof sessionId !== 'string' || !sessionId.trim() || !['agent', 'terminal'].includes(kind)) {
+            throw new Error('Invalid session retirement observation identity.');
+          }
+          // requireSession and the registry hide retiring sessions before their storage is removed.
+          const session = this.sessions.get(sessionId);
+          if (session && session.kind !== kind) throw new Error('Session retirement observation kind changed.');
+          this.writeMessage(socket, { type: 'response', id: request.id, ok: true,
+            result: { sessionId, kind, exists: session !== undefined } });
+          return;
+        }
         case 'hello':
           this.writeMessage(socket, {
             type: 'response',

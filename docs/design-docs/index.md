@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/packaged-runtime-restart-admission-root-cause.md` | packaged停止/重启夹具遗漏Supervisor存储退役屏障；两轮原生受控容量拒绝与等待退役trusted对照确认，原完整CI缺少逐事件计数；候选修复未实施 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |
+| `docs/design-docs/packaged-runtime-restart-admission-root-cause.md` | packaged停止/重启夹具遗漏Supervisor存储退役屏障；两轮原生受控容量拒绝与等待退役trusted对照确认，原完整CI缺少逐事件计数；固定原socket/会话的只读退役屏障已选定，修复验证中 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |
 | `docs/design-docs/smoke-restricted-ready-root-cause.md` | PR327源码restricted首开ready超时：fake生命周期诊断跨await回滚真实editor ready，19项有限采样及原ready投递前/期间因果对照确认；独立诊断对象与两真实面三时序回归已完成，组合门禁验证中 | VSCode 集成域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |
 | `docs/design-docs/local-final-snapshot-boundary-root-cause.md` | PR327模板保存导出后reset遗漏最终保存夹具；同输入CI复现与确定性原生对照，正式清理接线/9项先红后绿、原生pending后二次清空及完整0.26.1临时组合门禁通过 | 执行编排域、项目状态域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/local-final-snapshot-boundary-investigation.md`、`docs/exec-plans/completed/smoke-template-final-persistence-repair.md` | 2026-10-15 |
 | `docs/design-docs/smoke-local-client-exit-root-cause.md` | PR327本地后代检查后退出的ESRCH竞态；限定后代复查原身份与保留退出后置条件，39项回归/真实内核/原生exit-retain通过，完整发布门禁另验 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/smoke-local-client-exit-investigation.md`、`docs/exec-plans/completed/smoke-local-client-exit-race-fix.md` | 2026-10-14 |
