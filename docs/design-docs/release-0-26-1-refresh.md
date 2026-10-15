@@ -78,3 +78,7 @@ PR332合入后的正式run38539427680在预合并b0198184的SSH exit本地后代
 2026-10-14修订：PR329已合入，PR327按最新main rebase，正式非草稿PR预合并门禁的结果以PR327最新checks为准；历史失败不覆盖新输入结果。
 
 2026-10-14接续：PR332合入main f3bb4425后重新rebase，正式最新PR预合并门禁结果继续绑定PR327实际head/base/input/checks；原Marketplace首败保留历史含义。
+
+## PR334合入后的正式发布输入复验（2026-10-15）
+
+PR334已正常合入main6e708c6b，模板导出后的具名cleanup复用原最终保存reset helper；28项回归、原生pending窗口及临时组合完整通过为修复证据。PR327从旧head20d237c5 rebase到该主线，静态发布范围、版本与依赖不变，未引入额外测试/产品/workflow修改。正式门禁须由本次最新PR预合并输入生成同run六平台资产并运行无过滤release:verify；结果以PR327最新head/base/预合并SHA/run/checks为准，旧run38579057915与修复组合run38656127632均保留原范围。本次未授权合并、tag或发布。
