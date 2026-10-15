@@ -10,8 +10,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {sample: 8, filter: 'legacy-supervisor-upgrade', control: late}
-          - {sample: 9, filter: 'legacy-supervisor-upgrade', control: natural}
+          - {sample: 10, filter: 'legacy-supervisor-upgrade', control: late}
+          - {sample: 11, filter: 'legacy-supervisor-upgrade', control: natural}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
