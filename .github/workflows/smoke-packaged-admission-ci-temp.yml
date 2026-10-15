@@ -1,4 +1,5 @@
 name: Temporary Packaged Admission Root Cause
+# Probe revision: JSONL escape correction
 on:
   push:
     branches: [smoke-lifecycle-release-ci-temp]
