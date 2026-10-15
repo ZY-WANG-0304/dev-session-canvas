@@ -1,0 +1,12 @@
+{
+  "run": 38685094467,
+  "input": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "assets_run": 38681093813,
+  "scope": "bounded original test:vsix-smoke trusted; default npmci; packaged payload; single scenario",
+  "smoke_exit": 0,
+  "packaged_trusted_passed": true,
+  "artifact": 11949179528,
+  "bytes": 681317,
+  "sha256": "ee428ea4ecea5474705aa1d7a8c52b75fda801006b44d5a730d1344631ac6bac",
+  "limitation": "does not replace failure of full clean-checkout sequential gate"
+}

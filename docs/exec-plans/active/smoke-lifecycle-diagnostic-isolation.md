@@ -14,7 +14,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) 核对 ready、bootstrap、目录发布、焦点重放和读者清理依赖，选择独立诊断对象。
 - [x] (2026-10-15) 两真实面三时序及异常/成功责任保护共10项通过；旧 during 稳定缺少真实 bootstrap。
 - [x] (2026-10-15) 隔离与异常清理、10项回归、协议/CLI、类型检查及六资产本地构建通过。
-- [ ] 固定修复与 PR327 材料，在临时分支构建同 ref/run 六资产并运行完整 release:verify。
+- [x] (2026-10-15) 组合f8d9ad53六资产、真实原ready三时序及none20秒负例完成；原样完整release:verify已运行并保留首次failure。
+- [ ] 获取首次packaged错误与工件，闭环剩余完整门禁阻塞。
 - [ ] 同步证据与技术债，归档计划，创建单一修复 PR 并核对 CI。
 
 ## 正式实现与里程碑
@@ -48,6 +49,10 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 结果与复盘
 
 
-隔离实现、旧源码负对照、10项实际类回归、Host owner wiring 全套、协议/CLI、类型检查及本地六资产构建通过。组合 f8d9ad53 的 run38681093813 正在构建同 ref/run 六资产后运行原样完整 release:verify，并附加真实原 ready 前/期间/后和缺失20秒负例。需完成原生验证、组合结果、证据与单一 PR 交付才能收口本计划。最终正式发布门禁仍须在修复合入后 PR327 的最新预合并输入重新验证。
+隔离实现、旧源码负对照、10项实际类回归、Host owner wiring 全套、协议/CLI、类型检查及本地六资产构建通过。组合 f8d9ad53 的 run38681093813 正在构建同 ref/run 六资产后运行原样完整 release:verify，并附加真实原 ready 前/期间/后和缺失20秒负例。六资产同ref/run已完成并本地assemble核验；真实before/during/after均完整restricted exit0、实际bootstrapAck通过；none原20秒exit1且预期失败断言通过。完整release:verify尚在运行，需完成组合结果、证据与单一 PR 交付才能收口本计划。最终正式发布门禁仍须在修复合入后 PR327 的最新预合并输入重新验证。
 
 2026-10-15 环境记录：根分区 ENOSPC 使首次构建写共享 serializer 入口失败，已从原 pinned 源码在任务依赖副本重建，恢复共享入口为短 symlink。此后所有依赖写入及 TMPDIR 指向 devshm，借用安装的验证不冒充 default npmci。
+
+2026-10-15 完整组合结果更新：run38681093813 的完整命令04:30:27–04:54:17Z以failure结束，源码trusted/restricted、所有本地重开、systemd、SSHexit/retain、426项Webview已通过；latest日志位于clean-checkout packaged trusted。具体首败待工件上传，不能猜测。另run38683788069两份fallback限时阶段均exit0，此前API日志静默属于取数滞后。完整发布门禁保持阻塞，关联问题继续同修复范围审计。
+
+修复交付状态：实现与根因回归完成，可以独立创建修复PR；本计划保留active，因为packaged首次失败及最终PR327门禁尚未收口。发布验证待办登记技术债，不把单项通过写成完整通过。

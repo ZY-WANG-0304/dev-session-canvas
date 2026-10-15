@@ -1,0 +1,701 @@
+{
+  "input": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "run": 38681093813,
+  "assemble": "passed",
+  "summaries": [
+    {
+      "schemaVersion": 1,
+      "inputCommit": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+      "target": "darwin-arm64",
+      "inputs": [
+        {
+          "url": "https://nodejs.org/dist/v25.6.0/node-v25.6.0-headers.tar.gz",
+          "sha256": "6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0"
+        },
+        {
+          "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-darwin-arm64.tar.gz",
+          "sha256": "f9f02f7872e2e8ee54320fce13deb9d56904f32bb0615b6e21aa3371d8899150"
+        }
+      ],
+      "build": {
+        "runtime": {
+          "name": "node",
+          "version": "25.6.0",
+          "node": "25.6.0",
+          "modules": "141",
+          "napi": "10"
+        },
+        "requirements": {
+          "napi": 8,
+          "macos": {
+            "deploymentTarget": "11.0"
+          }
+        },
+        "sources": {
+          "ownerSha256": "7f9b38ea82a4cb69acdd815dbd26ec84b9b8757e5046f9a4ede1953d119753a4",
+          "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+          "patchSha256": "ddea3f3400332a197910dd7fd0441ccf6bf6d340f43ac8cc6159c9404e0e2fa0",
+          "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+          "patchedSha256": "365688c2aeecc37913dfd74ba39edf72ee9898cb896a46ff07bde6d9fc53f92c",
+          "helperSourceSha256": "22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6",
+          "helperPatchedSha256": "35ed5c2dfb2df7e605f367f0026dff54e51c2a7e7cf96829ee10681f7741bd13",
+          "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+          "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+        },
+        "compiler": {
+          "command": "clang++",
+          "sdk": "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+          "args": [
+            "-std=c++17",
+            "-bundle",
+            "-undefined",
+            "dynamic_lookup",
+            "-fPIC",
+            "-pthread",
+            "-fexceptions",
+            "-DNAPI_VERSION=8",
+            "-DNAPI_CPP_EXCEPTIONS",
+            "-DNODE_GYP_MODULE_NAME=pty",
+            "-arch",
+            "arm64",
+            "-isysroot",
+            "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+            "-mmacosx-version-min=11.0",
+            "-I",
+            "/Users/runner/work/_temp/execution-assets/darwin-arm64-inputs-aNjZHS/headers/include/node",
+            "-I",
+            "/Users/runner/work/dev-session-canvas/dev-session-canvas/node_modules/node-pty/node_modules/node-addon-api",
+            "-I",
+            "/Users/runner/work/_temp/execution-assets/darwin-arm64/inputs",
+            "/Users/runner/work/_temp/execution-assets/darwin-arm64/inputs/pty-candidate.cc",
+            "-o",
+            "/Users/runner/work/_temp/execution-assets/darwin-arm64/execution-owner.node"
+          ],
+          "helperArgs": [
+            "-std=c++17",
+            "-arch",
+            "arm64",
+            "-isysroot",
+            "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+            "-mmacosx-version-min=11.0",
+            "/Users/runner/work/_temp/execution-assets/darwin-arm64/inputs/spawn-helper.cc",
+            "-o",
+            "/Users/runner/work/_temp/execution-assets/darwin-arm64/spawn-helper"
+          ]
+        }
+      },
+      "files": [
+        "manifest.json",
+        "execution-owner.node",
+        "spawn-helper"
+      ],
+      "loads": [
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "24.6.0",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "16.17.1",
+            "electron": null,
+            "modules": "93",
+            "napi": "8"
+          },
+          "manifestSha256": "e3e1e47f42dd213ceb172f9f3af45b27b266b00cb285f96fc0e5f8b975aff632",
+          "binarySha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        },
+        {
+          "platform": "darwin",
+          "arch": "arm64",
+          "osRelease": "24.6.0",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "25.6.0",
+            "electron": null,
+            "modules": "141",
+            "napi": "10"
+          },
+          "manifestSha256": "e3e1e47f42dd213ceb172f9f3af45b27b266b00cb285f96fc0e5f8b975aff632",
+          "binarySha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        }
+      ],
+      "archiveSha256": "89154b65a451da86cbd1392dad450ba5d2c7b174db425b6213450d712cf3f3bc",
+      "nativeLoaded": true,
+      "executionApiCalled": false,
+      "productValidated": false
+    },
+    {
+      "schemaVersion": 1,
+      "inputCommit": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+      "target": "linux-arm64-glibc",
+      "inputs": [
+        {
+          "image": "node:16.17.1-buster@sha256:0c729a67256272265260411226179dd7ca26d933623758928f0914ffd452dbcf"
+        }
+      ],
+      "build": {
+        "runtime": {
+          "name": "node",
+          "version": "16.17.1",
+          "node": "16.17.1",
+          "modules": "93",
+          "napi": "8"
+        },
+        "requirements": {
+          "napi": 8,
+          "linux": {
+            "libc": "glibc",
+            "glibcMinimum": "2.17",
+            "glibcxxMinimum": "3.4.22",
+            "cxxabiMinimum": "1.3.9"
+          }
+        },
+        "sources": {
+          "ownerSha256": "0fc33c98dd01744ce6435f6ffebfc328c7ff639347866f62f6afe22ebfb0b68b",
+          "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+          "patchSha256": "1fd8e45ab617f2b5807dac443e88aa4fdd03986ec30e6235a59424071aa1ee8f",
+          "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+          "patchedSha256": "8659f4b8e973a8a900d73f9ecbca8b6eeb3dd4f12fafd74beeffa7df0c98ff5d",
+          "headersSha256": "d519851765da74af38f948869edd2f6bc36be77d1adeb5add7c1628ecc168a95",
+          "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+        },
+        "compiler": null
+      },
+      "files": [
+        "manifest.json",
+        "execution-owner.node"
+      ],
+      "loads": [
+        {
+          "platform": "linux",
+          "arch": "arm64",
+          "osRelease": "6.17.0-1022-azure",
+          "glibcVersionRuntime": "2.28",
+          "runtime": {
+            "name": "node",
+            "node": "16.17.1",
+            "electron": null,
+            "modules": "93",
+            "napi": "8"
+          },
+          "manifestSha256": "8c1d370af1edcfb9bc98d952c76064f8516d18c7c4405326b3cec2cd228d1e2b",
+          "binarySha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        },
+        {
+          "platform": "linux",
+          "arch": "arm64",
+          "osRelease": "6.17.0-1022-azure",
+          "glibcVersionRuntime": "2.39",
+          "runtime": {
+            "name": "node",
+            "node": "25.6.0",
+            "electron": null,
+            "modules": "141",
+            "napi": "10"
+          },
+          "manifestSha256": "8c1d370af1edcfb9bc98d952c76064f8516d18c7c4405326b3cec2cd228d1e2b",
+          "binarySha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        }
+      ],
+      "archiveSha256": "b86c8f2c398b26408b8e5e653d8667daa5e1a20ad6d8df9ed90cfbae207ad806",
+      "nativeLoaded": true,
+      "executionApiCalled": false,
+      "productValidated": false
+    },
+    {
+      "schemaVersion": 1,
+      "inputCommit": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+      "target": "linux-x64-glibc",
+      "inputs": [
+        {
+          "image": "node:16.17.1-buster@sha256:674750127bbf45f52660ada71ed1f1491d15e94c16583bff6df0df2489481049"
+        }
+      ],
+      "build": {
+        "runtime": {
+          "name": "node",
+          "version": "16.17.1",
+          "node": "16.17.1",
+          "modules": "93",
+          "napi": "8"
+        },
+        "requirements": {
+          "napi": 8,
+          "linux": {
+            "libc": "glibc",
+            "glibcMinimum": "2.14",
+            "glibcxxMinimum": "3.4.22",
+            "cxxabiMinimum": "1.3.9"
+          }
+        },
+        "sources": {
+          "ownerSha256": "0fc33c98dd01744ce6435f6ffebfc328c7ff639347866f62f6afe22ebfb0b68b",
+          "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+          "patchSha256": "1fd8e45ab617f2b5807dac443e88aa4fdd03986ec30e6235a59424071aa1ee8f",
+          "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+          "patchedSha256": "8659f4b8e973a8a900d73f9ecbca8b6eeb3dd4f12fafd74beeffa7df0c98ff5d",
+          "headersSha256": "bc701b67b4a3748b29310de025132254dd55414b299d6d7bc9c1769e2d675a7f",
+          "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+        },
+        "compiler": null
+      },
+      "files": [
+        "manifest.json",
+        "execution-owner.node"
+      ],
+      "loads": [
+        {
+          "platform": "linux",
+          "arch": "x64",
+          "osRelease": "6.17.0-1022-azure",
+          "glibcVersionRuntime": "2.28",
+          "runtime": {
+            "name": "node",
+            "node": "16.17.1",
+            "electron": null,
+            "modules": "93",
+            "napi": "8"
+          },
+          "manifestSha256": "792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa",
+          "binarySha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        },
+        {
+          "platform": "linux",
+          "arch": "x64",
+          "osRelease": "6.17.0-1022-azure",
+          "glibcVersionRuntime": "2.39",
+          "runtime": {
+            "name": "node",
+            "node": "25.6.0",
+            "electron": null,
+            "modules": "141",
+            "napi": "10"
+          },
+          "manifestSha256": "792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa",
+          "binarySha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        }
+      ],
+      "archiveSha256": "f43e1f69e7e12cd454ba6c006e3a48163e3952c0c5727c34fa7aef1b4d576dab",
+      "nativeLoaded": true,
+      "executionApiCalled": false,
+      "productValidated": false
+    },
+    {
+      "schemaVersion": 1,
+      "inputCommit": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+      "target": "darwin-x64",
+      "inputs": [
+        {
+          "url": "https://nodejs.org/dist/v25.6.0/node-v25.6.0-headers.tar.gz",
+          "sha256": "6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0"
+        },
+        {
+          "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-darwin-x64.tar.gz",
+          "sha256": "3db26761ad8493b894d42260d7e65094b7af9bc473588739e61bc1c32d6ff955"
+        }
+      ],
+      "build": {
+        "runtime": {
+          "name": "node",
+          "version": "25.6.0",
+          "node": "25.6.0",
+          "modules": "141",
+          "napi": "10"
+        },
+        "requirements": {
+          "napi": 8,
+          "macos": {
+            "deploymentTarget": "10.13"
+          }
+        },
+        "sources": {
+          "ownerSha256": "7f9b38ea82a4cb69acdd815dbd26ec84b9b8757e5046f9a4ede1953d119753a4",
+          "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+          "patchSha256": "ddea3f3400332a197910dd7fd0441ccf6bf6d340f43ac8cc6159c9404e0e2fa0",
+          "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+          "patchedSha256": "365688c2aeecc37913dfd74ba39edf72ee9898cb896a46ff07bde6d9fc53f92c",
+          "helperSourceSha256": "22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6",
+          "helperPatchedSha256": "35ed5c2dfb2df7e605f367f0026dff54e51c2a7e7cf96829ee10681f7741bd13",
+          "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+          "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+        },
+        "compiler": {
+          "command": "clang++",
+          "sdk": "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+          "args": [
+            "-std=c++17",
+            "-bundle",
+            "-undefined",
+            "dynamic_lookup",
+            "-fPIC",
+            "-pthread",
+            "-fexceptions",
+            "-DNAPI_VERSION=8",
+            "-DNAPI_CPP_EXCEPTIONS",
+            "-DNODE_GYP_MODULE_NAME=pty",
+            "-arch",
+            "x86_64",
+            "-isysroot",
+            "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+            "-mmacosx-version-min=10.13",
+            "-I",
+            "/Users/runner/work/_temp/execution-assets/darwin-x64-inputs-pbpPgD/headers/include/node",
+            "-I",
+            "/Users/runner/work/dev-session-canvas/dev-session-canvas/node_modules/node-pty/node_modules/node-addon-api",
+            "-I",
+            "/Users/runner/work/_temp/execution-assets/darwin-x64/inputs",
+            "/Users/runner/work/_temp/execution-assets/darwin-x64/inputs/pty-candidate.cc",
+            "-o",
+            "/Users/runner/work/_temp/execution-assets/darwin-x64/execution-owner.node"
+          ],
+          "helperArgs": [
+            "-std=c++17",
+            "-arch",
+            "x86_64",
+            "-isysroot",
+            "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+            "-mmacosx-version-min=10.13",
+            "/Users/runner/work/_temp/execution-assets/darwin-x64/inputs/spawn-helper.cc",
+            "-o",
+            "/Users/runner/work/_temp/execution-assets/darwin-x64/spawn-helper"
+          ]
+        }
+      },
+      "files": [
+        "manifest.json",
+        "execution-owner.node",
+        "spawn-helper"
+      ],
+      "loads": [
+        {
+          "platform": "darwin",
+          "arch": "x64",
+          "osRelease": "24.6.0",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "16.17.1",
+            "electron": null,
+            "modules": "93",
+            "napi": "8"
+          },
+          "manifestSha256": "7a7ffcfa10ddbff448684d70d9076727fbc8e3fbed72487009b2dd03bf6f7ea6",
+          "binarySha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        },
+        {
+          "platform": "darwin",
+          "arch": "x64",
+          "osRelease": "24.6.0",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "25.6.0",
+            "electron": null,
+            "modules": "141",
+            "napi": "10"
+          },
+          "manifestSha256": "7a7ffcfa10ddbff448684d70d9076727fbc8e3fbed72487009b2dd03bf6f7ea6",
+          "binarySha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        }
+      ],
+      "archiveSha256": "073ac3b79bb7e6be585831646e37e1820e2bfb488221eb4a36e79a4ca75caa6e",
+      "nativeLoaded": true,
+      "executionApiCalled": false,
+      "productValidated": false
+    },
+    {
+      "schemaVersion": 1,
+      "inputCommit": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+      "target": "win32-x64",
+      "inputs": [
+        {
+          "url": "https://nodejs.org/dist/v25.6.0/node-v25.6.0-headers.tar.gz",
+          "sha256": "6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0"
+        },
+        {
+          "url": "https://nodejs.org/dist/v25.6.0/win-x64/node.lib",
+          "sha256": "f7201b932d898bdbf78aee7add288d2263c4791f1502068ad11b6c14675c6324"
+        },
+        {
+          "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-win-x64.zip",
+          "sha256": "ed290151efb417262b9808a70738d4ab79e9d53653a6a9f4b8dd97912e279dce"
+        }
+      ],
+      "build": {
+        "runtime": {
+          "name": "node",
+          "version": "25.6.0",
+          "node": "25.6.0",
+          "modules": "141",
+          "napi": "10"
+        },
+        "requirements": {
+          "napi": 8,
+          "windows": {
+            "minimumBuild": 17763,
+            "conptyVersion": "1.25.260303002",
+            "addonCrt": "static"
+          }
+        },
+        "sources": {
+          "ownerSha256": "8609bbae2215d9adc841694f9463e39703df2e534b124157b1aad1eba007c4c3",
+          "patchSha256": "40d3e33dd6c88660402da1fafd8c47dd46d68147ee89fd3d16f1f06fc562d1a8",
+          "nodePtySha256": "d502cce570552c7a1bea373c7672975eeb330c3025dd151cf9c180ca2a1becc2",
+          "patchedSha256": "ff67ce8938b1640c9aaf7a7f418dde2a17dc90df750d0e91fdc1054be05884b1",
+          "pathUtilSha256": "54a6041c38bf714893c1d18db3d2888f42089d0209c3d1dc8d444ac6dbf46a0b",
+          "windowsHeadersSha256": "d8c42fd52932f0ca9f5f9180d60912dfcda6f896a42e95515377b00ae1685a5a",
+          "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+          "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae",
+          "nodeLibSha256": "f7201b932d898bdbf78aee7add288d2263c4791f1502068ad11b6c14675c6324",
+          "delayLoadHookSha256": "b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422"
+        },
+        "compiler": {
+          "command": "cl.exe",
+          "args": [
+            "/nologo",
+            "/LD",
+            "/MT",
+            "/EHsc",
+            "/std:c++17",
+            "/guard:cf",
+            "/sdl",
+            "/W3",
+            "/ZH:SHA_256",
+            "/DWIN32_LEAN_AND_MEAN",
+            "/DNAPI_CPP_EXCEPTIONS",
+            "/DNODE_ADDON_API_CPP_EXCEPTIONS",
+            "/D_HAS_EXCEPTIONS=1",
+            "/DBUILDING_NODE_EXTENSION",
+            "/DNAPI_VERSION=8",
+            "/DHOST_BINARY=\"node.exe\"",
+            "/DNODE_GYP_MODULE_NAME=conpty",
+            "/ID:\\a\\_temp\\execution-assets\\win32-x64-inputs-KkfdU9\\headers\\include\\node",
+            "/ID:\\a\\dev-session-canvas\\dev-session-canvas\\node_modules\\node-pty\\node_modules\\node-addon-api",
+            "/ID:\\a\\_temp\\execution-assets\\win32-x64\\inputs",
+            "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\conpty-candidate.cc",
+            "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\path_util.cc",
+            "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\win_delay_load_hook.cc",
+            "/link",
+            "/DLL",
+            "/DYNAMICBASE",
+            "/guard:cf",
+            "/MACHINE:X64",
+            "/OUT:D:\\a\\_temp\\execution-assets\\win32-x64\\conpty.node",
+            "/DELAYLOAD:node.exe",
+            "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\node.lib",
+            "shlwapi.lib",
+            "delayimp.lib"
+          ]
+        }
+      },
+      "files": [
+        "manifest.json",
+        "conpty.node",
+        "conpty/conpty.dll",
+        "conpty/OpenConsole.exe"
+      ],
+      "loads": [
+        {
+          "platform": "win32",
+          "arch": "x64",
+          "osRelease": "10.0.26100",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "16.17.1",
+            "electron": null,
+            "modules": "93",
+            "napi": "8"
+          },
+          "manifestSha256": "640b5064af3ed856bb56ca538d6e7d47221d64e4731626d95b5dec73d073e6d4",
+          "binarySha256": "4e2207eaaa99887bd7761a0f5a673471b91ba7f9b848584d336d418979c5de6c",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        },
+        {
+          "platform": "win32",
+          "arch": "x64",
+          "osRelease": "10.0.26100",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "25.6.0",
+            "electron": null,
+            "modules": "141",
+            "napi": "10"
+          },
+          "manifestSha256": "640b5064af3ed856bb56ca538d6e7d47221d64e4731626d95b5dec73d073e6d4",
+          "binarySha256": "4e2207eaaa99887bd7761a0f5a673471b91ba7f9b848584d336d418979c5de6c",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        }
+      ],
+      "archiveSha256": "43b327a739f95c3346de977ad65ec12b6c2d80f9b7b209cfde0d301200fef363",
+      "nativeLoaded": true,
+      "executionApiCalled": false,
+      "productValidated": false
+    },
+    {
+      "schemaVersion": 1,
+      "inputCommit": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+      "target": "win32-arm64",
+      "inputs": [
+        {
+          "url": "https://nodejs.org/dist/v25.6.0/node-v25.6.0-headers.tar.gz",
+          "sha256": "6e6662d6081f36bb3896df42a331e9ccbb4286fda72daf7bc7fb5bfb18fa8ed0"
+        },
+        {
+          "url": "https://nodejs.org/dist/v25.6.0/win-arm64/node.lib",
+          "sha256": "47750ee99207e5b621671565852cf7385f27bf664470886b9437137342a497c9"
+        },
+        {
+          "url": "https://github.com/electron/electron/releases/download/v22.3.14/electron-v22.3.14-win32-arm64.zip",
+          "sha256": "17e354aca0683f79d79f7fa7ecfa8a4381b356d04fa45ec0aa85b5f048151c10"
+        }
+      ],
+      "build": {
+        "runtime": {
+          "name": "node",
+          "version": "25.6.0",
+          "node": "25.6.0",
+          "modules": "141",
+          "napi": "10"
+        },
+        "requirements": {
+          "napi": 8,
+          "windows": {
+            "minimumBuild": 17763,
+            "conptyVersion": "1.25.260303002",
+            "addonCrt": "static"
+          }
+        },
+        "sources": {
+          "ownerSha256": "8609bbae2215d9adc841694f9463e39703df2e534b124157b1aad1eba007c4c3",
+          "patchSha256": "40d3e33dd6c88660402da1fafd8c47dd46d68147ee89fd3d16f1f06fc562d1a8",
+          "nodePtySha256": "d502cce570552c7a1bea373c7672975eeb330c3025dd151cf9c180ca2a1becc2",
+          "patchedSha256": "ff67ce8938b1640c9aaf7a7f418dde2a17dc90df750d0e91fdc1054be05884b1",
+          "pathUtilSha256": "54a6041c38bf714893c1d18db3d2888f42089d0209c3d1dc8d444ac6dbf46a0b",
+          "windowsHeadersSha256": "d8c42fd52932f0ca9f5f9180d60912dfcda6f896a42e95515377b00ae1685a5a",
+          "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+          "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae",
+          "nodeLibSha256": "47750ee99207e5b621671565852cf7385f27bf664470886b9437137342a497c9",
+          "delayLoadHookSha256": "b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422"
+        },
+        "compiler": {
+          "command": "cl.exe",
+          "args": [
+            "/nologo",
+            "/LD",
+            "/MT",
+            "/EHsc",
+            "/std:c++17",
+            "/guard:cf",
+            "/sdl",
+            "/W3",
+            "/ZH:SHA_256",
+            "/DWIN32_LEAN_AND_MEAN",
+            "/DNAPI_CPP_EXCEPTIONS",
+            "/DNODE_ADDON_API_CPP_EXCEPTIONS",
+            "/D_HAS_EXCEPTIONS=1",
+            "/DBUILDING_NODE_EXTENSION",
+            "/DNAPI_VERSION=8",
+            "/DHOST_BINARY=\"node.exe\"",
+            "/DNODE_GYP_MODULE_NAME=conpty",
+            "/IC:\\a\\_temp\\execution-assets\\win32-arm64-inputs-QvkfRG\\headers\\include\\node",
+            "/IC:\\a\\dev-session-canvas\\dev-session-canvas\\node_modules\\node-pty\\node_modules\\node-addon-api",
+            "/IC:\\a\\_temp\\execution-assets\\win32-arm64\\inputs",
+            "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\conpty-candidate.cc",
+            "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\path_util.cc",
+            "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\win_delay_load_hook.cc",
+            "/link",
+            "/DLL",
+            "/DYNAMICBASE",
+            "/guard:cf",
+            "/MACHINE:ARM64",
+            "/OUT:C:\\a\\_temp\\execution-assets\\win32-arm64\\conpty.node",
+            "/DELAYLOAD:node.exe",
+            "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\node.lib",
+            "shlwapi.lib",
+            "delayimp.lib"
+          ]
+        }
+      },
+      "files": [
+        "manifest.json",
+        "conpty.node",
+        "conpty/conpty.dll",
+        "conpty/OpenConsole.exe"
+      ],
+      "loads": [
+        {
+          "platform": "win32",
+          "arch": "arm64",
+          "osRelease": "10.0.26200",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "electron",
+            "node": "16.17.1",
+            "electron": "22.3.14",
+            "modules": "110",
+            "napi": "8"
+          },
+          "manifestSha256": "5996e2457a03d99121d047abec09cd6e4fe0f1ed0325ae9b2ca572795cefd6cd",
+          "binarySha256": "7b750ff73c757f57fe2161b780aa0584d19e686522707165f7dd32bc258a11ba",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        },
+        {
+          "platform": "win32",
+          "arch": "arm64",
+          "osRelease": "10.0.26200",
+          "glibcVersionRuntime": null,
+          "runtime": {
+            "name": "node",
+            "node": "25.6.0",
+            "electron": null,
+            "modules": "141",
+            "napi": "10"
+          },
+          "manifestSha256": "5996e2457a03d99121d047abec09cd6e4fe0f1ed0325ae9b2ca572795cefd6cd",
+          "binarySha256": "7b750ff73c757f57fe2161b780aa0584d19e686522707165f7dd32bc258a11ba",
+          "nativeLoaded": true,
+          "executionApiCalled": false,
+          "productValidated": false
+        }
+      ],
+      "archiveSha256": "66a792e9d0818175d4683fb70b1ef74d4e0318fcc37c6f67d2c93a2f89802c88",
+      "nativeLoaded": true,
+      "executionApiCalled": false,
+      "productValidated": false
+    }
+  ]
+}

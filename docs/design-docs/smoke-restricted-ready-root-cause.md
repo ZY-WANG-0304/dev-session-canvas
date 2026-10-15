@@ -13,7 +13,7 @@ updated_at: 2026-10-15
 
 ## 问题与结论
 
-确认了测试诊断与真实页面启动交错的竞态：`CanvasPanelManager.runWebviewLifecycleRaceDiagnosticsForTest()`临时切换到fake panel，跨await保存和恢复两个承载面的状态；真实editor在期间发出的唯一ready被接受，但随后被finally恢复的旧ready=false覆盖，bootstrap也未发出。后续open复用原页面，ready不会再发，20秒超时。已在固定发布输入自然复现并以真实消息投递时序对照验证机制；正式方案已选择独立诊断对象，隔离实现与两真实面三时序回归已完成，原生与完整组合门禁仍待执行。
+确认了测试诊断与真实页面启动交错的竞态：`CanvasPanelManager.runWebviewLifecycleRaceDiagnosticsForTest()`临时切换到fake panel，跨await保存和恢复两个承载面的状态；真实editor在期间发出的唯一ready被接受，但随后被finally恢复的旧ready=false覆盖，bootstrap也未发出。后续open复用原页面，ready不会再发，20秒超时。已在固定发布输入自然复现并以真实消息投递时序对照验证机制；正式方案已选择独立诊断对象，隔离实现与两真实面三时序回归已完成，真实VS Code三时序与缺失ready负例已通过，完整组合命令已执行，源码及Webview通过，clean-checkout packaged首次failure的具体错误仍待原日志。
 
 原正式门禁为PR327预合并9198cacbee91fc170b82578e353c16a27f3574b8（base6e708c6b/head8313fc72），run38665513172 attempt2。源码checkpoint与trusted通过，restricted在`runRestrictedSmoke`第一次ready等待20000ms超时，尚未进入restricted模板和后续完整门禁。原workflow未上传Host现场，因此不能逐事件追认原CI一定只有这一原因；本轮已确认同输入、同错误入口的真实可触发缺陷。
 
@@ -64,4 +64,10 @@ updated_at: 2026-10-15
 
 bootstrap 内容使用独立空 Canvas 状态和调用前同步复制的 runtime 展示配置；诊断目录为独立空目录，默认模板不应用。替换的是外部数据与序列化边界，`handleWebviewMessage`、帧 promotion/current 校验、`bootstrapInteractiveSurface`、`postState`、消息排队/确认、焦点重放及请求匹配仍执行正式方法。晚到目录回调仍指向独立对象；finally 只清理独立请求定时器、fake 引用与队列，异常也不会清理真实责任。
 
-适用范围仅测试生命周期诊断，普通打开与消息协议保持。回归覆盖两种真实承载面的 ready 前/期间/后交错，真实 bootstrap/ack 和帧身份、读者/请求/焦点/事件保留，所有既有 fake 竞态断言不降低。原生 trusted/restricted 与完整组合发布门禁仍待执行，不能提前宣称修复或发布通过。推进与命令见关联执行计划。
+适用范围仅测试生命周期诊断，普通打开与消息协议保持。回归覆盖两种真实承载面的 ready 前/期间/后交错，真实 bootstrap/ack 和帧身份、读者/请求/焦点/事件保留，所有既有 fake 竞态断言不降低。临时run38681093813在组合f8d9ad53、同ref/run六资产、Ubuntu22.04/Node22/default npmci/VS Code1.142.0下完成三种原ready投递时序：before/during/after均完整restricted exit0且实际bootstrapAck成立；none仅保留原ready不投递，原20秒等待exit1，预期失败断言通过。期间真实活动面仍editor、原frame保留。完整无过滤门禁运行中，trusted及其他范围以该完整结果核对，不把三个restricted成功拼成发布通过。证据与可复跑控制见`docs/references/smoke-lifecycle-diagnostic-isolation/`。推进与命令见关联执行计划。
+
+## 修复验证与发布边界
+
+两真实承载面三种ready时序、诊断成功/异常责任保护、缺失ready与生产守卫共10项直接类回归通过，Host owner wiring 634/634、类型检查、构建及协议/CLI通过；旧源码during稳定缺少真实bootstrap。组合run38681093813的原样完整命令于04:54:17Z以failure结束：源码checkpoint/trusted/restricted、各本地重开、systemd、SSHexit/retain、426项Webview均通过，后续clean-checkout packaged trusted启动后失败。具体首败错误仍待原job日志/工件，证据收集尚运行，不据此推断新增代码缺陷。
+
+同输入同资产default npmci的原packaged trusted单项run38685094467 exit0并确认`VSIX packaged-payload smoke passed (trusted)`；完整工件681317bytes，SHA256 ee428ea4ecea5474705aa1d7a8c52b75fda801006b44d5a730d1344631ac6bac。单项成功不能替代完整失败。修复可独立review，本次ready缺陷已由负对照/三时序/真实bootstrap和完整源码验收闭环；0.26.1仍须定位packaged首败，并在修复合入后rebase PR327跑最终正式完整门禁。

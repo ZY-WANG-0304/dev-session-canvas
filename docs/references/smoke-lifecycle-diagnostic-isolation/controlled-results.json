@@ -1,0 +1,206 @@
+[
+  {
+    "mode": "during",
+    "smoke_exit": 0,
+    "assertions": "passed",
+    "gates": [
+      {
+        "stage": "original-ready-held",
+        "lifecycle": {
+          "surface": "editor",
+          "mode": "active",
+          "generation": 2,
+          "frameId": "frame-a8f2c0cb-024f-435e-8187-115413610880"
+        }
+      },
+      {
+        "stage": "original-ready-delivered-during",
+        "fakeActive": "panel",
+        "realActive": "editor",
+        "ready": true,
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-a8f2c0cb-024f-435e-8187-115413610880",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      },
+      {
+        "stage": "after-diagnostic",
+        "mode": "during",
+        "ready": true,
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-a8f2c0cb-024f-435e-8187-115413610880",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      },
+      {
+        "stage": "real-bootstrap-ack",
+        "mode": "during",
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-a8f2c0cb-024f-435e-8187-115413610880",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      }
+    ],
+    "artifact": 11949050764,
+    "artifact_bytes": 267463,
+    "artifact_sha256": "eca43ee96229fef37c5455f581f19dbbb7f7f934d36761a26b3a65048499e9b5"
+  },
+  {
+    "mode": "before",
+    "smoke_exit": 0,
+    "assertions": "passed",
+    "gates": [
+      {
+        "stage": "original-ready-held",
+        "lifecycle": {
+          "surface": "editor",
+          "mode": "active",
+          "generation": 2,
+          "frameId": "frame-7881b758-0060-4012-bcbe-286ef2f7d29a"
+        }
+      },
+      {
+        "stage": "after-diagnostic",
+        "mode": "before",
+        "ready": true,
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-7881b758-0060-4012-bcbe-286ef2f7d29a",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      },
+      {
+        "stage": "real-bootstrap-ack",
+        "mode": "before",
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-7881b758-0060-4012-bcbe-286ef2f7d29a",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      }
+    ],
+    "artifact": 11948636200,
+    "artifact_bytes": 265272,
+    "artifact_sha256": "bbf378b99256c0162b978b596d17857ec7371ec63992e6ee16d9f2bd479644e2"
+  },
+  {
+    "mode": "after",
+    "smoke_exit": 0,
+    "assertions": "passed",
+    "gates": [
+      {
+        "stage": "original-ready-held",
+        "lifecycle": {
+          "surface": "editor",
+          "mode": "active",
+          "generation": 2,
+          "frameId": "frame-cee74c8a-b762-4141-93d8-501b0a59c33c"
+        }
+      },
+      {
+        "stage": "after-diagnostic",
+        "mode": "after",
+        "ready": true,
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-cee74c8a-b762-4141-93d8-501b0a59c33c",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      },
+      {
+        "stage": "real-bootstrap-ack",
+        "mode": "after",
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-cee74c8a-b762-4141-93d8-501b0a59c33c",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        }
+      }
+    ],
+    "artifact": 11948357599,
+    "artifact_bytes": 266755,
+    "artifact_sha256": "e252102fe224470067e385987f4b41747c6edcd3b0b39f81e67872de207d2638"
+  },
+  {
+    "mode": "none",
+    "smoke_exit": 1,
+    "assertions": "passed",
+    "gates": [
+      {
+        "stage": "original-ready-held",
+        "lifecycle": {
+          "surface": "editor",
+          "mode": "active",
+          "generation": 2,
+          "frameId": "frame-a80ac9cf-43dd-4c9a-ad2c-2406080b862b"
+        }
+      },
+      {
+        "stage": "after-diagnostic",
+        "mode": "none",
+        "ready": false,
+        "lifecycle": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        }
+      }
+    ],
+    "artifact": 11948052762,
+    "artifact_bytes": 456886,
+    "artifact_sha256": "aa9616118c35ea4581599b031da5eb11cfdecb5b254d617040dace72ac9e28fc"
+  }
+]

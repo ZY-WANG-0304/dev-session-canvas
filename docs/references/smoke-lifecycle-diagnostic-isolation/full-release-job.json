@@ -1,0 +1,106 @@
+{
+  "id": 116247614878,
+  "name": "full-release",
+  "status": "in_progress",
+  "conclusion": null,
+  "started_at": "2026-10-15T04:29:43Z",
+  "completed_at": null,
+  "steps": [
+    {
+      "name": "Set up job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 1,
+      "started_at": "2026-10-15T04:29:44Z",
+      "completed_at": "2026-10-15T04:29:45Z"
+    },
+    {
+      "name": "Run actions/checkout@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 2,
+      "started_at": "2026-10-15T04:29:45Z",
+      "completed_at": "2026-10-15T04:29:48Z"
+    },
+    {
+      "name": "Run actions/setup-node@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 3,
+      "started_at": "2026-10-15T04:29:48Z",
+      "completed_at": "2026-10-15T04:29:50Z"
+    },
+    {
+      "name": "Run npm ci",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 4,
+      "started_at": "2026-10-15T04:29:50Z",
+      "completed_at": "2026-10-15T04:30:01Z"
+    },
+    {
+      "name": "Run npx --no-install playwright install --with-deps chromium",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 5,
+      "started_at": "2026-10-15T04:30:01Z",
+      "completed_at": "2026-10-15T04:30:26Z"
+    },
+    {
+      "name": "Run actions/download-artifact@v4",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 6,
+      "started_at": "2026-10-15T04:30:26Z",
+      "completed_at": "2026-10-15T04:30:27Z"
+    },
+    {
+      "name": "Assemble same-ref same-run assets",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 7,
+      "started_at": "2026-10-15T04:30:27Z",
+      "completed_at": "2026-10-15T04:30:27Z"
+    },
+    {
+      "name": "Full unchanged release gate",
+      "status": "completed",
+      "conclusion": "failure",
+      "number": 8,
+      "started_at": "2026-10-15T04:30:27Z",
+      "completed_at": "2026-10-15T04:54:17Z"
+    },
+    {
+      "name": "Collect gate evidence",
+      "status": "in_progress",
+      "conclusion": null,
+      "number": 9,
+      "started_at": "2026-10-15T04:54:17Z",
+      "completed_at": null
+    },
+    {
+      "name": "Run actions/upload-artifact@v4",
+      "status": "pending",
+      "conclusion": null,
+      "number": 10,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "name": "Post Run actions/setup-node@v4",
+      "status": "pending",
+      "conclusion": null,
+      "number": 19,
+      "started_at": null,
+      "completed_at": null
+    },
+    {
+      "name": "Post Run actions/checkout@v4",
+      "status": "pending",
+      "conclusion": null,
+      "number": 20,
+      "started_at": null,
+      "completed_at": null
+    }
+  ]
+}
