@@ -1,0 +1,13 @@
+2026-10-15T02:20:02.5276087Z Webview(fc19aa69-6919-488e-93cb-919cf5dcf21c): will update content options
+2026-10-15T02:20:02.5277083Z Webview(fc19aa69-6919-488e-93cb-919cf5dcf21c): skipping content options update
+2026-10-15T02:20:02.5523591Z Webview(fc19aa69-6919-488e-93cb-919cf5dcf21c): webview ready
+2026-10-15T02:20:02.5528619Z Webview(fc19aa69-6919-488e-93cb-919cf5dcf21c): will update content
+2026-10-15T02:20:02.6034939Z Webview.loadLocalResource - trying to load resource. requestUri=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.css?v%3D5c2dbef678db, resourceToLoad=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.css?v%3D5c2dbef678db
+2026-10-15T02:20:02.6247903Z Webview.loadLocalResource - trying to load resource. requestUri=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.js?v%3Ddbd3abb917dc, resourceToLoad=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.js?v%3Ddbd3abb917dc
+2026-10-15T02:20:02.6252249Z Webview.loadLocalResource - Loaded. requestUri=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.css?v%3D5c2dbef678db, resourceToLoad=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.css?v%3D5c2dbef678db
+2026-10-15T02:20:02.6351504Z Webview.loadLocalResource - Loaded. requestUri=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.js?v%3Ddbd3abb917dc, resourceToLoad=file:///home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/dist/webview.js?v%3Ddbd3abb917dc
+2026-10-15T02:20:23.0211011Z Error: Timed out waiting for the editor Canvas to become ready (20000ms).
+2026-10-15T02:20:23.0214007Z 	at async runRestrictedSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/tests/vscode-smoke/extension-tests.cjs:4766:3)
+2026-10-15T02:20:23.0216267Z Extension host test runner error Error: Timed out waiting for the editor Canvas to become ready (20000ms).
+2026-10-15T02:20:23.0218470Z 	at async runRestrictedSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/restricted/smoke-host/tests/vscode-smoke/extension-tests.cjs:4766:3)
+2026-10-15T02:20:23.1032193Z 完整发布验证失败：npm run test

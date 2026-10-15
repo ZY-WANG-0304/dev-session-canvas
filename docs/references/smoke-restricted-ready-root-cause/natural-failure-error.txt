@@ -1,0 +1,6 @@
+Error: Timed out waiting for the editor Canvas to become ready (20000ms).
+	at _CanvasPanelManager.waitForCanvasReady (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/smoke-host/dist/extension.js:29513:11)
+	at async uh._executeContributedCommand (file:///home/runner/work/dev-session-canvas/dev-session-canvas/.vscode-test/vscode-linux-x64-1.142.0/resources/app/out/vs/workbench/api/node/extensionHostProcess.js:165:49379)
+	at async runRestrictedSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/smoke-host/tests/vscode-smoke/extension-tests.cjs:4770:3)
+	at async runSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/smoke-host/tests/vscode-smoke/extension-tests.cjs:305:5)
+	at async Object.run (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/smoke-host/tests/vscode-smoke/extension-tests.cjs:173:5)

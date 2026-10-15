@@ -410,3 +410,7 @@ Webview的外层容器ready、资源派发、脚本执行、React ready发送与
 
 
 HTTP夹具收到请求、客户端解析成功与用户反馈到达是不同事件。异步发布门禁应在原预算内分别确认唯一请求与准确完成提示，拦截器存活到反馈验收结束；不能用请求计数代替完成信号。依据见 `marketplace-publish-smoke-completion.md`。
+
+Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同完成点；仅凭loaded或超时不能确定责任层。原现场缺失时，同输入再跑的成功和人为故障必须分别保留范围，不能追认旧失败已定因。
+
+在真实Host运行的fake诊断跨await保存/恢复状态时，不得回滚其他真实承载面的异步ready或bootstrap进展；诊断日志自身的恢复也可能抹去因果证据。先验证隔离边界，不能用延长ready等待掩盖一次性事件被旧快照覆盖。依据见smoke-restricted-ready-root-cause.md。
