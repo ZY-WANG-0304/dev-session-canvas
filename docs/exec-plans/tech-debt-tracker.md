@@ -3,11 +3,11 @@
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
 
-## 2026-10-15：restricted ready 诊断回滚竞态待修复
+## 2026-10-15：restricted ready 诊断隔离已修复，组合与最终发布门禁待验证
 
 PR327正式9198cacb/run38665513172 attempt2在源码restricted首开editor ready20000ms失败。固定输入阶段采样19次中1次同入口自然失败，捕获真实editor ready在fake panel诊断期间被正常接受，然后`runWebviewLifecycleRaceDiagnosticsForTest`的finally恢复两个面旧快照，将editor ready/frameId回滚；诊断数组恢复还抹去ready事件。active面临时为panel使editor未bootstrap，再open复用原HTML不重发ready。原消息期间投递的受控run38678148402按20秒失败、原ready/ack先完成的完整restricted通过，因果已确认；原正式CI无Host工件，不能逐事件追认唯一定因。
 
-该测试模式方法和调用从6月存在，#334未修改；普通安装未注册此测试命令，不因该夹具故障判定用户打开必然失败。正式修复未实施，优先隔离fake诊断与真实状态，覆盖ready前/期间/后三时序及bootstrap确认；仅延长预算或保留ready字段不能补回bootstrap。修复/回归/根因/证据集中一个修复PR，合入后再rebase PR327完整门禁；本轮不创建诊断/验证/文档PR，临时workflow已移除。历史fallback资源积压与checkpoint首跑停滞保持各自未知范围。
+该测试模式方法和调用从6月存在，#334未修改；普通安装未注册此测试命令，不因该夹具故障判定用户打开必然失败。已在修复分支把fake诊断放到无共享可变状态的独立对象，实际协议规则保持；两真实面ready前/期间/后三时序、成功/异常责任保护及测试模式守卫回归通过，旧during负对照缺少真实bootstrap；仅延长预算或保留ready字段不能补回bootstrap。修复/回归/根因/证据集中一个修复PR，合入后再rebase PR327完整门禁；本轮不创建诊断/验证/文档PR，临时workflow已移除。历史fallback资源积压与checkpoint首跑停滞保持各自未知范围。
 
 关联：`docs/design-docs/smoke-restricted-ready-root-cause.md`、`docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/references/smoke-restricted-ready-root-cause/README.md`。
 

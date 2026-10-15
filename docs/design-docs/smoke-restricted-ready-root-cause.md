@@ -1,11 +1,11 @@
 ---
 title: restricted Canvas 首次 ready 超时根因调查
-decision_status: 比较中
-validation_status: 已验证
+decision_status: 已选定
+validation_status: 验证中
 domains: [VSCode 集成域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: []
-related_plans: [docs/exec-plans/completed/smoke-restricted-ready-investigation.md]
+related_plans: [docs/exec-plans/completed/smoke-restricted-ready-investigation.md, docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md]
 updated_at: 2026-10-15
 ---
 
@@ -13,7 +13,7 @@ updated_at: 2026-10-15
 
 ## 问题与结论
 
-确认了测试诊断与真实页面启动交错的竞态：`CanvasPanelManager.runWebviewLifecycleRaceDiagnosticsForTest()`临时切换到fake panel，跨await保存和恢复两个承载面的状态；真实editor在期间发出的唯一ready被接受，但随后被finally恢复的旧ready=false覆盖，bootstrap也未发出。后续open复用原页面，ready不会再发，20秒超时。已在固定发布输入自然复现并以真实消息投递时序对照验证机制；正式修复方案尚待选择，本轮未实施修复。
+确认了测试诊断与真实页面启动交错的竞态：`CanvasPanelManager.runWebviewLifecycleRaceDiagnosticsForTest()`临时切换到fake panel，跨await保存和恢复两个承载面的状态；真实editor在期间发出的唯一ready被接受，但随后被finally恢复的旧ready=false覆盖，bootstrap也未发出。后续open复用原页面，ready不会再发，20秒超时。已在固定发布输入自然复现并以真实消息投递时序对照验证机制；正式方案已选择独立诊断对象，隔离实现与两真实面三时序回归已完成，原生与完整组合门禁仍待执行。
 
 原正式门禁为PR327预合并9198cacbee91fc170b82578e353c16a27f3574b8（base6e708c6b/head8313fc72），run38665513172 attempt2。源码checkpoint与trusted通过，restricted在`runRestrictedSmoke`第一次ready等待20000ms超时，尚未进入restricted模板和后续完整门禁。原workflow未上传Host现场，因此不能逐事件追认原CI一定只有这一原因；本轮已确认同输入、同错误入口的真实可触发缺陷。
 
@@ -57,3 +57,11 @@ updated_at: 2026-10-15
 优先将fake生命周期诊断放在与真实Canvas状态隔离的测试对象上，避免跨await覆盖真实面的状态、消息、读者及事件责任；产品消息筛选和bootstrap规则保持。当前首开ready/ack完成后再运行诊断可以消除本次时序窗口，但仅作为受控候选，不能证明真实面在任意交错下安全。不能仅延长等待、强写ready=true、重发假ready、只删editor恢复语句或吞超时，因为bootstrap以及其他状态仍可能被污染。
 
 正式修复应覆盖ready在诊断前、期间和结束后到达三种时序，验证原frame/generation、ready、bootstrapAck及消息接收可用，fake旧帧/竞争帧拒绝断言不降低。原生restricted与trusted继续通过，且保留不发送ready仍按原20秒失败的负例。修复、根因、回归与证据集中同一个修复PR；修复合入后再rebase PR327并跑最终正式预合并完整门禁，不能以本轮19次采样或两项控制放行发布。
+
+## 正式方案
+
+`CanvasPanelManager.ts:runWebviewLifecycleRaceDiagnosticsForTest`保留测试模式守卫，创建与真实对象没有可变引用共享的诊断对象后调用独立诊断方法。新对象使用真实类 prototype，显式初始化 lifecycle/mode/ready、消息目标、fake 页面、焦点、可见性、bootstrap 队列、probe/DOM 请求、诊断日志、终端通知与读者容器；不运行生产构造器，不注册 Host 监听器、磁盘持久化或后台定时器。禁止复制 this 或将其作为 prototype；真实 editor/panel 不暂停、不切换、不恢复快照。
+
+bootstrap 内容使用独立空 Canvas 状态和调用前同步复制的 runtime 展示配置；诊断目录为独立空目录，默认模板不应用。替换的是外部数据与序列化边界，`handleWebviewMessage`、帧 promotion/current 校验、`bootstrapInteractiveSurface`、`postState`、消息排队/确认、焦点重放及请求匹配仍执行正式方法。晚到目录回调仍指向独立对象；finally 只清理独立请求定时器、fake 引用与队列，异常也不会清理真实责任。
+
+适用范围仅测试生命周期诊断，普通打开与消息协议保持。回归覆盖两种真实承载面的 ready 前/期间/后交错，真实 bootstrap/ack 和帧身份、读者/请求/焦点/事件保留，所有既有 fake 竞态断言不降低。原生 trusted/restricted 与完整组合发布门禁仍待执行，不能提前宣称修复或发布通过。推进与命令见关联执行计划。

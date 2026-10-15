@@ -1,0 +1,5 @@
+
+> dev-session-canvas-workspace@0.26.0 test:webview-lifecycle-diagnostics
+> node scripts/test/test-webview-lifecycle-diagnostics.mjs
+
+webview lifecycle diagnostics tests passed

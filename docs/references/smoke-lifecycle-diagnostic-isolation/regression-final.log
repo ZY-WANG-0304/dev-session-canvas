@@ -1,0 +1,14 @@
+
+> dev-session-canvas-workspace@0.26.0 test:smoke-lifecycle-isolation
+> node scripts/test/test-smoke-lifecycle-isolation.mjs
+
+ok: real editor ready during fake lifecycle diagnostics
+ok: real editor ready before fake lifecycle diagnostics
+ok: real editor ready after fake lifecycle diagnostics
+ok: real panel ready during fake lifecycle diagnostics
+ok: real panel ready before fake lifecycle diagnostics
+ok: real panel ready after fake lifecycle diagnostics
+ok: real responsibilities preserved on diagnostic success
+ok: real responsibilities preserved on diagnostic failure
+ok: absent real ready remains absent
+ok: production mode diagnostic guard

@@ -1,0 +1,5 @@
+
+> dev-session-canvas-workspace@0.26.0 test:protocol-webview-messages
+> node --no-warnings --experimental-transform-types scripts/test/test-protocol-webview-messages.mts
+
+protocol webview message tests passed

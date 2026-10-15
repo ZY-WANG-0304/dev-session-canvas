@@ -413,4 +413,4 @@ HTTP夹具收到请求、客户端解析成功与用户反馈到达是不同事�
 
 Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同完成点；仅凭loaded或超时不能确定责任层。原现场缺失时，同输入再跑的成功和人为故障必须分别保留范围，不能追认旧失败已定因。
 
-在真实Host运行的fake诊断跨await保存/恢复状态时，不得回滚其他真实承载面的异步ready或bootstrap进展；诊断日志自身的恢复也可能抹去因果证据。先验证隔离边界，不能用延长ready等待掩盖一次性事件被旧快照覆盖。依据见smoke-restricted-ready-root-cause.md。
+在真实Host运行的fake诊断跨await保存/恢复状态时，不得回滚其他真实承载面的异步ready或bootstrap进展；诊断日志自身的恢复也可能抹去因果证据。fake帧必须持有独立生命周期、请求队列、读者和日志，复用正式协议方法时只提供独立数据边界；不能用延长ready等待掩盖一次性事件被旧快照覆盖。依据见smoke-restricted-ready-root-cause.md。
