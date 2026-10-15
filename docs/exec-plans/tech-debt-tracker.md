@@ -33,7 +33,7 @@ PR #332 合并后，#327 最新预合并 `b0198184` 的正式 run38539427680 在
 
 0.26.1发布准备PR327的完整verify在SSH重开第三终端completed断言失败，Canvas已ready，原Agent/普通Terminal恢复。调查基于main ea0c9b19。R2自然复现同35秒失败，原setupHost1305563/startTicks248872585清理前持续S/R；runner仅等待本地Electron退出加三秒，不证明远端Host退出，第三终端kill -0循环因此不结束。R1原版、R3诊断正常退出通过，首败单独保留。
 
-用户已批准退出/保留两条确定性场景。正式 runner 用真实客户端异常断连建立原 Host 保留，exit 再仅结束核验身份的旧 Host，retain 观察原身份到业务完成；第三终端按私有独立信号完成，不与 Host 寿命耦合。原 Supervisor/session、恢复/输出/输入、snapshot-only/historyDiscarded 与真实 resize 分别验收。17项控制正反例、9项resize回归及构建通过；原版 native-2 两分支全部通过、cleanup零残留。其后补充的前提保护已在完整0.26.1临时预合并source smoke中通过exit/retain，全部source场景及共享重开回归通过；完整npm test（426项Webview）和clean-checkout生产VSIX/安装后smoke全部通过，临时预合并7d33f664的release:verify退出码0。门禁前提误判已修复；修复合入后PR327仍须按最新main和发布head重新完整验证，当前未合并或发布。
+用户已批准退出/保留两条确定性场景。正式 runner 用真实客户端异常断连建立原 Host 保留，exit 再仅结束核验身份的旧 Host，retain 观察原身份到业务完成；第三终端按私有独立信号完成，不与 Host 寿命耦合。原 Supervisor/session、恢复/输出/输入、snapshot-only/historyDiscarded 与真实 resize 分别验收。17项控制正反例、9项resize回归及构建通过；原版 native-2 两分支全部通过、cleanup零残留。其后补充的前提保护已在完整0.26.1临时预合并source smoke中通过exit/retain，全部source场景及共享重开回归通过；完整npm test（426项Webview）和clean-checkout生产VSIX/安装后smoke全部通过，临时预合并7d33f664的release:verify退出码0。门禁前提误判已修复；PR328已合入main22803dd8；PR327已rebase并接续最新预合并完整验证，结果以PR327描述/checks关联的真实输入为准，发布准备仍未合并或发布。
 
 研究retain-2/retain-3和exit-1/exit-2各两次通过；retain-4的13次/3213ms连续观察支持磁盘注册表短暂旧尺寸为持久化延迟，实时尺寸不回退。调查C1先在ready45秒失败、C2在旧Host信号后诊断误判zombie、研究retain-1helper路径错误、正式native-1客户端argv误拒绝，均保留边界，不能代证产品失败或业务成功。
 
@@ -853,3 +853,35 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 正式修复接续：保存导出后清理接入原reset helper，原Agent/Terminal期望；新增正式调用点回归旧代码pending先红、修后9/9及原19/19通过。产品保护和20秒预算不变；正式代码84d65765的原生run38656199224在VS Code1.142.0触达原Agent/Terminal submitted/pending，同身份saved后第二reset空画布，完整trusted exit0；生产bundle与研究输入一致。完整PR327临时组合031db473/run38656127632的同输入六平台资产、静态preflight、完整npm test、SSH两态、Webview426/426和8个clean-checkout packaged场景含trusted全部通过，release:verify exit0；临时活动workflow已移除。修复尚未合入，PR327正式最新预合并仍须rebase后重跑，未放行合并或发布。completed计划smoke-template-final-persistence-repair.md，证据repair-result.json。
 
 交付状态：修复PR [#334](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/334) 已创建，代码、根因、回归和验收集中；本项实现及组合验收完成。剩余发布责任为该PR合入后rebase PR327，并以最新正式预合并输入重跑完整门禁；临时组合031db473不代替此步骤。最终收口仅文档，PR327草稿及原head保持。
+
+## 0.26.1 重新准备的验证与用户边界（2026-10-13）
+
+本次从 ea0c9b19 主线重建发布输入，旧 PR #313 已舍弃；过程和结果见 docs/design-docs/release-0-26-1-refresh.md。标准完整 release:verify 已执行并在 localhost SSH 首败，结果见下节；0.26.0 历史授权不得代用。此前主线独立 npm ci 的 Wrangler/esbuild ETXTBSY 具体写者未确认，前台生命周期脚本对照通过仅是环境证据；下一正式验证若复现，采集写者与生命周期并发，再决定 PR/tag 两条安装链路是否需要同一调整，不跳过脚本或自动豁免。
+
+普通 Canvas 打开没有专门的 ready 截止和启动失败重试/重建，持续启动失败可保持空白；上游快速重开资源积压、单次 fallback 首败未定因继续按 webview-ready-root-cause.md 与 smoke-reopen-ready-timeout.md 跟踪。45 秒是 smoke 容忍预算，不是产品恢复能力。共享画布真实 UI 限 Linux 单 root，接管四阶段由受控 Host/store 和独立 Supervisor 验证；跨平台/Remote SSH/真实多 root、真实 provider、公开市场自动安装依赖与桌面点击需要具名补证。以上不因本地测试通过自动升级为支持承诺。
+
+
+### 历史聚合首败：localhost SSH 离线完成前提（PR328合入前，2026-10-13）
+
+预合并 eba53a28 的标准 release:verify exit1，完整 npm test 停在 remote-ssh-real-reopen。页面 ready 和原 Agent/普通Terminal附着正常，旧升级resize通过；第三个Terminal等待setup process.pid2613433消失而未完成。窗口关闭后旧remote Host仍有日志，server配置三小时重连宽限并保留旧连接，精简首败及输入见docs/references/release-0-26-1-refresh/remote-first-failure.json。超时瞬间没有进程状态采样，不把推断当成完整根因确认，也不借此修改产品退出语义。
+
+后续先固定原远端Host PID/启动身份，在关闭及超时瞬间核对存活/僵尸/重连责任，再显式设计测试的离线完成触发和关闭边界。修复保持原会话、正文、输入、退出状态和无历史断言，不能通过延长等待、无条件杀远端Host或重跑跳过首败。本发布准备只记录阻塞并补充独立验证，完整verify未通过前不能合并或打发布tag。
+
+
+本次独立补充验证已完成：Webview426/426、默认干净npm ci/140文件主VSIX/八场景安装、notifier类型/14文件独立包/companion/en与zh-cn locale均exit0。默认安装ETXTBSY未重现，不等于原根因修复；源码聚合SSH首败仍阻断。12条命令证据固定在docs/references/release-0-26-1-refresh/evidence.json。main无branch protection的只读查询结果不撤销仓库完整verify/review要求，草稿不会触发非草稿release workflow。
+
+2026-10-13接续：PR328的双状态正式修复已合入main22803dd8，PR327 rebase后重跑最新预合并完整门禁。上节旧输入的SSH首败不作为新输入状态，原记录保留；当前门禁结果关联PR327真实head/base/预合并SHA及checks。
+
+
+## PR329合入后的0.26.1正式发布门禁（2026-10-14）
+
+PR329已合入main72338331，PR327由原head42d87b3d rebase到该主线。上述“待合入”“未修复”及失败均为其固定历史输入状态；自有socket、末次诊断观察、fake probe、fallback短IPC和截图依赖已有集中修复与组合完整通过证据。正式发布准备仍必须在最新PR预合并SHA重新生成六平台资产并通过完整release:verify；当前结果以PR327最新head对应的描述/checks为准，不以旧临时组合代证。真实provider、跨平台共享接管、公开市场自动依赖及桌面点击等有限验收边界保留，不因门禁通过扩张支持承诺。
+
+
+## PR332合入后的发布输入复验（2026-10-14）
+
+Marketplace完成等待修复PR332已合入main f3bb4425。其“待review/合入”为修复交付时的历史状态；PR327由a95b69b0 rebase到最新主线并重跑正式完整发布门禁。原run38485499547首败与未触达范围保留，不以20项回归或真实1.141.1单项通过代证全量；当前输入与结果以PR327最新head/base/预合并SHA/checks为准。
+
+2026-10-14：本地后代ESRCH修复PR333正常合入main eee25291，PR327从cfe1ab40 rebase后运行新的正式预合并完整门禁。run38539427680的ESRCH原首败保持原输入/日志hash，未记录的具体后代角色仍未知；39项/真实内核/SSH两状态定向通过不代证发布闭环。本轮必须实际完成全量npm test、Webview与clean-checkout VSIX八场景，结果绑定PR327当前head/base/预合并/run，未通过前不合并或发布。
+
+2026-10-15正式接续：PR334已合入main6e708c6b，原“待合入”为其交付时历史状态。PR327从20d237c5 rebase后重跑正式最新预合并完整门禁；修复28项/原生保存窗口/临时组合完整通过不代证该正式发布输入。结果和无损日志关联PR327最新head/base/预合并/run，尚未合并或发布。

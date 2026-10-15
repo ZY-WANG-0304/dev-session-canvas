@@ -1,0 +1,20 @@
+{
+  "commit": "eba53a28074cbcc49958f7845ebe5b04411a531a",
+  "aggregateExitCode": 1,
+  "sourceMilestones": [
+    "Runtime paged terminal projection smoke passed.",
+    "Trusted workspace smoke passed.",
+    "Restricted workspace smoke passed.",
+    "Legacy Supervisor upgrade smoke (5355e6a) passed.",
+    "Real window reopen smoke passed.",
+    "Multi-root real window reopen smoke passed.",
+    "Single-root to multi-root real window reopen smoke passed.",
+    "Two-window shared runtime smoke passed.",
+    "Fake systemd-user real window reopen smoke passed.",
+    "Systemd unavailable before submission real window reopen smoke passed.",
+    "完整发布验证失败：npm run test"
+  ],
+  "webviewReached": false,
+  "cleanCheckoutReached": false,
+  "logSha256": "65bbb5a505c87dd4d128df31fc2f1846809f76b14e3cd119d1d02d7de006d8a7"
+}
