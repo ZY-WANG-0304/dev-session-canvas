@@ -45,8 +45,8 @@ jobs:
           import tarfile,json,subprocess,os
           manifest=Path(os.environ.get('DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET','/nonexistent'))/'manifest.json'
           Path('release-input.json').write_text(json.dumps({'input':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'run':'${{ github.run_id }}','node':subprocess.check_output(['node','--version'],text=True).strip(),'assetManifest':json.loads(manifest.read_text()) if manifest.exists() else None},indent=2)+'\n')
-          roots=[Path('.debug'),Path('test-results')]
-          roots+=list(Path('/tmp').glob('dev-session-canvas-clean-checkout-*/repo/.debug'))
+          roots=list(Path('/tmp').glob('dev-session-canvas-clean-checkout-*/repo/.debug'))
+          roots += [Path('.debug'),Path('test-results')]
           files=[Path('release-verify.log'),Path('release-input.json')]
           for root in roots:
             if root.exists():
