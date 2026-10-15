@@ -83,11 +83,12 @@ function traceLegacyStopHost(stage: string, detail: Record<string, unknown>): vo
 }
 if (process.env.DSC_LEGACY_STOP_TRACE) {
   const proto=CanvasPanelManager.prototype as any;
-  for (const name of ['handleRuntimeSupervisorTerminalBatch','applyRuntimeSupervisorSnapshot']) {
+  for (const name of ['handleRuntimeSupervisorTerminalBatch','applyRuntimeSupervisorSnapshot','handleRuntimeSupervisorState','stopExecutionSession']) {
     const original=proto[name];
     proto[name]=function(...args: any[]) {
-      const snapshot=args[2];
-      const nodeId=name==='applyRuntimeSupervisorSnapshot' ? args[0] : this.runtimeSessionBindings.get(this.buildRuntimeSessionBindingKey(snapshot.kind,snapshot.sessionId,args[1],args[0]))?.nodeId;
+      const stopping=name==='stopExecutionSession';
+      const snapshot=stopping ? {kind:args[0],sessionId:this.getExecutionSessions(args[0]).get(args[1])?.runtimeSessionId} : args[2];
+      const nodeId=stopping ? args[1] : name==='applyRuntimeSupervisorSnapshot' ? args[0] : this.runtimeSessionBindings.get(this.buildRuntimeSessionBindingKey(snapshot.kind,snapshot.sessionId,args[1],args[0]))?.nodeId;
       if (nodeId !== 'previous-generation-stream-terminal') return original.apply(this,args);
       const state=() => { const session=nodeId && this.getExecutionSessions(snapshot.kind).get(nodeId); return {present:Boolean(session),paged:session?.terminalStreamPaged,healthy:session?.terminalStreamHealthy,sequence:session?.outputSequence}; };
       traceLegacyStopHost(name+'-enter',{sessionId:snapshot.sessionId,nodeId,live:snapshot.live,batchId:snapshot.batchId,revision:snapshot.revision,state:state()});
@@ -96,9 +97,7 @@ if (process.env.DSC_LEGACY_STOP_TRACE) {
   }
 }
 '''
-p.write_text(p.read_text()+helper)
-edit(p,"      await client.stopSession({\n        sessionId: session.runtimeSessionId\n      });", "      traceLegacyStopHost('stop-rpc-enter', { sessionId: session.runtimeSessionId, storage: session.runtimeStoragePath });\n      await client.stopSession({\n        sessionId: session.runtimeSessionId\n      });\n      traceLegacyStopHost('stop-rpc-returned', { sessionId: session.runtimeSessionId });")
-edit(p,'    const binding = this.runtimeSessionBindings.get(\n      this.buildRuntimeSessionBindingKey(snapshot.kind, snapshot.sessionId, runtimeStoragePath, runtimeBackend)\n    );',"    traceLegacyStopHost('state-received', { sessionId: snapshot.sessionId, live: snapshot.live, lifecycle: snapshot.lifecycle, sequence: snapshot.outputSequence, storage: runtimeStoragePath });\n    const binding = this.runtimeSessionBindings.get(\n      this.buildRuntimeSessionBindingKey(snapshot.kind, snapshot.sessionId, runtimeStoragePath, runtimeBackend)\n    );")
+edit(p,p.read_text(),p.read_text()+helper)
 
 p=Path('tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs')
 edit(p,'    await writeFailureArtifacts(error, resizeEvidence);','    await writeStopSupervisorEvidence(previousGenerationStreamSupervisorPaths, previousGenerationStreamTerminalSessionId, previousGenerationStreamSupervisorProcess, "failure");\n    await writeFailureArtifacts(error, resizeEvidence);')
