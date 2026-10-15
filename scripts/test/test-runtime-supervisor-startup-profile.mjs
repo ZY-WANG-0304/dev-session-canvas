@@ -14,10 +14,25 @@ const startupScripts = {
   supervisorScriptPath: '/test scripts/supervisor"%.js',
   supervisorLauncherScriptPath: '/test scripts/launcher.js'
 };
+const smokeModeEnv = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
 const backendCode = await bundle('panel/runtimeHostBackend.ts');
 const startCode = await bundle('supervisor/runtimeSupervisorStart.ts');
 const launcherCode = await bundle('supervisor/runtimeSupervisorLauncher.ts');
 let passed = 0;
+
+for (const mode of [undefined, '0', 'false', 'unexpected', '1', ' true ', 'TRUE']) {
+  await test(`systemd propagates only explicitly enabled smoke mode ${JSON.stringify(mode)}`, async () => {
+    const harness = createHarness();
+    if (mode !== undefined) harness.process.env[smokeModeEnv] = mode;
+    harness.process.env.UNRELATED_HOST_VALUE = 'must-not-enter-unit';
+    const backend = loadBackend(harness, 'systemd-user', rootOwnerBase);
+    await backend.startSupervisor({ ...startupScripts, executionProfile: candidateProfile });
+    const unit = harness.effects.find(({ kind }) => kind === 'writeFile').args[1];
+    const enabled = ['1', 'true'].includes(mode?.trim().toLowerCase());
+    assert.equal(unit.includes(`Environment="${smokeModeEnv}=1"`), enabled);
+    assert.equal(unit.includes('UNRELATED_HOST_VALUE'), false);
+  });
+}
 
 for (const profile of [undefined, candidateProfile]) {
   await test(`detached ${profile ?? 'stock'} passes both startup hops`, async () => {

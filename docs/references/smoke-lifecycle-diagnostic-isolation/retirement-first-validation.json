@@ -1,0 +1,43 @@
+{
+  "input": "b95d8d74854610f74f26772097927678f168c791",
+  "fix": "12c3d209ef8cd5a081c7b798e6d2fdb62ec66e16",
+  "release": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+  "fullRun": 38692163764,
+  "fullJob": 116282111095,
+  "fullResult": "exit1 in source trusted: Session retirement observation is only available in smoke test mode.",
+  "fullFailureCause": "systemd unit passes only ELECTRON flags; requesting Host smoke mode did not reach systemd-launched Supervisor.",
+  "nativeRuns": [
+    {
+      "run": 38692163764,
+      "exit": 1,
+      "reachedHelper": false,
+      "firstFailure": "Execution link .debug/vscode-smoke/execution-native-interactions/link-target.png was not detected.",
+      "artifact": 11952967744,
+      "artifactSha256": "dc618840867713786e2008361614b5327dfd2fac044b5dfd911ce43421c627d2"
+    },
+    {
+      "run": 38693259026,
+      "exit": 1,
+      "reachedHelper": true,
+      "helperElapsedMs": 644,
+      "causalAssertions": "passed: true during original delayed retirement; false only after actual remove; new create later, old sessions absent",
+      "firstFailure": "later verifyFileActivityViewsAndOpenFiles -> waitForVisibleEditor sentinel remains",
+      "artifact": 11953141524,
+      "artifactSha256": "16b127e6a23503b436503dbec57d480dede31b81c53ea6258d5f1b2402d1e2b4"
+    }
+  ],
+  "systemdFollowup": {
+    "change": "unit gets canonical SMOKE_TEST_MODE=1 only when requesting Host explicitly enabled 1/true; other Host env not copied",
+    "regression": "36/36 startup cases, old implementation exit1",
+    "typecheck": "exit0",
+    "build": "exit0 with prior fixed assets"
+  },
+  "limitations": [
+    "原生屏障因果通过不等于完整trusted通过。",
+    "新systemd补齐后完整组合门禁尚待运行。"
+  ],
+  "followup_sha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorStart.ts": "1c0f5ca7941ab012a2feff1aa71c0aa4c6348b0c9863b5d4a6777d856e12264a",
+    "scripts/test/test-runtime-supervisor-startup-profile.mjs": "b0d057275dc7c27c8b135364897a6cedf65caf53973ce4d6abdbb78aa3536a31"
+  }
+}

@@ -1,0 +1,26 @@
+file:///dev/shm/dsc-restricted-ready/scripts/test/test-runtime-supervisor-startup-profile.mjs:311
+    throw new Error(name, { cause: error });
+          ^
+
+Error: systemd propagates only explicitly enabled smoke mode "1"
+    at test (file:///dev/shm/dsc-restricted-ready/scripts/test/test-runtime-supervisor-startup-profile.mjs:311:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-runtime-supervisor-startup-profile.mjs:24:3 {
+  [cause]: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at file:///dev/shm/dsc-restricted-ready/scripts/test/test-runtime-supervisor-startup-profile.mjs:32:12
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async test (file:///dev/shm/dsc-restricted-ready/scripts/test/test-runtime-supervisor-startup-profile.mjs:308:5)
+      at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-runtime-supervisor-startup-profile.mjs:24:3 {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+}
+
+Node.js v22.23.3

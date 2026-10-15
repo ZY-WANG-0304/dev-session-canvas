@@ -19,7 +19,9 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) 用户授权后实施关联packaged夹具修复；完整门禁验证单独列下项。
 - [x] (2026-10-15) 只读测试RPC包含retiring；原socket/hello/owner/session固定，派发原停止消息和退役查询共用15秒预算。
 - [x] (2026-10-15) 原具名调用旧实现稳定抢跑；17/17夹具（含真实socket）及136/136Supervisor、类型检查、原等待36项回归通过。
-- [ ] 原生延迟删除trusted及完整组合门禁。
+- [x] (2026-10-15) 新组合六资产通过；原生屏障因果通过（644ms），完整trusted后来文件打开失败；完整门禁源码trusted暴露systemd未传smoke标志。
+- [x] (2026-10-15) systemd仅传显式smoke标志，startup36/36、旧实现先红、typecheck/build通过。
+- [ ] 补齐systemd后原生完整trusted及新固定组合无过滤门禁。
 - [x] (2026-10-15) 完成拒绝入口审计：容量检查与adapter启动准入均使用相同错误文案；停止助手没有等待Supervisor旧会话退役。
 - [x] (2026-10-15) 实际Supervisor134/134；两轮同输入packaged受控拒绝均原15秒exit1，等待两份实际退役与自然trusted均exit0，六份完整工件核验。
 - [x] (2026-10-15) 记录根因与产品契约边界，移除活动临时诊断；本阶段未实施新修复。
@@ -78,3 +80,5 @@ PR335 headbfd70dff的CI通过（无发布契约，六资产明确skip）；主�
 本次修订完成packaged调查：两个真实原生受控拒绝、两组等待退役与自然trusted对照，原15秒等待和无自动重试核准。原失败仅保留日志/snapshot范围，新的完整发布门禁仍是阻塞。
 
 2026-10-15 修复阶段决策：现有getSessionSnapshot的sessionNotFound及registry均隐藏retiring对象，不能用于退役证明。增加仅显式smoke环境可调用的getSessionRetirementForTest只读RPC，直接查sessions含retiring，不更改生产delete/准入。既有测试registry入口补socketPath；smoke在停止前以原runtimeStoragePath选择入口并打开独立固定socket，核验hello owner/backend/pid及原session存在，然后停止两执行并等待原查询exists=false。所有操作共享原15秒预算，未知/断连/错身份均失败，finally只关闭观察连接。只在verifyLiveRuntimePersistence显式重启调用接入，普通停止契约保持。新增实际Supervisor含慢/失败删除回归与原具名调用VM回归；旧实现稳定先红；修复/文档集中PR335。
+
+本次完整组合run38692163764首败属于本轮新增观察模式跨systemd环境未传递，已补齐unit标志。原生run38693259026验证原退役屏障通过，后续文件打开失败未确认根因；不以原函数通过替代完整trusted。原样第一次图片链接前置失败保留，未将两次失败拼为成功。
