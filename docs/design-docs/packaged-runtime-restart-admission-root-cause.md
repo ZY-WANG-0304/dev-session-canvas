@@ -1,7 +1,7 @@
 ---
 title: packaged Runtime 重启准入拒绝根因调查
 decision_status: 已选定
-validation_status: 已验证（具名修复；完整发布门禁仍阻塞）
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]

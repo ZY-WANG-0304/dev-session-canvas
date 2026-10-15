@@ -1,0 +1,1149 @@
+{
+  "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+  "timeOrigin": 1792058795226,
+  "events": [
+    {
+      "at": 1792058793575,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [],
+      "credit": [],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73"
+      },
+      "afterStopMs": -1651
+    },
+    {
+      "at": 1792058793582,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "resultLive": true,
+      "afterStopMs": -1644
+    },
+    {
+      "at": 1792058793732,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [],
+      "credit": [],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "deferSubscription": true,
+        "terminalStreamMode": "paged-until-exit"
+      },
+      "afterStopMs": -1494
+    },
+    {
+      "at": 1792058793732,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "resultLive": true,
+      "afterStopMs": -1494
+    },
+    {
+      "at": 1792058793741,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "subscribeSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [],
+      "credit": [],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "authorityId": "ec6e727e-f634-47aa-9e67-c1d3c6ba9b3e",
+        "afterRevision": 4,
+        "terminalStreamMode": "paged-until-exit",
+        "hostOutputCredit": "journal-pages-v1"
+      },
+      "afterStopMs": -1485
+    },
+    {
+      "at": 1792058793742,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "subscribeSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "afterStopMs": -1484
+    },
+    {
+      "at": 1792058793852,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [],
+      "credit": [],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "deferSubscription": true,
+        "terminalStreamMode": "paged-until-exit"
+      },
+      "afterStopMs": -1374
+    },
+    {
+      "at": 1792058793852,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "resultLive": true,
+      "afterStopMs": -1374
+    },
+    {
+      "at": 1792058793852,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [],
+      "credit": [],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "deferSubscription": true,
+        "terminalStreamMode": "paged-until-exit"
+      },
+      "afterStopMs": -1374
+    },
+    {
+      "at": 1792058793853,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "attachSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "resultLive": true,
+      "afterStopMs": -1373
+    },
+    {
+      "at": 1792058793857,
+      "role": "host",
+      "pid": 3237,
+      "stage": "execution-operation-ignored",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "operation": "attach",
+      "afterStopMs": -1369
+    },
+    {
+      "at": 1792058793858,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "subscribeSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [],
+      "credit": [],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "authorityId": "ec6e727e-f634-47aa-9e67-c1d3c6ba9b3e",
+        "afterRevision": 4,
+        "terminalStreamMode": "paged-until-exit",
+        "hostOutputCredit": "journal-pages-v1"
+      },
+      "afterStopMs": -1368
+    },
+    {
+      "at": 1792058793859,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "subscribeSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 4,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "afterStopMs": -1367
+    },
+    {
+      "at": 1792058795226,
+      "role": "host",
+      "pid": 3237,
+      "stage": "stopExecutionSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 0
+    },
+    {
+      "at": 1792058795228,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stopSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "live",
+      "sequence": 6,
+      "stopRequested": false,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 2,
+          "appliedStateVersion": 2
+        }
+      ],
+      "afterStopMs": 2
+    },
+    {
+      "at": 1792058795229,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "pty-kill-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 6,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "afterStopMs": 3,
+      "proc": {
+        "status": [
+          "Name:\tbash",
+          "State:\tS (sleeping)",
+          "Pid:\t3398",
+          "PPid:\t3356",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      }
+    },
+    {
+      "at": 1792058795229,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stopSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 6,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "afterStopMs": 3
+    },
+    {
+      "at": 1792058795229,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "createFreshSnapshot-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 6,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 2,
+          "appliedStateVersion": 2
+        }
+      ],
+      "afterStopMs": 3
+    },
+    {
+      "at": 1792058795229,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "broadcastToSessionSubscribers-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 6,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 2,
+          "appliedStateVersion": 2
+        }
+      ],
+      "payloadLive": true,
+      "event": "sessionState",
+      "afterStopMs": 3
+    },
+    {
+      "at": 1792058795229,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "pumpHostOutput-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 6,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 3,
+          "appliedStateVersion": 2
+        }
+      ],
+      "afterStopMs": 3
+    },
+    {
+      "at": 1792058795230,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "pty-onExit",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "signal": "1",
+      "exitCode": 0,
+      "afterStopMs": 4,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058795231,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "finalizeSession-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": true,
+      "finalization": false,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 3,
+          "appliedStateVersion": 2,
+          "inFlight": {
+            "batchId": 4,
+            "revision": 6,
+            "stateVersion": 3,
+            "completed": false,
+            "error": false
+          }
+        }
+      ],
+      "afterStopMs": 5
+    },
+    {
+      "at": 1792058795232,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "createFreshSnapshot-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 3,
+          "appliedStateVersion": 2,
+          "inFlight": {
+            "batchId": 4,
+            "revision": 6,
+            "stateVersion": 3,
+            "completed": false,
+            "error": false
+          }
+        }
+      ],
+      "afterStopMs": 6
+    },
+    {
+      "at": 1792058795236,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "broadcastToSessionSubscribers-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 3,
+          "appliedStateVersion": 2,
+          "inFlight": {
+            "batchId": 4,
+            "revision": 6,
+            "stateVersion": 3,
+            "completed": false,
+            "error": false
+          }
+        }
+      ],
+      "payloadLive": false,
+      "event": "sessionState",
+      "afterStopMs": 10
+    },
+    {
+      "at": 1792058795236,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "finalizeSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 10
+    },
+    {
+      "at": 1792058795236,
+      "role": "host",
+      "pid": 3237,
+      "stage": "handleRuntimeSupervisorTerminalBatch-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "batchId": 4,
+      "revision": 6,
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 10
+    },
+    {
+      "at": 1792058795236,
+      "role": "host",
+      "pid": 3237,
+      "stage": "stopExecutionSession-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 10
+    },
+    {
+      "at": 1792058795236,
+      "role": "host",
+      "pid": 3237,
+      "stage": "handleRuntimeSupervisorState-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "live": true,
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 10
+    },
+    {
+      "at": 1792058795236,
+      "role": "host",
+      "pid": 3237,
+      "stage": "applyRuntimeSupervisorSnapshot-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "live": true,
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 10
+    },
+    {
+      "at": 1792058795238,
+      "role": "host",
+      "pid": 3237,
+      "stage": "applyRuntimeSupervisorSnapshot-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 12
+    },
+    {
+      "at": 1792058795238,
+      "role": "host",
+      "pid": 3237,
+      "stage": "handleRuntimeSupervisorTerminalBatch-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "result": "consumed",
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 12
+    },
+    {
+      "at": 1792058795238,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "ackTerminalBatch-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 4,
+          "appliedStateVersion": 2,
+          "inFlight": {
+            "batchId": 4,
+            "revision": 6,
+            "stateVersion": 3,
+            "completed": false,
+            "error": false
+          }
+        }
+      ],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "authorityId": "ec6e727e-f634-47aa-9e67-c1d3c6ba9b3e",
+        "subscriptionId": "f00d2107-d8cc-4f48-8007-d4977095bda6",
+        "batchId": 4,
+        "outcome": "consumed"
+      },
+      "afterStopMs": 12
+    },
+    {
+      "at": 1792058795239,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "pumpHostOutput-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 4,
+          "appliedStateVersion": 3
+        }
+      ],
+      "afterStopMs": 13
+    },
+    {
+      "at": 1792058795243,
+      "role": "host",
+      "pid": 3237,
+      "stage": "handleRuntimeSupervisorTerminalBatch-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "batchId": 5,
+      "revision": 7,
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      },
+      "afterStopMs": 17
+    },
+    {
+      "at": 1792058795244,
+      "role": "host",
+      "pid": 3237,
+      "stage": "handleRuntimeSupervisorState-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "live": false,
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 7
+      },
+      "afterStopMs": 18
+    },
+    {
+      "at": 1792058795245,
+      "role": "host",
+      "pid": 3237,
+      "stage": "applyRuntimeSupervisorSnapshot-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "live": false,
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 7
+      },
+      "afterStopMs": 19
+    },
+    {
+      "at": 1792058795250,
+      "role": "host",
+      "pid": 3237,
+      "stage": "applyRuntimeSupervisorSnapshot-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "state": {
+        "present": false
+      },
+      "afterStopMs": 24
+    },
+    {
+      "at": 1792058795251,
+      "role": "host",
+      "pid": 3237,
+      "stage": "handleRuntimeSupervisorTerminalBatch-returned",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "nodeId": "previous-generation-stream-terminal",
+      "result": "consumed",
+      "state": {
+        "present": false
+      },
+      "afterStopMs": 25
+    },
+    {
+      "at": 1792058795252,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "ackTerminalBatch-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 4,
+          "appliedStateVersion": 3,
+          "inFlight": {
+            "batchId": 5,
+            "revision": 7,
+            "stateVersion": 4,
+            "completed": true,
+            "error": false
+          }
+        }
+      ],
+      "params": {
+        "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+        "authorityId": "ec6e727e-f634-47aa-9e67-c1d3c6ba9b3e",
+        "subscriptionId": "f00d2107-d8cc-4f48-8007-d4977095bda6",
+        "batchId": 5,
+        "outcome": "consumed"
+      },
+      "afterStopMs": 26
+    },
+    {
+      "at": 1792058795252,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "cancelHostOutput-enter",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 7,
+          "stateVersion": 4,
+          "appliedStateVersion": 4
+        }
+      ],
+      "afterStopMs": 26
+    },
+    {
+      "at": 1792058797230,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 2004,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058799232,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 4006,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058801234,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 6008,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058803237,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 8011,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058805239,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 10013,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058807241,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 12015,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058809243,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 14017,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058811245,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 16019,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058813248,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 18022,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058815250,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 20024,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058817252,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 22026,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058819254,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 24028,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058821256,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 26030,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058823258,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 28032,
+      "proc": {
+        "error": "ENOENT"
+      }
+    },
+    {
+      "at": 1792058825259,
+      "role": "supervisor",
+      "supervisorPid": 3356,
+      "stage": "stop-observation",
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "stopRequested": true,
+      "processPid": 3398,
+      "owned": false,
+      "processPresent": false,
+      "finalization": true,
+      "afterStopMs": 30033,
+      "proc": {
+        "error": "ENOENT"
+      }
+    }
+  ],
+  "curation": "Selected original session attach/subscribe/cancel/control stages and stop-through-completion observations; redundant entry/return and repeated proc stat omitted. Original complete trace hash and artifact source are recorded in legacy-stop-investigation-result.json.",
+  "originalSessionEvents": 136
+}

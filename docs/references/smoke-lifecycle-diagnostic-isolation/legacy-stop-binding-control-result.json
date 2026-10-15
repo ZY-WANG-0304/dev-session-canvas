@@ -1,0 +1,73 @@
+{
+  "diagnosticOnly": true,
+  "controlledProcessExit": true,
+  "realSocket": true,
+  "realHostBatchAndBindingMethods": true,
+  "sourceInput": "55c619ad70dbec74a7f9ffab17bf3dc547bd6913",
+  "historicalFailureAttributed": false,
+  "cases": [
+    {
+      "rebind": false,
+      "bindingReferenceChanged": false,
+      "bindingIdentityUnchanged": true,
+      "subscriptionExistsBeforeStop": true,
+      "supervisorLive": false,
+      "hostLive": false,
+      "hostLifecycle": "closed",
+      "outcomes": [
+        {
+          "batchId": 1,
+          "revision": 0,
+          "live": true,
+          "outcome": "consumed"
+        },
+        {
+          "batchId": 2,
+          "revision": 1,
+          "outcome": "consumed"
+        },
+        {
+          "batchId": 3,
+          "revision": 1,
+          "live": false,
+          "outcome": "consumed"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "rebind": true,
+      "bindingReferenceChanged": true,
+      "bindingIdentityUnchanged": true,
+      "subscriptionExistsBeforeStop": false,
+      "supervisorLive": false,
+      "hostLive": true,
+      "hostLifecycle": "stopping",
+      "outcomes": [
+        {
+          "batchId": 1,
+          "revision": 0,
+          "live": true,
+          "outcome": "consumed"
+        },
+        {
+          "batchId": 2,
+          "revision": 1,
+          "outcome": "cancelled"
+        },
+        {
+          "batchId": 1,
+          "revision": 1,
+          "live": false,
+          "outcome": "consumed"
+        }
+      ],
+      "errors": [],
+      "recovery": {
+        "explicitResubscribe": true,
+        "hostLive": false,
+        "hostLifecycle": "closed"
+      }
+    }
+  ]
+}

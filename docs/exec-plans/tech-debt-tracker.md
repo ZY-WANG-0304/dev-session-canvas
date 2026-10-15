@@ -17,9 +17,11 @@ ensureAgentStopped/ensureTerminalStopped只以live=false及localExecutions退休
 
 已按用户授权实现：仅smoke模式的只读RPC直接查原Supervisor sessions含retiring；停止前捕获完整身份并固定原socket连接，原停止/查询/等待共用15秒，两个节点停止且原存储不存在才各启动一次。17项夹具及136项实际Supervisor回归、原等待36项、类型检查与本地六资产build通过，旧具名调用稳定先红。删除失败、断连和错身份保持失败。新组合六资产通过；原生有界延迟删除屏障因果通过（644ms），完整trusted后来文件打开失败；完整组合源码trusted拒绝smoke查询，原snapshot为legacy-detached，更正此前systemd归因；源码入口仅靠ExtensionMode.Test未传显式标志，已补齐并以原main两调用回归先红、18/18及runnerenv通过。systemd独立传递要求也补齐并经startup36/36/旧负对照/typecheck/build验证。第二轮原生完整trustedexit0/645ms通过，最新55c619ad/run38696319881完整源码trusted/restricted通过，具名修复成立；完整命令首败转到旧代停止，详见下节；修复合入后仍需最终PR327预合并完整门禁，原完整CI缺少Supervisor逐事件事实。见docs/design-docs/packaged-runtime-restart-admission-root-cause.md与admission-investigation-result.json。
 
-## 2026-10-15：最新完整门禁旧代 Terminal 停止超时（未定位）
+## 2026-10-15：旧代 Terminal 停止超时（原生恢复竞态已复现，待修复与最终门禁）
 
 固定组合55c619ad/run38696319881的无过滤release:verify已通过新退役18项、源码完整trusted/restricted，随后legacy-supervisor-upgrade-tests.cjs:334等待旧代Terminal停止30秒失败。previous-generation-stream-terminal的原session dd00a348-d787-4cdb-a206-4fec1f587f80收到stopRequested，末次快照仍stopping/live=true、无lastRuntimeError；其他旧Agent/Terminal和新Terminal保持live。该具名夹具在PR335未改，根因未确认；不能凭stopping直接判定测试竞态、产品故障或本次回归。后续重开/systemd/SSH、Webview全套及本完整命令的clean-checkout均未触达。完整工件本地CRC/tar核验，snapshot、stop诊断及固定输入集中PR335的retirement-source-full-result.json和retirement-next-*。这项仍阻塞发布，原生packaged延迟删除完整trustedexit0只收口具名退役修复。
+
+旧代停止调查跟进（2026-10-15）：原场景54文件不含Supervisor/PTY现场，历史唯一归因仍未知。固定原输入四份原生旧代样本通过；完整诊断run38711507240原样release:verify exit0且727文件/hash核验，复用原run资产和类外记录，不代证最终PR327门禁。真实socket/原restore方法及原生最后reload单变量对照已确认生产竞态：第二任务等待client时已收集原node；第一任务attach/subscribed后，第二deferred attach撤销原订阅，Host随后operationIgnored无重新subscribe。run38716971680 late原334行/30秒exit1，PTY12ms退出、Supervisorclosed，但Host仍stopping/live=true；natural完整旧代exit0。run38717714670同控制复核再次失败/通过，实时metadata已attached-live、原请求deferSubscription:true核验；两轮61/31文件全部校验，活动入口已移除。第一轮控制触达过早，后续原reload恢复，成功边界单列。生产修复未实施，不能通过延长等待补建订阅；完整原绑定与过时结果保护须保留。关联修复/证据继续PR335，发布PR327不变。见`docs/design-docs/legacy-supervisor-stop-timeout-investigation.md`与`legacy-stop-investigation-result.json`。
 
 ## 记录字段
 
