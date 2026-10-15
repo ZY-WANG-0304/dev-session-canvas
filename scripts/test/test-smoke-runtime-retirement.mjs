@@ -112,6 +112,26 @@ test('an unchanged session ID cannot hide a changed runtime owner', async () => 
   assert.equal(f.closed.length, 2);
 });
 
+test('the actual source smoke entry explicitly enables observation in preparation and launch', async () => {
+  const runner = await readFile('scripts/smoke/run-vscode-smoke.mjs', 'utf8');
+  const start = runner.indexOf('async function main()');
+  const main = runner.slice(start, runner.indexOf('\nasync function ', start + 1));
+  const calls = [];
+  const context = vm.createContext({ path, projectRoot: '/test/project', smokeDebugRoot: '/test/debug',
+    scenarios: [{ name: 'trusted', disableWorkspaceTrust: true }], fakeAgentProviderPath: '/test/agent',
+    missingAgentProviderPath: '/test/missing', smokeFixturesPath: '/test/bin', console: { log() {} },
+    shouldReRunInsideXvfb: () => false, shouldRunScenario: name => name === 'trusted',
+    prepareRuntime: async options => { calls.push(options); return { debugRoot: options.debugRoot }; },
+    prepareMainSmokeHostExtension: async options => options.targetRoot,
+    resolveStagedSmokeTestPath: (...parts) => path.join(...parts),
+    launchPreparedVSCodeScenario: async options => { calls.push(options); }
+  });
+  await vm.runInContext(`${main}\nmain()`, context);
+  assert.equal(calls.length, 2);
+  for (const call of calls) assert.equal(call.extensionTestsEnv.DEV_SESSION_CANVAS_SMOKE_TEST_MODE, '1',
+    'Source Host ExtensionMode.Test does not itself enable observation in the separate Supervisor');
+});
+
 for (const mode of ['retained-then-absent', 'wrong-owner', 'wrong-session', 'wrong-kind', 'invalid-absence', 'missing-before-stop', 'disconnect']) {
   test(`fixed real socket observation: ${mode}`, async () => {
     const socketPath = path.join(os.tmpdir(), `dsc-retire-${process.pid}-${tests.length}.sock`);

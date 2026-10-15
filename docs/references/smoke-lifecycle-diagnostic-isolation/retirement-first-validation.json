@@ -5,7 +5,7 @@
   "fullRun": 38692163764,
   "fullJob": 116282111095,
   "fullResult": "exit1 in source trusted: Session retirement observation is only available in smoke test mode.",
-  "fullFailureCause": "systemd unit passes only ELECTRON flags; requesting Host smoke mode did not reach systemd-launched Supervisor.",
+  "fullFailureCause": "已更正：失败snapshot为legacy-detached；源码入口没有显式SMOKE_TEST_MODE，Host仅靠ExtensionMode.Test注册命令，Supervisor守卫看不到该模式。systemd不继承Host环境是静态确定的独立接线要求，已补齐，但不是此首败的已确认后端。",
   "nativeRuns": [
     {
       "run": 38692163764,

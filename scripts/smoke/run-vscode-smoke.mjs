@@ -134,6 +134,7 @@ async function main() {
       runtimeDirName: `dsc-vscode-smoke-runtime-${scenario.name}`,
       userSettings: scenario.userSettings,
       extensionTestsEnv: {
+        DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
         DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
@@ -159,6 +160,7 @@ async function main() {
       disableExtensions: false,
       disableWorkspaceTrust: scenario.disableWorkspaceTrust,
       extensionTestsEnv: {
+        DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
         DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,

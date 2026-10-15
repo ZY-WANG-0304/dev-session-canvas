@@ -1,0 +1,39 @@
+{
+  "input": "675c2ea03c61d0f09e18e6497e5593d13966f87d",
+  "fix": "2f413267698be0e1d8619f74721f4c9469d23280",
+  "release": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+  "run": 38694282830,
+  "nativeJob": 116289022209,
+  "nativeExit": 0,
+  "nativeTrusted": "complete passed",
+  "oldDeleteDelayMs": 500,
+  "helperElapsedMs": 645,
+  "artifact": 11953213969,
+  "artifactSha256": "b9e52df4998a9e22b5eebe0f3f58a4778451a0e5b98c199bdf033c636c50c984",
+  "CRCAndTar": "passed",
+  "causalAssertions": "passed",
+  "fullJob": 116289022395,
+  "fullState": "exit1 source trusted: same smoke-mode guard rejection; source entry lacked explicit flag",
+  "priorFullArtifact": {
+    "id": 11952599780,
+    "zipBytes": 49524495,
+    "zipSha256": "2ff1369af05a18bc274802366b4d234fbf1bdbce83cb9e6e016b493b6fbbb2cb",
+    "CRCAndTar": "passed",
+    "archivedBytes": 161120034,
+    "totalLimitOmissions": 0
+  },
+  "limits": [
+    "组合验证不是最终正式PR327预合并输入；修复合入后仍需rebase并完整验收。",
+    "临时插桩只延迟两原身份删除，不修改正式helper、产品准入或业务断言。"
+  ],
+  "sourceModeFollowup": {
+    "regression": "18/18",
+    "oldSourceEntry": "exit1",
+    "runnerEnv": "passed",
+    "change": "source main prepare/launch explicitly sets smoke=1",
+    "sha256": {
+      "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd",
+      "scripts/test/test-smoke-runtime-retirement.mjs": "b9d53589a62662ae8196f9f4add6f33e58ead7edc1a2cfa314cb75d6db332dd4"
+    }
+  }
+}

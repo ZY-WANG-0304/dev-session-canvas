@@ -1,0 +1,15 @@
+{
+  "input": "675c2ea03c61d0f09e18e6497e5593d13966f87d",
+  "before_sha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "52b1c8de08b7f631a3d7a218be2c74fd898f0986a10d25ffe99456b8cdd863b3",
+    "tests/vscode-smoke/extension-tests.cjs": "3599b5e380e76e9aebb385d68b01a058e2b0da3add6dda66d8f7dba90af98c66",
+    "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718"
+  },
+  "after_sha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "0c7e021a4a1ece911db36fbcdf401a6c441e7cc6129e95eaaa5896dc51edb38f",
+    "tests/vscode-smoke/extension-tests.cjs": "f8e72ec4e61bc81080402516edf6fc47c1ef22e92ce60312ef647163843a1f2e",
+    "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718"
+  },
+  "delayMs": 500,
+  "scope": "only two captured original sessions; formal helper unmodified"
+}
