@@ -1,0 +1,9 @@
+{
+  "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+  "node": "22.23.3",
+  "exit": 0,
+  "summary": "Host execution owner wiring: 634/634 passed (selected 634/634; non-native only).",
+  "full_local_log": "/dev/shm/dsc-lifecycle-fix-evidence/host-owner-wiring.log",
+  "full_log_sha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5",
+  "scope": "non-native; selected 634/634; real manager class"
+}

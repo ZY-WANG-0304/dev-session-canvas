@@ -1,0 +1,79 @@
+{
+  "localExecutions": [],
+  "activeSurface": "editor",
+  "configuration": {
+    "linkOpenMode": "editorPreview",
+    "terminalShellPath": "/usr/bin/bash",
+    "terminalShellResolutionSource": "default-shell",
+    "terminalInheritEnv": true,
+    "terminalShellArgs": []
+  },
+  "sidebar": {
+    "canvasSurface": "visible",
+    "surfaceLocation": "editor",
+    "configuredSurface": "panel",
+    "runtimePersistenceEnabled": false,
+    "notificationBridgeMode": "system",
+    "enabledAttentionSignals": [
+      "bel",
+      "osc9",
+      "osc777",
+      "agentAbnormalExit",
+      "codexAbnormalOutputText"
+    ],
+    "notificationStrongReminderMode": "both",
+    "agentAbnormalOutputTextNotificationMode": "off",
+    "filesFeatureEnabled": false,
+    "filePresentationMode": "lists",
+    "fileNodeDisplayStyle": "minimal",
+    "fileNodeDisplayMode": "icon-path",
+    "filePathDisplayMode": "basename",
+    "terminalShellConfiguredValue": "default",
+    "terminalShellPath": "/usr/bin/bash",
+    "agentCodexCommand": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+    "agentClaudeCommand": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/missing-agent-provider",
+    "nodeCount": 0,
+    "runningExecutionCount": 0,
+    "workspaceTrusted": false,
+    "creatableKinds": [
+      "agent",
+      "terminal",
+      "note"
+    ],
+    "fileFilters": {
+      "includeGlobs": [],
+      "excludeGlobs": []
+    }
+  },
+  "state": {
+    "version": 1,
+    "updatedAt": "2026-10-15T03:37:11.488Z",
+    "nodes": [],
+    "edges": [],
+    "groups": [],
+    "nextGroupSequence": 1,
+    "fileReferences": [],
+    "suppressedFileActivityEdgeIds": [],
+    "suppressedAutomaticFileArtifactNodeIds": []
+  },
+  "surfaceMode": {
+    "editor": "active"
+  },
+  "surfaceReady": {
+    "editor": false,
+    "panel": false
+  },
+  "surfaceLifecycle": {
+    "editor": {
+      "generation": 2,
+      "mode": "active",
+      "ready": false,
+      "bootstrapAck": false
+    },
+    "panel": {
+      "generation": 0,
+      "ready": false,
+      "bootstrapAck": false
+    }
+  }
+}

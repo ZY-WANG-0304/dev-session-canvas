@@ -1,0 +1,65 @@
+{
+  "mode": "during",
+  "smoke_exit": 1,
+  "causal_assertions": "passed",
+  "gates": [
+    {
+      "time": 1792036154987,
+      "stage": "original-ready-held",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2,
+        "frameId": "frame-cf80c114-8a78-4776-8ed5-69dc95f3962f"
+      }
+    },
+    {
+      "time": 1792036154988,
+      "stage": "original-ready-delivered-during-diagnostic",
+      "active": "panel",
+      "ready": true,
+      "lifecycle": {
+        "generation": 2,
+        "mode": "active",
+        "ready": true,
+        "bootstrapAck": false,
+        "frameId": "frame-cf80c114-8a78-4776-8ed5-69dc95f3962f",
+        "terminalReadSettlementV1": true,
+        "terminalLocalSettlementV1": true,
+        "terminalLocalOutputCreditV1": true,
+        "terminalAvailableReceiptV1": true,
+        "terminalCurrentStateV1": true
+      }
+    },
+    {
+      "time": 1792036155080,
+      "stage": "before-diagnostic-restore",
+      "active": "panel",
+      "ready": true,
+      "lifecycle": {
+        "generation": 2,
+        "mode": "active",
+        "ready": true,
+        "bootstrapAck": false,
+        "frameId": "frame-cf80c114-8a78-4776-8ed5-69dc95f3962f",
+        "terminalReadSettlementV1": true,
+        "terminalLocalSettlementV1": true,
+        "terminalLocalOutputCreditV1": true,
+        "terminalAvailableReceiptV1": true,
+        "terminalCurrentStateV1": true
+      }
+    },
+    {
+      "time": 1792036155080,
+      "stage": "after-diagnostic-restore",
+      "active": "editor",
+      "ready": false,
+      "lifecycle": {
+        "generation": 2,
+        "mode": "active",
+        "ready": false,
+        "bootstrapAck": false
+      }
+    }
+  ]
+}

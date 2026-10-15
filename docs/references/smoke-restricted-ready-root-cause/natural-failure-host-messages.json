@@ -1,0 +1,28 @@
+[
+  {
+    "type": "host/templateCatalogUpdated",
+    "payload": {
+      "templates": [
+        {
+          "templateId": "builtin-getting-started",
+          "name": "使用说明",
+          "category": "builtin",
+          "statsLabel": "1 Note",
+          "isDefault": true
+        },
+        {
+          "templateId": "builtin-basic-workflow",
+          "name": "示例模板",
+          "category": "builtin",
+          "statsLabel": "1 Agent, 1 Terminal, 1 Note",
+          "isDefault": false
+        }
+      ]
+    },
+    "lifecycle": {
+      "surface": "editor",
+      "mode": "active",
+      "generation": 2
+    }
+  }
+]

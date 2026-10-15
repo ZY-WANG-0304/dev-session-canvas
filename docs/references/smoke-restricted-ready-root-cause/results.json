@@ -1,0 +1,113 @@
+{
+  "input": {
+    "base": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+    "head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+    "input": "9198cacbee91fc170b82578e353c16a27f3574b8",
+    "run": 38665513172,
+    "attempt": 2,
+    "original_log": "/dev/shm/pr327-after334-gate/verify-attempt2-full.log",
+    "bytes": 7123483,
+    "sha256": "e01c41f82793d13babb50632fe01da57c7508b793a3dfd1b67081258f874a7f6",
+    "original_failure_artifacts_uploaded": false,
+    "natural_reproduction_run": 38676791045
+  },
+  "original": {
+    "run": 38676791045,
+    "input": "9198cacbee91fc170b82578e353c16a27f3574b8",
+    "conclusion": "success",
+    "exit": 0,
+    "vscode": "1.142.0",
+    "product_test_code_changed": false,
+    "artifact": 11945644318,
+    "artifact_sha256": "f8468a18ea74fb17df8e01ce42f6ebbc4306fe9900b8e84dc20714f3576c784e",
+    "log_sha256": "29b948908ce205e5a463e38bc84870d04bd65dc8ad9a94815cb59cb48411693d",
+    "scope": "single original restricted success; not original root cause proof or complete gate"
+  },
+  "natural_failure": {
+    "run": 38677150708,
+    "sample": 1,
+    "iteration": 1,
+    "input": "9198cacbee91fc170b82578e353c16a27f3574b8",
+    "workflow_commit": "7f092f3c838fea0a2121d04b79f161788bc96f96",
+    "exit": 1,
+    "artifact": 11946199136,
+    "artifact_bytes": 314164577,
+    "artifact_sha256": "52f5db4e9249d8949d7bbeb790738b85397278aecd25aaf3ef8bce6c5077df24",
+    "log_sha256": "903f9cc5f3ef88aa4fe33480bcbe20712abe23e221e317031595febf20551be0",
+    "real_editor_ready_count": 1,
+    "editor_ready_accepted_while_fake_panel_active": true,
+    "saved_ready_false_restored": true,
+    "same_editor_generation": 2,
+    "timeout_elapsed_ms": 20027,
+    "visible_and_active": true,
+    "no_editor_bootstrap": true,
+    "observation_limit": "stage logging adds scheduling; original CI lacked uploaded Host snapshot"
+  },
+  "finite_stage_samples": {
+    "run": 38677150708,
+    "conclusion": "failure",
+    "executed": 19,
+    "passed": 18,
+    "failed": 1,
+    "failure_location": "sample1 iteration1 restricted editor ready timeout",
+    "other_samples": "stage-other-samples-summary.json",
+    "artifacts": [
+      {
+        "id": 11947750404,
+        "name": "stage-restricted-2-38677150708",
+        "bytes": 1885107544,
+        "digest": "sha256:2e8af96bfbc7bdc93714b11fae5dced8af56f76f6c85b328d20826e3fc90ced5",
+        "full_local_copy": false
+      },
+      {
+        "id": 11946905964,
+        "name": "stage-restricted-3-38677150708",
+        "bytes": 1882485943,
+        "digest": "sha256:87d69d73392bdf1c2599d1f91dacad60fb66798b4b5bfff287b15faf0c3ef072",
+        "full_local_copy": false
+      },
+      {
+        "id": 11946705876,
+        "name": "stage-restricted-4-38677150708",
+        "bytes": 1885144293,
+        "digest": "sha256:7628355ff2be66cfb272e3eaf45f3fee55dabdfc796ec91128abf7fb20fa2371",
+        "full_local_copy": false
+      },
+      {
+        "id": 11946199136,
+        "name": "stage-restricted-1-38677150708",
+        "bytes": 314164577,
+        "digest": "sha256:52f5db4e9249d8949d7bbeb790738b85397278aecd25aaf3ef8bce6c5077df24",
+        "full_local_copy": true
+      }
+    ]
+  },
+  "causal": [
+    {
+      "run": 38678148402,
+      "mode": "during",
+      "workflow_conclusion": "success",
+      "smoke_exit": 1,
+      "assertions": "passed",
+      "artifact": 11947396086,
+      "zip_sha256": "0866a15185bb9a1158760ade516290280d7bda45566346797fedddbe3a6fea86",
+      "log_sha256": "98ac3ae3f0560b02385747ecdd967805736139366e2e0c32b22058183944691f",
+      "probe_input_sha256": "a862aa2f86069e63148134507f2aee2019ac34bf49775243198f44b05b0e2c9c",
+      "receipt": "causal-during-result.json"
+    },
+    {
+      "run": 38678148402,
+      "mode": "before",
+      "workflow_conclusion": "success",
+      "smoke_exit": 0,
+      "assertions": "passed",
+      "artifact": 11947406098,
+      "zip_sha256": "76ca06f4ee2b3d6ca7876f40365bdfac9e6a7cb1f7bc6042f0d5a267610d1acf",
+      "log_sha256": "7e361e237b25c1f731ac2fe465ddbf086151f50e31d67bb6ed316ab23036834f",
+      "probe_input_sha256": "96968c2c791d91871265036b843c2da5337dbabfa9769ca40372ae97d31edc24",
+      "receipt": "causal-before-result.json"
+    }
+  ],
+  "temporary_workflow_removed_commit": "59397b38ce301755281816a83f8e42d0a44ef1cd",
+  "scope": "root cause investigation only; original formal gate remains failure, no product or permanent fixture changes"
+}

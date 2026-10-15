@@ -1,0 +1,7 @@
+
+> dev-session-canvas-workspace@0.26.0 typecheck
+> npm run -w extensions/vscode/dev-session-canvas typecheck
+
+
+> dev-session-canvas@0.26.0 typecheck
+> tsc -p ./tsconfig.json --noEmit

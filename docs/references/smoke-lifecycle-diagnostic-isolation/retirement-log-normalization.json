@@ -1,0 +1,25 @@
+{
+  "rule": "移除行尾空白与EOF多余空行，原始日志仍保留于devshm",
+  "files": {
+    "retirement-build.log": {
+      "originalSha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "normalizedSha256": "c41e2a07c7ee03c1c3be6e9aec31eb379ed97812ce9adbe95831ed2d4f98e229"
+    },
+    "retirement-systemd-build.log": {
+      "originalSha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "normalizedSha256": "c41e2a07c7ee03c1c3be6e9aec31eb379ed97812ce9adbe95831ed2d4f98e229"
+    },
+    "retirement-systemd-old-negative.log": {
+      "originalSha256": "02250cce808d97b9f819bdc632fd7305d856c7623d52f9ff87554b8a390dcf90",
+      "normalizedSha256": "f3f350fd02a914fd324ad6b253e7e539ef12337278886d0218bf59842bdb4818"
+    },
+    "retirement-systemd-typecheck.log": {
+      "originalSha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+      "normalizedSha256": "9e07ea2247464a7a81143266a684bf0a1b52f4dafc77baed494a185140dfcb60"
+    },
+    "retirement-typecheck.log": {
+      "originalSha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+      "normalizedSha256": "9e07ea2247464a7a81143266a684bf0a1b52f4dafc77baed494a185140dfcb60"
+    }
+  }
+}

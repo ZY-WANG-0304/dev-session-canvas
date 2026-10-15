@@ -1,0 +1,187 @@
+PASS reader settlement: one real reader reuses its journal context for retry, empty head and appended output without a pin
+PASS reader settlement: a failed journal page drops its context without fabricating sent or applied evidence
+PASS terminal ordinary Supervisor consumption does not serialize terminal state
+PASS agent ordinary Supervisor consumption does not serialize terminal state
+PASS candidate factory and profile requirements reject before journal or execution acquisition
+PASS candidate hello advertises only complete matching live injection and legacy remains unchanged
+PASS candidate declaration cannot substitute provider ready interaction and control responsibility survives refusal
+PASS candidate Supervisor uses one twenty-second boundary and late cleanup cannot replace first
+PASS import is inert and missing capability acquires nothing
+PASS closed admission reports no acquisition before journal or provider preparation
+PASS capacity admission reports no acquisition before journal or provider preparation
+PASS duplicate existing session cannot claim no acquisition even after admission closes
+PASS unconfirmed start retains the acquired control resource and sends no no-acquisition result
+PASS snapshot failure after successful acquisition does not authorize creation cleanup
+PASS shutdown reserves before journal await and cancels delayed start after cleanup
+PASS unconfirmed journal preparation cannot release the reserved owner
+PASS failed pre-acquire journal cleanup cannot report no acquisition
+PASS start admission rejected before control acquisition reports no acquisition after journal cleanup
+PASS acquired start failure keeps the owner responsibility
+PASS terminal: disk backlog holds consumption credit and finalization without blocking another session
+Terminal journal failed for session 40000000-0000-4000-8000-000000000041: Error: injected journal appendOutput failure
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:662:25
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:656:7
+PASS terminal: failed journal appendOutput retains credit and live responsibility
+Terminal journal failed for session 40000000-0000-4000-8000-000000000044: Error: injected journal flush failure
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:662:25
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:656:7
+PASS terminal: failed journal flush retains credit and live responsibility
+Terminal journal failed for session 40000000-0000-4000-8000-000000000047: Error: ENOSPC: no space left on device, appendFile '/dev/shm/dsc-lifecycle-fix-evidence/tmp/dsc-supervisor-owner-9L1is7/46/terminal-journals/a52f32aa5d06287f01090342210e5a37/manifest.json.tmp'
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:693:39
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:687:7 {
+  code: 'ENOSPC'
+}
+PASS terminal: actual journal appendFile ENOSPC reaches new creation and retains responsibility
+Terminal journal failed for session 40000000-0000-4000-8000-000000000050: Error: ENOSPC: no space left on device, writeFile '/dev/shm/dsc-lifecycle-fix-evidence/tmp/dsc-supervisor-owner-9L1is7/49/terminal-journals/74316f0ea35c49a2fe7d464b7b319b1f/manifest.json.tmp'
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:693:39
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:687:7 {
+  code: 'ENOSPC'
+}
+PASS terminal: actual journal writeFile ENOSPC reaches new creation and retains responsibility
+PASS terminal: seal cannot overtake paused consumption and later accepted batches
+PASS agent: disk backlog holds consumption credit and finalization without blocking another session
+Terminal journal failed for session 40000000-0000-4000-8000-000000000058: Error: injected journal appendOutput failure
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:662:25
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:656:7
+PASS agent: failed journal appendOutput retains credit and live responsibility
+Terminal journal failed for session 40000000-0000-4000-8000-000000000061: Error: injected journal flush failure
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:662:25
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:656:7
+PASS agent: failed journal flush retains credit and live responsibility
+Terminal journal failed for session 40000000-0000-4000-8000-000000000064: Error: ENOSPC: no space left on device, appendFile '/dev/shm/dsc-lifecycle-fix-evidence/tmp/dsc-supervisor-owner-9L1is7/63/terminal-journals/965b8693362df546dd991ed4910958ec/manifest.json.tmp'
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:693:39
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:687:7 {
+  code: 'ENOSPC'
+}
+PASS agent: actual journal appendFile ENOSPC reaches new creation and retains responsibility
+Terminal journal failed for session 40000000-0000-4000-8000-000000000067: Error: ENOSPC: no space left on device, writeFile '/dev/shm/dsc-lifecycle-fix-evidence/tmp/dsc-supervisor-owner-9L1is7/66/terminal-journals/a09e1fb22f931e4d5765c0d375d91516/manifest.json.tmp'
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:693:39
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:687:7 {
+  code: 'ENOSPC'
+}
+PASS agent: actual journal writeFile ENOSPC reaches new creation and retains responsibility
+PASS agent: seal cannot overtake paused consumption and later accepted batches
+PASS reader settlement: terminal: Host final credit pins the journal without blocking preserving delete
+PASS reader settlement: agent: Host final credit pins the journal without blocking preserving delete
+PASS reader settlement: steady Host output credit does not turn each acknowledged output into a state update
+PASS socket loss only detaches readers and the last owner prevents idle retirement
+PASS a live reconnect obtains reader responsibility before final admission closes
+PASS reader opening rejects socket cleanup during checkpoint flush
+PASS reader opening rejects session replacement during checkpoint flush
+PASS stop and delete preserve the paused consumer until actual settlement
+PASS failed final flush retains responsibility and prevents new acquisition
+PASS late finalization cannot overwrite a replacement mapping
+PASS reader settlement: editor and panel on one socket settle independently, including final revision zero
+PASS reader settlement: applied requires the exact fixed final revision to have been sent on that reader
+PASS reader settlement: wrong identity, foreign socket and conflicting results never settle the original reader
+PASS reader settlement: same result remains idempotent after session deletion but expires after sixty seconds
+PASS reader settlement: per-socket retention keeps only 128 recent results without rewriting older outcomes
+PASS reader settlement: the 129th pending reader is rejected without evicting admitted opens
+PASS reader settlement: socket write backpressure still counts as submitted response evidence
+PASS reader settlement: legacy close is only legacy-released and cannot claim applied
+PASS reader settlement: a replacement receipt cannot grant settlement capability to the legacy reader
+PASS reader settlement: missing receiver capability rejects opt-in and explicit outcomes while preserving legacy close
+PASS reader settlement: same-surface replacement cancels one reader and disconnect loses each remaining reader
+PASS reader settlement: open admitted while final flush is blocked remains owned after reader admission closes
+PASS reader settlement: queued admitted open survives preserving deletion
+PASS reader settlement: queued admitted open is cancelled by non-preserving deletion
+PASS reader settlement: a prepared open reply is not sent evidence until handleRequest writes it
+PASS reader settlement: a prepared page reply cannot advance sent evidence before handleRequest writes it
+PASS reader settlement: response write throw once records loss without applied evidence
+PASS reader settlement: response write destroy connection records loss without applied evidence
+PASS reader settlement: page waiting for journal output rejects reader close
+PASS reader settlement: page waiting for journal output rejects reader replace
+PASS reader settlement: hello, session and open each advertise only their actual settlement capability
+PASS reader settlement: final revision notification waits for the actual final tracker flush
+PASS reader settlement: failed authority finalization never advertises a final applied revision
+PASS reader settlement: terminal final snapshot preserves interrupted separately from applied output
+PASS reader settlement: terminal final snapshot preserves error separately from applied output
+PASS reader settlement: terminal final snapshot preserves unknown separately from applied output
+PASS reader settlement: terminal final snapshot preserves eof separately from applied output
+PASS reader settlement: agent final snapshot preserves interrupted separately from applied output
+PASS reader settlement: agent final snapshot preserves error separately from applied output
+PASS reader settlement: agent final snapshot preserves unknown separately from applied output
+PASS reader settlement: agent final snapshot preserves eof separately from applied output
+PASS terminal real Supervisor natural close keeps first timeout separate from late tracker and reader settlement
+PASS agent real Supervisor natural close keeps first timeout separate from late tracker and reader settlement
+PASS real Supervisor delete retains a timed-out final flush and retires only after late actual completion
+PASS real Supervisor without close observation capability keeps natural-exit timers disabled
+PASS terminal real Supervisor parent cleanup is independent of tracker and reader settlement
+PASS agent real Supervisor parent cleanup is independent of tracker and reader settlement
+PASS smoke retirement rejects ordinary mode and observes retained storage until actual removal
+PASS smoke retirement cannot hide a failed original journal deletion
+PASS production admission retains completed storage responsibility during awaiting-host-save
+PASS production admission retains completed storage responsibility during slow-delete
+PASS production admission retains completed storage responsibility during failed-delete
+PASS production admission combines retained storage with one unsettled owner without double counting
+PASS finite admission preserves its existing completed storage semantics
+PASS terminal boundary saves real journal after reader application and confirms original socket/server close
+PASS agent boundary saves real journal after reader application and confirms original socket/server close
+PASS slow admitted reader remains valid after boundary deadline and does not authorize late save or socket end
+PASS boundary unknown retains original execution and late tail consumption without starting late shutdown work
+PASS strict boundary persistence propagates existing-error without fallback success or socket end
+PASS strict boundary persistence propagates flush-rejection without fallback success or socket end
+PASS late actual journal save freezes deadline before result even while timer callbacks are held
+PASS pending registry chain reaches a finite boundary report without pretending save completion
+PASS socket end intent and server close intent remain unknown until original callbacks arrive
+PASS server close callback failure keeps original sockets open and reports a real failure
+PASS in-flight attachSession cannot publish new admission after the boundary starts
+PASS in-flight subscribeSession cannot publish new admission after the boundary starts
+PASS reader admitted before boundary may finish its in-flight checkpoint and explicitly apply final state
+PASS boundary waits original journal preparation cleanup without acquiring an execution
+PASS new gate delete propagates journal failure without disposing its retained tracker
+PASS legacy cursor responsibility is not replaced by owned reader retirement at boundary
+PASS new gate idle failure keeps closing alive while successful idle waits for listener close
+PASS S6 unstarted cleanup and S7 boundary settle a genuinely empty admitted-reader collection
+PASS owned exit description: resumed Agent exit 23
+PASS owned exit description: fresh Agent exit 23
+PASS owned exit description: Agent signal
+PASS owned exit description: Agent normal end
+PASS owned exit description: resume phase exit 23
+PASS owned exit description: resume phase signal
+PASS owned exit description: resume phase zero
+PASS owned exit description: resume phase stop
+PASS owned exit description: Agent stop nonzero
+PASS owned exit description: Terminal exit 23
+PASS owned exit description: Terminal signal
+PASS owned exit description: Terminal normal end
+PASS owned exit description: Terminal stop
+PASS owned exit description preserves authority-failed
+PASS owned exit description preserves unconfirmed
+PASS owned exit description preserves terminated
+PASS owned exit description preserves stopped-terminated
+Terminal journal failed for session s10-agent-267: Error: controlled journal failure
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:2395:57
+    at async check (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:193:3)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:2388:5
+PASS owned exit description preserves journal-failed
+PASS S10 Supervisor initial dimensions and stop policy represent Terminal, Codex and Claude without legacy process
+PASS S10 Supervisor write RPC waits actual written and never marks Agent running after failed input
+PASS S10 Supervisor resize orders native confirmation before journal tracker and scrollback revisions
+Terminal journal failed for session s10-terminal-283: Error: controlled resize journal failure
+    at f.session.terminalJournal.appendResize (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:2476:96)
+    at eval (eval at <anonymous> (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:32:1), <anonymous>:15876:50)
+PASS S10 Supervisor failed resize does not mutate dimensions and confirmed resize journal failure closes admission
+PASS S10 Supervisor title replies remain independent of output consumption and preserve Agent resume activity
+PASS S10 Supervisor owned subject exit and Claude input restrictions reject mutation without a legacy process
+Terminal title reply was rejected: Error: Terminal resize effect is unconfirmed: controlled resize observation deadline
+    at RuntimeSupervisorServer.replyToOwnedTerminalQuery (eval at <anonymous> (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:32:1), <anonymous>:16164:15)
+    at eval (eval at <anonymous> (file:///dev/shm/dsc-restricted-ready/scripts/test/test-supervisor-execution-owner-wiring.mjs:32:1), <anonymous>:16137:16)
+PASS S10 Supervisor uncertain resize retains original late evidence while consuming tail and refusing complete authority
+PASS current state bootstrap is bounded paging at R and preserves old reader history and the durable checkpoint
+PASS real tracker current-state readers reopen after OSC8 and RIS
+PASS real tracker current-state readers reopen after OSC8 and normal shrink
+PASS real tracker current-state readers reopen after OSC8 and alternate shrink
+PASS current state capture shares the terminal queue and failed capture loses only that reader
+PASS current state final application requires full transfer and an import-confirming normal page
+PASS prepared current state chunks are not sent evidence and cannot survive reader cancellation
+PASS completed legacy payloads never promote a current state placeholder to an ANSI checkpoint
+Supervisor execution owner wiring: 136/136 pure cases passed

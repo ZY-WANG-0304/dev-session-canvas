@@ -1,0 +1,22 @@
+
+> dev-session-canvas-workspace@0.26.0 test:smoke-runtime-retirement
+> node scripts/test/test-smoke-runtime-retirement.mjs
+
+PASS original persistence scenario waits both retired identities before its single Agent and Terminal starts
+PASS localExecutions empty and live false cannot bypass retained Supervisor storage
+PASS node removal or replacement never authorizes original restart
+PASS node removal or replacement never authorizes original restart
+PASS all original observers are closed when second capture fails before stopping
+PASS failed observation propagates and never resubmits a start
+PASS capture and stop costs consume the same original budget
+PASS capture requires a complete original live-runtime identity
+PASS stopping nodes remain pending until both live facts and storage settle
+PASS an unchanged session ID cannot hide a changed runtime owner
+PASS fixed real socket observation: retained-then-absent
+PASS fixed real socket observation: wrong-owner
+PASS fixed real socket observation: wrong-session
+PASS fixed real socket observation: wrong-kind
+PASS fixed real socket observation: invalid-absence
+PASS fixed real socket observation: missing-before-stop
+PASS fixed real socket observation: disconnect
+Smoke Runtime retirement: 17/17 passed.

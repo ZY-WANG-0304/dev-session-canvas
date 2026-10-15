@@ -1,0 +1,16 @@
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Original ready must produce real bootstrap
+    at Object.ready (file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-lifecycle-isolation.mjs:59:5)
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-lifecycle-isolation.mjs:124:32 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v22.23.3

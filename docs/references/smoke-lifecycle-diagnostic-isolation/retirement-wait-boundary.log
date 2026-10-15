@@ -1,0 +1,37 @@
+PASS waitForSnapshot: first observation matches
+PASS waitForSnapshot: first observation matches on deadline
+PASS waitForSnapshot: first observation matches across deadline
+PASS waitForSnapshot: first observation misses across deadline
+PASS waitForSnapshot: ordinary next observation matches
+PASS waitForSnapshot: final observation matches on deadline
+PASS waitForSnapshot: final observation matches across deadline
+PASS waitForSnapshot: final observation misses on deadline
+PASS waitForSnapshot: final observation misses across deadline
+PASS waitForSnapshot: sleep uses remaining budget
+PASS waitForSnapshot: sleep overshoot still inspects final match
+PASS waitForSnapshot: sleep overshoot misses without retry
+PASS waitForSnapshot: all unmatched observations fail without extra reads
+PASS waitForSnapshot: zero budget still inspects first match
+PASS waitForSnapshot: zero budget misses without polling
+PASS waitForSnapshot: first read error propagates
+PASS waitForSnapshot: final read error propagates
+PASS waitForSnapshot: default budget remains unchanged
+PASS waitForDiagnosticEvents: first observation matches
+PASS waitForDiagnosticEvents: first observation matches on deadline
+PASS waitForDiagnosticEvents: first observation matches across deadline
+PASS waitForDiagnosticEvents: first observation misses across deadline
+PASS waitForDiagnosticEvents: ordinary next observation matches
+PASS waitForDiagnosticEvents: final observation matches on deadline
+PASS waitForDiagnosticEvents: final observation matches across deadline
+PASS waitForDiagnosticEvents: final observation misses on deadline
+PASS waitForDiagnosticEvents: final observation misses across deadline
+PASS waitForDiagnosticEvents: sleep uses remaining budget
+PASS waitForDiagnosticEvents: sleep overshoot still inspects final match
+PASS waitForDiagnosticEvents: sleep overshoot misses without retry
+PASS waitForDiagnosticEvents: all unmatched observations fail without extra reads
+PASS waitForDiagnosticEvents: zero budget still inspects first match
+PASS waitForDiagnosticEvents: zero budget misses without polling
+PASS waitForDiagnosticEvents: first read error propagates
+PASS waitForDiagnosticEvents: final read error propagates
+PASS waitForDiagnosticEvents: default budget remains unchanged
+Smoke wait boundary tests passed (36).

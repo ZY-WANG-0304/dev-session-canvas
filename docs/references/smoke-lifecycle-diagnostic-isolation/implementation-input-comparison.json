@@ -1,0 +1,25 @@
+{
+  "combo": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "fix_head": "0e471fb90c4769eaf9e62b105ce31224398eabcb",
+  "comparisons": [
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+      "combo_sha256": "8fbec5e34a567f06d73e39e2cedf014172cc4afa49bde7212133b7dada5649b7",
+      "fix_current_sha256": "8fbec5e34a567f06d73e39e2cedf014172cc4afa49bde7212133b7dada5649b7",
+      "identical": true
+    },
+    {
+      "path": "scripts/test/test-smoke-lifecycle-isolation.mjs",
+      "combo_sha256": "f69eaa3bd7cf24506f6b09c1fdb344dceff9fc841cb91852798fb233a7756f26",
+      "fix_current_sha256": "a86ae8a584c173ebb2f67d0c8a28f293ba66908b97d41466152941253688b991",
+      "identical": false
+    },
+    {
+      "path": "package.json",
+      "combo_sha256": "2e8b018e803776c5c25ffadff83a32f0f7c68eb63b6664279f9cc37c70ad67b1",
+      "fix_current_sha256": "cf61aad585b18b50cddbee43b5d02c49836a9df61fbe413d33de766db215df3c",
+      "identical": false
+    }
+  ],
+  "differences": "package.json: release version 0.26.1 vs fix 0.26.0; regression: fail promptly if diagnostic rejects before controlled wait; manager implementation identical"
+}

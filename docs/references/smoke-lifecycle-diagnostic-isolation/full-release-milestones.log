@@ -1,0 +1,16 @@
+2026-10-15T04:33:33.7921763Z Snapshot-only manual recovery: resume-ready/interrupted, page remount without autostart, explicit resume, original provider identity, live output and exit 19 passed.
+2026-10-15T04:35:02.4379455Z Runtime paged terminal projection smoke passed.
+2026-10-15T04:35:59.1805167Z Snapshot-only manual recovery: resume-ready/interrupted, page remount without autostart, explicit resume, original provider identity, live output and exit 19 passed.
+2026-10-15T04:37:31.9653593Z Trusted workspace smoke passed.
+2026-10-15T04:38:15.8750060Z Restricted workspace smoke passed.
+2026-10-15T04:40:08.2047200Z Multi-root real window reopen smoke passed.
+2026-10-15T04:40:34.2676658Z Single-root to multi-root real window reopen smoke passed.
+2026-10-15T04:41:32.5242852Z Two-window shared runtime smoke passed.
+2026-10-15T04:42:05.3114886Z Fake systemd-user real window reopen smoke passed.
+2026-10-15T04:42:41.2948389Z Systemd unavailable before submission real window reopen smoke passed.
+2026-10-15T04:43:36.2930922Z Remote SSH real window reopen exit smoke passed.
+2026-10-15T04:44:32.3113215Z Remote SSH real window reopen retain smoke passed.
+2026-10-15T04:51:13.9333085Z   426 passed (6.6m)
+2026-10-15T04:51:13.9595607Z Playwright webview tests passed.
+2026-10-15T04:51:14.0511045Z 准备隔离 clean checkout 验证目录: /tmp/dev-session-canvas-clean-checkout-k840ba/repo
+2026-10-15T04:52:12.9345498Z Snapshot-only manual recovery: resume-ready/interrupted, page remount without autostart, explicit resume, original provider identity, live output and exit 19 passed.

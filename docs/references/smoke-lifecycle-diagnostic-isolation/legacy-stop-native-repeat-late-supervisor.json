@@ -1,0 +1,155 @@
+{
+  "phase": "failure",
+  "at": 1792058836088,
+  "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+  "paths": {
+    "storageDir": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/0b4c8398f4f2412f9579a4b2e5c57644/devsessioncanvas.dev-session-canvas/previous-generation-stream/runtime-supervisor",
+    "socketPath": "/tmp/dsc-vscode-smoke-runtime-legacy-supervisor-upgrade/dev-session-canvas/9560e5467b30c6a459db45a6.sock",
+    "registryPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/0b4c8398f4f2412f9579a4b2e5c57644/devsessioncanvas.dev-session-canvas/previous-generation-stream/runtime-supervisor/registry.json"
+  },
+  "child": {
+    "pid": 3460,
+    "exitCode": null,
+    "signalCode": null
+  },
+  "hello": {
+    "serverVersion": 1,
+    "pid": 3460,
+    "runtimeBackend": "legacy-detached",
+    "runtimeGuarantee": "best-effort",
+    "capabilities": {
+      "terminalSessionStreamV1": true,
+      "terminalProjectionSnapshotV1": true,
+      "terminalAppliedRevisionAckV1": true,
+      "terminalCheckpointRefreshV1": true,
+      "terminalPagedReadV1": true,
+      "terminalCurrentStateV1": true,
+      "terminalPagedCompletionV1": true,
+      "terminalHostOutputCreditV1": true
+    }
+  },
+  "registry": {
+    "version": 1,
+    "sessions": [
+      {
+        "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+        "kind": "terminal",
+        "live": false,
+        "lifecycle": "closed",
+        "runtimeBackend": "legacy-detached",
+        "runtimeGuarantee": "best-effort",
+        "resumePhaseActive": false,
+        "shellPath": "/bin/bash",
+        "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+        "cols": 67,
+        "rows": 21,
+        "scrollback": 1200,
+        "output": "\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[31mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'\r\n\u001b[?2004l\r\u001b[31mPREVIOUS_GENERATION_STREAM_READY\u001b[0m\r\n\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ \r\u001b[Krunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ \u001b[?2004l\r\u001b[?2004h\u001b[?2004l\r\r\n",
+        "outputSequence": 6,
+        "terminalAuthorityId": "b40493fd-1644-4415-88e5-8526abcd8047",
+        "terminalRevision": 6,
+        "capabilities": {
+          "terminalCurrentStateV1": true
+        },
+        "displayLabel": "/bin/bash",
+        "launchMode": "start",
+        "lastExitCode": 0,
+        "lastExitSignal": "1",
+        "lastExitMessage": "Terminal stopped.",
+        "lastExitMessageDescriptor": {
+          "id": "terminalStopped"
+        }
+      }
+    ]
+  },
+  "snapshot": {
+    "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+    "kind": "terminal",
+    "live": false,
+    "lifecycle": "closed",
+    "runtimeBackend": "legacy-detached",
+    "runtimeGuarantee": "best-effort",
+    "resumePhaseActive": false,
+    "shellPath": "/bin/bash",
+    "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+    "cols": 67,
+    "rows": 21,
+    "scrollback": 1200,
+    "output": "\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[31mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'\r\n\u001b[?2004l\r\u001b[31mPREVIOUS_GENERATION_STREAM_READY\u001b[0m\r\n\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ \r\u001b[Krunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ \u001b[?2004l\r\u001b[?2004h\u001b[?2004l\r\r\n",
+    "outputSequence": 6,
+    "terminalAuthorityId": "b40493fd-1644-4415-88e5-8526abcd8047",
+    "terminalRevision": 6,
+    "capabilities": {
+      "terminalCurrentStateV1": true
+    },
+    "displayLabel": "/bin/bash",
+    "launchMode": "start",
+    "lastExitCode": 0,
+    "lastExitSignal": "1",
+    "lastExitMessage": "Terminal stopped.",
+    "lastExitMessageDescriptor": {
+      "id": "terminalStopped"
+    },
+    "terminalStream": {
+      "version": 1,
+      "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+      "authorityId": "b40493fd-1644-4415-88e5-8526abcd8047",
+      "revision": 6,
+      "checkpoint": {
+        "version": 1,
+        "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+        "authorityId": "b40493fd-1644-4415-88e5-8526abcd8047",
+        "revision": 0,
+        "cols": 92,
+        "rows": 28,
+        "scrollback": 1200,
+        "createdAtMs": 1792058804114,
+        "serializedState": {
+          "format": "xterm-serialize-v1",
+          "data": "",
+          "viewportY": 0,
+          "outputSequence": 0
+        }
+      },
+      "events": [
+        {
+          "type": "output",
+          "revision": 1,
+          "createdAtMs": 1792058804116,
+          "data": "\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ "
+        },
+        {
+          "type": "output",
+          "revision": 2,
+          "createdAtMs": 1792058804122,
+          "data": "printf '\\033[31mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'\r\n\u001b[?2004l\r\u001b[31mPREVIOUS_GENERATION_STREAM_READY\u001b[0m\r\n"
+        },
+        {
+          "type": "output",
+          "revision": 3,
+          "createdAtMs": 1792058804122,
+          "data": "\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ "
+        },
+        {
+          "type": "resize",
+          "revision": 4,
+          "createdAtMs": 1792058805663,
+          "cols": 67,
+          "rows": 21
+        },
+        {
+          "type": "output",
+          "revision": 5,
+          "createdAtMs": 1792058805668,
+          "data": "\r\u001b[Krunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ "
+        },
+        {
+          "type": "output",
+          "revision": 6,
+          "createdAtMs": 1792058806021,
+          "data": "\u001b[?2004l\r\u001b[?2004h\u001b[?2004l\r\r\n"
+        }
+      ]
+    }
+  }
+}

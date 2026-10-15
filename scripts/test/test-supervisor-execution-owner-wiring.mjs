@@ -1774,6 +1774,63 @@ try {
   const productionRetirementFixture = () => fixture(boundaryCapabilities, {
     budgets: { naturalDrainMs: 15, boundaryMs: 100 }, admissionLimits: EXECUTION_PRODUCTION_ADMISSION
   });
+  await check('smoke retirement rejects ordinary mode and observes retained storage until actual removal', async () => {
+    const previousMode = process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE;
+    const f = productionRetirementFixture();
+    const result = await f.create('agent');
+    const identity = { sessionId: result.session.sessionId, kind: 'agent' };
+    const remove = result.session.terminalJournal.delete.bind(result.session.terminalJournal);
+    const gate = deferred();
+    let deleting;
+    try {
+      delete process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE;
+      assert.equal((await request(f, f.socket, 'getSessionRetirementForTest', identity)).ok, false);
+      process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE = '1';
+      assert.deepEqual((await request(f, f.socket, 'getSessionRetirementForTest', identity)).result,
+        { ...identity, exists: true });
+      assert.equal((await request(f, f.socket, 'getSessionRetirementForTest', { ...identity, kind: 'terminal' })).ok, false);
+      await finish(f, result.session, result.transport);
+      result.session.ownedExecution.settleReaders('cancelled');
+      result.session.terminalJournal.delete = async () => { await gate.promise; await remove(); };
+      deleting = f.server.deleteSession({ sessionId: identity.sessionId });
+      await f.until(() => result.session.retiring, 'old retirement entered');
+      assert.equal((await request(f, f.socket, 'getSessionSnapshot', { sessionId: identity.sessionId })).ok, false,
+        'ordinary absence hides a still retained retiring session');
+      const retained = await request(f, f.socket, 'getSessionRetirementForTest', identity);
+      assert.deepEqual(retained.result, { ...identity, exists: true });
+      assert.strictEqual(f.server.sessions.get(identity.sessionId), result.session);
+      gate.resolve(); await deleting;
+      assert.deepEqual((await request(f, f.socket, 'getSessionRetirementForTest', identity)).result,
+        { ...identity, exists: false });
+    } finally {
+      gate.resolve(); if (deleting) await deleting;
+      result.session.terminalJournal.delete = remove;
+      if (previousMode === undefined) delete process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE;
+      else process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE = previousMode;
+    }
+  });
+
+  await check('smoke retirement cannot hide a failed original journal deletion', async () => {
+    const previousMode = process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE;
+    const f = productionRetirementFixture();
+    const result = await f.create('terminal');
+    const identity = { sessionId: result.session.sessionId, kind: 'terminal' };
+    const remove = result.session.terminalJournal.delete.bind(result.session.terminalJournal);
+    try {
+      process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE = 'true';
+      await finish(f, result.session, result.transport);
+      result.session.ownedExecution.settleReaders('cancelled');
+      result.session.terminalJournal.delete = async () => { throw new Error('original journal delete failed'); };
+      await assert.rejects(f.server.deleteSession({ sessionId: identity.sessionId }), /original journal delete failed/);
+      assert.deepEqual((await request(f, f.socket, 'getSessionRetirementForTest', identity)).result,
+        { ...identity, exists: true });
+    } finally {
+      result.session.terminalJournal.delete = remove;
+      await f.server.deleteSession({ sessionId: identity.sessionId });
+      if (previousMode === undefined) delete process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE;
+      else process.env.DEV_SESSION_CANVAS_SMOKE_TEST_MODE = previousMode;
+    }
+  });
   const retainCompleted = async (f, kind) => {
     const result = await f.create(kind);
     result.transport.output(`${kind}-retained-retirement-tail`);

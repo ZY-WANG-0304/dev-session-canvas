@@ -1,0 +1,89 @@
+name: Temporary Legacy Stop Root Cause
+on:
+  push:
+    branches: [smoke-legacy-stop-root-cause-ci-temp]
+    paths: [.github/workflows/smoke-legacy-stop-root-cause-ci-temp.yml]
+permissions: {contents: read, actions: read}
+jobs:
+  native-stop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {sample: 8, filter: 'legacy-supervisor-upgrade', control: late}
+          - {sample: 9, filter: 'legacy-supervisor-upgrade', control: natural}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: ${{ matrix.filter }}
+      DSC_LEGACY_RESTORE_CONTROL: ${{ matrix.control }}
+      DSC_LEGACY_STOP_TRACE: /tmp/legacy-stop-${{ github.run_id }}-${{ matrix.sample }}.jsonl
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0, ref: 55c619ad70dbec74a7f9ffab17bf3dc547bd6913}
+      - name: Load temporary finite tracing and restore control
+        run: git show "${{ github.sha }}:legacy-stop-probe.py" > legacy-stop-probe.py
+      - uses: actions/setup-node@v4
+        with: {node-version: '22', cache: npm}
+      - run: npm ci
+      - run: npx --no-install playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38696319881
+          pattern: execution-native-*-38696319881
+          merge-multiple: true
+          path: archives
+      - name: Assemble original fixed-input assets
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source archives --output platform --input-sha 55c619ad70dbec74a7f9ffab17bf3dc547bd6913
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          Path('original-assets.json').write_text(json.dumps({'input':'55c619ad70dbec74a7f9ffab17bf3dc547bd6913','run':38696319881,'summaries':[json.loads(p.read_text()) for p in sorted(Path('archives').glob('*-summary.json'))],'manifests':[json.loads(p.read_text()) for p in sorted(Path('platform').glob('*/manifest.json'))]},indent=2)+'\n')
+          PY
+      - run: python3 legacy-stop-probe.py
+      - run: npm run typecheck
+      - name: Original native legacy smoke with one restore scheduling variable
+        run: |
+          set +e
+          npm run build > legacy-stop-build.log 2>&1
+          code=$?
+          if [ "$code" -eq 0 ]; then
+            timeout --signal=TERM --kill-after=20s 300s node scripts/smoke/run-vscode-smoke.mjs > legacy-stop.log 2>&1
+            code=$?
+          fi
+          echo "$code" > legacy-stop.exit
+          if [ -f legacy-stop.log ]; then tail -30 legacy-stop.log; else tail -30 legacy-stop-build.log; fi
+          exit "$code"
+      - name: Save cleanup-before evidence and traces
+        if: always()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,os,tarfile,subprocess,hashlib
+          files=[Path(n) for n in ('legacy-stop.log','legacy-stop-build.log','legacy-stop.exit','legacy-stop-probe-input.json','original-assets.json')]
+          files += [Path(os.environ['DSC_LEGACY_STOP_TRACE'])]
+          debug=Path('.debug')
+          if debug.exists():
+            files += [p for p in debug.rglob('*') if p.is_file() and p.stat().st_size<16*1024*1024 and ('/artifacts/' in str(p) or '/user-data/logs/' in str(p))]
+          total=0;inventory=[]
+          with tarfile.open('legacy-stop-evidence.tar.gz','w:gz') as tar:
+            for p in files:
+              if not p.exists():continue
+              size=p.stat().st_size
+              if total+size>400*1024*1024:inventory.append({'path':str(p),'omitted':'total bound'});continue
+              arc=str(p).lstrip('/');tar.add(p,arcname=arc);total+=size
+              inventory.append({'path':str(p),'bytes':size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+          Path('legacy-stop-inventory.json').write_text(json.dumps({'input':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'run':'${{ github.run_id }}','sample':${{ matrix.sample }},'assetRun':38696319881,'files':inventory},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-stop-root-cause-${{ github.run_id }}-${{ matrix.sample }}
+          path: |
+            legacy-stop-evidence.tar.gz
+            legacy-stop-inventory.json

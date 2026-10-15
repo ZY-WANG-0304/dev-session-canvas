@@ -1,0 +1,75 @@
+{
+  "diagnosticOnly": true,
+  "controlledProcessExit": true,
+  "realSocket": true,
+  "realHostBatchAndRestoreMethods": true,
+  "sourceInput": "55c619ad70dbec74a7f9ffab17bf3dc547bd6913",
+  "historicalFailureAttributed": false,
+  "cases": [
+    {
+      "concurrentRestore": false,
+      "firstRestoreSubscribed": true,
+      "subscriptionExistsBeforeStop": true,
+      "ignoredBeforeStop": [],
+      "applyCount": 3,
+      "supervisorLive": false,
+      "hostLive": false,
+      "hostLifecycle": "closed",
+      "outcomes": [
+        {
+          "batchId": 1,
+          "revision": 0,
+          "live": true,
+          "outcome": "consumed"
+        },
+        {
+          "batchId": 2,
+          "revision": 0,
+          "live": false,
+          "outcome": "consumed"
+        }
+      ],
+      "errors": []
+    },
+    {
+      "concurrentRestore": true,
+      "firstRestoreSubscribed": true,
+      "subscriptionExistsBeforeStop": false,
+      "ignoredBeforeStop": [
+        {
+          "name": "execution/operationIgnored",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "node",
+            "stage": "attach",
+            "runtimeSessionId": "late-restore"
+          }
+        }
+      ],
+      "applyCount": 2,
+      "supervisorLive": false,
+      "hostLive": true,
+      "hostLifecycle": "stopping",
+      "outcomes": [
+        {
+          "batchId": 1,
+          "revision": 0,
+          "live": true,
+          "outcome": "consumed"
+        },
+        {
+          "batchId": 1,
+          "revision": 0,
+          "live": false,
+          "outcome": "consumed"
+        }
+      ],
+      "errors": [],
+      "recovery": {
+        "explicitResubscribe": true,
+        "hostLive": false,
+        "hostLifecycle": "closed"
+      }
+    }
+  ]
+}

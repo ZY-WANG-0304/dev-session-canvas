@@ -1,0 +1,670 @@
+[
+  {
+    "source": "[restricted-ready-test]",
+    "time": 1792035430762,
+    "stage": "test-start",
+    "scenario": "restricted"
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431070,
+    "kind": "surface/revealRequested",
+    "detail": {
+      "to": "editor"
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431073,
+    "kind": "surface/attached",
+    "detail": {
+      "surface": "editor"
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431073,
+    "kind": "surface/rendered",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431078,
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "editor",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-test]",
+    "time": 1792035431177,
+    "stage": "before-reset",
+    "snapshot": {
+      "activeSurface": "editor",
+      "surfaceMode": {
+        "editor": "active"
+      },
+      "surfaceReady": {
+        "editor": false,
+        "panel": false
+      },
+      "surfaceLifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431489,
+    "kind": "state/reset",
+    "detail": {
+      "previousNodeCount": 1,
+      "clearedAgentCliResolutionCache": true
+    }
+  },
+  {
+    "source": "[restricted-ready-test]",
+    "time": 1792035431493,
+    "stage": "after-reset",
+    "snapshot": {
+      "activeSurface": "editor",
+      "surfaceMode": {
+        "editor": "active"
+      },
+      "surfaceReady": {
+        "editor": false,
+        "panel": false
+      },
+      "surfaceLifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431499,
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "panel",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431499,
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "panel",
+      "reason": "render",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 2
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035431500,
+    "stage": "ready-received",
+    "sourceSurface": "panel",
+    "lifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 1,
+      "frameId": "frame-lifecycle-race-old"
+    },
+    "currentLifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 2
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431501,
+    "kind": "surface/messageWebviewBound",
+    "detail": {
+      "surface": "panel",
+      "reason": "ready",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431501,
+    "kind": "surface/readyWebviewPromoted",
+    "detail": {
+      "surface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431501,
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "panel",
+      "mode": "active",
+      "activeSurface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431503,
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035431513,
+    "stage": "ready-received",
+    "sourceSurface": "editor",
+    "lifecycle": {
+      "surface": "editor",
+      "mode": "active",
+      "generation": 2,
+      "frameId": "frame-b4c1c14b-cca6-42b0-bf1f-b2c6a7de969d"
+    },
+    "currentLifecycle": {
+      "surface": "editor",
+      "mode": "active",
+      "generation": 2
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431513,
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "editor",
+      "mode": "active",
+      "activeSurface": "panel",
+      "lifecycle": {
+        "surface": "editor",
+        "mode": "active",
+        "generation": 2,
+        "frameId": "frame-b4c1c14b-cca6-42b0-bf1f-b2c6a7de969d"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431526,
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431526,
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035431552,
+    "stage": "ready-received",
+    "sourceSurface": "panel",
+    "lifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 2,
+      "frameId": "frame-lifecycle-race-competing"
+    },
+    "currentLifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 1,
+      "frameId": "frame-lifecycle-race-old"
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431552,
+    "kind": "webview/staleMessageIgnored",
+    "detail": {
+      "surface": "panel",
+      "type": "webview/ready",
+      "reason": "source-webview-mismatch",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 2,
+        "frameId": "frame-lifecycle-race-competing"
+      },
+      "currentLifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035431552,
+    "stage": "ready-received",
+    "sourceSurface": "panel",
+    "lifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 1,
+      "frameId": "frame-lifecycle-race-old-refresh"
+    },
+    "currentLifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 1,
+      "frameId": "frame-lifecycle-race-old"
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431552,
+    "kind": "surface/readyWebviewPromoted",
+    "detail": {
+      "surface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431552,
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "panel",
+      "mode": "active",
+      "activeSurface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431556,
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431577,
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035431577,
+    "stage": "ready-received",
+    "sourceSurface": "panel",
+    "lifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 1,
+      "frameId": "frame-lifecycle-race-old-refresh-second"
+    },
+    "currentLifecycle": {
+      "surface": "panel",
+      "mode": "active",
+      "generation": 1,
+      "frameId": "frame-lifecycle-race-old-refresh"
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431577,
+    "kind": "surface/readyWebviewPromoted",
+    "detail": {
+      "surface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431577,
+    "kind": "surface/ready",
+    "detail": {
+      "surface": "panel",
+      "mode": "active",
+      "activeSurface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431578,
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "type": "host/focusGroup",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431579,
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "type": "host/visibilityRestored",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431583,
+    "kind": "surface/hostMessageQueuedUntilBootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "type": "host/templateCatalogUpdated",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431602,
+    "kind": "surface/bootstrapAck",
+    "detail": {
+      "surface": "panel",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431603,
+    "kind": "webview/staleMessageIgnored",
+    "detail": {
+      "surface": "panel",
+      "type": "webview/updateViewportCenter",
+      "reason": "source-webview-mismatch",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 2,
+        "frameId": "frame-lifecycle-race-competing"
+      },
+      "currentLifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431603,
+    "kind": "webview/staleProbeResultIgnored",
+    "detail": {
+      "surface": "panel",
+      "requestId": "lifecycle-race-probe",
+      "reason": "source-webview-mismatch",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      },
+      "pendingLifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431603,
+    "kind": "webview/staleDomActionResultIgnored",
+    "detail": {
+      "surface": "panel",
+      "requestId": "lifecycle-race-dom-action",
+      "reason": "source-webview-mismatch",
+      "lifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      },
+      "pendingLifecycle": {
+        "surface": "panel",
+        "mode": "active",
+        "generation": 1,
+        "frameId": "frame-lifecycle-race-old-refresh-second"
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-test]",
+    "time": 1792035431603,
+    "stage": "restricted-start",
+    "snapshot": {
+      "activeSurface": "editor",
+      "surfaceMode": {
+        "editor": "active"
+      },
+      "surfaceReady": {
+        "editor": false,
+        "panel": false
+      },
+      "surfaceLifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      }
+    }
+  },
+  {
+    "source": "[restricted-ready-event]",
+    "time": 1792035431604,
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "editor",
+      "to": "editor"
+    }
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035431610,
+    "stage": "wait-start",
+    "elapsedMs": 0,
+    "target": "editor",
+    "active": "editor",
+    "modes": {
+      "editor": "active"
+    },
+    "ready": {
+      "editor": false,
+      "panel": false
+    },
+    "lifecycle": {
+      "editor": {
+        "generation": 2,
+        "mode": "active",
+        "ready": false,
+        "bootstrapAck": false
+      },
+      "panel": {
+        "generation": 0,
+        "ready": false,
+        "bootstrapAck": false
+      }
+    },
+    "editorVisible": true,
+    "editorActive": true
+  },
+  {
+    "source": "[restricted-ready-host]",
+    "time": 1792035451637,
+    "stage": "wait-timeout",
+    "elapsedMs": 20027,
+    "target": "editor",
+    "active": "editor",
+    "modes": {
+      "editor": "active"
+    },
+    "ready": {
+      "editor": false,
+      "panel": false
+    },
+    "lifecycle": {
+      "editor": {
+        "generation": 2,
+        "mode": "active",
+        "ready": false,
+        "bootstrapAck": false
+      },
+      "panel": {
+        "generation": 0,
+        "ready": false,
+        "bootstrapAck": false
+      }
+    },
+    "editorVisible": true,
+    "editorActive": true
+  }
+]

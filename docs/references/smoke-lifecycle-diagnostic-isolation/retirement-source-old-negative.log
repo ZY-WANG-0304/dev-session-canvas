@@ -1,0 +1,33 @@
+
+> dev-session-canvas-workspace@0.26.0 test:smoke-runtime-retirement
+> node scripts/test/test-smoke-runtime-retirement.mjs
+
+PASS original persistence scenario waits both retired identities before its single Agent and Terminal starts
+PASS localExecutions empty and live false cannot bypass retained Supervisor storage
+PASS node removal or replacement never authorizes original restart
+PASS node removal or replacement never authorizes original restart
+PASS all original observers are closed when second capture fails before stopping
+PASS failed observation propagates and never resubmits a start
+PASS capture and stop costs consume the same original budget
+PASS capture requires a complete original live-runtime identity
+PASS stopping nodes remain pending until both live facts and storage settle
+PASS an unchanged session ID cannot hide a changed runtime owner
+node:internal/modules/run_main:123
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Source Host ExtensionMode.Test does not itself enable observation in the separate Supervisor
+
+undefined !== '1'
+
+    at file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:131:36
+    at async file:///dev/shm/dsc-restricted-ready/scripts/test/test-smoke-runtime-retirement.mjs:166:38 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: '1',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v22.23.3

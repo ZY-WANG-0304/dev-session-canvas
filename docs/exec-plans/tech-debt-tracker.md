@@ -2,6 +2,27 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+
+## 2026-10-15：restricted ready 诊断隔离已修复，组合门禁阻塞于 packaged，最终发布门禁待验证
+
+PR327正式9198cacb/run38665513172 attempt2在源码restricted首开editor ready20000ms失败。固定输入阶段采样19次中1次同入口自然失败，捕获真实editor ready在fake panel诊断期间被正常接受，然后`runWebviewLifecycleRaceDiagnosticsForTest`的finally恢复两个面旧快照，将editor ready/frameId回滚；诊断数组恢复还抹去ready事件。active面临时为panel使editor未bootstrap，再open复用原HTML不重发ready。原消息期间投递的受控run38678148402按20秒失败、原ready/ack先完成的完整restricted通过，因果已确认；原正式CI无Host工件，不能逐事件追认唯一定因。
+
+该测试模式方法和调用从6月存在，#334未修改；普通安装未注册此测试命令，不因该夹具故障判定用户打开必然失败。已在修复分支把fake诊断放到无共享可变状态的独立对象，实际协议规则保持；两真实面ready前/期间/后三时序、成功/异常责任保护及测试模式守卫回归通过，旧during负对照缺少真实bootstrap；仅延长预算或保留ready字段不能补回bootstrap。修复/回归/根因/证据集中一个修复PR；组合f8d9ad53/run38681093813已通过源码trusted/restricted、systemd、SSHexit/retain和426项Webview，完整命令阻塞于clean-checkout packaged，首败已取得：verifyLiveRuntimePersistence等待Agent启动超时，rejected-before-acquire且editor ready/ack=true；同输入原生对照已确认停止夹具漏等Supervisor旧存储退役、pending:2满而拒绝；原完整CI无逐事件计数。三种真实原ready投递时序完整restricted通过且确认bootstrapAck，none保留20秒失败。合入后再rebase PR327完整门禁；本轮不创建诊断/验证/文档PR，临时workflow完成后移除。历史fallback资源积压与checkpoint首跑停滞保持各自未知范围。
+
+关联：`docs/design-docs/smoke-restricted-ready-root-cause.md`、`docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/references/smoke-restricted-ready-root-cause/README.md`。
+
+## 2026-10-15：packaged Runtime重启夹具漏等旧会话退役（具名修复已验证，最新完整门禁旧代停止阻塞）
+
+ensureAgentStopped/ensureTerminalStopped只以live=false及localExecutions退休判断；live-runtime旧session仍可能等待读者、Host保存或journal删除，符合正式pending:2责任保护。真实Supervisor134/134通过；同固定f8d9ad53、原六资产、隔离HOME/default npmci/VS Code1.142.0，两轮受控旧删除均复现verifyLiveRuntimePersistence原15秒拒绝，释放后不会补发启动；等待原两份实际退役后完整trusted通过，自然样本亦通过。六份完整工件已核验，精简输入/hash/时序集中PR335，不新增诊断或文档PR。
+
+已按用户授权实现：仅smoke模式的只读RPC直接查原Supervisor sessions含retiring；停止前捕获完整身份并固定原socket连接，原停止/查询/等待共用15秒，两个节点停止且原存储不存在才各启动一次。17项夹具及136项实际Supervisor回归、原等待36项、类型检查与本地六资产build通过，旧具名调用稳定先红。删除失败、断连和错身份保持失败。新组合六资产通过；原生有界延迟删除屏障因果通过（644ms），完整trusted后来文件打开失败；完整组合源码trusted拒绝smoke查询，原snapshot为legacy-detached，更正此前systemd归因；源码入口仅靠ExtensionMode.Test未传显式标志，已补齐并以原main两调用回归先红、18/18及runnerenv通过。systemd独立传递要求也补齐并经startup36/36/旧负对照/typecheck/build验证。第二轮原生完整trustedexit0/645ms通过，最新55c619ad/run38696319881完整源码trusted/restricted通过，具名修复成立；完整命令首败转到旧代停止，详见下节；修复合入后仍需最终PR327预合并完整门禁，原完整CI缺少Supervisor逐事件事实。见docs/design-docs/packaged-runtime-restart-admission-root-cause.md与admission-investigation-result.json。
+
+## 2026-10-15：旧代 Terminal 停止超时（原生恢复竞态已复现，待修复与最终门禁）
+
+固定组合55c619ad/run38696319881的无过滤release:verify已通过新退役18项、源码完整trusted/restricted，随后legacy-supervisor-upgrade-tests.cjs:334等待旧代Terminal停止30秒失败。previous-generation-stream-terminal的原session dd00a348-d787-4cdb-a206-4fec1f587f80收到stopRequested，末次快照仍stopping/live=true、无lastRuntimeError；其他旧Agent/Terminal和新Terminal保持live。该具名夹具在PR335未改，根因未确认；不能凭stopping直接判定测试竞态、产品故障或本次回归。后续重开/systemd/SSH、Webview全套及本完整命令的clean-checkout均未触达。完整工件本地CRC/tar核验，snapshot、stop诊断及固定输入集中PR335的retirement-source-full-result.json和retirement-next-*。这项仍阻塞发布，原生packaged延迟删除完整trustedexit0只收口具名退役修复。
+
+旧代停止调查跟进（2026-10-15）：原场景54文件不含Supervisor/PTY现场，历史唯一归因仍未知。固定原输入四份原生旧代样本通过；完整诊断run38711507240原样release:verify exit0且727文件/hash核验，复用原run资产和类外记录，不代证最终PR327门禁。真实socket/原restore方法及原生最后reload单变量对照已确认生产竞态：第二任务等待client时已收集原node；第一任务attach/subscribed后，第二deferred attach撤销原订阅，Host随后operationIgnored无重新subscribe。run38716971680 late原334行/30秒exit1，PTY12ms退出、Supervisorclosed，但Host仍stopping/live=true；natural完整旧代exit0。run38717714670同控制复核再次失败/通过，实时metadata已attached-live、原请求deferSubscription:true核验；两轮61/31文件全部校验，活动入口已移除。第一轮控制触达过早，后续原reload恢复，成功边界单列。生产修复未实施，不能通过延长等待补建订阅；完整原绑定与过时结果保护须保留。关联修复/证据继续PR335，发布PR327不变。见`docs/design-docs/legacy-supervisor-stop-timeout-investigation.md`与`legacy-stop-investigation-result.json`。
+
 ## 记录字段
 
 - 日期

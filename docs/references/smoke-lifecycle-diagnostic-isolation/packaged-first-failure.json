@@ -1,0 +1,22 @@
+{
+  "run": 38681093813,
+  "input": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "conclusion": "failure",
+  "scope": "clean-checkout packaged trusted",
+  "function": "verifyLiveRuntimePersistence -> waitForRuntimeExecutionStarted",
+  "error": "Timed out while waiting for smoke test state",
+  "editorReady": true,
+  "editorBootstrapAck": true,
+  "agentErrors": [
+    "Execution start was rejected-before-acquire."
+  ],
+  "root_cause": "not established; rejected-before-acquire is observed outcome, not root cause",
+  "artifact": 11950986000,
+  "artifact_bytes": 7223340491,
+  "local_download": "completed job log tail verified; full artifact not downloaded",
+  "packaged_single_control": {
+    "run": 38685094467,
+    "exit": 0,
+    "scope": "same-input trusted only; cannot replace full gate"
+  }
+}

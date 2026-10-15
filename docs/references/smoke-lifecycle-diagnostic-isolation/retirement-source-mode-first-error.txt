@@ -1,0 +1,10 @@
+AssertionError [ERR_ASSERTION]: {"message":"Session retirement observation is only available in smoke test mode."}
+
+false !== true
+
+	at Socket.<anonymous> (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/trusted/smoke-host/tests/vscode-smoke/runtime-retirement.cjs:38:14)
+	at Socket.emit (node:events:514:28)
+	at addChunk (node:internal/streams/readable:568:12)
+	at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+	at Readable.push (node:internal/streams/readable:399:5)
+	at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
