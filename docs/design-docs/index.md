@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/release-gate-flow-audit.md` | 0.26.1 发布门禁全流程审查及三张 CI 流程图；确认强制合并约束缺失、过滤范围漏洞、失败取证和 notifier/普通 PR 接线边界；仅审查，建议未实施 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 待探索 | 已验证 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |
 | `docs/design-docs/legacy-supervisor-stop-timeout-investigation.md` | 旧代Terminal停止30秒超时：晚到恢复deferred attach撤销已建订阅、Host忽略结果未补订阅的原生竞态已复现；PTY已退出而Hoststopping，natural通过；完整诊断通过，历史唯一归因仍缺现场，待修复与最终门禁 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 待探索 | 验证中 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |
 | `docs/design-docs/packaged-runtime-restart-admission-root-cause.md` | packaged停止/重启夹具遗漏Supervisor存储退役屏障；两轮原生受控容量拒绝与等待退役trusted对照确认，原完整CI缺少逐事件计数；固定原socket/会话的只读退役屏障具名验证通过，原生延迟删除完整trusted与最新源码trusted/restricted通过；完整门禁旧代停止首败仍未知 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |
 | `docs/design-docs/smoke-restricted-ready-root-cause.md` | PR327源码restricted首开ready超时：fake生命周期诊断跨await回滚真实editor ready，19项有限采样及原ready投递前/期间因果对照确认；独立诊断对象与两真实面三时序回归已完成，组合门禁验证中 | VSCode 集成域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-15 |

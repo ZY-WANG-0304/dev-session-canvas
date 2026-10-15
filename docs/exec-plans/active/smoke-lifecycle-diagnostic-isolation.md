@@ -10,6 +10,7 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 进度
 
 
+- [x] (2026-10-15) 完成发布门禁完整流程审查：7项问题/边界、原脚本过滤传递受控核对、GitHub策略核准、4项现有门禁回归通过；三张SVG/PNG校验和视觉检查完成，仅交付审查不改门禁行为。
 - [x] (2026-10-15) 从最新 origin/main 6e708c6b 核对既有调查提交，创建 smoke-lifecycle-diagnostic-isolation。
 - [x] (2026-10-15) 核对 ready、bootstrap、目录发布、焦点重放和读者清理依赖，选择独立诊断对象。
 - [x] (2026-10-15) 两真实面三时序及异常/成功责任保护共10项通过；旧 during 稳定缺少真实 bootstrap。
@@ -55,6 +56,10 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 决策记录
 
 
+2026-10-15 门禁审查采用独立交付边界：以 origin/main6e708c6b、PR327发布材料8313fc72与当前修复dc165186为输入，核对触发、固定SHA、六资产、验证顺序、覆盖、超时、取证、合并约束与渠道恢复。使用只读GitHub API、原脚本受控调用记录及静态调用图，不重跑完整门禁或把模拟子进程成功当验收通过。审查报告写入docs/design-docs/release-gate-flow-audit.md，SVG/PNG及生成输入放docs/references/release-gate-flow-audit/，随既有修复范围保留，不新建PR；生产修复仍待独立继续实施。
+
+审查验收要求每项确定问题具有代码/API证据，明确哪些是当前自动CI、哪些是人工步骤或既有覆盖限制。流程图必须画出draft/普通PR跳过、同ref/run资产、PR/tag双阶段verify和首败中断，不把建议的失败上传或required check画成现有能力。完成JSON/SVG几何及布局校验、PNG导出与视觉检查后交付报告。执行工具为本机Node22、Python和fireworks-tech-graph技能，不增加项目运行依赖；图生成器读取已登记JSON，重复渲染覆盖本次自有文件即可。
+
 2026-10-15 选择独立 prototype 诊断对象，显式提供所有触达的私有状态。真正构造第二 manager 会初始化持久化、监听器和后台维护任务；浅复制 manager 会继续共享 mutable 状态；等真实 ready 再诊断只消除当前窗口。独立对象复用正式协议方法，payload 与目录数据仅是外部边界，保留生产协议规则。任何未初始化依赖应在测试显式失败，不得 fallback 到真实 manager。
 
 2026-10-15 接续packaged启动调查，只在临时组合worktree添加有界诊断，原正式实现与smoke断言不变。优先区分Supervisor容量拒绝和adapter启动拒绝，再验证旧会话责任释放是否晚于停止投影；配置已启用不等于启动时准入开放。原7.2GB工件收集器只包含外层仓库.debug，失败clean-checkout位于/tmp，不能宣称拥有其Host现场。已有trusted单项exit0说明非必现，不覆盖原全顺序首败。
@@ -81,6 +86,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 
 ## 结果与复盘
 
+
+2026-10-15 门禁审查交付：报告release-gate-flow-audit.md与references/release-gate-flow-audit三张图/证据已生成。确认main没有protection/ruleset、trusted过滤可缩小19/8为1/1且完整编排正常返回、正式verify失败没有完整上传，notifier补充与普通PR功能回归不在默认链。普通Host无进程deadline与stable宿主漂移按确定控制缺口记录，未宣称新挂死/上游bug。四项门禁编排/分发回归及JSON/SVG/PNG验证通过；未运行新的完整发布门禁，没有修改生产实现、workflow或远端策略。审查范围已完成，原生恢复竞态修复及PR327最终门禁仍未完成，主计划保持active；待办登记tech-debt-tracker。
 
 隔离实现、旧源码负对照、10项实际类回归、Host owner wiring 全套、协议/CLI、类型检查及本地六资产构建通过。组合f8d9ad53/run38681093813六资产和真实before/during/after原bootstrapAck通过，none按原20秒失败且预期失败断言通过。完整release:verify已完成exit1，首败是packaged trusted Agent启动rejected-before-acquire；源码与Webview阶段通过。修复PR335已创建且CI通过，packaged单项run38685094467 exit0，已确认停止夹具遗漏Supervisor旧存储退役屏障；关联退役屏障已实现并通过本地回归，原生与新完整门禁待验证；原完整CI缺少逐事件计数。最终正式发布门禁须在修复合入后PR327最新预合并输入重新验证。
 

@@ -1,0 +1,14 @@
+{
+  ".github/workflows/release-preflight.yml": "2987f87b36cb713ac1359e58f84782484e0090d2dd0c5b858cea2b1cc4cbbad3",
+  ".github/workflows/publish-marketplace-release.yml": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c",
+  ".github/workflows/runtime-execution-assets.yml": "db38e9e3abc0fca3b373f2b509925e037cdf2ef0a133a9f8ae6865f3198e7f16",
+  "scripts/release/release-preflight.mjs": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802",
+  "scripts/release/run-clean-checkout-vsix-validation.mjs": "ea36a568a51f75d13627f4d17ff5c501dac43f9becdc9ac0d2eb31838430e789",
+  "scripts/release/publish-tag-release.mjs": "da122f3cfba99d2e8f9b2a67c53baf3aea43f85ad48336d067bfe117f703d591",
+  "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd",
+  "scripts/smoke/run-vscode-vsix-smoke.mjs": "07015a10d0046c2a9018d9171c8ee09aa672cbeda8a095c00015f73505685d1d",
+  "scripts/smoke/vscode-smoke-runner.mjs": "cc482a109444558c56d53b84d36ba4c47edeb342f497af7908ad97a0d95a9307",
+  "scripts/build/build-execution-distribution-assets.mjs": "e7efbc59a1202b1757d909ea1e3ede1730e345fd87572862640dcbf31a120809",
+  "scripts/build/assemble-execution-distribution-assets.mjs": "0b17fdaef0a1bf9f50edb596024f0593a874448cbb902deda9ed7b99cd64da7b",
+  "package.json": "9869b3f1aefa49b2cec333c718916f83351df5e1e20f6792601311513b4cd371"
+}

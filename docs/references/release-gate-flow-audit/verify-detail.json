@@ -1,0 +1,323 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1600,
+  "height": 1620,
+  "title": "02  release:verify 的内部顺序",
+  "subtitle": "0.26.1 标准链 · 串行执行，前一步成功后才进入下一步 · PR 与 tag 共用",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "title_size": 30,
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "static",
+      "x": 70,
+      "y": 150,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "静态输入：版本 / 两份 CHANGELOG / 契约",
+      "sublabel": "主扩展 + notifier + lock 版本一致，5 节契约与必需文档存在",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "regress",
+      "x": 70,
+      "y": 330,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "发布契约与 preflight workflow 回归",
+      "sublabel": "test:release-preflight → test:release-preflight-workflow",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "early",
+      "x": 70,
+      "y": 510,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "npm test：前段类型与功能 / 协议回归",
+      "sublabel": "共 70 个顶层命令；第 3 项 Marketplace 含浏览器与 VS Code E2E",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "source",
+      "x": 70,
+      "y": 690,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "第 69 项 test:smoke：默认 19 个源码场景",
+      "sublabel": "build main / notifier → 隔离宿主，逐个执行",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "webview",
+      "x": 70,
+      "y": 870,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "第 70 项 test:webview：浏览器全套",
+      "sublabel": "再次 build · Playwright · 保留失败 trace 与截图",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "clean",
+      "x": 70,
+      "y": 1050,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "git archive HEAD → 独立 clean checkout",
+      "sublabel": "隔离 HOME / npm cache / config；npm ci → 主扩展 package:vsix",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "packaged",
+      "x": 70,
+      "y": 1230,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "test:vsix-smoke：默认 8 个 packaged 场景",
+      "sublabel": "再次打包主扩展；解包到 development host，notifier 从源码 staging",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "pass",
+      "x": 70,
+      "y": 1410,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "所有阶段成功 → 输出完整验证通过",
+      "sublabel": "0.26.0 历史例外不会继承到 0.26.1",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "firstfail",
+      "x": 1040,
+      "y": 150,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "任何阶段首败即中断",
+      "sublabel": "后续阶段未触达，不能拼接成功样本",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "filter",
+      "x": 1040,
+      "y": 510,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "已确认过滤变量可缩小场景",
+      "sublabel": "trusted 可使 19 + 8 缩为 1 + 1",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "legacy",
+      "x": 1040,
+      "y": 690,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "已知卡点：第 11 个旧代升级",
+      "sublabel": "晚到恢复撤销订阅的生产竞态待修复",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "bound",
+      "x": 1040,
+      "y": 870,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "宿主普通启动无进程级截止",
+      "sublabel": "业务等待有界，进程卡住靠 job 90 分钟终止",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "evidence",
+      "x": 1040,
+      "y": 1050,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "失败现场分散且未自动上传",
+      "sublabel": "源码 .debug；clean checkout 在 /tmp",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "coverage",
+      "x": 1040,
+      "y": 1230,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "packaged smoke 覆盖边界",
+      "sublabel": "Linux / fake Agent；非 Marketplace 安装验收",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "notifier",
+      "x": 1040,
+      "y": 1410,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "notifier 回跳 / locale 需另验",
+      "sublabel": "标准链未接入对应独立宿主 smoke",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "static",
+      "target": "regress",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "regress",
+      "target": "early",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "early",
+      "target": "source",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "source",
+      "target": "webview",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "webview",
+      "target": "clean",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "clean",
+      "target": "packaged",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "packaged",
+      "target": "pass",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "source",
+      "target": "legacy",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "第 11 个",
+      "color": "#dc2626"
+    }
+  ],
+  "legend": [
+    {
+      "label": "自动执行",
+      "color": "#2563eb"
+    },
+    {
+      "label": "失败 / 跳过",
+      "color": "#dc2626"
+    },
+    {
+      "label": "满足验收",
+      "color": "#16a34a"
+    },
+    {
+      "label": "人工协作",
+      "color": "#9333ea"
+    }
+  ],
+  "legend_x": 60,
+  "legend_y": 1572,
+  "legend_orientation": "horizontal"
+}

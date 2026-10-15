@@ -865,3 +865,9 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 正式修复接续：保存导出后清理接入原reset helper，原Agent/Terminal期望；新增正式调用点回归旧代码pending先红、修后9/9及原19/19通过。产品保护和20秒预算不变；正式代码84d65765的原生run38656199224在VS Code1.142.0触达原Agent/Terminal submitted/pending，同身份saved后第二reset空画布，完整trusted exit0；生产bundle与研究输入一致。完整PR327临时组合031db473/run38656127632的同输入六平台资产、静态preflight、完整npm test、SSH两态、Webview426/426和8个clean-checkout packaged场景含trusted全部通过，release:verify exit0；临时活动workflow已移除。修复尚未合入，PR327正式最新预合并仍须rebase后重跑，未放行合并或发布。completed计划smoke-template-final-persistence-repair.md，证据repair-result.json。
 
 交付状态：修复PR [#334](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/334) 已创建，代码、根因、回归和验收集中；本项实现及组合验收完成。剩余发布责任为该PR合入后rebase PR327，并以最新正式预合并输入重跑完整门禁；临时组合031db473不代替此步骤。最终收口仅文档，PR327草稿及原head保持。
+
+## 0.26.1 发布门禁流程控制与覆盖缺口（2026-10-15）
+
+完整流程审查确认：main 没有有效保护/ruleset；release:verify 继承 smoke filter，trusted 可将默认源码19/packaged8缩为1/1；PR与tag prepare失败未自动上传完整宿主/clean-checkout现场。普通VS Code启动等待进程退出无独立期限，浮动stable/Node patch影响重现。标准链有notifier源码/build但不含独立类型、回跳/locale smoke；普通无契约PR成功skip不证明功能回归通过。影响是强制性、验收范围、首败复盘和补充验收可追溯性，不代表已确认所有未接线named script完全没有覆盖。
+
+当前边界：本次只审查/出图，未修改门禁或远端设置；正式workflow默认无filter，0.26.1仍要求原样完整verify。已有恢复撤销订阅生产竞态仍单独阻塞，诊断通过不替代修复与最终PR327验收。建议在门禁后续修复中先处理过滤保护、有限取证、Host进程期限，并由管理员配置required check；按契约补notifier独立证据。普通PR回归、固定/最新双宿主与重复构建优化可随后推进，不借审查扩张当前产品修复。所有关联文档/回归继续当前PR335范围，发布材料保留PR327；报告与准确代码/API锚点见docs/design-docs/release-gate-flow-audit.md，证据/图见docs/references/release-gate-flow-audit/。

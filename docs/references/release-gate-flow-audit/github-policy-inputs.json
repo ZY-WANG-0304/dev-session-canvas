@@ -1,0 +1,49 @@
+{
+  "queriedAtUtc": "2026-10-15T13:20:52.415206+00:00",
+  "mainProtection": {
+    "endpoint": "repos/ZY-WANG-0304/dev-session-canvas/branches/main/protection",
+    "exitCode": 1,
+    "data": {
+      "message": "Branch not protected",
+      "documentation_url": "https://docs.github.com/rest/branches/branch-protection#get-branch-protection",
+      "status": "404"
+    },
+    "stderr": "gh: Branch not protected (HTTP 404)"
+  },
+  "allRulesets": {
+    "endpoint": "repos/ZY-WANG-0304/dev-session-canvas/rulesets?includes_parents=true",
+    "exitCode": 0,
+    "data": [],
+    "stderr": ""
+  },
+  "effectiveMainRules": {
+    "endpoint": "repos/ZY-WANG-0304/dev-session-canvas/rules/branches/main",
+    "exitCode": 0,
+    "data": [],
+    "stderr": ""
+  },
+  "pr327": {
+    "number": 327,
+    "state": "open",
+    "draft": true,
+    "headRef": "release-0-26-1-refresh",
+    "headSha": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+    "baseRef": "main",
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/327"
+  },
+  "pr335": {
+    "number": 335,
+    "state": "open",
+    "draft": false,
+    "headRef": "smoke-lifecycle-diagnostic-isolation",
+    "headSha": "dc1651861dd19dfac47ecbe4989391dc4e993588",
+    "baseRef": "main",
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/335"
+  },
+  "refs": {
+    "HEAD": "dc1651861dd19dfac47ecbe4989391dc4e993588",
+    "origin/main": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+    "origin/release-0-26-1-refresh": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+    "origin/smoke-lifecycle-diagnostic-isolation": "dc1651861dd19dfac47ecbe4989391dc4e993588"
+  }
+}

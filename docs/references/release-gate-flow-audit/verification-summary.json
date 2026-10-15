@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-15",
+  "sourceHead": "dc1651861dd19dfac47ecbe4989391dc4e993588",
+  "node": "22.23.3",
+  "scope": "流程审查与原编排/分发回归；非完整发布门禁",
+  "existingTests": {
+    "scripts/test/test-release-preflight.mjs": "passed",
+    "scripts/test/test-release-preflight-workflow.mjs": "passed",
+    "scripts/test/test-publish-marketplace-workflow.mjs": "passed",
+    "scripts/test/test-execution-distribution-assets.mjs": "passed"
+  },
+  "orchestrationCheck": "passed; mocked child processes, no product tests executed",
+  "diagramVisualCheck": "最终3个PNG已检查中文字形/完整性、箭头颜色方向、边距、无裁切",
+  "pipelineChanged": false,
+  "remotePolicyChanged": false,
+  "fullReleaseGateRun": false
+}
