@@ -1,0 +1,247 @@
+{
+  "localExecutions": [],
+  "activeSurface": "panel",
+  "configuration": {
+    "linkOpenMode": "editorPreview",
+    "terminalShellPath": "/usr/bin/bash",
+    "terminalShellResolutionSource": "default-shell",
+    "terminalInheritEnv": true,
+    "terminalShellArgs": []
+  },
+  "sidebar": {
+    "canvasSurface": "visible",
+    "surfaceLocation": "panel",
+    "configuredSurface": "panel",
+    "runtimePersistenceEnabled": true,
+    "notificationBridgeMode": "system",
+    "enabledAttentionSignals": [
+      "bel",
+      "osc9",
+      "osc777",
+      "agentAbnormalExit",
+      "codexAbnormalOutputText"
+    ],
+    "notificationStrongReminderMode": "both",
+    "agentAbnormalOutputTextNotificationMode": "off",
+    "filesFeatureEnabled": false,
+    "filePresentationMode": "lists",
+    "fileNodeDisplayStyle": "minimal",
+    "fileNodeDisplayMode": "icon-path",
+    "filePathDisplayMode": "basename",
+    "terminalShellConfiguredValue": "default",
+    "terminalShellPath": "/usr/bin/bash",
+    "agentCodexCommand": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+    "agentClaudeCommand": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/missing-agent-provider",
+    "nodeCount": 4,
+    "runningExecutionCount": 4,
+    "workspaceTrusted": true,
+    "creatableKinds": [
+      "agent",
+      "terminal",
+      "note"
+    ],
+    "fileFilters": {
+      "includeGlobs": [],
+      "excludeGlobs": []
+    }
+  },
+  "state": {
+    "version": 1,
+    "updatedAt": "2026-10-15T07:22:12.893Z",
+    "nodes": [
+      {
+        "id": "legacy-upgrade-agent",
+        "kind": "agent",
+        "title": "Legacy Supervisor Agent",
+        "status": "waiting-input",
+        "summary": ">",
+        "position": {
+          "x": 80,
+          "y": 100
+        },
+        "size": {
+          "width": 680,
+          "height": 520
+        },
+        "metadata": {
+          "agent": {
+            "backend": "node-pty",
+            "lifecycle": "waiting-input",
+            "provider": "codex",
+            "launchPreset": "default",
+            "runtimeKind": "pty-cli",
+            "resumeSupported": false,
+            "resumeStrategy": "none",
+            "shellPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "terminalProjectionMode": "legacy-interactive",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+            "liveSession": true,
+            "runtimeSessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "lastCols": 82,
+            "lastRows": 27,
+            "attentionPending": false,
+            "lastBackendLabel": "Codex",
+            "outputSequence": 8,
+            "recentOutput": "[fake-agent] ready pid=13012 session=session-13012\nLEGACY_UPGRADE_AGENT_READY\n> [fake-agent] LEGACY_UPGRADE_AGENT_READY\n> LEGACY_HOST_AGENT_INPUT_REACHED_PTY\n[fake-agent] LEGACY_HOST_AGENT_INPUT_REACHED_PTY\n>"
+          }
+        }
+      },
+      {
+        "id": "legacy-upgrade-terminal",
+        "kind": "terminal",
+        "title": "Legacy Supervisor Terminal",
+        "status": "live",
+        "summary": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-...",
+        "position": {
+          "x": 720,
+          "y": 100
+        },
+        "size": {
+          "width": 700,
+          "height": 540
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "live",
+            "shellPath": "/bin/bash",
+            "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "terminalProjectionMode": "legacy-interactive",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+            "liveSession": true,
+            "runtimeSessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "lastCols": 85,
+            "lastRows": 28,
+            "attentionPending": false,
+            "outputSequence": 10,
+            "recentOutput": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[31mLEGACY_UPGRADE_TERMINAL_READY\\033[0m\\n'\nLEGACY_UPGRADE_TERMINAL_READY\nrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf 'LEGACY_WEBVIEW_INPUT_REACHED_PTY\\n'\nLEGACY_WEBVIEW_INPUT_REACHED_PTY\nrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf 'LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY\\n'\nLEGACY_HOST_TERMINAL_INPUT_REACHED_PTY\nrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$"
+          }
+        }
+      },
+      {
+        "id": "previous-generation-stream-terminal",
+        "kind": "terminal",
+        "title": "Previous Generation Stream Terminal",
+        "status": "stopping",
+        "summary": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$",
+        "position": {
+          "x": 1360,
+          "y": 100
+        },
+        "size": {
+          "width": 560,
+          "height": 430
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "stopping",
+            "shellPath": "/bin/bash",
+            "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "terminalProjectionMode": "terminal-stream-v1",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/previous-generation-stream",
+            "liveSession": true,
+            "runtimeSessionId": "dd00a348-d787-4cdb-a206-4fec1f587f80",
+            "lastCols": 67,
+            "lastRows": 21,
+            "attentionPending": false,
+            "outputSequence": 5,
+            "recentOutput": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[31mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'\nPREVIOUS_GENERATION_STREAM_READY\nrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$"
+          }
+        }
+      },
+      {
+        "id": "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b",
+        "kind": "terminal",
+        "title": "Terminal 1",
+        "status": "live",
+        "summary": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$",
+        "position": {
+          "x": 1300,
+          "y": 700
+        },
+        "size": {
+          "width": 540,
+          "height": 420
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "live",
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/2faa7e4a1c582c8b412e268e7e43541c097b3c535ba4d7cb593ffbee4c74d2fa/dab2015f5741ae2432030ae68cbfb843a0ce013877d4311a183cd0d861c231e8/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+            "runtimeOwner": {
+              "schema": 1,
+              "environmentKey": "2faa7e4a1c582c8b412e268e7e43541c097b3c535ba4d7cb593ffbee4c74d2fa",
+              "userStorageScopeKey": "008e0d7de1d564a5608d407ffa7ba6b53a77a5f461304fe4ff05d63504953654",
+              "root": {
+                "kind": "folder",
+                "pathPolicy": "canvas-path-v1",
+                "normalizedPath": "/home/runner/work/dev-session-canvas/dev-session-canvas"
+              },
+              "generation": "terminal-root-owner-linux-v1"
+            },
+            "liveSession": true,
+            "lastCols": 64,
+            "lastRows": 20,
+            "attentionPending": false,
+            "outputSequence": 2,
+            "recentOutput": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf 'CURRENT_TERMINAL_INPUT_REACHED_PTY\\n'\nCURRENT_TERMINAL_INPUT_REACHED_PTY\nrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$",
+            "terminalProjectionMode": "terminal-stream-v1",
+            "runtimeSessionId": "873fefd8-ae8e-4345-a99d-5ff2efcc1b69"
+          }
+        }
+      }
+    ],
+    "edges": [],
+    "groups": [],
+    "nextGroupSequence": 1,
+    "fileReferences": [],
+    "suppressedFileActivityEdgeIds": [],
+    "suppressedAutomaticFileArtifactNodeIds": []
+  },
+  "surfaceMode": {
+    "panel": "active"
+  },
+  "surfaceReady": {
+    "editor": false,
+    "panel": true
+  },
+  "surfaceLifecycle": {
+    "editor": {
+      "generation": 0,
+      "ready": false,
+      "bootstrapAck": false
+    },
+    "panel": {
+      "generation": 2,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-5e88bd3b-fcd5-474d-a4c6-08279ef0041d",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  }
+}

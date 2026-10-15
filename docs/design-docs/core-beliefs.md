@@ -416,3 +416,5 @@ HTTP夹具收到请求、客户端解析成功与用户反馈到达是不同事�
 Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同完成点；仅凭loaded或超时不能确定责任层。原现场缺失时，同输入再跑的成功和人为故障必须分别保留范围，不能追认旧失败已定因。
 
 在真实Host运行的fake诊断跨await保存/恢复状态时，不得回滚其他真实承载面的异步ready或bootstrap进展；诊断日志自身的恢复也可能抹去因果证据。fake帧必须持有独立生命周期、请求队列、读者和日志，复用正式协议方法时只提供独立数据边界；不能用延长ready等待掩盖一次性事件被旧快照覆盖。依据见smoke-restricted-ready-root-cause.md。
+
+节点live=false、普通API的sessionNotFound或过滤后的registry，只能证明投影或可见性，不能证明旧存储责任已退役。测试重启前提应在原Supervisor、原会话身份和同一预算内直接观察实际退役；未知、断连或删除失败保持失败。测试模式跨进程必须显式传递，Host ExtensionMode.Test不代表独立Supervisor具有相同模式。依据见packaged-runtime-restart-admission-root-cause.md。

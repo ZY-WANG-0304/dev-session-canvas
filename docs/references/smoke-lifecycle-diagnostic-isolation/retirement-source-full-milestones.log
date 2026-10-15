@@ -1,0 +1,5 @@
+Smoke Runtime retirement: 18/18 passed.
+Runtime paged terminal projection smoke passed.
+Trusted workspace smoke passed.
+Restricted workspace smoke passed.
+完整发布验证失败：npm run test

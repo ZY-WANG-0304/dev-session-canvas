@@ -1,7 +1,7 @@
 ---
 title: packaged Runtime 重启准入拒绝根因调查
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证（具名修复；完整发布门禁仍阻塞）
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
@@ -53,4 +53,6 @@ run38688569741的真实VS Code packaged trusted受控对照已确认同入口可
 
 新组合b95d8d74/run38692163764六资产均通过，完整release:verify在源码trusted被smoke查询守卫拒绝，尚未到packaged。初次仅凭环境传递源码把首败归为systemd，后核验原snapshot确认后端实际为legacy-detached；本段以实际证据更正。systemd unit不会继承Host标志属于独立接线要求，已补齐。补齐显式测试标志后startup36/36、旧实现先红、typecheck/build通过，仍须新完整输入再验。原生首次对照在前置图片链接检测失败未触达屏障；原样复跑run38693259026按原夹具延迟两份旧删除500ms，retiring期间true、实际删除后false、644ms返回后新create无旧责任，因果断言通过且原verifyLiveRuntimePersistence继续完成，但完整trusted后来在文件打开visible editor等待失败。两次exit1都保留，不称为完整trusted通过；首败来源、原身份trace及资产hash见retirement-first-validation.json。
 
-组合675c2ea0/run38694282830原生500ms延迟删除对照完整trusted exit0，原helper645ms返回、两原身份true→实际remove→false→新create顺序及完整工件校验通过。无过滤完整门禁仍在源码trusted被同守卫拒绝：源码入口run-vscode-smoke.mjs只依靠ExtensionMode.Test、没有显式SMOKE_TEST_MODE，Supervisor独立进程没有VS Code extensionMode；packaged入口显式置1所以通过。已在源码main的prepare/launch置1，原实际main VM回归包含两调用，旧入口先红、18/18及runner环境回归通过。systemd补齐仍保留为跨后端显式模式传递要求，但不是原完整首败定因。新固定输入完整验证待运行。
+组合675c2ea0/run38694282830原生500ms延迟删除对照完整trusted exit0，原helper645ms返回、两原身份true→实际remove→false→新create顺序及完整工件校验通过。无过滤完整门禁仍在源码trusted被同守卫拒绝：源码入口run-vscode-smoke.mjs只依靠ExtensionMode.Test、没有显式SMOKE_TEST_MODE，Supervisor独立进程没有VS Code extensionMode；packaged入口显式置1所以通过。已在源码main的prepare/launch置1，原实际main VM回归包含两调用，旧入口先红、18/18及runner环境回归通过。systemd补齐仍保留为跨后端显式模式传递要求，但不是原完整首败定因。新固定输入的完整结果见下段。
+
+最新组合55c619ad/run38696319881按无过滤完整release:verify运行，六平台同ref/run资产、本地18项、源码完整trusted（包含原停止/重启及后续断言）与restricted均通过，确认显式测试模式接线与具名退役修复成立。完整命令仍exit1，新的首败是legacy-supervisor-upgrade-tests.cjs:334：previous-generation-stream-terminal原stopRequested后30秒仍stopping/live=true，根因未确认；该夹具在本PR未修改。后续重开/systemd/SSH、Webview全套及本次完整命令中的clean-checkout阶段未触达，不能与前轮packaged单项拼成完整通过。完整工件CRC/tar和新首败snapshot/diagnostics已核验入库，见retirement-source-full-result.json。所有活动临时workflow/probe及修复worktree依赖链接已移除，PR327 head/draft保持；发布仍须新卡点收口及修复合入后正式预合并完整验证。

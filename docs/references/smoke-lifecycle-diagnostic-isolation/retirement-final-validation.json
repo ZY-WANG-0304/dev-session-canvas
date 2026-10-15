@@ -35,5 +35,7 @@
       "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd",
       "scripts/test/test-smoke-runtime-retirement.mjs": "b9d53589a62662ae8196f9f4add6f33e58ead7edc1a2cfa314cb75d6db332dd4"
     }
-  }
+  },
+  "latestFullResult": "retirement-source-full-result.json: complete command exit1; original source trusted/restricted pass; new legacy upgrade stopping timeout",
+  "followupComplete": true
 }

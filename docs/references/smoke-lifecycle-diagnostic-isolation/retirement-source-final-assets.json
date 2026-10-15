@@ -1,0 +1,566 @@
+{
+  "input": "55c619ad70dbec74a7f9ffab17bf3dc547bd6913",
+  "run": 38696319881,
+  "assets": [
+    {
+      "artifact": 11954510239,
+      "name": "execution-native-linux-arm64-glibc-38696319881",
+      "zipBytes": 64330,
+      "zipSha256": "04862e03b20086f7d024f8fdc998317c5b2b12bc8efb2a4743c6e12924ef9699",
+      "zipCRC": "passed",
+      "manifests": [
+        {
+          "schemaVersion": 2,
+          "profile": "linux-owner-v1-candidate",
+          "platform": "linux",
+          "arch": "arm64",
+          "libc": {
+            "name": "glibc",
+            "version": "2.28"
+          },
+          "runtime": {
+            "name": "node",
+            "version": "16.17.1",
+            "node": "16.17.1",
+            "modules": "93",
+            "napi": "8"
+          },
+          "requirements": {
+            "napi": 8,
+            "linux": {
+              "libc": "glibc",
+              "glibcMinimum": "2.17",
+              "glibcxxMinimum": "3.4.22",
+              "cxxabiMinimum": "1.3.9"
+            }
+          },
+          "binary": {
+            "file": "execution-owner.node",
+            "sha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac"
+          },
+          "exports": [
+            "executionClaimNamespace",
+            "executionClose",
+            "executionConfigure",
+            "executionPollWait",
+            "executionRead",
+            "executionResize",
+            "executionSignal",
+            "executionSnapshot",
+            "executionWrite",
+            "fork"
+          ],
+          "sources": {
+            "ownerSha256": "0fc33c98dd01744ce6435f6ffebfc328c7ff639347866f62f6afe22ebfb0b68b",
+            "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+            "patchSha256": "1fd8e45ab617f2b5807dac443e88aa4fdd03986ec30e6235a59424071aa1ee8f",
+            "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+            "patchedSha256": "8659f4b8e973a8a900d73f9ecbca8b6eeb3dd4f12fafd74beeffa7df0c98ff5d",
+            "headersSha256": "d519851765da74af38f948869edd2f6bc36be77d1adeb5add7c1628ecc168a95",
+            "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+          },
+          "verification": {
+            "compiled": true,
+            "nativeLoaded": false,
+            "nativeCalls": false,
+            "productValidated": false
+          }
+        }
+      ]
+    },
+    {
+      "artifact": 11954440894,
+      "name": "execution-native-win32-arm64-38696319881",
+      "zipBytes": 724438,
+      "zipSha256": "cda81e2f24ae8cfeea4b8bab579e9bcfe829db6d350a5d8ee39f381b79d8fdd5",
+      "zipCRC": "passed",
+      "manifests": [
+        {
+          "schemaVersion": 2,
+          "profile": "windows-owner-v1-candidate",
+          "platform": "win32",
+          "arch": "arm64",
+          "runtime": {
+            "name": "node",
+            "version": "25.6.0",
+            "node": "25.6.0",
+            "modules": "141",
+            "napi": "10"
+          },
+          "requirements": {
+            "napi": 8,
+            "windows": {
+              "minimumBuild": 17763,
+              "conptyVersion": "1.25.260303002",
+              "addonCrt": "static"
+            }
+          },
+          "binary": {
+            "file": "conpty.node",
+            "sha256": "8f13f21cdaa3a19cac27feca54057279b3da97ab8a7c19be3555c9660d866a8d"
+          },
+          "dependencies": [
+            {
+              "file": "conpty/conpty.dll",
+              "sha256": "b3a9f975c51d5b9b96d290bf784e990e3f85203b063c21614457353f566266ff"
+            },
+            {
+              "file": "conpty/OpenConsole.exe",
+              "sha256": "7fa560be0c9b6c81db5d1b855a4a6e0f3ee5a2ea75d36eebb3ae44443b8d4866"
+            }
+          ],
+          "exports": [
+            "executionClose",
+            "executionConnect",
+            "executionPollWait",
+            "executionResize",
+            "executionSnapshot",
+            "executionStart"
+          ],
+          "sources": {
+            "ownerSha256": "8609bbae2215d9adc841694f9463e39703df2e534b124157b1aad1eba007c4c3",
+            "patchSha256": "40d3e33dd6c88660402da1fafd8c47dd46d68147ee89fd3d16f1f06fc562d1a8",
+            "nodePtySha256": "d502cce570552c7a1bea373c7672975eeb330c3025dd151cf9c180ca2a1becc2",
+            "patchedSha256": "ff67ce8938b1640c9aaf7a7f418dde2a17dc90df750d0e91fdc1054be05884b1",
+            "pathUtilSha256": "54a6041c38bf714893c1d18db3d2888f42089d0209c3d1dc8d444ac6dbf46a0b",
+            "windowsHeadersSha256": "d8c42fd52932f0ca9f5f9180d60912dfcda6f896a42e95515377b00ae1685a5a",
+            "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+            "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae",
+            "nodeLibSha256": "47750ee99207e5b621671565852cf7385f27bf664470886b9437137342a497c9",
+            "delayLoadHookSha256": "b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422"
+          },
+          "compiler": {
+            "command": "cl.exe",
+            "args": [
+              "/nologo",
+              "/LD",
+              "/MT",
+              "/EHsc",
+              "/std:c++17",
+              "/guard:cf",
+              "/sdl",
+              "/W3",
+              "/ZH:SHA_256",
+              "/DWIN32_LEAN_AND_MEAN",
+              "/DNAPI_CPP_EXCEPTIONS",
+              "/DNODE_ADDON_API_CPP_EXCEPTIONS",
+              "/D_HAS_EXCEPTIONS=1",
+              "/DBUILDING_NODE_EXTENSION",
+              "/DNAPI_VERSION=8",
+              "/DHOST_BINARY=\"node.exe\"",
+              "/DNODE_GYP_MODULE_NAME=conpty",
+              "/IC:\\a\\_temp\\execution-assets\\win32-arm64-inputs-uM8NSi\\headers\\include\\node",
+              "/IC:\\a\\dev-session-canvas\\dev-session-canvas\\node_modules\\node-pty\\node_modules\\node-addon-api",
+              "/IC:\\a\\_temp\\execution-assets\\win32-arm64\\inputs",
+              "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\conpty-candidate.cc",
+              "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\path_util.cc",
+              "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\win_delay_load_hook.cc",
+              "/link",
+              "/DLL",
+              "/DYNAMICBASE",
+              "/guard:cf",
+              "/MACHINE:ARM64",
+              "/OUT:C:\\a\\_temp\\execution-assets\\win32-arm64\\conpty.node",
+              "/DELAYLOAD:node.exe",
+              "C:\\a\\_temp\\execution-assets\\win32-arm64\\inputs\\node.lib",
+              "shlwapi.lib",
+              "delayimp.lib"
+            ]
+          },
+          "verification": {
+            "compiled": true,
+            "nativeLoaded": false,
+            "nativeCalls": false,
+            "productValidated": false
+          }
+        }
+      ]
+    },
+    {
+      "artifact": 11954280567,
+      "name": "execution-native-win32-x64-38696319881",
+      "zipBytes": 787363,
+      "zipSha256": "6a60fda16a0a3d4d6865e9f7b0cc61241081aa9af8dec89d474920a53bc2249a",
+      "zipCRC": "passed",
+      "manifests": [
+        {
+          "schemaVersion": 2,
+          "profile": "windows-owner-v1-candidate",
+          "platform": "win32",
+          "arch": "x64",
+          "runtime": {
+            "name": "node",
+            "version": "25.6.0",
+            "node": "25.6.0",
+            "modules": "141",
+            "napi": "10"
+          },
+          "requirements": {
+            "napi": 8,
+            "windows": {
+              "minimumBuild": 17763,
+              "conptyVersion": "1.25.260303002",
+              "addonCrt": "static"
+            }
+          },
+          "binary": {
+            "file": "conpty.node",
+            "sha256": "52632acaf8425c40615103b50e9760987950900b628a3896a7e946fe0d8d7840"
+          },
+          "dependencies": [
+            {
+              "file": "conpty/conpty.dll",
+              "sha256": "3319b484b80bb53d1f4d0a9eb0ea60fd0f61da69db7280ca43b84215f19245ff"
+            },
+            {
+              "file": "conpty/OpenConsole.exe",
+              "sha256": "7f68c840226505004215c0b82d4e502c24b5bc3f4b93c4baaaa19bd679c0def8"
+            }
+          ],
+          "exports": [
+            "executionClose",
+            "executionConnect",
+            "executionPollWait",
+            "executionResize",
+            "executionSnapshot",
+            "executionStart"
+          ],
+          "sources": {
+            "ownerSha256": "8609bbae2215d9adc841694f9463e39703df2e534b124157b1aad1eba007c4c3",
+            "patchSha256": "40d3e33dd6c88660402da1fafd8c47dd46d68147ee89fd3d16f1f06fc562d1a8",
+            "nodePtySha256": "d502cce570552c7a1bea373c7672975eeb330c3025dd151cf9c180ca2a1becc2",
+            "patchedSha256": "ff67ce8938b1640c9aaf7a7f418dde2a17dc90df750d0e91fdc1054be05884b1",
+            "pathUtilSha256": "54a6041c38bf714893c1d18db3d2888f42089d0209c3d1dc8d444ac6dbf46a0b",
+            "windowsHeadersSha256": "d8c42fd52932f0ca9f5f9180d60912dfcda6f896a42e95515377b00ae1685a5a",
+            "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+            "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae",
+            "nodeLibSha256": "f7201b932d898bdbf78aee7add288d2263c4791f1502068ad11b6c14675c6324",
+            "delayLoadHookSha256": "b339840a98e7ad5106384473d94bde68dd3e8d34028dad64f09e5a6453bf8422"
+          },
+          "compiler": {
+            "command": "cl.exe",
+            "args": [
+              "/nologo",
+              "/LD",
+              "/MT",
+              "/EHsc",
+              "/std:c++17",
+              "/guard:cf",
+              "/sdl",
+              "/W3",
+              "/ZH:SHA_256",
+              "/DWIN32_LEAN_AND_MEAN",
+              "/DNAPI_CPP_EXCEPTIONS",
+              "/DNODE_ADDON_API_CPP_EXCEPTIONS",
+              "/D_HAS_EXCEPTIONS=1",
+              "/DBUILDING_NODE_EXTENSION",
+              "/DNAPI_VERSION=8",
+              "/DHOST_BINARY=\"node.exe\"",
+              "/DNODE_GYP_MODULE_NAME=conpty",
+              "/ID:\\a\\_temp\\execution-assets\\win32-x64-inputs-kOweC3\\headers\\include\\node",
+              "/ID:\\a\\dev-session-canvas\\dev-session-canvas\\node_modules\\node-pty\\node_modules\\node-addon-api",
+              "/ID:\\a\\_temp\\execution-assets\\win32-x64\\inputs",
+              "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\conpty-candidate.cc",
+              "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\path_util.cc",
+              "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\win_delay_load_hook.cc",
+              "/link",
+              "/DLL",
+              "/DYNAMICBASE",
+              "/guard:cf",
+              "/MACHINE:X64",
+              "/OUT:D:\\a\\_temp\\execution-assets\\win32-x64\\conpty.node",
+              "/DELAYLOAD:node.exe",
+              "D:\\a\\_temp\\execution-assets\\win32-x64\\inputs\\node.lib",
+              "shlwapi.lib",
+              "delayimp.lib"
+            ]
+          },
+          "verification": {
+            "compiled": true,
+            "nativeLoaded": false,
+            "nativeCalls": false,
+            "productValidated": false
+          }
+        }
+      ]
+    },
+    {
+      "artifact": 11954149571,
+      "name": "execution-native-darwin-x64-38696319881",
+      "zipBytes": 57091,
+      "zipSha256": "4035ba0446abb7e9f497ee87df4dc5280a263137724bb5d23de3f500d7938228",
+      "zipCRC": "passed",
+      "manifests": [
+        {
+          "schemaVersion": 2,
+          "profile": "macos-owner-v1-candidate",
+          "platform": "darwin",
+          "arch": "x64",
+          "runtime": {
+            "name": "node",
+            "version": "25.6.0",
+            "node": "25.6.0",
+            "modules": "141",
+            "napi": "10"
+          },
+          "requirements": {
+            "napi": 8,
+            "macos": {
+              "deploymentTarget": "10.13"
+            }
+          },
+          "binary": {
+            "file": "execution-owner.node",
+            "sha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6"
+          },
+          "helper": {
+            "file": "spawn-helper",
+            "sha256": "86b6a1c98f8fddb417e249258b9de9bd6c16dbe71c9cf93c3db8294f1f932ae9"
+          },
+          "exports": [
+            "executionClaimNamespace",
+            "executionClose",
+            "executionConfigure",
+            "executionPollWait",
+            "executionRead",
+            "executionResize",
+            "executionSignal",
+            "executionSnapshot",
+            "executionWrite",
+            "fork"
+          ],
+          "sources": {
+            "ownerSha256": "7f9b38ea82a4cb69acdd815dbd26ec84b9b8757e5046f9a4ede1953d119753a4",
+            "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+            "patchSha256": "ddea3f3400332a197910dd7fd0441ccf6bf6d340f43ac8cc6159c9404e0e2fa0",
+            "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+            "patchedSha256": "365688c2aeecc37913dfd74ba39edf72ee9898cb896a46ff07bde6d9fc53f92c",
+            "helperSourceSha256": "22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6",
+            "helperPatchedSha256": "35ed5c2dfb2df7e605f367f0026dff54e51c2a7e7cf96829ee10681f7741bd13",
+            "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+            "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+          },
+          "compiler": {
+            "command": "clang++",
+            "sdk": "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+            "args": [
+              "-std=c++17",
+              "-bundle",
+              "-undefined",
+              "dynamic_lookup",
+              "-fPIC",
+              "-pthread",
+              "-fexceptions",
+              "-DNAPI_VERSION=8",
+              "-DNAPI_CPP_EXCEPTIONS",
+              "-DNODE_GYP_MODULE_NAME=pty",
+              "-arch",
+              "x86_64",
+              "-isysroot",
+              "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+              "-mmacosx-version-min=10.13",
+              "-I",
+              "/Users/runner/work/_temp/execution-assets/darwin-x64-inputs-2fQhpq/headers/include/node",
+              "-I",
+              "/Users/runner/work/dev-session-canvas/dev-session-canvas/node_modules/node-pty/node_modules/node-addon-api",
+              "-I",
+              "/Users/runner/work/_temp/execution-assets/darwin-x64/inputs",
+              "/Users/runner/work/_temp/execution-assets/darwin-x64/inputs/pty-candidate.cc",
+              "-o",
+              "/Users/runner/work/_temp/execution-assets/darwin-x64/execution-owner.node"
+            ],
+            "helperArgs": [
+              "-std=c++17",
+              "-arch",
+              "x86_64",
+              "-isysroot",
+              "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+              "-mmacosx-version-min=10.13",
+              "/Users/runner/work/_temp/execution-assets/darwin-x64/inputs/spawn-helper.cc",
+              "-o",
+              "/Users/runner/work/_temp/execution-assets/darwin-x64/spawn-helper"
+            ]
+          },
+          "verification": {
+            "compiled": true,
+            "nativeLoaded": false,
+            "nativeCalls": false,
+            "productValidated": false
+          }
+        }
+      ]
+    },
+    {
+      "artifact": 11954069473,
+      "name": "execution-native-linux-x64-glibc-38696319881",
+      "zipBytes": 66753,
+      "zipSha256": "dd95163535f5777b6f639df901835d63dadee3798586fd4269b8b97e7484c18b",
+      "zipCRC": "passed",
+      "manifests": [
+        {
+          "schemaVersion": 2,
+          "profile": "linux-owner-v1-candidate",
+          "platform": "linux",
+          "arch": "x64",
+          "libc": {
+            "name": "glibc",
+            "version": "2.28"
+          },
+          "runtime": {
+            "name": "node",
+            "version": "16.17.1",
+            "node": "16.17.1",
+            "modules": "93",
+            "napi": "8"
+          },
+          "requirements": {
+            "napi": 8,
+            "linux": {
+              "libc": "glibc",
+              "glibcMinimum": "2.14",
+              "glibcxxMinimum": "3.4.22",
+              "cxxabiMinimum": "1.3.9"
+            }
+          },
+          "binary": {
+            "file": "execution-owner.node",
+            "sha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c"
+          },
+          "exports": [
+            "executionClaimNamespace",
+            "executionClose",
+            "executionConfigure",
+            "executionPollWait",
+            "executionRead",
+            "executionResize",
+            "executionSignal",
+            "executionSnapshot",
+            "executionWrite",
+            "fork"
+          ],
+          "sources": {
+            "ownerSha256": "0fc33c98dd01744ce6435f6ffebfc328c7ff639347866f62f6afe22ebfb0b68b",
+            "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+            "patchSha256": "1fd8e45ab617f2b5807dac443e88aa4fdd03986ec30e6235a59424071aa1ee8f",
+            "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+            "patchedSha256": "8659f4b8e973a8a900d73f9ecbca8b6eeb3dd4f12fafd74beeffa7df0c98ff5d",
+            "headersSha256": "bc701b67b4a3748b29310de025132254dd55414b299d6d7bc9c1769e2d675a7f",
+            "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+          },
+          "verification": {
+            "compiled": true,
+            "nativeLoaded": false,
+            "nativeCalls": false,
+            "productValidated": false
+          }
+        }
+      ]
+    },
+    {
+      "artifact": 11953829568,
+      "name": "execution-native-darwin-arm64-38696319881",
+      "zipBytes": 55459,
+      "zipSha256": "f4f5b2ba03cfb4e1f5b0932c7e5f20d48d8738dfdf679117a8f4b37a2cd3c528",
+      "zipCRC": "passed",
+      "manifests": [
+        {
+          "schemaVersion": 2,
+          "profile": "macos-owner-v1-candidate",
+          "platform": "darwin",
+          "arch": "arm64",
+          "runtime": {
+            "name": "node",
+            "version": "25.6.0",
+            "node": "25.6.0",
+            "modules": "141",
+            "napi": "10"
+          },
+          "requirements": {
+            "napi": 8,
+            "macos": {
+              "deploymentTarget": "11.0"
+            }
+          },
+          "binary": {
+            "file": "execution-owner.node",
+            "sha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc"
+          },
+          "helper": {
+            "file": "spawn-helper",
+            "sha256": "4f57ab027c936e2ea727ab8eacc76cbf12672eadbd19ce43175cbcb4724adf3b"
+          },
+          "exports": [
+            "executionClaimNamespace",
+            "executionClose",
+            "executionConfigure",
+            "executionPollWait",
+            "executionRead",
+            "executionResize",
+            "executionSignal",
+            "executionSnapshot",
+            "executionWrite",
+            "fork"
+          ],
+          "sources": {
+            "ownerSha256": "7f9b38ea82a4cb69acdd815dbd26ec84b9b8757e5046f9a4ede1953d119753a4",
+            "sharedOwnerSha256": "93279c60f37d6c810228a305d077cfdc939b4a7942feb38a2720340bfcfaafb1",
+            "patchSha256": "ddea3f3400332a197910dd7fd0441ccf6bf6d340f43ac8cc6159c9404e0e2fa0",
+            "nodePtySha256": "19210adfdaba3cd09809b56bb3281b14e74a8e5efc1f35d467d3c423c30856db",
+            "patchedSha256": "365688c2aeecc37913dfd74ba39edf72ee9898cb896a46ff07bde6d9fc53f92c",
+            "helperSourceSha256": "22195de1710b574d5904fc89be5624c25e531de20d5e17e5998a2fd19d86e0e6",
+            "helperPatchedSha256": "35ed5c2dfb2df7e605f367f0026dff54e51c2a7e7cf96829ee10681f7741bd13",
+            "headersSha256": "e1a342cbd21f2e96045bd7728ca28975f8c056723b5a507c42c83ec064cc63f0",
+            "nodeAddonApiSha256": "f5498bef00e6a81ef4dc74143501cc7f803e3e11c76a5954c56582ed0f2678ae"
+          },
+          "compiler": {
+            "command": "clang++",
+            "sdk": "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+            "args": [
+              "-std=c++17",
+              "-bundle",
+              "-undefined",
+              "dynamic_lookup",
+              "-fPIC",
+              "-pthread",
+              "-fexceptions",
+              "-DNAPI_VERSION=8",
+              "-DNAPI_CPP_EXCEPTIONS",
+              "-DNODE_GYP_MODULE_NAME=pty",
+              "-arch",
+              "arm64",
+              "-isysroot",
+              "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+              "-mmacosx-version-min=11.0",
+              "-I",
+              "/Users/runner/work/_temp/execution-assets/darwin-arm64-inputs-9DXq68/headers/include/node",
+              "-I",
+              "/Users/runner/work/dev-session-canvas/dev-session-canvas/node_modules/node-pty/node_modules/node-addon-api",
+              "-I",
+              "/Users/runner/work/_temp/execution-assets/darwin-arm64/inputs",
+              "/Users/runner/work/_temp/execution-assets/darwin-arm64/inputs/pty-candidate.cc",
+              "-o",
+              "/Users/runner/work/_temp/execution-assets/darwin-arm64/execution-owner.node"
+            ],
+            "helperArgs": [
+              "-std=c++17",
+              "-arch",
+              "arm64",
+              "-isysroot",
+              "/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+              "-mmacosx-version-min=11.0",
+              "/Users/runner/work/_temp/execution-assets/darwin-arm64/inputs/spawn-helper.cc",
+              "-o",
+              "/Users/runner/work/_temp/execution-assets/darwin-arm64/spawn-helper"
+            ]
+          },
+          "verification": {
+            "compiled": true,
+            "nativeLoaded": false,
+            "nativeCalls": false,
+            "productValidated": false
+          }
+        }
+      ]
+    }
+  ]
+}
