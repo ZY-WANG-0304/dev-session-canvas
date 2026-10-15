@@ -1,5 +1,5 @@
 name: Temporary Packaged Admission Root Cause
-# Probe revision: release deletion after original rejection is observed
+# Probe revision: checked literal JSONL and observed rejection release
 on:
   push:
     branches: [smoke-lifecycle-release-ci-temp]

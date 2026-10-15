@@ -51,7 +51,7 @@ part=part.replace("    await ensureTerminalStopped(terminalNodeId);", r"""    aw
       assert.ok(retired,'Both original Supervisor sessions must be actually removed');
       console.log('[packaged-admission] '+JSON.stringify({stage:'both-retired',ids:dscOriginal}));
     }""",1)
-part=part.replace("    await waitForRuntimeExecutionStarted('agent', agentNodeId);", """    if(process.env.DSC_PACKAGED_CONTROL==='hold-deletion') {
+part=part.replace("    await waitForRuntimeExecutionStarted('agent', agentNodeId);", r"""    if(process.env.DSC_PACKAGED_CONTROL==='hold-deletion') {
       const deadline=Date.now()+5000;let rejected=false;
       while(Date.now()<deadline){
         const events=(await fs.readFile(process.env.DSC_PACKAGED_ADMISSION_TRACE,'utf8')).trim().split('\n').map(line=>JSON.parse(line));
