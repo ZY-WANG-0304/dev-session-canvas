@@ -131,7 +131,7 @@ for (const surface of ['editor', 'panel']) {
     };
     const diagnostic = f.host.runWebviewLifecycleRaceDiagnosticsForTest();
     try {
-      await reached.promise;
+      await Promise.race([reached.promise, diagnostic.then(() => { throw new Error('Diagnostic ended before controlled boundary'); })]);
       if (timing === 'during') await f.ready();
       f.host.recordDiagnosticEvent('real/during-diagnostic');
       release.resolve(); const result = await diagnostic; assertFake(result);

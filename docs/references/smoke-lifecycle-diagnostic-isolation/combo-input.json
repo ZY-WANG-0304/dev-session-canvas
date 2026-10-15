@@ -1,0 +1,12 @@
+{
+  "base": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+  "fix": "d814680cdb4463ca6783a669bae07d54586b1925",
+  "release_pr": 327,
+  "release_head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+  "combined_input": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "workflow_commit": "6ee6493024669c26ebb12bba60be4624386d2c08",
+  "run": 38681093813,
+  "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38681093813",
+  "status": "in_progress",
+  "scope": "default npmci; same-ref same-run six assets; full release:verify; separate original ready before/during/after/none controls"
+}

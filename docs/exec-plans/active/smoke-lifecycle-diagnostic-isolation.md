@@ -24,7 +24,7 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 
 第二里程碑把公开方法作为测试模式守卫与独立对象入口。独立对象以真实类 prototype 创建，显式初始化生命周期、消息目标、队列、请求、日志、焦点、可见性和终端读者容器；不能复制 this 或借用其 Map、队列、事件、读者、scheduler 和 context。bootstrap 使用独立空 Canvas 状态及调用前同步复制的 runtime 展示配置，模板目录为空诊断目录。仅替换序列化和外部数据边界，实际 ready/promote/filter、bootstrap、ack 排队、焦点及请求匹配方法保持。独立对象不运行生产构造器，避免磁盘写入、Host 监听器和监控定时器；finally 只清理自己拥有的请求、队列与 fake 引用，异常也不回滚真实对象。移除旧快照恢复及其专属 helper。
 
-在修复 worktree 根执行 Node22 的 `npm run test:smoke-lifecycle-isolation`、`npm run typecheck`、`npm run build`，保存日志到 `/dev/shm/dsc-lifecycle-fix-evidence`。本地依赖来自任务外已有 npmci 目录的临时链接，只作为定向验证，不称为默认 npmci 发布门禁。主工作区用户的 docs/WORKFLOW.md 改动保持不动。
+在修复 worktree 根执行 Node22 的 `npm run test:smoke-lifecycle-isolation`、`npm run typecheck`、`npm run build`，保存日志到 `/dev/shm/dsc-lifecycle-fix-evidence`。本地依赖先复制任务外已有 npmci 目录到 `/dev/shm/dsc-lifecycle-fix-evidence/node_modules`，修复 workspace 链接并运行 pinned serializer 构建后使用临时链接，只作为定向验证，不称为默认 npmci 发布门禁。主工作区用户的 docs/WORKFLOW.md 改动保持不动。
 
 第三里程碑提交修复到临时组合分支，在固定修复 SHA 上应用 PR327 发布材料，再提交仅临时 workflow。workflow 从不可变组合 SHA checkout，Ubuntu22.04/Node22 默认 npmci，调用现有 runtime-execution-assets reusable workflow 构建同 ref/run 六资产，原样无过滤运行 `npm run release:verify -- --version 0.26.1`。附加真实 Host 的 ready 前/期间/后三时序与不发送 ready 的负例用暂存原消息控制，不降低业务断言。完整门禁失败时保存首败并在同修复范围判断，不把单项成功拼成完整通过。
 
@@ -48,4 +48,6 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 结果与复盘
 
 
-修复尚未实施；已完成根因调查和隔离边界选择。需完成负对照、实现、原生验证、完整组合门禁及单一 PR 交付才能收口本计划。最终正式发布门禁仍须在修复合入后 PR327 的最新预合并输入重新验证。
+隔离实现、旧源码负对照、10项实际类回归、Host owner wiring 全套、协议/CLI、类型检查及本地六资产构建通过。组合 f8d9ad53 的 run38681093813 正在构建同 ref/run 六资产后运行原样完整 release:verify，并附加真实原 ready 前/期间/后和缺失20秒负例。需完成原生验证、组合结果、证据与单一 PR 交付才能收口本计划。最终正式发布门禁仍须在修复合入后 PR327 的最新预合并输入重新验证。
+
+2026-10-15 环境记录：根分区 ENOSPC 使首次构建写共享 serializer 入口失败，已从原 pinned 源码在任务依赖副本重建，恢复共享入口为短 symlink。此后所有依赖写入及 TMPDIR 指向 devshm，借用安装的验证不冒充 default npmci。
