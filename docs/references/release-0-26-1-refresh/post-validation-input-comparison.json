@@ -1,0 +1,13 @@
+{
+  "comparedFiles": 613,
+  "unchangedFiles": 612,
+  "postValidationDocumentationChanges": [
+    {
+      "path": "docs/public-preview-release-playbook.md",
+      "validationSha256": "d425c16cea40c11cc9739b0c8a05963fa40ee2f28bdf4af5edeaadf10d1a635a",
+      "currentSha256": "6db3d069ba73f6e2169ef1117090e59634aef5257e9879271f792925f58108ac",
+      "reason": "Only execution-plan path changed from active to completed after validation; product/version/changelog/contract/listing/test inputs unchanged"
+    }
+  ],
+  "fullVerifyOnFinalPreparationHead": "Not claimed; original premerge full verify failed and final PR remains draft"
+}
