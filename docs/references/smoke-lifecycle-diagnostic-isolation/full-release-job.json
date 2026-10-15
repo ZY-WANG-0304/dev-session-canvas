@@ -1,10 +1,10 @@
 {
   "id": 116247614878,
   "name": "full-release",
-  "status": "in_progress",
-  "conclusion": null,
+  "status": "completed",
+  "conclusion": "failure",
   "started_at": "2026-10-15T04:29:43Z",
-  "completed_at": null,
+  "completed_at": "2026-10-15T05:24:18Z",
   "steps": [
     {
       "name": "Set up job",
@@ -72,35 +72,43 @@
     },
     {
       "name": "Collect gate evidence",
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "success",
       "number": 9,
       "started_at": "2026-10-15T04:54:17Z",
-      "completed_at": null
+      "completed_at": "2026-10-15T05:21:49Z"
     },
     {
       "name": "Run actions/upload-artifact@v4",
-      "status": "pending",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "success",
       "number": 10,
-      "started_at": null,
-      "completed_at": null
+      "started_at": "2026-10-15T05:21:49Z",
+      "completed_at": "2026-10-15T05:24:16Z"
     },
     {
       "name": "Post Run actions/setup-node@v4",
-      "status": "pending",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "skipped",
       "number": 19,
-      "started_at": null,
-      "completed_at": null
+      "started_at": "2026-10-15T05:24:16Z",
+      "completed_at": "2026-10-15T05:24:16Z"
     },
     {
       "name": "Post Run actions/checkout@v4",
-      "status": "pending",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "success",
       "number": 20,
-      "started_at": null,
-      "completed_at": null
+      "started_at": "2026-10-15T05:24:16Z",
+      "completed_at": "2026-10-15T05:24:16Z"
+    },
+    {
+      "name": "Complete job",
+      "status": "completed",
+      "conclusion": "success",
+      "number": 21,
+      "started_at": "2026-10-15T05:24:16Z",
+      "completed_at": "2026-10-15T05:24:16Z"
     }
   ]
 }

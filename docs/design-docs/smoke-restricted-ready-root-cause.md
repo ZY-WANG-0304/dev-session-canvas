@@ -71,3 +71,5 @@ bootstrap 内容使用独立空 Canvas 状态和调用前同步复制的 runtime
 两真实承载面三种ready时序、诊断成功/异常责任保护、缺失ready与生产守卫共10项直接类回归通过，Host owner wiring 634/634、类型检查、构建及协议/CLI通过；旧源码during稳定缺少真实bootstrap。组合run38681093813的原样完整命令于04:54:17Z以failure结束：源码checkpoint/trusted/restricted、各本地重开、systemd、SSHexit/retain、426项Webview均通过，后续clean-checkout packaged trusted启动后失败。具体首败错误仍待原job日志/工件，证据收集尚运行，不据此推断新增代码缺陷。
 
 同输入同资产default npmci的原packaged trusted单项run38685094467 exit0并确认`VSIX packaged-payload smoke passed (trusted)`；完整工件681317bytes，SHA256 ee428ea4ecea5474705aa1d7a8c52b75fda801006b44d5a730d1344631ac6bac。单项成功不能替代完整失败。修复可独立review，本次ready缺陷已由负对照/三时序/真实bootstrap和完整源码验收闭环；0.26.1仍须定位packaged首败，并在修复合入后rebase PR327跑最终正式完整门禁。
+
+原完整job最终failure已完成。首败栈为packaged trusted的verifyLiveRuntimePersistence→waitForRuntimeExecutionStarted，Agent状态记录rejected-before-acquire，editor ready/ack=true；执行拒绝根因待定位，不能归为本次诊断隔离失败。原首败与工件来源已登记修复证据。

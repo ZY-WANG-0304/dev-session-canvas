@@ -15,7 +15,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) 两真实面三时序及异常/成功责任保护共10项通过；旧 during 稳定缺少真实 bootstrap。
 - [x] (2026-10-15) 隔离与异常清理、10项回归、协议/CLI、类型检查及六资产本地构建通过。
 - [x] (2026-10-15) 组合f8d9ad53六资产、真实原ready三时序及none20秒负例完成；原样完整release:verify已运行并保留首次failure。
-- [ ] 获取首次packaged错误与工件，闭环剩余完整门禁阻塞。
+- [x] (2026-10-15) 获取完整job首败与工件来源：packaged trusted执行启动rejected-before-acquire，editor ready/ack=true。
+- [ ] 定位执行拒绝根因并闭环剩余完整门禁阻塞。
 - [x] (2026-10-15) 同步证据与技术债，创建单一修复PR335；CI通过、最新main为祖先，临时workflow入口已移除。
 - [ ] packaged首败与最终发布门禁收口后归档计划。
 
@@ -59,3 +60,5 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 修复交付状态：实现与根因回归完成，可以独立创建修复PR；本计划保留active，因为packaged首次失败及最终PR327门禁尚未收口。发布验证待办登记技术债，不把单项通过写成完整通过。
 
 PR335 head1a67c717的Resolve release input/Verify release contract通过（无发布契约，六资产明确skip）；修复工作树clean，主工作区WORKFLOW.md保持。临时workflow及probe在79ba3c0f移除并推送，原运行仍保留。
+
+最终首败确认：verifyLiveRuntimePersistence等待Agent启动超时，状态显示rejected-before-acquire而editor ready/ack=true。不是本次ready回滚；执行拒绝根因仍未确认。原完整工件11950986000为7223340491bytes，远端保留，本地只核验job日志及首败snapshot，不称为全量下载。

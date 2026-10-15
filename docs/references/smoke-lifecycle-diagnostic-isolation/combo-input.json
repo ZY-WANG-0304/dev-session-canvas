@@ -7,7 +7,7 @@
   "workflow_commit": "6ee6493024669c26ebb12bba60be4624386d2c08",
   "run": 38681093813,
   "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38681093813",
-  "status": "evidence_collection_in_progress",
+  "status": "completed",
   "scope": "default npmci; same-ref same-run six assets; full release:verify; separate original ready before/during/after/none controls",
   "gate_step": "failure",
   "gate_step_completed_at": "2026-10-15T04:54:17Z",
@@ -18,8 +18,11 @@
     "remote SSH exit and retain",
     "426 Playwright webview tests"
   ],
-  "first_failure_scope": "clean-checkout packaged trusted; exact error not available yet",
+  "first_failure_scope": "clean-checkout packaged trusted verifyLiveRuntimePersistence waiting Agent start; rejected-before-acquire, editor ready/ack true",
   "packaged_diagnostic_run": 38685094467,
   "fix_pr": 335,
-  "temporary_workflow_cleanup": "79ba3c0f"
+  "temporary_workflow_cleanup": "79ba3c0f",
+  "conclusion": "failure",
+  "full_artifact": 11950986000,
+  "full_artifact_bytes": 7223340491
 }

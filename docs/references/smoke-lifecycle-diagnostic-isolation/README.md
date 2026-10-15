@@ -7,3 +7,5 @@
 完整run38681093813日志已确认checkpoint、trusted、restricted、本地重开、多根重开、单根转多根、双窗口及fake systemd-user重开通过；systemd-fallback、SSH退出/保留及426项Webview随后均通过。此前日志停更只是获取延迟，不能归为代码卡点；同输入两份限时阶段诊断也均通过。完整命令于04:54:17Z以failure结束，最新可得日志位于clean-checkout packaged trusted启动；具体首败等待日志/工件，后续证据收集仍运行。未将完整门禁标为通过。
 
 run38685094467在同组合输入与同run六资产、默认npmci下执行原test:vsix-smoke trusted，exit0且VSIX packaged-payload smoke passed (trusted)。完整工件已下载，hash和范围见packaged-trusted-result.json。这只是单项非必现对照，不能替代首次完整clean-checkout门禁failure。
+
+最终原job已结束failure，7.2GB工件11950986000已上传。完整job尾日志捕获首败：packaged trusted verifyLiveRuntimePersistence→waitForRuntimeExecutionStarted超时，Agent lastRuntimeError为Execution start was rejected-before-acquire；真实editor ready/ack=true。具体执行拒绝根因未确认，不能归为ready隔离回归；原snapshot/stack见packaged-first-failure.*。完整工件未下载，不称为完整本地核验。
