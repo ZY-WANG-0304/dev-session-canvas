@@ -116,7 +116,7 @@ flowchart TD
 | 18 | Update GitHub Release notes for reused assets | reuse；只更新notes，保留原VSIX |
 | 19 | Upload prepared release artifacts | prepared-release-<run_id>；缺产物error；供两渠道和finalize下载 |
 
-第9步是产品完整门禁：静态preflight和门禁回归 → 串行npm test（含源码默认19场景）→ Webview Playwright → clean-checkout VSIX验证（默认8场景）。内部详见 [完整验证图](verify-detail.svg) 和 [审查报告的覆盖清单](../../design-docs/release-gate-flow-audit.md#标准验证的具体顺序和覆盖)。0.26.1不采用0.26.0的历史例外。
+第9步是产品完整门禁：静态preflight和门禁回归 → 串行npm test（含源码默认19场景）→ Webview Playwright → clean-checkout VSIX验证（默认8场景）。内部详见 [完整验证图](verify-detail.svg)、[smoke内部六图及验证完成条件](smoke/README.md) 和 [审查报告的覆盖清单](../../design-docs/release-gate-flow-audit.md#标准验证的具体顺序和覆盖)。0.26.1不采用0.26.0的历史例外。
 
 第12/13步的helper都会验证版本、静态preflight、HEAD=trigger-tag ref、工作区干净且releaseRef属于origin/main历史。新打包核对每份VSIX的name/publisher/version、主扩展README含release ref及文件SHA；复用还要求原manifest版本/ref一致，原VSIX的SHA与对应artifact记录一致。这两步不重新执行完整宿主门禁。
 

@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 2050" width="1920" height="2050" data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="1" data-visual-theme="Flat Icon" data-diagram-type="flowchart" data-motion-scene="" data-semantic-profile="generic" data-semantic-valid="true" data-quality-profile="showcase" data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35" data-max-bridged-crossings="0" data-min-node-gap="40.0" data-min-container-gutter="20.0" data-min-label-clearance="4.0" data-min-segment-length="16.0">
+  <defs>
+    <marker id="arrowA" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowC" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowE" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0d9488"/>
+    </marker>
+    <marker id="arrowF" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowH" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <filter id="shadowSoft" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowGlass" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#020617" flood-opacity="0.28"/>
+    </filter>
+    <style>
+    text { font-family: 'Noto Sans CJK SC', sans-serif; }
+    .title { font-size: 30px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 14px; font-weight: 500; fill: #6b7280; }
+    .section { font-size: 13px; font-weight: 700; fill: #2563eb; letter-spacing: 1.4px; }
+    .section-sub { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .node-title { font-weight: 700; fill: #111827; }
+    .node-sub { font-weight: 500; fill: #6b7280; }
+    .node-type { font-size: 12px; font-weight: 700; fill: #64748b; letter-spacing: 0.08em; }
+    .arrow-label { font-size: 12px; font-weight: 600; fill: #6b7280; }
+    .legend { font-size: 12px; font-weight: 500; fill: #6b7280; }
+    .footnote { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .metric-label { font-size: 8.5px; font-weight: 700; fill: #64748b; text-transform: uppercase; }
+    .metric-value { font-size: 9.5px; font-weight: 700; fill: #111827; }
+    </style>
+  </defs>
+  <rect data-graph-role="background" width="1920.0" height="2050.0" fill="#ffffff"/>
+  <text x="960.0" y="56" text-anchor="middle" class="title">Smoke 02：一个普通场景的Host运行与验证责任</text>
+  <text x="960.0" y="82" text-anchor="middle" class="subtitle">蓝=执行，绿=断言，紫=等待，红=失败；右侧取证发生在异常路径，注记不是测试步骤</text>
+  <path id="edge-000" data-graph-role="edge" data-edge-id="edge-000" data-source="main-0" data-target="main-1" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,265 L 610,325" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-001" data-graph-role="edge" data-edge-id="edge-001" data-source="main-1" data-target="main-2" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,440 L 610,500" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-002" data-graph-role="edge" data-edge-id="edge-002" data-source="main-2" data-target="main-3" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,615 L 610,675" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-003" data-graph-role="edge" data-edge-id="edge-003" data-source="main-3" data-target="main-4" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,790 L 610,850" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-004" data-graph-role="edge" data-edge-id="edge-004" data-source="main-4" data-target="main-5" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,965 L 610,1025" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-005" data-graph-role="edge" data-edge-id="edge-005" data-source="main-5" data-target="main-6" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,1140 L 610,1200" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-006" data-graph-role="edge" data-edge-id="edge-006" data-source="main-6" data-target="main-7" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,1315 L 610,1375" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-007" data-graph-role="edge" data-edge-id="edge-007" data-source="main-7" data-target="main-8" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,1490 L 610,1550" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-008" data-graph-role="edge" data-edge-id="edge-008" data-source="main-8" data-target="main-9" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 610,1665 L 610,1725" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-009" data-graph-role="edge" data-edge-id="edge-009" data-source="main-6" data-target="fail" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1170,1257.5 L 1370,1257.5" fill="none" stroke="#dc2626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowG)"/>
+  <path id="edge-010" data-graph-role="edge" data-edge-id="edge-010" data-source="fail" data-target="logs" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1620,1315 L 1620,1375" fill="none" stroke="#dc2626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowG)"/>
+  <path id="edge-011" data-graph-role="edge" data-edge-id="edge-011" data-source="logs" data-target="outer" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1620,1490 L 1620,1550" fill="none" stroke="#dc2626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowG)"/>
+  <g id="node-main-0" data-graph-role="node" data-node-id="main-0" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,150,1170,265">
+  <rect x="50.0" y="150.0" width="1120.0" height="115.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="01  prepareRuntime：建立私有环境" data-text-max-width="1096.0" x="610.0" y="207.5" text-anchor="middle" class="node-title" font-size="21.0">01 prepareRuntime：建立私有环境</text>
+  <text data-text-role="subtitle" data-full-text="重建HOME/user-data/extensions/XDG/runtime/TMP/artifacts；写场景配置" data-text-max-width="1096.0" x="610.0" y="229.5" text-anchor="middle" class="node-sub" font-size="12">重建HOME/user-data/extensions/XDG/runtime/TMP/artifacts；写场景配置</text>
+  </g>
+  <g id="node-main-1" data-graph-role="node" data-node-id="main-1" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,325,1170,440">
+  <rect x="50.0" y="325.0" width="1120.0" height="115.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="02  stage源码或packaged承载与测试suite" data-text-max-width="1096.0" x="610.0" y="382.5" text-anchor="middle" class="node-title" font-size="21.0">02 stage源码或packaged承载与测试suite</text>
+  <text data-text-role="subtitle" data-full-text="复制主dist/运行依赖；stageSmokeTestSuite；使用extensionTestsPath" data-text-max-width="1096.0" x="610.0" y="404.5" text-anchor="middle" class="node-sub" font-size="12">复制主dist/运行依赖；stageSmokeTestSuite；使用extensionTestsPath</text>
+  </g>
+  <g id="node-main-2" data-graph-role="node" data-node-id="main-2" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,500,1170,615">
+  <rect x="50.0" y="500.0" width="1120.0" height="115.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="03  选择实际VS Code宿主 → 构造启动参数" data-text-max-width="1096.0" x="610.0" y="557.5" text-anchor="middle" class="node-title" font-size="21.0">03 选择实际VS Code宿主 → 构造启动参数</text>
+  <text data-text-role="subtitle" data-full-text="显式/已安装→缓存→下载stable；trace、私有目录、开发扩展与trust设置" data-text-max-width="1096.0" x="610.0" y="579.5" text-anchor="middle" class="node-sub" font-size="12">显式/已安装→缓存→下载stable；trace、私有目录、开发扩展与trust设置</text>
+  </g>
+  <g id="node-main-3" data-graph-role="node" data-node-id="main-3" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,675,1170,790">
+  <rect x="50.0" y="675.0" width="1120.0" height="115.0" rx="10.0" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="04  启动真实VS Code测试进程" data-text-max-width="1096.0" x="610.0" y="732.5" text-anchor="middle" class="node-title" font-size="21.0">04 启动真实VS Code测试进程</text>
+  <text data-text-role="subtitle" data-full-text="过滤VSCODE_/Electron模式及敏感env；透传stdout/stderr；等待进程退出" data-text-max-width="1096.0" x="610.0" y="754.5" text-anchor="middle" class="node-sub" font-size="12">过滤VSCODE_/Electron模式及敏感env；透传stdout/stderr；等待进程退出</text>
+  </g>
+  <g id="node-main-4" data-graph-role="node" data-node-id="main-4" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,850,1170,965">
+  <rect x="50.0" y="850.0" width="1120.0" height="115.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="05  Host内module.run：激活扩展和命令" data-text-max-width="1096.0" x="610.0" y="907.5" text-anchor="middle" class="node-title" font-size="21.0">05 Host内module.run：激活扩展和命令</text>
+  <text data-text-role="subtitle" data-full-text="activateVisibleExtension → open editor → 等待测试命令 → 首开模板 → reset" data-text-max-width="1096.0" x="610.0" y="929.5" text-anchor="middle" class="node-sub" font-size="12">activateVisibleExtension → open editor → 等待测试命令 → 首开模板 → reset</text>
+  </g>
+  <g id="node-main-5" data-graph-role="node" data-node-id="main-5" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1025,1170,1140">
+  <rect x="50.0" y="1025.0" width="1120.0" height="115.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="06  按scenario进入断言链" data-text-max-width="1096.0" x="610.0" y="1082.5" text-anchor="middle" class="node-title" font-size="21.0">06 按scenario进入断言链</text>
+  <text data-text-role="subtitle" data-full-text="命令或测试消息进入原生产处理；DOM动作进入真实Webview；每项await串行" data-text-max-width="1096.0" x="610.0" y="1104.5" text-anchor="middle" class="node-sub" font-size="12">命令或测试消息进入原生产处理；DOM动作进入真实Webview；每项await串行</text>
+  </g>
+  <g id="node-main-6" data-graph-role="node" data-node-id="main-6" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1200,1170,1315">
+  <rect x="50.0" y="1200.0" width="1120.0" height="115.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="07  核对三类观测，满足条件才继续" data-text-max-width="1096.0" x="610.0" y="1257.5" text-anchor="middle" class="node-title" font-size="21.0">07 核对三类观测，满足条件才继续</text>
+  <text data-text-role="subtitle" data-full-text="Host snapshot / messages / diagnostics；页面probe；必要时原Supervisor RPC" data-text-max-width="1096.0" x="610.0" y="1279.5" text-anchor="middle" class="node-sub" font-size="12">Host snapshot / messages / diagnostics；页面probe；必要时原Supervisor RPC</text>
+  </g>
+  <g id="node-main-7" data-graph-role="node" data-node-id="main-7" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1375,1170,1490">
+  <rect x="50.0" y="1375.0" width="1120.0" height="115.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="08  extension-tests尾部检查owned resize失败" data-text-max-width="1096.0" x="610.0" y="1432.5" text-anchor="middle" class="node-title" font-size="21.0">08 extension-tests尾部检查owned resize失败</text>
+  <text data-text-role="subtitle" data-full-text="仅trusted和7个local场景执行该断言；专门suite有自己的结尾" data-text-max-width="1096.0" x="610.0" y="1454.5" text-anchor="middle" class="node-sub" font-size="12">仅trusted和7个local场景执行该断言；专门suite有自己的结尾</text>
+  </g>
+  <g id="node-main-8" data-graph-role="node" data-node-id="main-8" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1550,1170,1665">
+  <rect x="50.0" y="1550.0" width="1120.0" height="115.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="09  suite返回 → VS Code测试进程exit0" data-text-max-width="1096.0" x="610.0" y="1607.5" text-anchor="middle" class="node-title" font-size="21.0">09 suite返回 → VS Code测试进程exit0</text>
+  <text data-text-role="subtitle" data-full-text="runner按exit/close和退出码判定；普通spawn没有整场进程deadline" data-text-max-width="1096.0" x="610.0" y="1629.5" text-anchor="middle" class="node-sub" font-size="12">runner按exit/close和退出码判定；普通spawn没有整场进程deadline</text>
+  </g>
+  <g id="node-main-9" data-graph-role="node" data-node-id="main-9" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1725,1170,1840">
+  <rect x="50.0" y="1725.0" width="1120.0" height="115.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="10  所有场景成功 → 外层命令返回" data-text-max-width="1096.0" x="610.0" y="1782.5" text-anchor="middle" class="node-title" font-size="21.0">10 所有场景成功 → 外层命令返回</text>
+  <text data-text-role="subtitle" data-full-text="源码/packaged普通入口catch设exitCode=1；不自动重跑" data-text-max-width="1096.0" x="610.0" y="1804.5" text-anchor="middle" class="node-sub" font-size="12">源码/packaged普通入口catch设exitCode=1；不自动重跑</text>
+  </g>
+  <g id="node-channels" data-graph-role="node" data-node-id="channels" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1370,150,1870,265">
+  <rect x="1370.0" y="150.0" width="500.0" height="115.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="触发与观测是不同责任" data-text-max-width="476.0" x="1620.0" y="207.5" text-anchor="middle" class="node-title" font-size="21.0">触发与观测是不同责任</text>
+  <text data-text-role="subtitle" data-full-text="测试命令/DOM动作 → 产品；probe/RPC → 结果" data-text-max-width="476.0" x="1620.0" y="229.5" text-anchor="middle" class="node-sub" font-size="12">测试命令/DOM动作 → 产品；probe/RPC → 结果</text>
+  </g>
+  <g id="node-identities" data-graph-role="node" data-node-id="identities" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1370,500,1870,615">
+  <rect x="1370.0" y="500.0" width="500.0" height="115.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="身份检查随具名用例执行" data-text-max-width="476.0" x="1620.0" y="557.5" text-anchor="middle" class="node-title" font-size="21.0">身份检查随具名用例执行</text>
+  <text data-text-role="subtitle" data-full-text="原node/session/storage/owner/PID，防替换后假通过" data-text-max-width="476.0" x="1620.0" y="579.5" text-anchor="middle" class="node-sub" font-size="12">原node/session/storage/owner/PID，防替换后假通过</text>
+  </g>
+  <g id="node-fail" data-graph-role="node" data-node-id="fail" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1370,1200,1870,1315">
+  <rect x="1370.0" y="1200.0" width="500.0" height="115.0" rx="10.0" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="断言或suite抛错：先取证" data-text-max-width="476.0" x="1620.0" y="1257.5" text-anchor="middle" class="node-title" font-size="21.0">断言或suite抛错：先取证</text>
+  <text data-text-role="subtitle" data-full-text="错误、快照、消息、诊断、last probe；各suite不同" data-text-max-width="476.0" x="1620.0" y="1279.5" text-anchor="middle" class="node-sub" font-size="12">错误、快照、消息、诊断、last probe；各suite不同</text>
+  </g>
+  <g id="node-logs" data-graph-role="node" data-node-id="logs" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1370,1375,1870,1490">
+  <rect x="1370.0" y="1375.0" width="500.0" height="115.0" rx="10.0" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="测试进程失败：runner复制日志" data-text-max-width="476.0" x="1620.0" y="1432.5" text-anchor="middle" class="node-title" font-size="21.0">测试进程失败：runner复制日志</text>
+  <text data-text-role="subtitle" data-full-text="user-data/logs最新目录 → artifacts/vscode-logs" data-text-max-width="476.0" x="1620.0" y="1454.5" text-anchor="middle" class="node-sub" font-size="12">user-data/logs最新目录 → artifacts/vscode-logs</text>
+  </g>
+  <g id="node-outer" data-graph-role="node" data-node-id="outer" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1370,1550,1870,1665">
+  <rect x="1370.0" y="1550.0" width="500.0" height="115.0" rx="10.0" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="外层抛错：停止后续场景" data-text-max-width="476.0" x="1620.0" y="1607.5" text-anchor="middle" class="node-title" font-size="21.0">外层抛错：停止后续场景</text>
+  <text data-text-role="subtitle" data-full-text="专门场景才有finally清理；现场当前仅留runner" data-text-max-width="476.0" x="1620.0" y="1629.5" text-anchor="middle" class="node-sub" font-size="12">专门场景才有finally清理；现场当前仅留runner</text>
+  </g>
+  <g id="edge-009-label" data-graph-role="label" data-owner="edge-009" data-graph-bounds="1251,1226.5,1289,1246.5">
+  <rect x="1251.0" y="1226.5" width="38.0" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="1270.0" y="1240.5" text-anchor="middle" class="arrow-label">失败</text>
+  </g>
+</svg>

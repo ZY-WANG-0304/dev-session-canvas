@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1740" width="1920" height="1740" data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="1" data-visual-theme="Flat Icon" data-diagram-type="flowchart" data-motion-scene="" data-semantic-profile="generic" data-semantic-valid="true" data-quality-profile="showcase" data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35" data-max-bridged-crossings="0" data-min-node-gap="40.0" data-min-container-gutter="20.0" data-min-label-clearance="4.0" data-min-segment-length="16.0">
+  <defs>
+    <marker id="arrowA" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowC" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowE" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0d9488"/>
+    </marker>
+    <marker id="arrowF" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowH" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <filter id="shadowSoft" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowGlass" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#020617" flood-opacity="0.28"/>
+    </filter>
+    <style>
+    text { font-family: 'Noto Sans CJK SC', sans-serif; }
+    .title { font-size: 30px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 14px; font-weight: 500; fill: #6b7280; }
+    .section { font-size: 13px; font-weight: 700; fill: #2563eb; letter-spacing: 1.4px; }
+    .section-sub { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .node-title { font-weight: 700; fill: #111827; }
+    .node-sub { font-weight: 500; fill: #6b7280; }
+    .node-type { font-size: 12px; font-weight: 700; fill: #64748b; letter-spacing: 0.08em; }
+    .arrow-label { font-size: 12px; font-weight: 600; fill: #6b7280; }
+    .legend { font-size: 12px; font-weight: 500; fill: #6b7280; }
+    .footnote { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .metric-label { font-size: 8.5px; font-weight: 700; fill: #64748b; text-transform: uppercase; }
+    .metric-value { font-size: 9.5px; font-weight: 700; fill: #111827; }
+    </style>
+  </defs>
+  <rect data-graph-role="background" width="1920.0" height="1740.0" fill="#ffffff"/>
+  <text x="960.0" y="56" text-anchor="middle" class="title">Smoke 05：双窗口的协调与共享运行时验证</text>
+  <text x="960.0" y="82" text-anchor="middle" class="subtitle">runner先启动owner，等owner-ready后连共享globalStorage再启动attacher；两个Host并发运行</text>
+  <path id="edge-000" data-graph-role="edge" data-edge-id="edge-000" data-source="owner-0" data-target="owner-1" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,355 L 480,415" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-001" data-graph-role="edge" data-edge-id="edge-001" data-source="owner-1" data-target="owner-2" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,525 L 480,585" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-002" data-graph-role="edge" data-edge-id="edge-002" data-source="owner-2" data-target="owner-3" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,695 L 480,755" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-003" data-graph-role="edge" data-edge-id="edge-003" data-source="owner-3" data-target="owner-4" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,865 L 480,925" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-004" data-graph-role="edge" data-edge-id="edge-004" data-source="owner-4" data-target="owner-5" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,1035 L 480,1095" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-005" data-graph-role="edge" data-edge-id="edge-005" data-source="owner-5" data-target="owner-6" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,1205 L 480,1265" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-006" data-graph-role="edge" data-edge-id="edge-006" data-source="owner-6" data-target="owner-7" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,1375 L 480,1435" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-007" data-graph-role="edge" data-edge-id="edge-007" data-source="attacher-0" data-target="attacher-1" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,355 L 1440,415" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-008" data-graph-role="edge" data-edge-id="edge-008" data-source="attacher-1" data-target="attacher-2" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,525 L 1440,585" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-009" data-graph-role="edge" data-edge-id="edge-009" data-source="attacher-2" data-target="attacher-3" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,695 L 1440,755" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-010" data-graph-role="edge" data-edge-id="edge-010" data-source="attacher-3" data-target="attacher-4" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,865 L 1440,925" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-011" data-graph-role="edge" data-edge-id="edge-011" data-source="attacher-4" data-target="attacher-5" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,1035 L 1440,1095" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-012" data-graph-role="edge" data-edge-id="edge-012" data-source="attacher-5" data-target="attacher-6" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,1205 L 1440,1265" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-013" data-graph-role="edge" data-edge-id="edge-013" data-source="attacher-6" data-target="attacher-7" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,1375 L 1440,1435" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <g id="node-owner-header" data-graph-role="node" data-node-id="owner-header" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,130,910,200">
+  <rect x="50.0" y="130.0" width="860.0" height="70.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="Owner Window" data-text-max-width="836.0" x="480.0" y="165.0" text-anchor="middle" class="node-title" font-size="21.0">Owner Window</text>
+  <text data-text-role="subtitle" data-full-text="独立profile/user-data，创建共享执行；以JSON文件协调" data-text-max-width="836.0" x="480.0" y="187.0" text-anchor="middle" class="node-sub" font-size="12">独立profile/user-data，创建共享执行；以JSON文件协调</text>
+  </g>
+  <g id="node-owner-0" data-graph-role="node" data-node-id="owner-0" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,245,910,355">
+  <rect x="50.0" y="245.0" width="860.0" height="110.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="01  reset → 开live-runtime → 创建两执行并flush" data-text-max-width="836.0" x="480.0" y="300.0" text-anchor="middle" class="node-title" font-size="21.0">01 reset → 开live-runtime → 创建两执行并flush</text>
+  <text data-text-role="subtitle" data-full-text="写owner-ready：node/session/storage/state；runner等ready90秒" data-text-max-width="836.0" x="480.0" y="322.0" text-anchor="middle" class="node-sub" font-size="12">写owner-ready：node/session/storage/state；runner等ready90秒</text>
+  </g>
+  <g id="node-owner-1" data-graph-role="node" data-node-id="owner-1" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,415,910,525">
+  <rect x="50.0" y="415.0" width="860.0" height="110.0" rx="10.0" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="02  等待attacher已附着原会话" data-text-max-width="836.0" x="480.0" y="470.0" text-anchor="middle" class="node-title" font-size="21.0">02 等待attacher已附着原会话</text>
+  <text data-text-role="subtitle" data-full-text="只接受相同Agent/Terminal session和storage身份" data-text-max-width="836.0" x="480.0" y="492.0" text-anchor="middle" class="node-sub" font-size="12">只接受相同Agent/Terminal session和storage身份</text>
+  </g>
+  <g id="node-owner-2" data-graph-role="node" data-node-id="owner-2" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,585,910,695">
+  <rect x="50.0" y="585.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="03  双向共享Note结构变更" data-text-max-width="836.0" x="480.0" y="640.0" text-anchor="middle" class="node-title" font-size="21.0">03 双向共享Note结构变更</text>
+  <text data-text-role="subtitle" data-full-text="create → 对端edit/move/resize → 对端create → delete同步" data-text-max-width="836.0" x="480.0" y="662.0" text-anchor="middle" class="node-sub" font-size="12">create → 对端edit/move/resize → 对端create → delete同步</text>
+  </g>
+  <g id="node-owner-3" data-graph-role="node" data-node-id="owner-3" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,755,910,865">
+  <rect x="50.0" y="755.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="04  双向输入标记抵达两窗口" data-text-max-width="836.0" x="480.0" y="810.0" text-anchor="middle" class="node-title" font-size="21.0">04 双向输入标记抵达两窗口</text>
+  <text data-text-role="subtitle" data-full-text="先验attacher输入 → 发owner输入 → 对端确认" data-text-max-width="836.0" x="480.0" y="832.0" text-anchor="middle" class="node-sub" font-size="12">先验attacher输入 → 发owner输入 → 对端确认</text>
+  </g>
+  <g id="node-owner-4" data-graph-role="node" data-node-id="owner-4" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,925,910,1035">
+  <rect x="50.0" y="925.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="05  观察原Terminal resize及stop、Agent delete" data-text-max-width="836.0" x="480.0" y="980.0" text-anchor="middle" class="node-title" font-size="21.0">05 观察原Terminal resize及stop、Agent delete</text>
+  <text data-text-role="subtitle" data-full-text="页面动作来自attacher；owner必须得到尺寸/终态/删除投影" data-text-max-width="836.0" x="480.0" y="1002.0" text-anchor="middle" class="node-sub" font-size="12">页面动作来自attacher；owner必须得到尺寸/终态/删除投影</text>
+  </g>
+  <g id="node-owner-5" data-graph-role="node" data-node-id="owner-5" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1095,910,1205">
+  <rect x="50.0" y="1095.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="06  测试一个窗口关闭持久化与对端接管" data-text-max-width="836.0" x="480.0" y="1150.0" text-anchor="middle" class="node-title" font-size="21.0">06 测试一个窗口关闭持久化与对端接管</text>
+  <text data-text-role="subtitle" data-full-text="共享执行保留，关闭方状态隔离；两方private note不交叉" data-text-max-width="836.0" x="480.0" y="1172.0" text-anchor="middle" class="node-sub" font-size="12">共享执行保留，关闭方状态隔离；两方private note不交叉</text>
+  </g>
+  <g id="node-owner-6" data-graph-role="node" data-node-id="owner-6" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1265,910,1375">
+  <rect x="50.0" y="1265.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="07  重新开启模式 → 验共享根已清空" data-text-max-width="836.0" x="480.0" y="1320.0" text-anchor="middle" class="node-title" font-size="21.0">07 重新开启模式 → 验共享根已清空</text>
+  <text data-text-role="subtitle" data-full-text="最后参与者关闭后清共享root；私有Note不进入共享画布" data-text-max-width="836.0" x="480.0" y="1342.0" text-anchor="middle" class="node-sub" font-size="12">最后参与者关闭后清共享root；私有Note不进入共享画布</text>
+  </g>
+  <g id="node-owner-7" data-graph-role="node" data-node-id="owner-7" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1435,910,1545">
+  <rect x="50.0" y="1435.0" width="860.0" height="110.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="08  reset → 零会话 → 两Host结束" data-text-max-width="836.0" x="480.0" y="1490.0" text-anchor="middle" class="node-title" font-size="21.0">08 reset → 零会话 → 两Host结束</text>
+  <text data-text-role="subtitle" data-full-text="runner等两completed；失败尝试kill并allSettled收集结果" data-text-max-width="836.0" x="480.0" y="1512.0" text-anchor="middle" class="node-sub" font-size="12">runner等两completed；失败尝试kill并allSettled收集结果</text>
+  </g>
+  <g id="node-attacher-header" data-graph-role="node" data-node-id="attacher-header" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,130,1870,200">
+  <rect x="1010.0" y="130.0" width="860.0" height="70.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="Attacher Window" data-text-max-width="836.0" x="1440.0" y="165.0" text-anchor="middle" class="node-title" font-size="21.0">Attacher Window</text>
+  <text data-text-role="subtitle" data-full-text="独立profile，共享同用户globalStorage；不另起一份相同执行" data-text-max-width="836.0" x="1440.0" y="187.0" text-anchor="middle" class="node-sub" font-size="12">独立profile，共享同用户globalStorage；不另起一份相同执行</text>
+  </g>
+  <g id="node-attacher-0" data-graph-role="node" data-node-id="attacher-0" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,245,1870,355">
+  <rect x="1010.0" y="245.0" width="860.0" height="110.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="01  激活 → 同root恢复共享画布" data-text-max-width="836.0" x="1440.0" y="300.0" text-anchor="middle" class="node-title" font-size="21.0">01 激活 → 同root恢复共享画布</text>
+  <text data-text-role="subtitle" data-full-text="读取owner-ready，核对原session/storage并写attached" data-text-max-width="836.0" x="1440.0" y="322.0" text-anchor="middle" class="node-sub" font-size="12">读取owner-ready，核对原session/storage并写attached</text>
+  </g>
+  <g id="node-attacher-1" data-graph-role="node" data-node-id="attacher-1" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,415,1870,525">
+  <rect x="1010.0" y="415.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="02  原会话附着后确认owner仍持有" data-text-max-width="836.0" x="1440.0" y="470.0" text-anchor="middle" class="node-title" font-size="21.0">02 原会话附着后确认owner仍持有</text>
+  <text data-text-role="subtitle" data-full-text="共同输出与registry；不把第二窗口当新执行owner" data-text-max-width="836.0" x="1440.0" y="492.0" text-anchor="middle" class="node-sub" font-size="12">共同输出与registry；不把第二窗口当新执行owner</text>
+  </g>
+  <g id="node-attacher-2" data-graph-role="node" data-node-id="attacher-2" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,585,1870,695">
+  <rect x="1010.0" y="585.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="03  编辑owner Note并创建peer Note" data-text-max-width="836.0" x="1440.0" y="640.0" text-anchor="middle" class="node-title" font-size="21.0">03 编辑owner Note并创建peer Note</text>
+  <text data-text-role="subtitle" data-full-text="确认owner delete在本窗口消失；JSON文件握手" data-text-max-width="836.0" x="1440.0" y="662.0" text-anchor="middle" class="node-sub" font-size="12">确认owner delete在本窗口消失；JSON文件握手</text>
+  </g>
+  <g id="node-attacher-3" data-graph-role="node" data-node-id="attacher-3" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,755,1870,865">
+  <rect x="1010.0" y="755.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="04  发attacher输入 → 验owner输入" data-text-max-width="836.0" x="1440.0" y="810.0" text-anchor="middle" class="node-title" font-size="21.0">04 发attacher输入 → 验owner输入</text>
+  <text data-text-role="subtitle" data-full-text="真实执行输入、原输出标记，反向可见" data-text-max-width="836.0" x="1440.0" y="832.0" text-anchor="middle" class="node-sub" font-size="12">真实执行输入、原输出标记，反向可见</text>
+  </g>
+  <g id="node-attacher-4" data-graph-role="node" data-node-id="attacher-4" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,925,1870,1035">
+  <rect x="1010.0" y="925.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="05  页面resize/Stop/Delete → 等owner确认" data-text-max-width="836.0" x="1440.0" y="980.0" text-anchor="middle" class="node-title" font-size="21.0">05 页面resize/Stop/Delete → 等owner确认</text>
+  <text data-text-role="subtitle" data-full-text="操作原节点；对端完成标记只在其业务断言后写出" data-text-max-width="836.0" x="1440.0" y="1002.0" text-anchor="middle" class="node-sub" font-size="12">操作原节点；对端完成标记只在其业务断言后写出</text>
+  </g>
+  <g id="node-attacher-5" data-graph-role="node" data-node-id="attacher-5" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,1095,1870,1205">
+  <rect x="1010.0" y="1095.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="06  配合模式关闭与运行时接管" data-text-max-width="836.0" x="1440.0" y="1150.0" text-anchor="middle" class="node-title" font-size="21.0">06 配合模式关闭与运行时接管</text>
+  <text data-text-role="subtitle" data-full-text="开启方保持会话；关闭方使用独立snapshot空间" data-text-max-width="836.0" x="1440.0" y="1172.0" text-anchor="middle" class="node-sub" font-size="12">开启方保持会话；关闭方使用独立snapshot空间</text>
+  </g>
+  <g id="node-attacher-6" data-graph-role="node" data-node-id="attacher-6" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,1265,1870,1375">
+  <rect x="1010.0" y="1265.0" width="860.0" height="110.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="07  两方再开启 → 验共享根已清空" data-text-max-width="836.0" x="1440.0" y="1320.0" text-anchor="middle" class="node-title" font-size="21.0">07 两方再开启 → 验共享根已清空</text>
+  <text data-text-role="subtitle" data-full-text="清理后的共享画布为空；两方private Note均不可见" data-text-max-width="836.0" x="1440.0" y="1342.0" text-anchor="middle" class="node-sub" font-size="12">清理后的共享画布为空；两方private Note均不可见</text>
+  </g>
+  <g id="node-attacher-7" data-graph-role="node" data-node-id="attacher-7" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,1435,1870,1545">
+  <rect x="1010.0" y="1435.0" width="860.0" height="110.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="08  清理并返回 → runner汇总两进程" data-text-max-width="836.0" x="1440.0" y="1490.0" text-anchor="middle" class="node-title" font-size="21.0">08 清理并返回 → runner汇总两进程</text>
+  <text data-text-role="subtitle" data-full-text="每个suite有失败取证；文件握手通常60秒，部分90秒" data-text-max-width="836.0" x="1440.0" y="1512.0" text-anchor="middle" class="node-sub" font-size="12">每个suite有失败取证；文件握手通常60秒，部分90秒</text>
+  </g>
+</svg>

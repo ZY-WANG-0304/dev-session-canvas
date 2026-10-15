@@ -10,6 +10,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 进度
 
 
+- [x] (2026-10-16) 按用户要求展开smoke现有流程设计：核对源码19/packaged8场景、单Host、trusted/restricted、两阶段重开、双窗口、旧代Stop及原resize；六套SVG/PNG、16源码hash、109/38直接调用点与链接核对通过，逐图视觉检查完成；仅交付流程资料。
+
 - [x] (2026-10-15) 用户确认六平台原生CI并追加发布workflow六job；补逐步说明、九张SVG/PNG及原YAML48步/六平台代码映射，严格布局与视觉检查通过；纠正仅Windows ARM64最小宿主为Electron。
 - [x] (2026-10-15) 完成发布门禁完整流程审查：7项问题/边界、原脚本过滤传递受控核对、GitHub策略核准、4项现有门禁回归通过；三张SVG/PNG校验和视觉检查完成，仅交付审查不改门禁行为。
 - [x] (2026-10-15) 从最新 origin/main 6e708c6b 核对既有调查提交，创建 smoke-lifecycle-diagnostic-isolation。
@@ -56,6 +58,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 
 ## 决策记录
 
+
+2026-10-16 将用户的“看smoke流程设计”解释为解释现有实现及验证责任。继续既有审查分支，以9aaa05b0固定源码为输入，逐层读取runner和测试套件；分开源码19场景、packaged8场景、普通单Host、真实重开和并发双窗口，不把模拟reload称为Host退出。对关键ready/resize/终态/退役等待记录对象身份、证据和时间预算。图用既有fireworks-tech-graph技能并完成SVG/PNG及视觉检查；不新增PR，不执行发布或完整门禁，本轮不实施当前尚未完成的恢复竞态修复。
 
 2026-10-15 用户反馈总览图过粗，要求六个CI内部执行/验证。用户已明确选择runtime-execution-assets.yml六平台matrix，并追加要求publish六job一并列出。对原builder、三平台candidate builder、native load checker、summary/upload逐层读取；把执行动作与校验分开标色，准确展示Linux最小Node容器构建、macOS deployment target、Windows ARM64最小Electron和同binary双加载。交付图/明细文档继续同审查目录，不更改CI或产品，不运行跨平台验收。校验JSON/代码映射及SVG/PNG，保护原总览图与既有修复计划。
 
@@ -129,3 +133,5 @@ PR335 headbfd70dff的CI通过（无发布契约，六资产明确skip）；主�
 本轮定位收口：第三轮run38717714670确认晚到恢复释放时当前metadata已attached-live，原deferSubscription:true撤销已建host-credit，Host跳过subscribe；late再现334行/30秒失败，natural正常。两轮晚到原PTY均已退出、Supervisorclosed，确认恢复协议的生产竞态；历史唯一归因仍缺现场。所有参考集中PR335，活动入口移除；本轮没有新生产修复，最终PR327预合并门禁仍待修复合入后重跑。
 
 证据收口方式：新timeline保留原session的attach/subscribe/cancel/control及Stop到终态观察，去除重复返回与proc stat；完整trace的原hash与GitHub artifact来源保留result.json，curated字段显式说明摘录范围。文档/脚本语法、hash、状态索引及关联文件链接核验通过。
+
+2026-10-16 smoke设计资料已收口到docs/references/release-gate-flow-audit/smoke/README.md及六套图。静态verify核对16份源码hash、默认19/ focused3 / packaged8场景及trusted109/restricted38直接await调用点；六图schema/render/check/export全部通过，2400宽PNG逐图视觉检查后记录独立hash。修订双窗口最后参与者退出后再开启的表述，明确验空共享根；正式报告、索引及core-beliefs已链接。没有新的Host运行或发布验收，原生产恢复竞态与PR327最终完整门禁仍未完成。

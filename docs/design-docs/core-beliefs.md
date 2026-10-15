@@ -10,7 +10,7 @@
 
 空白比伪确定性更安全。对未确认内容，应明确标记为“待定”“待验证”或“候选方案”。
 
-门禁名称和绿色状态不是验收范围的证明：应分别核对触发、实际执行清单、固定输入、失败证据及合并强制约束。原生加载不等于产品功能验收，成功跳过或定向场景不能冒充完整验证。依据见 `release-gate-flow-audit.md` 及 [两组CI逐job执行/验证清单](../references/release-gate-flow-audit/job-details.md)。
+门禁名称和绿色状态不是验收范围的证明：应分别核对触发、实际执行清单、固定输入、失败证据及合并强制约束。原生加载不等于产品功能验收，成功跳过或定向场景不能冒充完整验证。依据见 `release-gate-flow-audit.md`、[两组CI逐job执行/验证清单](../references/release-gate-flow-audit/job-details.md) 和 [smoke内部流程与各对象完成条件](../references/release-gate-flow-audit/smoke/README.md)。
 
 ## 3. 设计应服务于产品主张
 

@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md]
-updated_at: 2026-10-15
+updated_at: 2026-10-16
 ---
 
 # 0.26.1 发布 CI 门禁流程审查
@@ -40,6 +40,10 @@ PR327 的发布材料没有被写到当前修复源码，主工作区用户的 `
 | 03 | [最终 tag 与发布](../references/release-gate-flow-audit/tag-publish.png) | [SVG](../references/release-gate-flow-audit/tag-publish.svg) | tag 再验、同批产物、并行渠道、finalize 与重跑 |
 
 用户要求的逐job执行/验证明细见 [两组CI内部流程说明](../references/release-gate-flow-audit/job-details.md)：六平台各15/16/18步、共同加载检查，以及发布workflow六job的依赖、原YAML步骤、分支条件、失败处理和产物。新增九张可缩放SVG/PNG，`prepare`拆为输入验证与产物交付两图；原生资产job是发布六job中的reusable展开。两组均描述实际代码，没有新增门禁或改变完成条件。
+
+2026-10-16 继续展开 [smoke 内部流程设计](../references/release-gate-flow-audit/smoke/README.md)。输入固定为审查分支 `9aaa05b0`，16份实现源码hash及原调用点见 [smoke/source-map.json](../references/release-gate-flow-audit/smoke/source-map.json)。六张细图分别覆盖源码19/packaged8场景、单Host、trusted/restricted、两阶段重开、双窗口、旧代升级与resize；109/38是两条功能链的直接await调用点数，不是测试数量。图、顺序、hash与链接静态核对通过，PNG逐图视觉检查完成；没有新增产品通过证据。
+
+smoke 的完成条件需按对象区分：surface ready不额外要求bootstrapAck；原终端resize同时核对Host、DOM fit、原RPC行列及session/storage身份；用户Stop要求Host原节点终态，夹具kill不能替代；显式重启另等原存储对象退役；SSH退出/保留两态观察原PID/startTicks，而普通本地重开不具备同等身份控制。最近原样完整运行的首败仍是源码第11场景、图06第8步“Stop后等待Host终态”30秒超时；受控订阅竞态复现不能唯一追认缺少PTY/订阅现场的历史首败。
 
 ![发布 PR 的 CI 门禁](../references/release-gate-flow-audit/pr-gate.png)
 

@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-16",
+  "method": "view_image，detail=original；沿用本轮已检查且未改变的五图，双窗口第7步修订后重新查看最终PNG",
+  "scope": "实际PNG视觉检查；独立于静态verify，不代表产品验收",
+  "checks": [
+    "中文字体及文字完整",
+    "对比与层级",
+    "箭头方向及标签",
+    "间距与留白",
+    "无裁切或文本遮挡"
+  ],
+  "diagrams": {
+    "entry-scenarios": {
+      "pngSha256": "d4ca0469cff9633c339ef133893945684bf51bbddc781f77597b684c4d45e42f",
+      "result": "pass"
+    },
+    "single-host": {
+      "pngSha256": "d7fd7925fc7a52b4ae39eba3783fea52f33ad388215e05744eccf770ddebf822",
+      "result": "pass"
+    },
+    "trusted-restricted": {
+      "pngSha256": "482d2dfe369f39d7263392ce0d808fd3f68aab2be8af3566016e18ae5b08b440",
+      "result": "pass"
+    },
+    "real-reopen": {
+      "pngSha256": "28024bdd8cc5819add4d4df73e41a34aaae044d05b081a79bf4d0e8517ef84f3",
+      "result": "pass"
+    },
+    "two-window": {
+      "pngSha256": "4287024b30b1ca99d9eeb2f8ce0ccb022931d86a95b89e7b56e4cc937bf041de",
+      "result": "pass"
+    },
+    "legacy-resize": {
+      "pngSha256": "240027c0e71914aa2d3d83d24be294690a33866d37af0bc421cd323d6fcc79a5",
+      "result": "pass"
+    }
+  }
+}
