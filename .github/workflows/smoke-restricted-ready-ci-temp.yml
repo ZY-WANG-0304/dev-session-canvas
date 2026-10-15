@@ -1,0 +1,50 @@
+name: Temporary Restricted Ready Investigation
+on:
+  push:
+    branches: [smoke-restricted-ready-ci-temp]
+    paths: [.github/workflows/smoke-restricted-ready-ci-temp.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-restricted:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 9198cacbee91fc170b82578e353c16a27f3574b8
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 38665513172
+          pattern: execution-native-*-38665513172
+          merge-multiple: true
+          path: archives
+      - name: Assemble fixed formal-input assets
+        run: |
+          node scripts/build/assemble-execution-distribution-assets.mjs --source archives --output platform --input-sha 9198cacbee91fc170b82578e353c16a27f3574b8
+          echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
+      - name: Original restricted smoke with unchanged internal deadline
+        env:
+          DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: restricted
+        run: |
+          set +e
+          timeout --signal=TERM --kill-after=20s 180s npm run test:smoke > restricted.log 2>&1
+          status=$?
+          echo "$status" > restricted.exit
+          tail -n 18 restricted.log
+          exit "$status"
+      - name: Preserve original restricted evidence
+        if: always()
+        run: |
+          tar -czf restricted-evidence.tar.gz --ignore-failed-read restricted.log restricted.exit .debug/vscode-smoke/restricted/artifacts .debug/vscode-smoke/restricted/user-data/logs .debug/vscode-smoke/restricted/smoke-host/dist/extension.js .debug/vscode-smoke/restricted/smoke-host/dist/webview.js .debug/vscode-smoke/restricted/smoke-host/dist/webview.css
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-restricted-${{ github.run_id }}
+          path: restricted-evidence.tar.gz
