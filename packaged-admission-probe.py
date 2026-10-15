@@ -5,7 +5,7 @@ supervisor=root/'extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupe
 smoke=root/'tests/vscode-smoke/extension-tests.cjs'
 inputs={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [supervisor,smoke]}
 s=supervisor.read_text()
-helper="""
+helper=r"""
 function dscAdmissionProbe(stage: string, detail: unknown): void {
   const target = process.env.DSC_PACKAGED_ADMISSION_TRACE;
   if (target) fs.appendFileSync(target, JSON.stringify({ at: new Date().toISOString(), stage, detail }) + '\n');
@@ -38,7 +38,7 @@ part=part.replace("    await ensureAgentStopped(agentNodeId);", """    const dsc
     if(process.env.DSC_PACKAGED_CONTROL!=='natural') await fs.writeFile(process.env.DSC_PACKAGED_ADMISSION_TRACE+'.control',JSON.stringify({mode:process.env.DSC_PACKAGED_CONTROL,ids:dscOriginal}));
     console.log('[packaged-admission] '+JSON.stringify({stage:'before-stop',ids:dscOriginal}));
     await ensureAgentStopped(agentNodeId);""",1)
-part=part.replace("    await ensureTerminalStopped(terminalNodeId);", """    await ensureTerminalStopped(terminalNodeId);
+part=part.replace("    await ensureTerminalStopped(terminalNodeId);", r"""    await ensureTerminalStopped(terminalNodeId);
     console.log('[packaged-admission] '+JSON.stringify({stage:'stop-helper-returned',ids:dscOriginal,snapshot:await getDebugSnapshot()}));
     if (process.env.DSC_PACKAGED_CONTROL === 'wait-retirement') {
       const deadline=Date.now()+10000;
