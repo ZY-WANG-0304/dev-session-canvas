@@ -1,5 +1,5 @@
 {
-  "status": "修复代码、原生因果验收及完整临时发布组合验证通过；修复PR待创建，最终正式发布输入须另验",
+  "status": "修复PR334已创建；代码、回归、原生因果验收及完整临时发布组合验证通过；正式发布输入须合入后另验",
   "code_input": "84d657653a72e95ef083b3a187060dfe2e4d7b3c",
   "main_base": "eee25291109e7e3bad27e6841520f3f4a5d14dcc",
   "release_pr": 327,
@@ -603,5 +603,17 @@
     "fix_tree": "c3e75404c1168744baaeb5e8656a3c9716773ede",
     "combined_tree": "a777889ce8e808f81b2231909029636a3cece9c7",
     "version_and_release_materials_match_pr327": true
+  },
+  "delivery": {
+    "pr": 334,
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/334",
+    "base": "main",
+    "first_review_head": "a420a8b84f91d3db366b59ccd42a139ea5c626aa",
+    "implementation_input": "84d657653a72e95ef083b3a187060dfe2e4d7b3c",
+    "subsequent_commits": "仅文档/reference与计划归档；代码/脚本/测试/产品/manifest/lock/workflow与验收input相同",
+    "plan": "docs/exec-plans/completed/smoke-template-final-persistence-repair.md",
+    "release_pr_kept_draft": true,
+    "merged": false,
+    "published": false
   }
 }

@@ -14,7 +14,7 @@
 - [x] (2026-10-15) 固定修复84d65765、PR327 head20d237c5及组合031db473；原生run38656199224确定性触达pending、原saved后二次reset与完整trusted通过。
 - [x] (2026-10-15) 完整release:verify run38656127632退出0；六平台同输入资产、npm test、SSH两态、Webview426/426与8个packaged含trusted全部通过，完整日志/receipt hash已回收核验。
 - [x] (2026-10-15) 同步根因/索引/核心信念/技术债和repair-result.json，归档并移除两条临时活动workflow。
-- [ ] 创建集中修复PR供review，登记PR链接后归档本计划。
+- [x] (2026-10-15) 创建集中修复PR [#334](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/334) 目标main，归档本计划；PR327保持原head和draft。
 
 ## 意外与发现
 
@@ -28,7 +28,7 @@
 
 ## 结果与复盘
 
-实现与28项回归完成；正式修复原生pending窗口及完整trusted通过，完整组合门禁及正常clean-checkout的8个packaged场景通过。正式修复未合入，原完整门禁failure不追认通过。当前无合并、tag或发布授权。
+实现与28项回归完成；正式修复原生pending窗口及完整trusted通过，完整组合门禁及正常clean-checkout的8个packaged场景通过。交付PR334等待review，正式修复未合入，原完整门禁failure不追认通过。剩余发布门禁责任登记到tech-debt-tracker：PR334合入后rebase PR327并运行最新正式预合并完整门禁，本计划不承担未经授权的合并、tag或发布。经验是用例接线回归和目标pending窗口验证都不可被helper单测或未触达窗口的成功替代。
 
 ## 上下文与定向
 
@@ -36,7 +36,7 @@
 
 ## 工作计划与里程碑
 
-先在正式函数中用resetCanvasAfterFinalPersistence替换单次reset，期望执行由前面捕获的两个节点提供。新增脚本从正式函数的导出与重新应用之间提取实际源码，在可控command/save观察边界运行，验证顺序和失败保护；接入已有test:smoke-reset-fixture命令。第一里程碑以原代码失败、修复通过为准。第二里程碑在CI正常包运行确定性保存结果交接gate，并用固定组合ref产生同输入六资产和不加过滤的完整发布验证。第三里程碑同步文档和receipt，移除临时workflow，正常创建修复PR等待review，不合并。
+先在正式函数中用resetCanvasAfterFinalPersistence替换单次reset，期望执行由前面捕获的两个节点提供。新增脚本从正式函数的导出与重新应用之间提取实际源码，在可控command/save观察边界运行，验证顺序和失败保护；接入已有test:smoke-reset-fixture命令。第一里程碑以原代码失败、修复通过为准。第二里程碑在CI正常包运行确定性保存结果交接gate，并用固定组合ref产生同输入六资产和不加过滤的完整发布验证。第三里程碑同步文档和receipt，移除临时workflow，已创建PR334等待review，不合并。本次三个里程碑均完成，最终PR文档收口相对84d65765不改脚本/测试/产品/manifest/lock/workflow；不需把文档提交重跑为新的代码因果实验。
 
 ## 具体步骤
 
@@ -44,11 +44,11 @@
 
 ## 验证与验收
 
-新增调用点回归应在原代码的pending场景失败；修后原节点保存成功后清空才进入ensureEditorCanvasReady。保存失败、其他节点pending不得再reset或进入后续模板阶段。既有19项回归保持。原生确定性窗口要记录原执行身份、首次拒绝、saved、第二次空画布；完整组合release:verify必须不设scenario filter且保留首败。未通过就继续在同修复范围处理，不伪报完成发布。
+新增调用点回归已在原代码的pending场景失败；修后原节点保存成功后清空才进入ensureEditorCanvasReady。保存失败、其他节点pending不得再reset或进入后续模板阶段。既有19项回归保持。原生确定性窗口要记录原执行身份、首次拒绝、saved、第二次空画布；完整组合release:verify已不设scenario filter并退出0，原历史首败仍保留。最终正式PR327预合并输入仍须在修复合入后验证，临时组合成功不冒充发布完成。
 
 ## 幂等性与恢复
 
-主用户工作区WORKFLOW.md保持不动。临时工作树和分支不修改main/PR327，未知进程不清理。node_modules链接不提交；临时workflow只存在验证分支，完成后归档移除，结果不覆盖历史日志。推送及PR更新前fetch/rebase，已有远端更新用固定lease。
+主用户工作区WORKFLOW.md保持不动。临时工作树和分支不修改main/PR327，未知进程不清理。任务node_modules临时链接已移除且未提交；临时workflow只存在验证分支，完成后归档移除，结果不覆盖历史日志。推送及PR更新前fetch/rebase，已有远端更新用固定lease。
 
 ## 证据与备注
 
@@ -70,3 +70,5 @@
 修订记录：2026-10-15登记完整组合源码trusted/restricted、升级、双窗口、systemd及SSH两态通过；Webview与packaged仍以待验记录，不追认全量成功。
 
 修订记录：2026-10-15回收run38656127632完整成功receipt，核验npm test/SSH两态/Webview426/8个packaged及日志hash，移除临时工作流；剩余为修复PR创建与计划归档，PR327正式发布输入另验。
+
+修订记录：2026-10-15创建修复PR334并归档本计划，最终仅补文档；后续PR327正式预合并门禁责任保留在技术债，未合并或发布。

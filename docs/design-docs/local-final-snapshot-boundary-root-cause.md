@@ -5,7 +5,7 @@ validation_status: 已验证
 domains: [执行编排域, 项目状态域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/local-final-snapshot-boundary-investigation.md, docs/exec-plans/active/smoke-template-final-persistence-repair.md]
+related_plans: [docs/exec-plans/completed/local-final-snapshot-boundary-investigation.md, docs/exec-plans/completed/smoke-template-final-persistence-repair.md]
 updated_at: 2026-10-15
 ---
 
@@ -66,3 +66,5 @@ probe于17:15:50.041Z按预期报pending，后续同Agent/Terminal均saved且三
 完整临时发布组合run [38656127632](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38656127632) 固定组合031db473（修复84d65765 + PR327 head20d237c5），六平台资产从同组合ref重建、同run组装，Ubuntu22.04/Node22/default npm ci、实际VS Code1.142.0，不设scenario filter。静态preflight及完整release:verify均退出0：npm test、源码完整smoke、SSH exit/retain、Webview426/426、clean-checkout正常VSIX的8个packaged场景含最后trusted均通过。完整verify日志16,970,961 bytes，SHA256 c94da001a416cb214e1f28e513b53ad474b316eebf11aaa90a61397274c2542c，receipt和完整输出artifact11938492555/11938592162已核验大小和hash。证据repair-result.json，工作流归档full-repair-release-gate.workflow.yml。
 
 两条活动临时workflow已移除；根因、回归和证据集中本修复PR。临时组合通过只验收修复与既有发布物料组合，不是PR327最新正式预合并输入；修复合入后仍须rebase PR327并重跑正式完整门禁。最终PR收口仅补文档，不改变已验证的代码与20秒边界，不追认原failure，也不解锁合并/tag/发布。
+
+交付修复PR [#334](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/334) 目标main，正式代码输入84d65765，后续收口提交仅文档与reference，不改变已验证代码。PR327 head20d237c5保持draft；修复合入后的正式rebase与完整门禁为下一步发布责任。
