@@ -10,10 +10,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {sample: 5, filter: ''}
+          - {sample: 6, filter: ''}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+      DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: ${{ matrix.filter }}
       DSC_LEGACY_STOP_TRACE: /tmp/legacy-stop-${{ github.run_id }}-${{ matrix.sample }}.jsonl
     steps:
