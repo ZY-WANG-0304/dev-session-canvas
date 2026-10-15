@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/local-final-snapshot-boundary-root-cause.md` | PR327模板保存导出后reset遗漏最终保存夹具；同输入CI复现与确定性原生对照，正式清理接线/9项先红后绿，完整组合门禁待验 | 执行编排域、项目状态域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/local-final-snapshot-boundary-investigation.md`、`docs/exec-plans/active/smoke-template-final-persistence-repair.md` | 2026-10-15 |
+| `docs/design-docs/local-final-snapshot-boundary-root-cause.md` | PR327模板保存导出后reset遗漏最终保存夹具；同输入CI复现与确定性原生对照，正式清理接线/9项先红后绿、原生pending后二次清空及完整0.26.1临时组合门禁通过 | 执行编排域、项目状态域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/local-final-snapshot-boundary-investigation.md`、`docs/exec-plans/active/smoke-template-final-persistence-repair.md` | 2026-10-15 |
 | `docs/design-docs/smoke-local-client-exit-root-cause.md` | PR327本地后代检查后退出的ESRCH竞态；限定后代复查原身份与保留退出后置条件，39项回归/真实内核/原生exit-retain通过，完整发布门禁另验 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/smoke-local-client-exit-investigation.md`、`docs/exec-plans/completed/smoke-local-client-exit-race-fix.md` | 2026-10-14 |
 | `docs/design-docs/marketplace-publish-smoke-completion.md` | 首次/版本发布等待唯一请求及原准确成功提示；受控响应阻塞确认旧门禁竞态，保持原预算与内容/UI验收 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/marketplace-publish-smoke-completion.md` | 2026-10-14 |
 | `docs/design-docs/release-gate-root-cause.md` | PR327两个首败：Remote Host测试污染真实socket目录与诊断等待截止漏检；自有socket夹具与末次观察修复回归/原首败场景通过；后续systemd夹具修复已纳入同PR，最新完整组合验证进行中 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/release-gate-repair.md` | 2026-10-13 |

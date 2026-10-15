@@ -1,0 +1,607 @@
+{
+  "status": "修复代码、原生因果验收及完整临时发布组合验证通过；修复PR待创建，最终正式发布输入须另验",
+  "code_input": "84d657653a72e95ef083b3a187060dfe2e4d7b3c",
+  "main_base": "eee25291109e7e3bad27e6841520f3f4a5d14dcc",
+  "release_pr": 327,
+  "release_head": "20d237c5176a6cd05486d5b58c5ecf4f55f7bcd9",
+  "combined_input": "031db4736185e198a64f02ce7cebf3cab0e27671",
+  "local_regression": {
+    "existing_helper": "19/19",
+    "actual_template_cleanup": "9/9",
+    "before_fix": "原单次reset在首个pending场景失败",
+    "after_fix": "28/28；语法与diff检查通过",
+    "production_changes": false,
+    "timeout_ms": 20000
+  },
+  "fixed_native": {
+    "run": 38656199224,
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38656199224",
+    "workflow_head": "a2bb3ef27e6dd35b6ccb0fa37083741a69571334",
+    "job": 116166443200,
+    "conclusion": "success",
+    "environment": {
+      "runner": "ubuntu-22.04",
+      "node": 22,
+      "vscode": "1.142.0"
+    },
+    "artifact": 11936697892,
+    "artifact_name": "fixed-template-cleanup-38656199224",
+    "zip_sha256": "46b57fa77f20211566730b2cdccb40df48ea072559a9e450f44ac88120638621",
+    "log_sha256": "be8df89333c0b713290c913a3ac0988ca9bc81b62d75812ed5bccc6b9832bcfe",
+    "production_extension_bundle_sha256": "2b3d4c38b488a382caa588d9334de0d75a258d51c210bff4129c7dfe5ddc0eb5",
+    "observer_extension_bundle_sha256": "2919bc7673b8e807a34ffd30db5e780d78b3067a28dc5a508025a962b98a35e7",
+    "native_asset_input": "9f602fed177070b0b017dd195f09dfcd7d7ad0a3",
+    "native_asset_run": 38579057915,
+    "scope": "正式修复checkout后正常打包，解包仅增加观察及真实保存结果交接gate；正式helper调用未替换。等待原Agent started，首次即时检查后下一事件循环释放结果，实际保存内容不变。原生六资产复用原run，仅证明本单项，完整组合门禁另从组合ref重建六资产。",
+    "result": "目标首次check submitted/pending → 原Agent及Terminal同身份saved → 第二reset空画布 → 原trusted完整exit0",
+    "trace": [
+      {
+        "phase": "check",
+        "at": "2026-10-14T23:48:21.954Z",
+        "nodes": [
+          {
+            "kind": "agent",
+            "id": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56"
+          },
+          {
+            "kind": "terminal",
+            "id": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14"
+          },
+          {
+            "kind": "note",
+            "id": "note-3-614369b3-16bb-4acb-a154-141bd085d12e"
+          }
+        ],
+        "records": [
+          {
+            "kind": "agent",
+            "nodeId": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56",
+            "identity": {
+              "executionId": "9440965b-13e7-4c36-b531-b31dac722bab",
+              "generation": "0c012dd5-d29b-4e16-98ea-04656cb645b1"
+            },
+            "persistence": {
+              "submitted": true
+            }
+          },
+          {
+            "kind": "terminal",
+            "nodeId": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14",
+            "identity": {
+              "executionId": "16a46be6-ba20-4fb7-b488-11c97ce1c507",
+              "generation": "7cf8e123-a53d-46d0-932e-b9b0ac69144a"
+            },
+            "persistence": {
+              "submitted": true
+            }
+          }
+        ]
+      },
+      {
+        "phase": "saved",
+        "at": "2026-10-14T23:48:21.970Z",
+        "nodes": [
+          {
+            "kind": "agent",
+            "id": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56"
+          },
+          {
+            "kind": "terminal",
+            "id": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14"
+          },
+          {
+            "kind": "note",
+            "id": "note-3-614369b3-16bb-4acb-a154-141bd085d12e"
+          }
+        ],
+        "records": [
+          {
+            "kind": "agent",
+            "nodeId": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56",
+            "identity": {
+              "executionId": "9440965b-13e7-4c36-b531-b31dac722bab",
+              "generation": "0c012dd5-d29b-4e16-98ea-04656cb645b1"
+            },
+            "persistence": {
+              "submitted": true,
+              "result": {
+                "kind": "saved"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "phase": "saved",
+        "at": "2026-10-14T23:48:21.982Z",
+        "nodes": [
+          {
+            "kind": "agent",
+            "id": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56"
+          },
+          {
+            "kind": "terminal",
+            "id": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14"
+          },
+          {
+            "kind": "note",
+            "id": "note-3-614369b3-16bb-4acb-a154-141bd085d12e"
+          }
+        ],
+        "records": [
+          {
+            "kind": "terminal",
+            "nodeId": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14",
+            "identity": {
+              "executionId": "16a46be6-ba20-4fb7-b488-11c97ce1c507",
+              "generation": "7cf8e123-a53d-46d0-932e-b9b0ac69144a"
+            },
+            "persistence": {
+              "submitted": true,
+              "result": {
+                "kind": "saved"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "phase": "check",
+        "at": "2026-10-14T23:48:22.063Z",
+        "nodes": [
+          {
+            "kind": "agent",
+            "id": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56"
+          },
+          {
+            "kind": "terminal",
+            "id": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14"
+          },
+          {
+            "kind": "note",
+            "id": "note-3-614369b3-16bb-4acb-a154-141bd085d12e"
+          }
+        ],
+        "records": []
+      },
+      {
+        "phase": "reset-complete",
+        "at": "2026-10-14T23:48:22.070Z",
+        "nodes": [],
+        "records": [
+          {
+            "kind": "agent",
+            "nodeId": "agent-1-5c8790df-8cd0-4686-8ab0-518dd38d5f56",
+            "identity": {
+              "executionId": "9440965b-13e7-4c36-b531-b31dac722bab",
+              "generation": "0c012dd5-d29b-4e16-98ea-04656cb645b1"
+            },
+            "persistence": {
+              "submitted": true,
+              "result": {
+                "kind": "saved"
+              }
+            }
+          },
+          {
+            "kind": "terminal",
+            "nodeId": "terminal-2-66f03230-3578-4a78-914d-6128e4128d14",
+            "identity": {
+              "executionId": "16a46be6-ba20-4fb7-b488-11c97ce1c507",
+              "generation": "7cf8e123-a53d-46d0-932e-b9b0ac69144a"
+            },
+            "persistence": {
+              "submitted": true,
+              "result": {
+                "kind": "saved"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "other_payload_sha256": {
+      "original/.debug/vscode-vsix-smoke/smoke-host/dist/runtime-supervisor.js": "b4c18b751414a16f3bb4fda986db820aeb22a875df945126e7d9b22f46171183",
+      "original/.debug/vscode-vsix-smoke/smoke-host/dist/webview.js": "b1b586cc1c1a9cc53b42f85897e84dddc942877a8eae40e90d38f10e5653d549",
+      "original/dev-session-canvas-0.26.0.vsix": "ad63f0bf22e1402af4c40144dfee3870291cf017a5f45287e7168368c088b971"
+    },
+    "only_observer_change_verified": true,
+    "temporary_workflow_removed_commit": "e8c685fd0761848f6500354c2be4cc855a2dec8c",
+    "milestones": [
+      "Actual fixed template cleanup: pending, original save and second reset passed.",
+      "Extension host test runner exit code: 0",
+      "VSIX packaged-payload smoke passed (trusted)."
+    ]
+  },
+  "full_release_gate": {
+    "run": 38656127632,
+    "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38656127632",
+    "workflow_head": "74239f3ed84b7733bdf7c676ee93a460efe833b0",
+    "job": 116167733936,
+    "status": "completed",
+    "native_assets": "六平台同组合input、同run构建均success",
+    "command": "npm run release:verify -- --version 0.26.1",
+    "scenario_filter": null,
+    "native_asset_receipts": [
+      {
+        "target": "darwin-arm64",
+        "artifact": 11937181119,
+        "zip_sha256": "b7fa6fd238c9a2e1411edfd071d321ec82f4015f39bc4d518c127bceb25a4b78",
+        "summary_sha256": "11b0702edd74470895de5793a08f4fdcf44c1e01cb1f5d9c51f1d9d5f8c43b0c",
+        "inputCommit": "031db4736185e198a64f02ce7cebf3cab0e27671",
+        "archive_sha256": "d329419facebf36df36171c696b00e5bd3726d9ab7aead40b30e2f26c00c7059",
+        "loads": [
+          {
+            "platform": "darwin",
+            "arch": "arm64",
+            "osRelease": "24.6.0",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "16.17.1",
+              "electron": null,
+              "modules": "93",
+              "napi": "8"
+            },
+            "manifestSha256": "9229aba760456604357f0771793341fc24275a077c26b99e1b32caf469cd815e",
+            "binarySha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          },
+          {
+            "platform": "darwin",
+            "arch": "arm64",
+            "osRelease": "24.6.0",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "25.6.0",
+              "electron": null,
+              "modules": "141",
+              "napi": "10"
+            },
+            "manifestSha256": "9229aba760456604357f0771793341fc24275a077c26b99e1b32caf469cd815e",
+            "binarySha256": "f6cc4db5a99d2cddca08fca5ea1f7b94e1e456f8dc68c1b87bdfd211b7ffd0dc",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          }
+        ],
+        "limits": "两宿主验证加载成功；该资产步骤executionApiCalled/productValidated=false，不代证全平台产品场景。"
+      },
+      {
+        "target": "darwin-x64",
+        "artifact": 11936567805,
+        "zip_sha256": "892678a6704366d22fab594119225a925328e35a878955dee79805103fe4ce0e",
+        "summary_sha256": "eb04cb50ff75b242c6baf3163ae84a9921e5523f62d7f3a6e32609be89bfe47f",
+        "inputCommit": "031db4736185e198a64f02ce7cebf3cab0e27671",
+        "archive_sha256": "6bbe983c971a869f143e6598a3f138346a47631bc58bb333f006f2d92d664bcd",
+        "loads": [
+          {
+            "platform": "darwin",
+            "arch": "x64",
+            "osRelease": "24.6.0",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "16.17.1",
+              "electron": null,
+              "modules": "93",
+              "napi": "8"
+            },
+            "manifestSha256": "81298c8adbd26c18148598fd680cbd3a32ca4655630023ac99cb5b82289610cc",
+            "binarySha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          },
+          {
+            "platform": "darwin",
+            "arch": "x64",
+            "osRelease": "24.6.0",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "25.6.0",
+              "electron": null,
+              "modules": "141",
+              "napi": "10"
+            },
+            "manifestSha256": "81298c8adbd26c18148598fd680cbd3a32ca4655630023ac99cb5b82289610cc",
+            "binarySha256": "44ea26c01b66102b66f53f5baca11f5cdc76624eac8269729371ae0113d08fb6",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          }
+        ],
+        "limits": "两宿主验证加载成功；该资产步骤executionApiCalled/productValidated=false，不代证全平台产品场景。"
+      },
+      {
+        "target": "linux-arm64-glibc",
+        "artifact": 11937405818,
+        "zip_sha256": "cdadacfbd9cf7cf5e0a978170f24a6445063daa9d9c6698f460638e518040d57",
+        "summary_sha256": "561f788d209988e2daba59abb4a8864af3d2e944ea97f31d789f95d2ea675e10",
+        "inputCommit": "031db4736185e198a64f02ce7cebf3cab0e27671",
+        "archive_sha256": "cf88bf2339553acf8680c4d0fa768ab730d44c7afe9beef47f3afa18ea159707",
+        "loads": [
+          {
+            "platform": "linux",
+            "arch": "arm64",
+            "osRelease": "6.17.0-1022-azure",
+            "glibcVersionRuntime": "2.28",
+            "runtime": {
+              "name": "node",
+              "node": "16.17.1",
+              "electron": null,
+              "modules": "93",
+              "napi": "8"
+            },
+            "manifestSha256": "8c1d370af1edcfb9bc98d952c76064f8516d18c7c4405326b3cec2cd228d1e2b",
+            "binarySha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          },
+          {
+            "platform": "linux",
+            "arch": "arm64",
+            "osRelease": "6.17.0-1022-azure",
+            "glibcVersionRuntime": "2.39",
+            "runtime": {
+              "name": "node",
+              "node": "25.6.0",
+              "electron": null,
+              "modules": "141",
+              "napi": "10"
+            },
+            "manifestSha256": "8c1d370af1edcfb9bc98d952c76064f8516d18c7c4405326b3cec2cd228d1e2b",
+            "binarySha256": "cf7c17647803d78f6f7a92aa95362c1317945cb3cd0bbd5b9e0918808b3c4dac",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          }
+        ],
+        "limits": "两宿主验证加载成功；该资产步骤executionApiCalled/productValidated=false，不代证全平台产品场景。"
+      },
+      {
+        "target": "linux-x64-glibc",
+        "artifact": 11937430566,
+        "zip_sha256": "c4babfeb662732b50fda07992530d04f64a5042872e231f210fa8af363b07ae1",
+        "summary_sha256": "d87087ae87557c3cda37c5b51b9a0553c2f1b267b74d892a24de77e5d1d3afa7",
+        "inputCommit": "031db4736185e198a64f02ce7cebf3cab0e27671",
+        "archive_sha256": "139a5b70d7f7958b8e6fa9044cc7419343f051af624527f93e65bb62c90d273d",
+        "loads": [
+          {
+            "platform": "linux",
+            "arch": "x64",
+            "osRelease": "6.17.0-1022-azure",
+            "glibcVersionRuntime": "2.28",
+            "runtime": {
+              "name": "node",
+              "node": "16.17.1",
+              "electron": null,
+              "modules": "93",
+              "napi": "8"
+            },
+            "manifestSha256": "792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa",
+            "binarySha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          },
+          {
+            "platform": "linux",
+            "arch": "x64",
+            "osRelease": "6.17.0-1022-azure",
+            "glibcVersionRuntime": "2.39",
+            "runtime": {
+              "name": "node",
+              "node": "25.6.0",
+              "electron": null,
+              "modules": "141",
+              "napi": "10"
+            },
+            "manifestSha256": "792d662d708753dc4bbf8570cec37f8db1d8bc71bead2008c2ae9ba8091fd5fa",
+            "binarySha256": "b99f8083d3351828deb6d12e8edae313805c1ad4550d07429a0c8d5a15aad46c",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          }
+        ],
+        "limits": "两宿主验证加载成功；该资产步骤executionApiCalled/productValidated=false，不代证全平台产品场景。"
+      },
+      {
+        "target": "win32-arm64",
+        "artifact": 11937431043,
+        "zip_sha256": "717b782748ff5bce459973e50120c38e29cf997dceb4bf80157546bcc526852f",
+        "summary_sha256": "9ba1df2c443dc73d35baf8b41a7b19ed31948fe02668d1daee0a79ec02a8915d",
+        "inputCommit": "031db4736185e198a64f02ce7cebf3cab0e27671",
+        "archive_sha256": "a1bf4dc12058649a9ebcdd6ab003fabe71f3fd543b8b70a6bf3e874db5c94231",
+        "loads": [
+          {
+            "platform": "win32",
+            "arch": "arm64",
+            "osRelease": "10.0.26200",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "electron",
+              "node": "16.17.1",
+              "electron": "22.3.14",
+              "modules": "110",
+              "napi": "8"
+            },
+            "manifestSha256": "edeb092a9487a763ff18bbc1339806699e33692d50c04df2b02ae30eecb186da",
+            "binarySha256": "b55ffb415649066620cc302163691fa8f2ddee7c473f3bd3fdda641dae4be201",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          },
+          {
+            "platform": "win32",
+            "arch": "arm64",
+            "osRelease": "10.0.26200",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "25.6.0",
+              "electron": null,
+              "modules": "141",
+              "napi": "10"
+            },
+            "manifestSha256": "edeb092a9487a763ff18bbc1339806699e33692d50c04df2b02ae30eecb186da",
+            "binarySha256": "b55ffb415649066620cc302163691fa8f2ddee7c473f3bd3fdda641dae4be201",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          }
+        ],
+        "limits": "两宿主验证加载成功；该资产步骤executionApiCalled/productValidated=false，不代证全平台产品场景。"
+      },
+      {
+        "target": "win32-x64",
+        "artifact": 11936742420,
+        "zip_sha256": "a33a0391ceabedc8998570132b6cfcf5a08c7518488714fb6aaec04aa6d829dd",
+        "summary_sha256": "2d3abb0d1c460ada488ae566025d12a73173eb08d45ea547ae129ab1f1d1f40e",
+        "inputCommit": "031db4736185e198a64f02ce7cebf3cab0e27671",
+        "archive_sha256": "4ac49e4d68af660e29b88fa4be569aac17eb9ece672c205f2041db18c3bc7e94",
+        "loads": [
+          {
+            "platform": "win32",
+            "arch": "x64",
+            "osRelease": "10.0.26100",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "16.17.1",
+              "electron": null,
+              "modules": "93",
+              "napi": "8"
+            },
+            "manifestSha256": "e63c59ab18ffa6a944cc4f74431f02493ce1b300146a0eec2b9a5d7593aabb3f",
+            "binarySha256": "a9229efc09096651c34e8406de3e5c166e55b8906c1e0bd41b656bb3a75e75f6",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          },
+          {
+            "platform": "win32",
+            "arch": "x64",
+            "osRelease": "10.0.26100",
+            "glibcVersionRuntime": null,
+            "runtime": {
+              "name": "node",
+              "node": "25.6.0",
+              "electron": null,
+              "modules": "141",
+              "napi": "10"
+            },
+            "manifestSha256": "e63c59ab18ffa6a944cc4f74431f02493ce1b300146a0eec2b9a5d7593aabb3f",
+            "binarySha256": "a9229efc09096651c34e8406de3e5c166e55b8906c1e0bd41b656bb3a75e75f6",
+            "nativeLoaded": true,
+            "executionApiCalled": false,
+            "productValidated": false
+          }
+        ],
+        "limits": "两宿主验证加载成功；该资产步骤executionApiCalled/productValidated=false，不代证全平台产品场景。"
+      }
+    ],
+    "verified_progress": {
+      "source_trusted": "success",
+      "source_restricted": "success",
+      "legacy_supervisor_upgrade": "success",
+      "single_root_to_multi_root_reopen": "success",
+      "two_window_shared_runtime": "success",
+      "systemd_user_reopen": "success",
+      "systemd_unavailable_before_submission": "success",
+      "remote_ssh_exit": "success",
+      "remote_ssh_retain": "success",
+      "source_smoke_overall": "success",
+      "webview": "426/426 passed",
+      "clean_checkout_packaged": "exit0，8/8场景含trusted",
+      "npm_test": "exit0",
+      "static_preflight": "exit0",
+      "release_verify": "exit0"
+    },
+    "conclusion": "success",
+    "environment": {
+      "runner": "ubuntu-22.04",
+      "node": 22,
+      "vscode": "1.142.0",
+      "dependencies": "default npm ci",
+      "browser": "locked Playwright Chromium"
+    },
+    "receipt": {
+      "temporary_combination_only": true,
+      "run": "38656127632",
+      "workflow_head": "74239f3ed84b7733bdf7c676ee93a460efe833b0",
+      "input": "031db4736185e198a64f02ce7cebf3cab0e27671",
+      "fix_head": "84d657653a72e95ef083b3a187060dfe2e4d7b3c",
+      "release_head": "20d237c5176a6cd05486d5b58c5ecf4f55f7bcd9",
+      "native_assets": "success",
+      "steps": {
+        "combined-preflight": {
+          "exit": 0,
+          "log_bytes": 160,
+          "log_sha256": "fa01f229bf38f90968a26d26441a2391a42d34ac2f40702bb36b292749b4e77e"
+        },
+        "combined-release-verify": {
+          "exit": 0,
+          "log_bytes": 16970961,
+          "log_sha256": "c94da001a416cb214e1f28e513b53ad474b316eebf11aaa90a61397274c2542c"
+        }
+      },
+      "tree": "a777889ce8e808f81b2231909029636a3cece9c7"
+    },
+    "result_artifact": {
+      "id": 11938492555,
+      "name": "combined-release-result-38656127632",
+      "zip_sha256": "22ad74dae9c5735ee736e8d533174c6ae81e4e444509182e77b1c3d7c1c9a9cc"
+    },
+    "output_artifact": {
+      "id": 11938592162,
+      "name": "combined-release-output-38656127632",
+      "zip_sha256": "9465b4c54194f446ae10b0112a30e0f2b3dff247f13cc78ddd7edd56e285755a"
+    },
+    "full_job_log": {
+      "bytes": 20664354,
+      "sha256": "2189d8801973039af0281e35a1b455fdc4c1183d2d6faa939e494e17869f4461"
+    },
+    "packaged_scenarios": [
+      "owned-canvas-reconciliation",
+      "local-execution-flow",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-pty-robustness",
+      "local-preparation-failure",
+      "local-links-and-stop",
+      "trusted"
+    ],
+    "milestones": [
+      "Smoke reset fixture: 19/19 passed.",
+      "Smoke template reset: 9/9 passed.",
+      "Remote SSH real window reopen exit smoke passed.",
+      "Remote SSH real window reopen retain smoke passed.",
+      "  426 passed (10.3m)",
+      "VSIX packaged-payload smoke passed (owned-canvas-reconciliation, local-execution-flow, snapshot-only-manual-recovery, local-surface-cutover, local-pty-robustness, local-preparation-failure, local-links-and-stop, trusted).",
+      "发布完整验证通过：v0.26.1"
+    ],
+    "temporary_workflow_removed_commit": "2fbc831c6cc779777336f7af95096204ac643d19"
+  },
+  "limits": [
+    "临时组合不是PR327正式预合并输入，不解锁发布；修复合入后仍须rebase PR327并验证最终正式输入。",
+    "原失败和研究control保留，不追认成功；没有合并、tag或发布。"
+  ],
+  "code_files_sha256": {
+    "tests/vscode-smoke/extension-tests.cjs": "8f24a95f440b710bd738225a0e64a5091259a7d02ccf473fac4113d748602e05",
+    "tests/vscode-smoke/reset-canvas.cjs": "0dcd14d4dcbeb7f4beea09ab6cc34fc56c8fb05f8c4093ee0de054f2f0233b00",
+    "scripts/test/test-smoke-template-reset.mjs": "828b0076561787481dbe48d4601ef37c7e6a32fc298ea2ff69d422507a9445f6"
+  },
+  "combination_checks": {
+    "tests_scripts_workflows_product_source_equal_to_fix": true,
+    "native_assets_rebuilt_from_combination": true,
+    "fix_tree": "c3e75404c1168744baaeb5e8656a3c9716773ede",
+    "combined_tree": "a777889ce8e808f81b2231909029636a3cece9c7",
+    "version_and_release_materials_match_pr327": true
+  }
+}

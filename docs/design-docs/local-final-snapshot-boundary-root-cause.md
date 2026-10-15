@@ -47,18 +47,22 @@ probe于17:15:50.041Z按预期报pending，后续同Agent/Terminal均saved且三
 
 原Host8项对照与既有reset helper19项纯回归均通过；正常saved与failed保留由Host对照检验，超时/身份/第二次失败由helper现有回归检验。原生受控对照不是生产修复后的完整发布门禁，不能解锁PR327。
 
-## 正式方案与适用范围
+## 正式方案
 
 直接原因是模板测试单次reset假定与产品既有“保存pending则拒绝”策略不一致，属于测试夹具遗漏。该调用来自2026-05-07的e826ee9e7；已有reset helper来自898b326f，此入口没有接入，不能归因PR328/333或VS Code上游缺陷。包和源码共用测试，是否撞到保存窗口取决于执行启动与页面调度，源码或本地通过不证明该前提成立。
 
-建议修复只为本例按自身Agent/Terminal身份复用既有20秒总预算的最终保存reset夹具，最多一次原保存成功后的新reset；failed/unconfirmed、错误身份、替换节点、超时和第二次拒绝仍失败。不删产品保护、不固定sleep、不抬预算。该处之后都是无自动启动的模板副本；其余直接reset若有活跃执行需具名审查，不做全局无条件重试。产品单次reset体验属于不同策略决定，本调查不改变它。
+正式修复只为本例按自身Agent/Terminal身份复用既有20秒总预算的最终保存reset夹具，最多一次原保存成功后的新reset；failed/unconfirmed、错误身份、替换节点、超时和第二次拒绝仍失败。不删产品保护、不固定sleep、不抬预算。该处之后都是无自动启动的模板副本；其余直接reset若有活跃执行需具名审查，不做全局无条件重试。产品单次reset体验属于不同策略决定，本调查不改变它。
 
 ## 修复边界
 
-当前仅在独立调查分支提交文档与临时实验，未修改正式产品、smoke或保存策略，不创建独立诊断/文档PR，不修改发布PR head。后续授权修复随测试与根因文档集中一个修复PR；是否需改测试或产品必须以具名调用与保存结果确认。
+调查阶段仅提交文档与临时实验；用户后续已授权实施下述具名测试修复。正式产品与保存策略保持，代码、回归、根因与证据集中一个修复PR；临时验证不建PR，发布PR327 head20d237c5保持。
 
-## 正式修复（2026-10-15，验证中）
+## 正式修复验收（2026-10-15）
 
 用户授权后，在最新main eee25291的修复分支将 `verifyCanvasTemplatesTrusted` 保存导出后唯一cleanup接入既有 `resetCanvasAfterFinalPersistence`，以本例先前捕获的Agent/Terminal节点作为期望执行。不修改产品、helper、其他reset或20秒总预算，所有保存/导出/重新应用/默认模板/删除与导入断言保留。新增 `scripts/test/test-smoke-template-reset.mjs` 用TypeScript AST取得正式函数中实际cleanup和ensureEditorCanvasReady语句并运行，避免只验证helper而漏验接线；覆盖成功、两种节点pending/failed/unconfirmed、非本例pending及缺少原Terminal结果。旧代码第一pending场景失败；修后9/9、既有19/19和语法/diff通过。package.json的test:smoke-reset-fixture接入新增回归，无版本与依赖变动。
 
-同包原生保存窗口和不加过滤的完整PR327临时组合门禁待验，正式修复尚未合入，不将研究control代证发布门禁成功。根因文档和研究脚本随本修复PR集中交付，临时workflow只用于验证分支并归档。
+正式代码84d65765的原生run [38656199224](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38656199224)（Ubuntu22.04、Node22、VS Code1.142.0）通过：23:48:21.954Z首次check原Agent/Terminal均submitted/pending；同身份分别在21.970Z、21.982Z saved且三个原节点保留，22.063Z第二次check、22.070Z空画布；全部原trusted exit0。正常VSIX生产bundle与研究probe一致，解包后仅增加观察入口和真实保存结果交接gate，正式cleanup未被替换。该单项复用原六资产，完整门禁另在组合031db473重建六资产；本次实际VS Code版本与原复现1.141.2不同，分别记录。原生证据和归档见repair-result.json、instrument-fixed-cleanup.mjs、fixed-cleanup-native.workflow.yml。
+
+完整临时发布组合run [38656127632](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/38656127632) 固定组合031db473（修复84d65765 + PR327 head20d237c5），六平台资产从同组合ref重建、同run组装，Ubuntu22.04/Node22/default npm ci、实际VS Code1.142.0，不设scenario filter。静态preflight及完整release:verify均退出0：npm test、源码完整smoke、SSH exit/retain、Webview426/426、clean-checkout正常VSIX的8个packaged场景含最后trusted均通过。完整verify日志16,970,961 bytes，SHA256 c94da001a416cb214e1f28e513b53ad474b316eebf11aaa90a61397274c2542c，receipt和完整输出artifact11938492555/11938592162已核验大小和hash。证据repair-result.json，工作流归档full-repair-release-gate.workflow.yml。
+
+两条活动临时workflow已移除；根因、回归和证据集中本修复PR。临时组合通过只验收修复与既有发布物料组合，不是PR327最新正式预合并输入；修复合入后仍须rebase PR327并重跑正式完整门禁。最终PR收口仅补文档，不改变已验证的代码与20秒边界，不追认原failure，也不解锁合并/tag/发布。
