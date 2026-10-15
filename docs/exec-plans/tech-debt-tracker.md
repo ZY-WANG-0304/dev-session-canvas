@@ -7,9 +7,15 @@
 
 PR327正式9198cacb/run38665513172 attempt2在源码restricted首开editor ready20000ms失败。固定输入阶段采样19次中1次同入口自然失败，捕获真实editor ready在fake panel诊断期间被正常接受，然后`runWebviewLifecycleRaceDiagnosticsForTest`的finally恢复两个面旧快照，将editor ready/frameId回滚；诊断数组恢复还抹去ready事件。active面临时为panel使editor未bootstrap，再open复用原HTML不重发ready。原消息期间投递的受控run38678148402按20秒失败、原ready/ack先完成的完整restricted通过，因果已确认；原正式CI无Host工件，不能逐事件追认唯一定因。
 
-该测试模式方法和调用从6月存在，#334未修改；普通安装未注册此测试命令，不因该夹具故障判定用户打开必然失败。已在修复分支把fake诊断放到无共享可变状态的独立对象，实际协议规则保持；两真实面ready前/期间/后三时序、成功/异常责任保护及测试模式守卫回归通过，旧during负对照缺少真实bootstrap；仅延长预算或保留ready字段不能补回bootstrap。修复/回归/根因/证据集中一个修复PR；组合f8d9ad53/run38681093813已通过源码trusted/restricted、systemd、SSHexit/retain和426项Webview，完整命令阻塞于clean-checkout packaged，首败已取得：verifyLiveRuntimePersistence等待Agent启动超时，rejected-before-acquire且editor ready/ack=true；执行拒绝根因未确认。三种真实原ready投递时序完整restricted通过且确认bootstrapAck，none保留20秒失败。合入后再rebase PR327完整门禁；本轮不创建诊断/验证/文档PR，临时workflow完成后移除。历史fallback资源积压与checkpoint首跑停滞保持各自未知范围。
+该测试模式方法和调用从6月存在，#334未修改；普通安装未注册此测试命令，不因该夹具故障判定用户打开必然失败。已在修复分支把fake诊断放到无共享可变状态的独立对象，实际协议规则保持；两真实面ready前/期间/后三时序、成功/异常责任保护及测试模式守卫回归通过，旧during负对照缺少真实bootstrap；仅延长预算或保留ready字段不能补回bootstrap。修复/回归/根因/证据集中一个修复PR；组合f8d9ad53/run38681093813已通过源码trusted/restricted、systemd、SSHexit/retain和426项Webview，完整命令阻塞于clean-checkout packaged，首败已取得：verifyLiveRuntimePersistence等待Agent启动超时，rejected-before-acquire且editor ready/ack=true；同输入原生对照已确认停止夹具漏等Supervisor旧存储退役、pending:2满而拒绝；原完整CI无逐事件计数。三种真实原ready投递时序完整restricted通过且确认bootstrapAck，none保留20秒失败。合入后再rebase PR327完整门禁；本轮不创建诊断/验证/文档PR，临时workflow完成后移除。历史fallback资源积压与checkpoint首跑停滞保持各自未知范围。
 
 关联：`docs/design-docs/smoke-restricted-ready-root-cause.md`、`docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/references/smoke-restricted-ready-root-cause/README.md`。
+
+## 2026-10-15：packaged Runtime重启夹具漏等旧会话退役（根因确认，待修复）
+
+ensureAgentStopped/ensureTerminalStopped只以live=false及localExecutions退休判断；live-runtime旧session仍可能等待读者、Host保存或journal删除，符合正式pending:2责任保护。真实Supervisor134/134通过；同固定f8d9ad53、原六资产、隔离HOME/default npmci/VS Code1.142.0，两轮受控旧删除均复现verifyLiveRuntimePersistence原15秒拒绝，释放后不会补发启动；等待原两份实际退役后完整trusted通过，自然样本亦通过。六份完整工件已核验，精简输入/hash/时序集中PR335，不新增诊断或文档PR。
+
+剩余修复是在停止/重启夹具按原完整runtime身份等待实际存储退役，覆盖延迟、失败及错误身份；不能仅等delete提交、owner空数组或增加sleep。本轮仅定位，未实施新修复。修复后仍需最终PR327预合并完整门禁，原完整CI缺少Supervisor逐事件事实。见docs/design-docs/packaged-runtime-restart-admission-root-cause.md与admission-investigation-result.json。
 
 ## 记录字段
 

@@ -1,0 +1,254 @@
+{
+  "control": "natural",
+  "exit": 0,
+  "original_session_ids": [
+    "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+    "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47"
+  ],
+  "stop_helpers_returned": {
+    "live": [
+      false,
+      false
+    ],
+    "runtime_persistence_enabled": true,
+    "local_executions": [],
+    "surface": {
+      "generation": 38,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-497f64d1-036f-415e-9c59-e9494f5a31b7",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    }
+  },
+  "events": [
+    {
+      "at": "2026-10-15T05:50:59.384Z",
+      "stage": "create-admission",
+      "detail": {
+        "sessionId": "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+        "kind": "agent",
+        "owner": {
+          "closing": false,
+          "permanent": false,
+          "pending": 0,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 0,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        },
+        "sessions": []
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.475Z",
+      "stage": "start-result",
+      "detail": {
+        "sessionId": "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+        "kind": "agent",
+        "started": {
+          "kind": "started",
+          "pid": 3922
+        },
+        "authority": {
+          "active": 1,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        }
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.560Z",
+      "stage": "create-admission",
+      "detail": {
+        "sessionId": "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47",
+        "kind": "terminal",
+        "owner": {
+          "closing": false,
+          "permanent": false,
+          "pending": 1,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 1,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        },
+        "sessions": [
+          {
+            "id": "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+            "kind": "agent",
+            "live": true,
+            "owned": false,
+            "pending": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.639Z",
+      "stage": "start-result",
+      "detail": {
+        "sessionId": "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47",
+        "kind": "terminal",
+        "started": {
+          "kind": "started",
+          "pid": 3934
+        },
+        "authority": {
+          "active": 2,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        }
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.686Z",
+      "stage": "stop-request",
+      "detail": {
+        "sessionId": "72a3f9ec-eca1-4e77-b35e-781cce73502b"
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.712Z",
+      "stage": "delete-request",
+      "detail": {
+        "sessionId": "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+        "preserveTerminalReads": true
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.715Z",
+      "stage": "remove-begin",
+      "detail": {
+        "sessionId": "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+        "kind": "agent"
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.716Z",
+      "stage": "remove-finished",
+      "detail": {
+        "sessionId": "72a3f9ec-eca1-4e77-b35e-781cce73502b",
+        "kind": "agent"
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.796Z",
+      "stage": "stop-request",
+      "detail": {
+        "sessionId": "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47"
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.814Z",
+      "stage": "delete-request",
+      "detail": {
+        "sessionId": "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47",
+        "preserveTerminalReads": true
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.818Z",
+      "stage": "remove-begin",
+      "detail": {
+        "sessionId": "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47",
+        "kind": "terminal"
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.819Z",
+      "stage": "remove-finished",
+      "detail": {
+        "sessionId": "875b6015-b4d8-4aa8-8ec8-53ce1de0ad47",
+        "kind": "terminal"
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.908Z",
+      "stage": "create-admission",
+      "detail": {
+        "sessionId": "7d3fe6cf-4a23-457b-9ba6-645c3938f707",
+        "kind": "agent",
+        "owner": {
+          "closing": false,
+          "permanent": false,
+          "pending": 0,
+          "admissionPending": 0
+        },
+        "authority": {
+          "active": 0,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        },
+        "sessions": []
+      }
+    },
+    {
+      "at": "2026-10-15T05:50:59.980Z",
+      "stage": "start-result",
+      "detail": {
+        "sessionId": "7d3fe6cf-4a23-457b-9ba6-645c3938f707",
+        "kind": "agent",
+        "started": {
+          "kind": "started",
+          "pid": 3945
+        },
+        "authority": {
+          "active": 1,
+          "starting": 0,
+          "admissionPending": 0,
+          "closing": false,
+          "permanent": false
+        }
+      }
+    },
+    {
+      "at": "2026-10-15T05:51:01.766Z",
+      "stage": "stop-request",
+      "detail": {
+        "sessionId": "7d3fe6cf-4a23-457b-9ba6-645c3938f707"
+      }
+    },
+    {
+      "at": "2026-10-15T05:51:01.787Z",
+      "stage": "delete-request",
+      "detail": {
+        "sessionId": "7d3fe6cf-4a23-457b-9ba6-645c3938f707",
+        "preserveTerminalReads": true
+      }
+    },
+    {
+      "at": "2026-10-15T05:51:01.789Z",
+      "stage": "remove-begin",
+      "detail": {
+        "sessionId": "7d3fe6cf-4a23-457b-9ba6-645c3938f707",
+        "kind": "agent"
+      }
+    },
+    {
+      "at": "2026-10-15T05:51:01.792Z",
+      "stage": "remove-finished",
+      "detail": {
+        "sessionId": "7d3fe6cf-4a23-457b-9ba6-645c3938f707",
+        "kind": "agent"
+      }
+    }
+  ]
+}

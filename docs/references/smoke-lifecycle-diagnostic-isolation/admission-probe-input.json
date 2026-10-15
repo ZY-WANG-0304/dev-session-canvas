@@ -1,0 +1,11 @@
+{
+  "base": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "before_sha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "792ce8a7b4e4252ff73e03521ae9598e5be7a0e088f990d7c66630619b61c083",
+    "tests/vscode-smoke/extension-tests.cjs": "8f24a95f440b710bd738225a0e64a5091259a7d02ccf473fac4113d748602e05"
+  },
+  "after_sha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "2d6dca125fd2012708f35cbd77aad27c063469b835c6fb70e42a2d2c56ce034e",
+    "tests/vscode-smoke/extension-tests.cjs": "0f69ba204ad40f580012e84ae320de5a42884969a73243f0457af47e5dc08cf4"
+  }
+}
