@@ -9,7 +9,7 @@ def edit(p,old,new):
 
 p=root/'supervisor/runtimeSupervisorMain.ts'
 trace=r'''
-// Temporary read-only trace; only used by this fixed-input diagnostic workflow.
+// Temporary finite trace; only used by this fixed-input diagnostic workflow.
 if (process.env.DSC_LEGACY_STOP_TRACE) {
   const proto = RuntimeSupervisorServer.prototype as any;
   let count = 0;
@@ -97,6 +97,17 @@ if (process.env.DSC_LEGACY_STOP_TRACE) {
   }
 }
 '''
+helper+=r"""
+if (process.env.DSC_LEGACY_STOP_TRACE) {
+  const proto=CanvasPanelManager.prototype as any;
+  const ignored=proto.recordIgnoredExecutionSessionOperation;
+  proto.recordIgnoredExecutionSessionOperation=function(...args: any[]) {
+    if (args[1]==='previous-generation-stream-terminal') traceLegacyStopHost('execution-operation-ignored',{kind:args[0],nodeId:args[1],operation:args[2],sessionId:args[3]});
+    return ignored.apply(this,args);
+  };
+}
+"""
+helper+="\nif (process.env.DSC_LEGACY_RESTORE_CONTROL === 'late') {\n  const proto=CanvasPanelManager.prototype as any;\n  const restoring=proto.restoreLiveRuntimeSessions;\n  const getClient=proto.getRuntimeSupervisorClientForKind;\n  let active: Promise<void> | undefined;\n  let activated=false;\n  let awaitingSecond=false;\n  let resolveSecond!: () => void;\n  let releaseSecond!: () => void;\n  const secondEntered=new Promise<void>(resolve => {resolveSecond=resolve;});\n  const firstDone=new Promise<void>(resolve => {releaseSecond=resolve;});\n  proto.restoreLiveRuntimeSessions=function(...args: any[]) {\n    const operation=restoring.apply(this,args);\n    if (!active) active=operation;\n    return operation.finally(() => { if(active===operation) active=undefined; });\n  };\n  proto.getRuntimeSupervisorClientForKind=async function(...args: any[]) {\n    const storage=args[2];\n    if (typeof storage!=='string' || !storage.endsWith('/previous-generation-stream')) return getClient.apply(this,args);\n    const node=this.state.nodes.find((node: any) => node.id==='previous-generation-stream-terminal');\n    const identity=node?.metadata?.terminal;\n    if (awaitingSecond) {\n      awaitingSecond=false;\n      traceLegacyStopHost('control-second-restore-enter',{sessionId:identity?.runtimeSessionId});\n      resolveSecond();\n      await firstDone;\n      traceLegacyStopHost('control-second-restore-released',{sessionId:identity?.runtimeSessionId,attachmentState:node?.metadata?.terminal?.attachmentState});\n      return getClient.apply(this,args);\n    }\n    if (!activated && identity?.attachmentState==='reattaching' && active) {\n      activated=true;\n      const original=active;\n      awaitingSecond=true;\n      const second=restoring.call(this);\n      original.then(() => {\n        traceLegacyStopHost('control-first-restore-finished',{sessionId:identity.runtimeSessionId,attachmentState:this.state.nodes.find((node: any)=>node.id==='previous-generation-stream-terminal')?.metadata?.terminal?.attachmentState});\n        releaseSecond();\n      },releaseSecond);\n      void second.then(() => traceLegacyStopHost('control-second-restore-finished',{sessionId:identity.runtimeSessionId}), (error: any)=>traceLegacyStopHost('control-second-restore-failed',{error:error?.message}));\n      this.trackRuntimeSupervisorOperation(second);\n      await secondEntered;\n    }\n    return getClient.apply(this,args);\n  };\n}\n"
 edit(p,p.read_text(),p.read_text()+helper)
 
 p=Path('tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs')

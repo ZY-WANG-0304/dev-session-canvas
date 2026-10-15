@@ -10,18 +10,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {sample: 7, filter: ''}
+          - {sample: 8, filter: 'legacy-supervisor-upgrade', control: late}
+          - {sample: 9, filter: 'legacy-supervisor-upgrade', control: natural}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
       DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT: /tmp/tm-${{ github.run_id }}
       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: ${{ matrix.filter }}
+      DSC_LEGACY_RESTORE_CONTROL: ${{ matrix.control }}
       DSC_LEGACY_STOP_TRACE: /tmp/legacy-stop-${{ github.run_id }}-${{ matrix.sample }}.jsonl
     steps:
       - uses: actions/checkout@v4
         with: {fetch-depth: 0, ref: 55c619ad70dbec74a7f9ffab17bf3dc547bd6913}
-      - name: Load temporary read-only instrumentation
+      - name: Load temporary finite tracing and restore control
         run: git show "${{ github.sha }}:legacy-stop-probe.py" > legacy-stop-probe.py
       - uses: actions/setup-node@v4
         with: {node-version: '22', cache: npm}
@@ -45,13 +47,17 @@ jobs:
           PY
       - run: python3 legacy-stop-probe.py
       - run: npm run typecheck
-      - name: Original full release verification with finite tracing
+      - name: Original native legacy smoke with one restore scheduling variable
         run: |
           set +e
-          timeout --signal=TERM --kill-after=20s 4800s npm run release:verify -- --version 0.26.1 > legacy-stop.log 2>&1
+          npm run build > legacy-stop-build.log 2>&1
           code=$?
+          if [ "$code" -eq 0 ]; then
+            timeout --signal=TERM --kill-after=20s 300s node scripts/smoke/run-vscode-smoke.mjs > legacy-stop.log 2>&1
+            code=$?
+          fi
           echo "$code" > legacy-stop.exit
-          tail -30 legacy-stop.log
+          if [ -f legacy-stop.log ]; then tail -30 legacy-stop.log; else tail -30 legacy-stop-build.log; fi
           exit "$code"
       - name: Save cleanup-before evidence and traces
         if: always()
@@ -59,7 +65,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import json,os,tarfile,subprocess,hashlib
-          files=[Path(n) for n in ('legacy-stop.log','legacy-stop.exit','legacy-stop-probe-input.json','original-assets.json')]
+          files=[Path(n) for n in ('legacy-stop.log','legacy-stop-build.log','legacy-stop.exit','legacy-stop-probe-input.json','original-assets.json')]
           files += [Path(os.environ['DSC_LEGACY_STOP_TRACE'])]
           debug=Path('.debug')
           if debug.exists():
