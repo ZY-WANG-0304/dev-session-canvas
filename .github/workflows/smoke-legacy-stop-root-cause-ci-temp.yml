@@ -8,11 +8,14 @@ jobs:
   native-stop:
     strategy:
       fail-fast: false
-      matrix: {sample: [1, 2]}
+      matrix:
+        include:
+          - {sample: 3, filter: 'legacy-supervisor-upgrade'}
+          - {sample: 4, filter: 'local-execution-flow,owned-canvas-reconciliation,snapshot-only-manual-recovery,local-surface-cutover,local-preparation-failure,local-links-and-stop,local-pty-robustness,runtime-checkpoint-refresh,trusted,restricted,legacy-supervisor-upgrade'}
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
-      DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: legacy-supervisor-upgrade
+      DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: ${{ matrix.filter }}
       DSC_LEGACY_STOP_TRACE: /tmp/legacy-stop-${{ github.run_id }}-${{ matrix.sample }}.jsonl
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +46,7 @@ jobs:
       - name: Original scenario and unchanged 30 second stop wait
         run: |
           set +e
-          timeout --signal=TERM --kill-after=20s 600s npm run test:smoke > legacy-stop.log 2>&1
+          timeout --signal=TERM --kill-after=20s 1800s npm run test:smoke > legacy-stop.log 2>&1
           code=$?
           echo "$code" > legacy-stop.exit
           tail -30 legacy-stop.log
@@ -56,7 +59,7 @@ jobs:
           import json,os,tarfile,subprocess,hashlib
           files=[Path(n) for n in ('legacy-stop.log','legacy-stop.exit','legacy-stop-probe-input.json','original-assets.json')]
           files += [Path(os.environ['DSC_LEGACY_STOP_TRACE'])]
-          debug=Path('.debug/vscode-smoke/legacy-supervisor-upgrade')
+          debug=Path('.debug/vscode-smoke')
           if debug.exists():
             files += [p for p in debug.rglob('*') if p.is_file() and p.stat().st_size<16*1024*1024 and ('/artifacts/' in str(p) or '/user-data/logs/' in str(p))]
           total=0;inventory=[]

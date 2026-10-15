@@ -46,18 +46,18 @@ if (process.env.DSC_LEGACY_STOP_TRACE) {
     executionProcess.onExit = (listener: any) => onExit((event: any) => { record('pty-onExit', session, event); return listener(event); });
     return bind.call(this, session);
   };
-  for (const name of ['stopSession','finalizeSession','createFreshSnapshot','broadcastToSessionSubscribers','pumpHostOutput','ackTerminalBatch']) {
+  for (const name of ['stopSession','finalizeSession','createFreshSnapshot','broadcastToSessionSubscribers','pumpHostOutput','ackTerminalBatch','cancelHostOutput','attachSession','subscribeSession']) {
     const method = proto[name];
     proto[name] = function(...args: any[]) {
       const id = typeof args[0] === 'string' ? args[0] : args[0]?.sessionId ?? args[0]?.session?.sessionId ?? args[1]?.sessionId;
       const session = this.sessions.get(id);
       if (!session || session.ownedExecution) return method.apply(this,args);
-      const extra = name === 'broadcastToSessionSubscribers' ? {
+      const extra = {
         event: args[1]?.event, payloadLive: args[1]?.payload?.live,
         subscribers: [...this.subscriptions.values()].map((map: any) => map.get(id)).filter(Boolean),
         credit: [...this.hostOutputSubscriptions.values()].map((map: any) => {
           const sub=map.get(id);return sub ? { appliedRevision:sub.appliedRevision,stateVersion:sub.stateVersion,appliedStateVersion:sub.appliedStateVersion,inFlight:sub.inFlight } : null;
-        }).filter(Boolean) } : {};
+        }).filter(Boolean), params: name === 'ackTerminalBatch' ? args[1] : undefined };
       record(name+'-enter',session,extra);
       if (name === 'stopSession') {
         let samples = 0;
@@ -81,6 +81,20 @@ function traceLegacyStopHost(stage: string, detail: Record<string, unknown>): vo
   const file=process.env.DSC_LEGACY_STOP_TRACE;
   if (file) { try { require('fs').appendFileSync(file, JSON.stringify({at:Date.now(),role:'host',pid:process.pid,stage,...detail})+'\\n'); } catch {} }
 }
+if (process.env.DSC_LEGACY_STOP_TRACE) {
+  const proto=CanvasPanelManager.prototype as any;
+  for (const name of ['handleRuntimeSupervisorTerminalBatch','applyRuntimeSupervisorSnapshot']) {
+    const original=proto[name];
+    proto[name]=function(...args: any[]) {
+      const snapshot=args[2];
+      const nodeId=name==='applyRuntimeSupervisorSnapshot' ? args[0] : this.runtimeSessionBindings.get(this.buildRuntimeSessionBindingKey(snapshot.kind,snapshot.sessionId,args[1],args[0]))?.nodeId;
+      if (nodeId !== 'previous-generation-stream-terminal') return original.apply(this,args);
+      const state=() => { const session=nodeId && this.getExecutionSessions(snapshot.kind).get(nodeId); return {present:Boolean(session),paged:session?.terminalStreamPaged,healthy:session?.terminalStreamHealthy,sequence:session?.outputSequence}; };
+      traceLegacyStopHost(name+'-enter',{sessionId:snapshot.sessionId,nodeId,live:snapshot.live,batchId:snapshot.batchId,revision:snapshot.revision,state:state()});
+      return original.apply(this,args).then((result: any) => {traceLegacyStopHost(name+'-returned',{sessionId:snapshot.sessionId,nodeId,result,state:state()});return result;},(error: any) => {traceLegacyStopHost(name+'-failed',{sessionId:snapshot.sessionId,nodeId,error:error?.message,state:state()});throw error;});
+    };
+  }
+}
 '''
 p.write_text(p.read_text()+helper)
 edit(p,"      await client.stopSession({\n        sessionId: session.runtimeSessionId\n      });", "      traceLegacyStopHost('stop-rpc-enter', { sessionId: session.runtimeSessionId, storage: session.runtimeStoragePath });\n      await client.stopSession({\n        sessionId: session.runtimeSessionId\n      });\n      traceLegacyStopHost('stop-rpc-returned', { sessionId: session.runtimeSessionId });")
@@ -88,8 +102,6 @@ edit(p,'    const binding = this.runtimeSessionBindings.get(\n      this.buildRu
 
 p=Path('tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs')
 edit(p,'    await writeFailureArtifacts(error, resizeEvidence);','    await writeStopSupervisorEvidence(previousGenerationStreamSupervisorPaths, previousGenerationStreamTerminalSessionId, previousGenerationStreamSupervisorProcess, "failure");\n    await writeFailureArtifacts(error, resizeEvidence);')
-edit(p,'    const completedPreviousGenerationStreamNode =', '    const completedPreviousGenerationStreamNode =') if False else None
-edit(p,"    await performWebviewDomAction({\n      kind: 'clickNodeActionButton',\n      nodeId: PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID,\n      action: 'stop'\n    });", "    await writeStopSupervisorEvidence(previousGenerationStreamSupervisorPaths, previousGenerationStreamTerminalSessionId, previousGenerationStreamSupervisorProcess, 'before-stop');\n    await performWebviewDomAction({\n      kind: 'clickNodeActionButton',\n      nodeId: PREVIOUS_GENERATION_STREAM_TERMINAL_NODE_ID,\n      action: 'stop'\n    });")
 p.write_text(p.read_text()+'''
 async function writeStopSupervisorEvidence(paths, sessionId, child, phase) {
   if (!paths || !sessionId || !process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR) return;
