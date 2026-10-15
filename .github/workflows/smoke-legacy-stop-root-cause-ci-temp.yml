@@ -10,10 +10,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {sample: 3, filter: 'legacy-supervisor-upgrade'}
-          - {sample: 4, filter: 'local-execution-flow,owned-canvas-reconciliation,snapshot-only-manual-recovery,local-surface-cutover,local-preparation-failure,local-links-and-stop,local-pty-robustness,runtime-checkpoint-refresh,trusted,restricted,legacy-supervisor-upgrade'}
+          - {sample: 5, filter: ''}
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 90
     env:
       DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: ${{ matrix.filter }}
       DSC_LEGACY_STOP_TRACE: /tmp/legacy-stop-${{ github.run_id }}-${{ matrix.sample }}.jsonl
@@ -43,10 +42,10 @@ jobs:
           PY
       - run: python3 legacy-stop-probe.py
       - run: npm run typecheck
-      - name: Original scenario and unchanged 30 second stop wait
+      - name: Original full release verification with finite tracing
         run: |
           set +e
-          timeout --signal=TERM --kill-after=20s 1800s npm run test:smoke > legacy-stop.log 2>&1
+          timeout --signal=TERM --kill-after=20s 4800s npm run release:verify -- --version 0.26.1 > legacy-stop.log 2>&1
           code=$?
           echo "$code" > legacy-stop.exit
           tail -30 legacy-stop.log
@@ -59,7 +58,7 @@ jobs:
           import json,os,tarfile,subprocess,hashlib
           files=[Path(n) for n in ('legacy-stop.log','legacy-stop.exit','legacy-stop-probe-input.json','original-assets.json')]
           files += [Path(os.environ['DSC_LEGACY_STOP_TRACE'])]
-          debug=Path('.debug/vscode-smoke')
+          debug=Path('.debug')
           if debug.exists():
             files += [p for p in debug.rglob('*') if p.is_file() and p.stat().st_size<16*1024*1024 and ('/artifacts/' in str(p) or '/user-data/logs/' in str(p))]
           total=0;inventory=[]
@@ -67,7 +66,7 @@ jobs:
             for p in files:
               if not p.exists():continue
               size=p.stat().st_size
-              if total+size>200*1024*1024:inventory.append({'path':str(p),'omitted':'total bound'});continue
+              if total+size>400*1024*1024:inventory.append({'path':str(p),'omitted':'total bound'});continue
               arc=str(p).lstrip('/');tar.add(p,arcname=arc);total+=size
               inventory.append({'path':str(p),'bytes':size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
           Path('legacy-stop-inventory.json').write_text(json.dumps({'input':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'run':'${{ github.run_id }}','sample':${{ matrix.sample }},'assetRun':38696319881,'files':inventory},indent=2)+'\n')
