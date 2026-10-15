@@ -33,7 +33,11 @@ jobs:
         run: |
           node scripts/build/assemble-execution-distribution-assets.mjs --source archives --output platform --input-sha 55c619ad70dbec74a7f9ffab17bf3dc547bd6913
           echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
-          cp platform/manifest.json original-assets.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          Path('original-assets.json').write_text(json.dumps({'input':'55c619ad70dbec74a7f9ffab17bf3dc547bd6913','run':38696319881,'summaries':[json.loads(p.read_text()) for p in sorted(Path('archives').glob('*-summary.json'))],'manifests':[json.loads(p.read_text()) for p in sorted(Path('platform').glob('*/manifest.json'))]},indent=2)+'\n')
+          PY
       - run: python3 legacy-stop-probe.py
       - run: npm run typecheck
       - name: Original scenario and unchanged 30 second stop wait
