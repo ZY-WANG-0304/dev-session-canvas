@@ -1,0 +1,78 @@
+{
+  "run": 38597464423,
+  "head": "ead933308509a879166ab41e5298881bc7205991",
+  "original_head": "20d237c5176a6cd05486d5b58c5ecf4f55f7bcd9",
+  "vscode": "1.141.2",
+  "original_bundle_sha256": "2b3d4c38b488a382caa588d9334de0d75a258d51c210bff4129c7dfe5ddc0eb5",
+  "artifact_id": 11911222009,
+  "artifact_sha256": "5e03b3c6b372dea2f25d9c6ba2f3aa1cf9ea0e08e6e16c7c477758b4fe28b2d5",
+  "target_trace": [
+    {
+      "phase": "reset-enter",
+      "at": "2026-10-14T16:23:05.654Z",
+      "nodes": [
+        {
+          "id": "agent-1-e10731af-2ac6-4081-a54c-8f5b9dfee8e7",
+          "kind": "agent",
+          "title": "Template Save Agent"
+        },
+        {
+          "id": "terminal-2-5ae1415c-de0a-426a-ab17-0ebc15067e15",
+          "kind": "terminal",
+          "title": "Template Save Terminal"
+        },
+        {
+          "id": "note-3-d0f979c6-dc39-4e06-b325-6fb887439011",
+          "kind": "note",
+          "title": "Template Save Note"
+        }
+      ],
+      "records": [],
+      "line": 1138,
+      "stack": "Error: \n\tat observeOriginalReset (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:174:49)\n\tat async verifyCanvasTemplatesTrusted (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1162:3)\n\tat async runTrustedSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:1351:3)\n\tat async runSmoke (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:330:3)\n\tat async Object.run (/home/runner/work/dev-session-canvas/dev-session-canvas/original/.debug/vscode-vsix-smoke/smoke-host/tests/vscode-smoke/extension-tests.cjs:197:5)"
+    },
+    {
+      "phase": "immediate-check",
+      "at": "2026-10-14T16:23:05.657Z",
+      "nodes": [
+        {
+          "id": "agent-1-e10731af-2ac6-4081-a54c-8f5b9dfee8e7",
+          "kind": "agent",
+          "title": "Template Save Agent"
+        },
+        {
+          "id": "terminal-2-5ae1415c-de0a-426a-ab17-0ebc15067e15",
+          "kind": "terminal",
+          "title": "Template Save Terminal"
+        },
+        {
+          "id": "note-3-d0f979c6-dc39-4e06-b325-6fb887439011",
+          "kind": "note",
+          "title": "Template Save Note"
+        }
+      ],
+      "records": [],
+      "line": 1138
+    },
+    {
+      "phase": "reset-return",
+      "at": "2026-10-14T16:23:05.851Z",
+      "nodes": [],
+      "records": [],
+      "line": 1138
+    }
+  ],
+  "milestones": [
+    "[reset-fixture] Empty canvas confirmed after 1 reset call(s).",
+    "[reset-fixture] Empty canvas confirmed after 1 reset call(s).",
+    "[reset-fixture] Rejected while final persistence is pending for agent:agent-2-436b37ae-dc0a-4d38-92f4-4a25645fd926.",
+    "[reset-fixture] Original final persistence settled: [{\"kind\":\"agent\",\"nodeId\":\"agent-1-ca7df3e5-efc6-4028-8af9-04c266fcbaf7\",\"executionId\":\"5f5d5b4d-c0e3-47fe-adab-1868da815ccc\",\"generation\":\"40138aaa-421b-40b9-bf50-19763a2ee4ea\",\"submitted\":false,\"result\":{\"kind\":\"not-required\"}},{\"kind\":\"agent\",\"nodeId\":\"agent-2-436b37ae-dc0a-4d38-92f4-4a25645fd926\",\"executionId\":\"9cb2af0c-c32f-4e43-8c11-6e9b285a6a67\",\"generation\":\"599001fc-ac36-44b9-8425-4b7c942f0f90\",\"submitted\":true,\"result\":{\"kind\":\"saved\"}}]",
+    "[reset-fixture] Empty canvas confirmed after 2 reset call(s).",
+    "[reset-fixture] Empty canvas confirmed after 1 reset call(s).",
+    "[reset-fixture] Rejected while final persistence is pending for agent:agent-1-9e5fe329-8dbc-4c8b-b027-9ea11df40087.",
+    "[reset-fixture] Original final persistence settled: [{\"kind\":\"agent\",\"nodeId\":\"agent-1-9e5fe329-8dbc-4c8b-b027-9ea11df40087\",\"executionId\":\"e231492f-2ebb-4d74-b3eb-b44140a16446\",\"generation\":\"16cd5778-9d28-4f96-8516-a429acaffe96\",\"submitted\":true,\"result\":{\"kind\":\"saved\"}}]",
+    "[reset-fixture] Empty canvas confirmed after 2 reset call(s).",
+    "Extension host test runner exit code: 0",
+    "VSIX packaged-payload smoke passed (trusted)."
+  ]
+}
