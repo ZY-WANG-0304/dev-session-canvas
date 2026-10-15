@@ -1,0 +1,431 @@
+{
+  "workflow": ".github/workflows/publish-marketplace-release.yml",
+  "sha256": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c",
+  "jobs": {
+    "resolve-runtime-input": {
+      "name": "Resolve immutable runtime input",
+      "if": "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.deleted != true && startsWith(github.ref, 'refs/tags/publish/v')) }}",
+      "runs-on": "ubuntu-latest",
+      "permissions": {
+        "contents": "read"
+      },
+      "outputs": {
+        "input_ref": "${{ steps.input.outputs.input_ref }}",
+        "needs_assets": "${{ steps.input.outputs.needs_assets }}"
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "persist-credentials": false,
+            "ref": "refs/tags/${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}"
+          }
+        },
+        {
+          "id": "input",
+          "shell": "bash",
+          "run": "echo \"input_ref=$(git rev-parse HEAD)\" >> \"$GITHUB_OUTPUT\"\nif [[ -f scripts/build/assemble-execution-distribution-assets.mjs ]]; then\n  echo \"needs_assets=true\" >> \"$GITHUB_OUTPUT\"\nelse\n  echo \"needs_assets=false\" >> \"$GITHUB_OUTPUT\"\nfi\n"
+        }
+      ]
+    },
+    "native-assets": {
+      "needs": "resolve-runtime-input",
+      "if": "needs.resolve-runtime-input.outputs.needs_assets == 'true'",
+      "permissions": {
+        "contents": "read"
+      },
+      "uses": "./.github/workflows/runtime-execution-assets.yml",
+      "with": {
+        "input_ref": "${{ needs.resolve-runtime-input.outputs.input_ref }}"
+      }
+    },
+    "prepare": {
+      "name": "Prepare GitHub Release Assets",
+      "needs": [
+        "resolve-runtime-input",
+        "native-assets"
+      ],
+      "if": "${{ always() && needs.resolve-runtime-input.result == 'success' && (needs.native-assets.result == 'success' || needs.native-assets.result == 'skipped') }}",
+      "runs-on": "ubuntu-22.04",
+      "timeout-minutes": 90,
+      "outputs": {
+        "final_tag": "${{ steps.release.outputs.final_tag }}",
+        "manifest_path": "${{ steps.release.outputs.manifest_path }}",
+        "main_vsix": "${{ steps.release.outputs.main_vsix }}",
+        "notifier_vsix": "${{ steps.release.outputs.notifier_vsix }}",
+        "release_ref": "${{ steps.ref.outputs.release_ref }}",
+        "version": "${{ steps.release.outputs.version }}"
+      },
+      "env": {
+        "GH_TOKEN": "${{ github.token }}",
+        "TRIGGER_TAG": "${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}",
+        "PLAYWRIGHT_BROWSERS_PATH": "${{ github.workspace }}/.playwright-browsers",
+        "DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT": "/tmp/tm-${{ github.run_id }}"
+      },
+      "steps": [
+        {
+          "name": "Derive release metadata",
+          "id": "release",
+          "shell": "bash",
+          "run": "set -euo pipefail\nif [[ ! \"$TRIGGER_TAG\" =~ ^publish/v([0-9]+\\.[0-9]+\\.[0-9]+)$ ]]; then\n  echo \"TRIGGER_TAG must be publish/vX.Y.Z, got: $TRIGGER_TAG\" >&2\n  exit 1\nfi\nversion=\"${BASH_REMATCH[1]}\"\n{\n  echo \"version=$version\"\n  echo \"final_tag=v$version\"\n  echo \"manifest_path=release-artifacts/release-manifest-$version.json\"\n  echo \"main_vsix=dev-session-canvas-$version.vsix\"\n  echo \"notifier_vsix=extensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-$version.vsix\"\n} >> \"$GITHUB_OUTPUT\"\n"
+        },
+        {
+          "name": "Checkout release ref",
+          "uses": "actions/checkout@v4",
+          "with": {
+            "fetch-depth": 0,
+            "ref": "${{ needs.resolve-runtime-input.outputs.input_ref }}"
+          }
+        },
+        {
+          "name": "Resolve release ref",
+          "id": "ref",
+          "shell": "bash",
+          "run": "echo \"release_ref=$(git rev-parse HEAD)\" >> \"$GITHUB_OUTPUT\""
+        },
+        {
+          "name": "Setup Node.js",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "22",
+            "cache": "npm"
+          }
+        },
+        {
+          "name": "Install dependencies",
+          "run": "npm ci"
+        },
+        {
+          "name": "Install release verification browser",
+          "if": "hashFiles('scripts/release/release-preflight.mjs') != ''",
+          "run": "npx --no-install playwright install --with-deps chromium"
+        },
+        {
+          "name": "Download same-run native runtime assets",
+          "if": "needs.resolve-runtime-input.outputs.needs_assets == 'true'",
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "pattern": "execution-native-*-${{ github.run_id }}",
+            "merge-multiple": true,
+            "path": "${{ runner.temp }}/execution-native-archives"
+          }
+        },
+        {
+          "name": "Assemble same-ref native runtime assets",
+          "if": "needs.resolve-runtime-input.outputs.needs_assets == 'true'",
+          "shell": "bash",
+          "run": "node scripts/build/assemble-execution-distribution-assets.mjs \\\n  --source \"$RUNNER_TEMP/execution-native-archives\" \\\n  --output \"$RUNNER_TEMP/execution-native-platform\" \\\n  --input-sha \"${{ needs.resolve-runtime-input.outputs.input_ref }}\"\necho \"DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$RUNNER_TEMP/execution-native-platform\" >> \"$GITHUB_ENV\"\n"
+        },
+        {
+          "name": "Verify release input",
+          "shell": "bash",
+          "run": "set -euo pipefail\nif [[ -f scripts/release/release-preflight.mjs ]]; then\n  npm run release:verify -- --version \"${{ steps.release.outputs.version }}\"\nelse\n  echo \"Legacy release ref does not contain release:verify; retaining its existing artifact-validation path.\"\nfi\n"
+        },
+        {
+          "name": "Detect existing GitHub Release assets",
+          "id": "existing_assets",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ steps.release.outputs.final_tag }}\"\nmanifest_name=\"$(basename \"${{ steps.release.outputs.manifest_path }}\")\"\nmain_name=\"$(basename \"${{ steps.release.outputs.main_vsix }}\")\"\nnotifier_name=\"$(basename \"${{ steps.release.outputs.notifier_vsix }}\")\"\nrelease_json=\"$(mktemp)\"\nassets_file=\"$(mktemp)\"\napi_error=\"$(mktemp)\"\n\nif gh api \"repos/{owner}/{repo}/releases/tags/$final_tag\" > \"$release_json\" 2> \"$api_error\"; then\n  node -e '\n    const fs = require(\"fs\");\n    const release = JSON.parse(fs.readFileSync(process.argv[1], \"utf8\"));\n    for (const asset of release.assets || []) {\n      console.log(asset.name);\n    }\n  ' \"$release_json\" > \"$assets_file\"\n\n  missing=()\n  for name in \"$manifest_name\" \"$main_name\" \"$notifier_name\"; do\n    if ! grep -Fxq \"$name\" \"$assets_file\"; then\n      missing+=(\"$name\")\n    fi\n  done\n\n  if (( ${#missing[@]} > 0 )); then\n    echo \"GitHub Release $final_tag exists but required assets are missing: ${missing[*]}\" >&2\n    echo \"Refusing to repackage or clobber release assets for an existing release. Repair or delete the incomplete release assets manually, then rerun.\" >&2\n    exit 1\n  fi\n\n  echo \"GitHub Release $final_tag already has the expected VSIX and manifest assets; reusing them for this rerun.\"\n  echo \"mode=reuse\" >> \"$GITHUB_OUTPUT\"\n  exit 0\nfi\n\nif grep -q 'HTTP 404' \"$api_error\"; then\n  echo \"GitHub Release $final_tag was not found; packaging a new VSIX batch.\"\n  echo \"mode=package\" >> \"$GITHUB_OUTPUT\"\n  exit 0\nfi\n\ncat \"$api_error\" >&2\necho \"Unable to determine whether GitHub Release $final_tag already exists; refusing to package a new batch.\" >&2\nexit 1\n"
+        },
+        {
+          "name": "Download existing GitHub Release assets",
+          "if": "steps.existing_assets.outputs.mode == 'reuse'",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ steps.release.outputs.final_tag }}\"\nmanifest_path=\"${{ steps.release.outputs.manifest_path }}\"\nmain_vsix=\"${{ steps.release.outputs.main_vsix }}\"\nnotifier_vsix=\"${{ steps.release.outputs.notifier_vsix }}\"\nmanifest_name=\"$(basename \"$manifest_path\")\"\nmain_name=\"$(basename \"$main_vsix\")\"\nnotifier_name=\"$(basename \"$notifier_vsix\")\"\ntmpdir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$tmpdir\"' EXIT\n\ngh release download \"$final_tag\" \\\n  --pattern \"$manifest_name\" \\\n  --pattern \"$main_name\" \\\n  --pattern \"$notifier_name\" \\\n  --dir \"$tmpdir\"\n\ntest -s \"$tmpdir/$manifest_name\"\ntest -s \"$tmpdir/$main_name\"\ntest -s \"$tmpdir/$notifier_name\"\n\nmkdir -p \"$(dirname \"$manifest_path\")\" \"$(dirname \"$main_vsix\")\" \"$(dirname \"$notifier_vsix\")\"\nmv \"$tmpdir/$manifest_name\" \"$manifest_path\"\nmv \"$tmpdir/$main_name\" \"$main_vsix\"\nmv \"$tmpdir/$notifier_name\" \"$notifier_vsix\"\n"
+        },
+        {
+          "name": "Validate existing GitHub Release assets",
+          "id": "validate_existing_assets",
+          "if": "steps.existing_assets.outputs.mode == 'reuse'",
+          "run": "npm run release:publish-tag -- --trigger-tag \"$TRIGGER_TAG\" --skip-package --package-only"
+        },
+        {
+          "name": "Package release artifacts",
+          "if": "steps.existing_assets.outputs.mode == 'package'",
+          "run": "npm run release:publish-tag -- --trigger-tag \"$TRIGGER_TAG\" --package-only"
+        },
+        {
+          "name": "Create final release tag",
+          "id": "final_tag",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ steps.release.outputs.final_tag }}\"\nrelease_ref=\"${{ steps.ref.outputs.release_ref }}\"\ngit fetch origin --tags\n\nlocal_ref=\"$(git rev-parse --verify --quiet \"$final_tag^{}\" 2>/dev/null || true)\"\nif [[ -n \"$local_ref\" && \"$local_ref\" != \"$release_ref\" ]]; then\n  echo \"Local final tag $final_tag points to $local_ref, expected $release_ref.\" >&2\n  exit 1\nfi\n\nremote_ref=\"$(git ls-remote --tags origin \"refs/tags/$final_tag\" | awk '{print $1}')\"\nif [[ -n \"$remote_ref\" && \"$remote_ref\" != \"$release_ref\" ]]; then\n  echo \"Remote final tag $final_tag points to $remote_ref, expected $release_ref.\" >&2\n  exit 1\nfi\n\nif [[ -z \"$local_ref\" ]]; then\n  git tag \"$final_tag\" \"$release_ref\"\nfi\nif [[ -z \"$remote_ref\" ]]; then\n  git push origin \"$final_tag\"\nfi\n"
+        },
+        {
+          "name": "Record final release tag in manifest",
+          "shell": "bash",
+          "run": "set -euo pipefail\nmanifest_path=\"${{ steps.release.outputs.manifest_path }}\"\nnode -e '\n  const fs = require(\"fs\");\n  const manifestPath = process.argv[1];\n  const manifest = JSON.parse(fs.readFileSync(manifestPath, \"utf8\"));\n  manifest.tags = {\n    ...(manifest.tags || {}),\n    finalTag: manifest.finalTag,\n    finalTagStatus: \"pushed\"\n  };\n  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\\n`);\n' \"$manifest_path\"\n"
+        },
+        {
+          "name": "Write GitHub release notes",
+          "shell": "bash",
+          "run": "set -euo pipefail\nnode scripts/release/write-github-release-notes.mjs \\\n  --version \"${{ steps.release.outputs.version }}\" \\\n  --manifest \"${{ steps.release.outputs.manifest_path }}\" \\\n  --output release-artifacts/github-release-notes.md\n"
+        },
+        {
+          "name": "Create or update GitHub Release assets",
+          "id": "release_assets",
+          "if": "steps.existing_assets.outputs.mode == 'package'",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ steps.release.outputs.final_tag }}\"\nrelease_ref=\"${{ steps.ref.outputs.release_ref }}\"\nnotes_file=\"release-artifacts/github-release-notes.md\"\n\nif release_id=\"$(gh api \"repos/{owner}/{repo}/releases/tags/$final_tag\" --jq '.id' 2>/dev/null)\"; then\n  body=\"$(cat \"$notes_file\")\"\n  gh api --method PATCH \"repos/{owner}/{repo}/releases/$release_id\" \\\n    -f target_commitish=\"$release_ref\" \\\n    -f name=\"$final_tag\" \\\n    -f body=\"$body\" \\\n    --silent\nelse\n  gh release create \"$final_tag\" --target \"$release_ref\" --title \"$final_tag\" --notes-file \"$notes_file\"\nfi\n\ngh release upload \"$final_tag\" \\\n  \"${{ steps.release.outputs.manifest_path }}\" \\\n  \"${{ steps.release.outputs.main_vsix }}\" \\\n  \"${{ steps.release.outputs.notifier_vsix }}\" \\\n  --clobber\n"
+        },
+        {
+          "name": "Update GitHub Release notes for reused assets",
+          "if": "steps.existing_assets.outputs.mode == 'reuse'",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ steps.release.outputs.final_tag }}\"\nnotes_file=\"release-artifacts/github-release-notes.md\"\nrelease_id=\"$(gh api \"repos/{owner}/{repo}/releases/tags/$final_tag\" --jq '.id')\"\nbody=\"$(cat \"$notes_file\")\"\ngh api --method PATCH \"repos/{owner}/{repo}/releases/$release_id\" \\\n  -f name=\"$final_tag\" \\\n  -f body=\"$body\" \\\n  --silent\n"
+        },
+        {
+          "name": "Upload prepared release artifacts",
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "prepared-release-${{ github.run_id }}",
+            "path": "release-artifacts/\ndev-session-canvas-*.vsix\nextensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-*.vsix\n",
+            "if-no-files-found": "error",
+            "overwrite": true
+          }
+        }
+      ]
+    },
+    "publish-open-vsx": {
+      "name": "Publish Open VSX",
+      "needs": "prepare",
+      "if": "needs.prepare.result == 'success'",
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 45,
+      "outputs": {
+        "status": "${{ steps.publish.outputs.status || steps.verify_secret.outputs.status || '1' }}"
+      },
+      "env": {
+        "GH_TOKEN": "${{ github.token }}",
+        "OVSX_PAT": "${{ secrets.OVSX_PAT }}",
+        "TRIGGER_TAG": "${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}"
+      },
+      "steps": [
+        {
+          "name": "Checkout release ref",
+          "uses": "actions/checkout@v4",
+          "with": {
+            "fetch-depth": 0,
+            "ref": "refs/tags/${{ env.TRIGGER_TAG }}"
+          }
+        },
+        {
+          "name": "Setup Node.js",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "22",
+            "cache": "npm"
+          }
+        },
+        {
+          "name": "Install dependencies",
+          "run": "npm ci"
+        },
+        {
+          "name": "Download prepared release artifacts",
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "name": "prepared-release-${{ github.run_id }}",
+            "path": "."
+          }
+        },
+        {
+          "name": "Verify Open VSX secret",
+          "id": "verify_secret",
+          "shell": "bash",
+          "run": "if [[ -z \"$OVSX_PAT\" ]]; then\n  echo \"OVSX_PAT secret is required.\"\n  echo \"status=1\" >> \"$GITHUB_OUTPUT\"\n  exit 0\nfi\necho \"status=0\" >> \"$GITHUB_OUTPUT\"\n"
+        },
+        {
+          "name": "Validate release artifacts",
+          "if": "steps.verify_secret.outputs.status == '0'",
+          "run": "npm run release:publish-tag -- --trigger-tag \"$TRIGGER_TAG\" --skip-package --package-only"
+        },
+        {
+          "name": "Publish and verify Open VSX",
+          "id": "publish",
+          "if": "steps.verify_secret.outputs.status == '0'",
+          "shell": "bash",
+          "run": "set +e\nnpm run release:publish-tag -- --trigger-tag \"$TRIGGER_TAG\" --skip-package --target open-vsx --no-create-final-tag\nstatus=\"$?\"\nset -e\necho \"status=$status\" >> \"$GITHUB_OUTPUT\"\n"
+        },
+        {
+          "name": "Upload Open VSX result manifest",
+          "if": "always()",
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "marketplace-result-open-vsx-${{ github.run_id }}",
+            "path": "release-artifacts/",
+            "if-no-files-found": "warn",
+            "overwrite": true
+          }
+        },
+        {
+          "name": "Fail Open VSX job when publish failed",
+          "if": "steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'",
+          "run": "echo \"Open VSX publish or verification failed. Result manifest was uploaded for finalize.\"\nexit 1\n"
+        }
+      ]
+    },
+    "publish-visual-studio": {
+      "name": "Publish Visual Studio Marketplace",
+      "needs": "prepare",
+      "if": "needs.prepare.result == 'success'",
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 45,
+      "outputs": {
+        "status": "${{ steps.publish.outputs.status || steps.verify_secret.outputs.status || '1' }}"
+      },
+      "env": {
+        "GH_TOKEN": "${{ github.token }}",
+        "VSCE_PAT": "${{ secrets.VSCE_PAT }}",
+        "TRIGGER_TAG": "${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}"
+      },
+      "steps": [
+        {
+          "name": "Checkout release ref",
+          "uses": "actions/checkout@v4",
+          "with": {
+            "fetch-depth": 0,
+            "ref": "refs/tags/${{ env.TRIGGER_TAG }}"
+          }
+        },
+        {
+          "name": "Setup Node.js",
+          "uses": "actions/setup-node@v4",
+          "with": {
+            "node-version": "22",
+            "cache": "npm"
+          }
+        },
+        {
+          "name": "Install dependencies",
+          "run": "npm ci"
+        },
+        {
+          "name": "Download prepared release artifacts",
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "name": "prepared-release-${{ github.run_id }}",
+            "path": "."
+          }
+        },
+        {
+          "name": "Verify Visual Studio Marketplace secret",
+          "id": "verify_secret",
+          "shell": "bash",
+          "run": "if [[ -z \"$VSCE_PAT\" ]]; then\n  echo \"VSCE_PAT secret is required.\"\n  echo \"status=1\" >> \"$GITHUB_OUTPUT\"\n  exit 0\nfi\necho \"status=0\" >> \"$GITHUB_OUTPUT\"\n"
+        },
+        {
+          "name": "Validate release artifacts",
+          "if": "steps.verify_secret.outputs.status == '0'",
+          "run": "npm run release:publish-tag -- --trigger-tag \"$TRIGGER_TAG\" --skip-package --package-only"
+        },
+        {
+          "name": "Publish and verify Visual Studio Marketplace",
+          "id": "publish",
+          "if": "steps.verify_secret.outputs.status == '0'",
+          "shell": "bash",
+          "run": "set +e\nnpm run release:publish-tag -- --trigger-tag \"$TRIGGER_TAG\" --skip-package --target visual-studio --no-create-final-tag\nstatus=\"$?\"\nset -e\necho \"status=$status\" >> \"$GITHUB_OUTPUT\"\n"
+        },
+        {
+          "name": "Upload Visual Studio Marketplace result manifest",
+          "if": "always()",
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "marketplace-result-visual-studio-${{ github.run_id }}",
+            "path": "release-artifacts/",
+            "if-no-files-found": "warn",
+            "overwrite": true
+          }
+        },
+        {
+          "name": "Record Visual Studio Marketplace deferred status",
+          "if": "steps.publish.outputs.status != '0' || steps.verify_secret.outputs.status != '0'",
+          "run": "echo \"Visual Studio Marketplace publish or verification did not complete. Result manifest was uploaded for finalize; this channel is currently deferred and does not block GitHub Release Assets plus Open VSX completion.\"\n"
+        }
+      ]
+    },
+    "finalize": {
+      "name": "Finalize Release State",
+      "needs": [
+        "prepare",
+        "publish-open-vsx",
+        "publish-visual-studio"
+      ],
+      "if": "always() && needs.prepare.result == 'success'",
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 20,
+      "env": {
+        "GH_TOKEN": "${{ github.token }}",
+        "TRIGGER_TAG": "${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}"
+      },
+      "steps": [
+        {
+          "name": "Checkout release ref",
+          "uses": "actions/checkout@v4",
+          "with": {
+            "fetch-depth": 0,
+            "ref": "refs/tags/${{ env.TRIGGER_TAG }}"
+          }
+        },
+        {
+          "name": "Download prepared release artifacts",
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "name": "prepared-release-${{ github.run_id }}",
+            "path": "."
+          }
+        },
+        {
+          "name": "Download Open VSX result manifest",
+          "continue-on-error": true,
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "name": "marketplace-result-open-vsx-${{ github.run_id }}",
+            "path": "marketplace-results/open-vsx"
+          }
+        },
+        {
+          "name": "Download Visual Studio Marketplace result manifest",
+          "continue-on-error": true,
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "name": "marketplace-result-visual-studio-${{ github.run_id }}",
+            "path": "marketplace-results/visual-studio"
+          }
+        },
+        {
+          "name": "Merge marketplace manifests",
+          "id": "merge",
+          "shell": "bash",
+          "run": "set -euo pipefail\nversion=\"${{ needs.prepare.outputs.version }}\"\nmanifest_path=\"${{ needs.prepare.outputs.manifest_path }}\"\nopen_manifest=\"$(find marketplace-results/open-vsx -type f -name \"release-manifest-$version.json\" -print -quit 2>/dev/null || true)\"\nvisual_manifest=\"$(find marketplace-results/visual-studio -type f -name \"release-manifest-$version.json\" -print -quit 2>/dev/null || true)\"\nnode -e '\n  const fs = require(\"fs\");\n  const [manifestPath, openManifestPath, visualManifestPath] = process.argv.slice(1);\n  const manifest = JSON.parse(fs.readFileSync(manifestPath, \"utf8\"));\n  for (const [key, filePath] of [[\"openVsx\", openManifestPath], [\"visualStudio\", visualManifestPath]]) {\n    if (!filePath || !fs.existsSync(filePath)) {\n      continue;\n    }\n    const partial = JSON.parse(fs.readFileSync(filePath, \"utf8\"));\n    if (partial.marketplaces?.[key]) {\n      manifest.marketplaces = manifest.marketplaces || {};\n      manifest.marketplaces[key] = partial.marketplaces[key];\n    }\n  }\n  const targetComplete = (key) => {\n    const entries = manifest.marketplaces?.[key] || {};\n    return [\"main\", \"notifier\"].every((extension) => [\"verified\", \"already-published\"].includes(entries[extension]?.status));\n  };\n  const openComplete = targetComplete(\"openVsx\");\n  const visualComplete = targetComplete(\"visualStudio\");\n  const marketplaceComplete = openComplete && visualComplete;\n  const releaseComplete = openComplete;\n  manifest.status = releaseComplete\n    ? marketplaceComplete\n      ? \"complete\"\n      : \"complete-with-deferred-visual-studio\"\n    : \"publish-failed\";\n  manifest.selectedTargets = [\"visual-studio\", \"open-vsx\"];\n  manifest.options = {\n    ...(manifest.options || {}),\n    target: \"all\",\n    requiredCompletionTargets: [\"github-release-assets\", \"open-vsx\"],\n    visualStudioBlocking: false\n  };\n  manifest.releaseCompletion = {\n    marketplaceComplete,\n    openVsxComplete: openComplete,\n    requiredTargets: [\"github-release-assets\", \"open-vsx\"],\n    visualStudioBlocking: false,\n    visualStudioComplete: visualComplete\n  };\n  manifest.githubRelease = {\n    ...(manifest.githubRelease || {}),\n    assets: (manifest.artifacts || []).map((artifact) => artifact.path),\n    finalTag: manifest.finalTag,\n    releaseRef: manifest.releaseRef,\n    status: \"assets-uploaded\",\n    uploadedAt: new Date().toISOString()\n  };\n  manifest.tags = {\n    ...(manifest.tags || {}),\n    finalTag: manifest.finalTag,\n    finalTagStatus: \"pushed\"\n  };\n  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\\n`);\n  if (process.env.GITHUB_OUTPUT) {\n    fs.appendFileSync(\n      process.env.GITHUB_OUTPUT,\n      `open_vsx_complete=${openComplete}\\nvisual_studio_complete=${visualComplete}\\nmarketplace_complete=${marketplaceComplete}\\nrelease_complete=${releaseComplete}\\n`\n    );\n  }\n' \"$manifest_path\" \"$open_manifest\" \"$visual_manifest\"\n"
+        },
+        {
+          "name": "Update GitHub Release manifest and notes",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ needs.prepare.outputs.final_tag }}\"\nmanifest_path=\"${{ needs.prepare.outputs.manifest_path }}\"\nnode scripts/release/write-github-release-notes.mjs \\\n  --version \"${{ needs.prepare.outputs.version }}\" \\\n  --manifest \"$manifest_path\" \\\n  --output release-artifacts/github-release-notes.md\nrelease_id=\"$(gh api \"repos/{owner}/{repo}/releases/tags/$final_tag\" --jq \".id\")\"\nbody=\"$(cat release-artifacts/github-release-notes.md)\"\ngh api --method PATCH \"repos/{owner}/{repo}/releases/$release_id\" \\\n  -f name=\"$final_tag\" \\\n  -f body=\"$body\" \\\n  --silent\ngh release upload \"$final_tag\" \"$manifest_path\" --clobber\n"
+        },
+        {
+          "name": "Delete temporary publish tag",
+          "if": "steps.merge.outputs.release_complete == 'true'",
+          "shell": "bash",
+          "run": "set -euo pipefail\nfinal_tag=\"${{ needs.prepare.outputs.final_tag }}\"\nrelease_ref=\"${{ needs.prepare.outputs.release_ref }}\"\nmanifest_path=\"${{ needs.prepare.outputs.manifest_path }}\"\ngit fetch origin --tags\nfinal_ref=\"$(git rev-parse \"$final_tag^{}\")\"\ntrigger_ref=\"$(git rev-parse \"$TRIGGER_TAG^{}\")\"\n\nif [[ \"$final_ref\" != \"$release_ref\" || \"$trigger_ref\" != \"$release_ref\" ]]; then\n  echo \"Ref mismatch; refusing to delete $TRIGGER_TAG.\" >&2\n  echo \"release_ref=$release_ref final_ref=$final_ref trigger_ref=$trigger_ref\" >&2\n  exit 1\nfi\n\ngit push origin \":refs/tags/$TRIGGER_TAG\"\ngit tag -d \"$TRIGGER_TAG\" || true\n\nnode -e '\n  const fs = require(\"fs\");\n  const manifestPath = process.argv[1];\n  const manifest = JSON.parse(fs.readFileSync(manifestPath, \"utf8\"));\n  manifest.tags = {\n    ...(manifest.tags || {}),\n    finalTag: manifest.finalTag,\n    finalTagStatus: \"pushed\",\n    triggerTagStatus: \"deleted\"\n  };\n  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\\n`);\n' \"$manifest_path\"\nnode scripts/release/write-github-release-notes.mjs \\\n  --version \"${{ needs.prepare.outputs.version }}\" \\\n  --manifest \"$manifest_path\" \\\n  --output release-artifacts/github-release-notes.md\nrelease_id=\"$(gh api \"repos/{owner}/{repo}/releases/tags/$final_tag\" --jq \".id\")\"\nbody=\"$(cat release-artifacts/github-release-notes.md)\"\ngh api --method PATCH \"repos/{owner}/{repo}/releases/$release_id\" \\\n  -f name=\"$final_tag\" \\\n  -f body=\"$body\" \\\n  --silent\ngh release upload \"$final_tag\" \"$manifest_path\" --clobber\n"
+        },
+        {
+          "name": "Upload final workflow artifacts",
+          "if": "always()",
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "marketplace-release-${{ github.run_id }}",
+            "path": "release-artifacts/\ndev-session-canvas-*.vsix\nextensions/vscode/dev-session-canvas-notifier/dev-session-canvas-notifier-*.vsix\nmarketplace-results/\n",
+            "if-no-files-found": "warn",
+            "overwrite": true
+          }
+        },
+        {
+          "name": "Fail when marketplace publish failed",
+          "if": "steps.merge.outputs.release_complete != 'true'",
+          "run": "echo \"Open VSX publish or verification failed. GitHub Release assets and notes were uploaded for manual installation, and the temporary publish tag was kept for rerun. Visual Studio Marketplace is deferred and is not part of the current completion gate.\"\nexit 1\n"
+        }
+      ]
+    }
+  }
+}

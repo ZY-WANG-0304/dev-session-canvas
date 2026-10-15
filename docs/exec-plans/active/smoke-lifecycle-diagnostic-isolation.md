@@ -10,6 +10,7 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 进度
 
 
+- [x] (2026-10-15) 用户确认六平台原生CI并追加发布workflow六job；补逐步说明、九张SVG/PNG及原YAML48步/六平台代码映射，严格布局与视觉检查通过；纠正仅Windows ARM64最小宿主为Electron。
 - [x] (2026-10-15) 完成发布门禁完整流程审查：7项问题/边界、原脚本过滤传递受控核对、GitHub策略核准、4项现有门禁回归通过；三张SVG/PNG校验和视觉检查完成，仅交付审查不改门禁行为。
 - [x] (2026-10-15) 从最新 origin/main 6e708c6b 核对既有调查提交，创建 smoke-lifecycle-diagnostic-isolation。
 - [x] (2026-10-15) 核对 ready、bootstrap、目录发布、焦点重放和读者清理依赖，选择独立诊断对象。
@@ -56,6 +57,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 决策记录
 
 
+2026-10-15 用户反馈总览图过粗，要求六个CI内部执行/验证。用户已明确选择runtime-execution-assets.yml六平台matrix，并追加要求publish六job一并列出。对原builder、三平台candidate builder、native load checker、summary/upload逐层读取；把执行动作与校验分开标色，准确展示Linux最小Node容器构建、macOS deployment target、Windows ARM64最小Electron和同binary双加载。交付图/明细文档继续同审查目录，不更改CI或产品，不运行跨平台验收。校验JSON/代码映射及SVG/PNG，保护原总览图与既有修复计划。
+
 2026-10-15 门禁审查采用独立交付边界：以 origin/main6e708c6b、PR327发布材料8313fc72与当前修复dc165186为输入，核对触发、固定SHA、六资产、验证顺序、覆盖、超时、取证、合并约束与渠道恢复。使用只读GitHub API、原脚本受控调用记录及静态调用图，不重跑完整门禁或把模拟子进程成功当验收通过。审查报告写入docs/design-docs/release-gate-flow-audit.md，SVG/PNG及生成输入放docs/references/release-gate-flow-audit/，随既有修复范围保留，不新建PR；生产修复仍待独立继续实施。
 
 审查验收要求每项确定问题具有代码/API证据，明确哪些是当前自动CI、哪些是人工步骤或既有覆盖限制。流程图必须画出draft/普通PR跳过、同ref/run资产、PR/tag双阶段verify和首败中断，不把建议的失败上传或required check画成现有能力。完成JSON/SVG几何及布局校验、PNG导出与视觉检查后交付报告。执行工具为本机Node22、Python和fireworks-tech-graph技能，不增加项目运行依赖；图生成器读取已登记JSON，重复渲染覆盖本次自有文件即可。
@@ -85,6 +88,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 工作分支基于 main6e708c6b，已有调查提交1522579e。每次推送前 fetch/rebase；已推送分支重写使用固定 force-with-lease。临时 CI 证据保存 run/input SHA、六资产 manifest 与第一次失败日志。根磁盘无空余，所有构建、日志和临时 worktree 放 devshm，不清理他人文件。根因原自然时序和前/期间消息对照位于 docs/references/smoke-restricted-ready-root-cause/，旧证据保留历史语义。
 
 ## 结果与复盘
+
+2026-10-15 细化交付：job-details.md补齐六平台的逐步构建、静态校验、真实require、有限归档与always边界，以及发布resolve/native/prepare/两个渠道/finalize的实际条件、原YAML步骤、ref/VSIX验证和deferred/删tag策略。新增九图全部校验通过、中文字体与箭头逐图视觉检查，图宽2400；原YAML48步、六target及源码hash/链接已核对。没有修改CI、生产实现或PR327，没有执行发布或新的完整门禁。当前恢复竞态修复和最终正式门禁仍待后续收口。
 
 
 2026-10-15 门禁审查交付：报告release-gate-flow-audit.md与references/release-gate-flow-audit三张图/证据已生成。确认main没有protection/ruleset、trusted过滤可缩小19/8为1/1且完整编排正常返回、正式verify失败没有完整上传，notifier补充与普通PR功能回归不在默认链。普通Host无进程deadline与stable宿主漂移按确定控制缺口记录，未宣称新挂死/上游bug。四项门禁编排/分发回归及JSON/SVG/PNG验证通过；未运行新的完整发布门禁，没有修改生产实现、workflow或远端策略。审查范围已完成，原生恢复竞态修复及PR327最终门禁仍未完成，主计划保持active；待办登记tech-debt-tracker。

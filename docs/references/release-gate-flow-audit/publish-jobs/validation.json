@@ -1,0 +1,392 @@
+{
+  "resolve-native": {
+    "validate": {
+      "edges": 7,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 8,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/publish-jobs/resolve-native.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/publish-jobs/resolve-native.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 211832,
+      "fallback_notes": [],
+      "height": 1736,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/publish-jobs/resolve-native.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "channels": {
+    "validate": {
+      "edges": 16,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 20,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/publish-jobs/channels.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/publish-jobs/channels.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 234689,
+      "fallback_notes": [],
+      "height": 2175,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/publish-jobs/channels.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "finalize": {
+    "validate": {
+      "edges": 11,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 11,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/publish-jobs/finalize.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/publish-jobs/finalize.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 293891,
+      "fallback_notes": [],
+      "height": 2635,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/publish-jobs/finalize.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "prepare-validation": {
+    "validate": {
+      "edges": 9,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 11,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/publish-jobs/prepare-validation.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/publish-jobs/prepare-validation.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 257682,
+      "fallback_notes": [],
+      "height": 2400,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/publish-jobs/prepare-validation.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "prepare-artifacts": {
+    "validate": {
+      "edges": 12,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 17,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/publish-jobs/prepare-artifacts.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/publish-jobs/prepare-artifacts.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 260622,
+      "fallback_notes": [],
+      "height": 2225,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/publish-jobs/prepare-artifacts.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  }
+}

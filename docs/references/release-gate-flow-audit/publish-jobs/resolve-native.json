@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1700,
+  "height": 1230,
+  "title": "发布 job 01–02：输入解析 → 六平台资产",
+  "subtitle": "resolve-runtime-input → native-assets；当前 0.26.1 路径需要原生资产",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "kind": "rect",
+      "x": 60,
+      "y": 150,
+      "width": 850,
+      "height": 100,
+      "label": "01  resolve-runtime-input：ubuntu-latest",
+      "sublabel": "push publish/v*（非删除）或 workflow_dispatch；contents:read",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "checkout",
+      "kind": "rect",
+      "x": 60,
+      "y": 310,
+      "width": 850,
+      "height": 100,
+      "label": "checkout 临时 tag → 输出 input_ref=HEAD SHA",
+      "sublabel": "persist-credentials=false；此 job 尚不运行测试",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "detect",
+      "kind": "rect",
+      "x": 60,
+      "y": 470,
+      "width": 850,
+      "height": 100,
+      "label": "按装配脚本是否存在输出 needs_assets",
+      "sublabel": "存在 assemble-execution-distribution-assets.mjs → true",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "skip",
+      "kind": "rect",
+      "x": 1110,
+      "y": 470,
+      "width": 530,
+      "height": 100,
+      "label": "历史 ref：native-assets 跳过",
+      "sublabel": "脚本不存在时 needs_assets=false",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "native",
+      "kind": "rect",
+      "x": 60,
+      "y": 630,
+      "width": 850,
+      "height": 100,
+      "label": "02  native-assets：调用 reusable workflow",
+      "sublabel": "input_ref 固定传递；展开 Linux/macOS/Windows × x64/arm64",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "load",
+      "kind": "rect",
+      "x": 60,
+      "y": 790,
+      "width": 850,
+      "height": 100,
+      "label": "六 job 各自构建 → 双宿主加载 → tar/summary",
+      "sublabel": "每个20分钟；fail-fast=false；逐步执行见六平台明细图",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "ready",
+      "kind": "rect",
+      "x": 60,
+      "y": 950,
+      "width": 850,
+      "height": 100,
+      "label": "成功资产提供给 prepare 同 run 下载",
+      "sublabel": "native成功或历史skip，且resolve成功，prepare才准入",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "fail",
+      "kind": "rect",
+      "x": 1110,
+      "y": 790,
+      "width": 530,
+      "height": 100,
+      "label": "resolve 或任一资产失败",
+      "sublabel": "prepare 不准入；其他平台继续执行",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "start",
+      "target": "checkout",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "checkout",
+      "target": "detect",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "detect",
+      "target": "skip",
+      "label": "false",
+      "source_port": "right",
+      "target_port": "left",
+      "color": "#dc2626"
+    },
+    {
+      "source": "detect",
+      "target": "native",
+      "label": "true",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "native",
+      "target": "load",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "load",
+      "target": "ready",
+      "label": "全成功",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#16a34a"
+    },
+    {
+      "source": "load",
+      "target": "fail",
+      "label": "失败",
+      "source_port": "right",
+      "target_port": "left",
+      "color": "#dc2626"
+    }
+  ]
+}

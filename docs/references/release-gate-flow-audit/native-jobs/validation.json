@@ -1,0 +1,314 @@
+{
+  "linux-jobs": {
+    "validate": {
+      "edges": 28,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 34,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/native-jobs/linux-jobs.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/native-jobs/linux-jobs.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 399092,
+      "fallback_notes": [],
+      "height": 3175,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/native-jobs/linux-jobs.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "macos-jobs": {
+    "validate": {
+      "edges": 30,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 36,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/native-jobs/macos-jobs.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/native-jobs/macos-jobs.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 488819,
+      "fallback_notes": [],
+      "height": 3342,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/native-jobs/macos-jobs.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "windows-jobs": {
+    "validate": {
+      "edges": 34,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 40,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/native-jobs/windows-jobs.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/native-jobs/windows-jobs.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 521164,
+      "fallback_notes": [],
+      "height": 3678,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/native-jobs/windows-jobs.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "native-load-detail": {
+    "validate": {
+      "edges": 7,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 8,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/native-jobs/native-load-detail.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/native-jobs/native-load-detail.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 260444,
+      "fallback_notes": [],
+      "height": 2743,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/native-jobs/native-load-detail.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  }
+}

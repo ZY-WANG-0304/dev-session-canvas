@@ -1,0 +1,20 @@
+{
+  "sourceHead": "84624eaf6e0bdb883fdf215c1d1de5138c930789",
+  "workflow": ".github/workflows/publish-marketplace-release.yml",
+  "sha256": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c",
+  "helperSha256": {
+    "scripts/release/publish-tag-release.mjs": "da122f3cfba99d2e8f9b2a67c53baf3aea43f85ad48336d067bfe117f703d591",
+    "scripts/release/write-github-release-notes.mjs": "9e6dc259bf9e3f07a12ed80f280e4c0bc4c685352a2fb757558fda282f784c10",
+    "scripts/release/release-preflight.mjs": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802",
+    "scripts/build/assemble-execution-distribution-assets.mjs": "0b17fdaef0a1bf9f50edb596024f0593a874448cbb902deda9ed7b99cd64da7b"
+  },
+  "scope": "原代码流程，不是发布执行结果",
+  "jobOrder": [
+    "resolve-runtime-input",
+    "native-assets",
+    "prepare",
+    "publish-open-vsx",
+    "publish-visual-studio",
+    "finalize"
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-15",
+  "tool": "view_image",
+  "readingMode": "最终PNG；平台长图以原尺寸打开阅读",
+  "files": {
+    "native-jobs/linux-jobs.png": {
+      "sha256": "c2e1a7c98b7161ca2535eb58ee590a6f91bae678b02032eff67868730e3fea16",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "native-jobs/macos-jobs.png": {
+      "sha256": "9e59ef3036b7b334977b85f0470bb4cc06548a95f9c285f8da3ba98db5584981",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "native-jobs/windows-jobs.png": {
+      "sha256": "cfbc2c9da6773c56ed646ae0f43729589b912b41bb5137fe12714955591274e7",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "native-jobs/native-load-detail.png": {
+      "sha256": "86dd4aa004b794782cbdaf837c56273d9c9041dc2a2e365a51212ff85833ee70",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "publish-jobs/resolve-native.png": {
+      "sha256": "4244d0c821af7d92e46421af66f79e79d8a84df24eb45667d5f2ddb7e11e567d",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "publish-jobs/channels.png": {
+      "sha256": "dceb4d005eb54c5c0f30144953a19ec2f56eed718e9c8759e39e3e38613d63ee",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "publish-jobs/finalize.png": {
+      "sha256": "631ee4921a8bc2269d556c2335a2401213571a6ec1a0d5e22fe30cdafb920f59",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "publish-jobs/prepare-validation.png": {
+      "sha256": "16743e2d09a9f61ccfbbe4a371c400bb245afb2cd39e877831f3e996defd80de",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    },
+    "publish-jobs/prepare-artifacts.png": {
+      "sha256": "6c7f655dbd3339bfefa1e185f978483bb32f774616f5412e8728c0e917efac50",
+      "visualCheck": "通过：中文字体、完整文字、箭头方向与颜色、间距、无裁切"
+    }
+  }
+}

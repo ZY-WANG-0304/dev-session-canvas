@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1840,
+  "height": 2020,
+  "title": "发布 job 06：finalize 的汇总与删除条件",
+  "subtitle": "needs prepare + 两渠道；always && prepare成功才运行 · ubuntu-latest，20分钟",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "kind": "rect",
+      "x": 60,
+      "y": 150,
+      "width": 860,
+      "height": 100,
+      "label": "两渠道结束后准入 finalize",
+      "sublabel": "不要求渠道成功；prepare失败则整个job跳过",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "input",
+      "kind": "rect",
+      "x": 60,
+      "y": 320,
+      "width": 860,
+      "height": 100,
+      "label": "checkout 临时 tag，下载prepared产物",
+      "sublabel": "这里不setup Node/npm ci；使用runner工具与已准备manifest",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "results",
+      "kind": "rect",
+      "x": 60,
+      "y": 490,
+      "width": 860,
+      "height": 100,
+      "label": "分别下载两个渠道的结果 manifest",
+      "sublabel": "continue-on-error=true；缺失结果可继续汇总",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "merge",
+      "kind": "rect",
+      "x": 60,
+      "y": 660,
+      "width": 860,
+      "height": 100,
+      "label": "把两个 marketplace 分支合并到主 manifest",
+      "sublabel": "缺失分支不覆盖原值；已保存verified信息仍可用于重跑",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "complete",
+      "kind": "rect",
+      "x": 60,
+      "y": 830,
+      "width": 860,
+      "height": 100,
+      "label": "核对 main/notifier 的Open VSX状态是否完成",
+      "sublabel": "每项为verified或already-published；VS状态独立记录",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "release",
+      "kind": "rect",
+      "x": 60,
+      "y": 1000,
+      "width": 860,
+      "height": 100,
+      "label": "更新 GitHub Release notes 和汇总manifest",
+      "sublabel": "complete / complete-with-deferred-visual-studio / publish-failed",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "refs",
+      "kind": "rect",
+      "x": 60,
+      "y": 1170,
+      "width": 860,
+      "height": 100,
+      "label": "Open VSX完成：核对最终 / 临时 tag SHA",
+      "sublabel": "两tag必须等于prepare.release_ref，否则拒绝删除",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "retain",
+      "kind": "rect",
+      "x": 1080,
+      "y": 1170,
+      "width": 700,
+      "height": 100,
+      "label": "Open VSX未完成：跳过删tag",
+      "sublabel": "保持临时tag用于重跑；最终状态publish-failed",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "delete",
+      "kind": "rect",
+      "x": 60,
+      "y": 1340,
+      "width": 860,
+      "height": 100,
+      "label": "删除远端临时 publish tag，再删本地tag",
+      "sublabel": "之后记录triggerTagStatus=deleted，更新notes/manifest",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "artifacts",
+      "kind": "rect",
+      "x": 60,
+      "y": 1510,
+      "width": 860,
+      "height": 100,
+      "label": "always：上传最终工件",
+      "sublabel": "marketplace-release-<run_id>；manifest、两VSIX、渠道结果",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "result",
+      "kind": "rect",
+      "x": 60,
+      "y": 1680,
+      "width": 860,
+      "height": 100,
+      "label": "完成条件满足则成功；未完成则exit1",
+      "sublabel": "已发布部分不会自动撤回；prepare失败不会触达该收尾",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "start",
+      "target": "input",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "input",
+      "target": "results",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "results",
+      "target": "merge",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "merge",
+      "target": "complete",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "complete",
+      "target": "release",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "release",
+      "target": "refs",
+      "label": "release_complete=true",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "release",
+      "target": "retain",
+      "label": "false",
+      "source_port": "right",
+      "target_port": "top",
+      "color": "#dc2626"
+    },
+    {
+      "source": "refs",
+      "target": "delete",
+      "label": "SHA一致",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "delete",
+      "target": "artifacts",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "retain",
+      "target": "artifacts",
+      "label": "",
+      "source_port": "left",
+      "target_port": "right",
+      "color": "#dc2626"
+    },
+    {
+      "source": "artifacts",
+      "target": "result",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    }
+  ]
+}

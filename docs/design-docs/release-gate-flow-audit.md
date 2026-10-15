@@ -39,6 +39,8 @@ PR327 的发布材料没有被写到当前修复源码，主工作区用户的 `
 | 02 | [完整验证内部](../references/release-gate-flow-audit/verify-detail.png) | [SVG](../references/release-gate-flow-audit/verify-detail.svg) | 串行测试、19/8 场景、旧代首败、覆盖与取证边界 |
 | 03 | [最终 tag 与发布](../references/release-gate-flow-audit/tag-publish.png) | [SVG](../references/release-gate-flow-audit/tag-publish.svg) | tag 再验、同批产物、并行渠道、finalize 与重跑 |
 
+用户要求的逐job执行/验证明细见 [两组CI内部流程说明](../references/release-gate-flow-audit/job-details.md)：六平台各15/16/18步、共同加载检查，以及发布workflow六job的依赖、原YAML步骤、分支条件、失败处理和产物。新增九张可缩放SVG/PNG，`prepare`拆为输入验证与产物交付两图；原生资产job是发布六job中的reusable展开。两组均描述实际代码，没有新增门禁或改变完成条件。
+
 ![发布 PR 的 CI 门禁](../references/release-gate-flow-audit/pr-gate.png)
 
 ## 审查发现
@@ -130,7 +132,7 @@ publish 的渠道子 job 和 finalize 仍 checkout 临时 tag 名称，prepare �
 
 packaged 默认八场景：owned-canvas-reconciliation、local-execution-flow、snapshot-only-manual-recovery、local-surface-cutover、local-pty-robustness、local-preparation-failure、local-links-and-stop、trusted。默认不包含 packaged restricted、legacy、systemd/SSH 等；契约要求全部现有八场景，不等于要求与源码十九场景完全相同。
 
-六平台使用 Linux glibc x64/arm64、macOS x64/arm64、Windows x64/arm64 原生 runner。目标 Node 25.6.0，同一 binary 在最小 Node 16.17.1（Windows 为 Electron 22.3.14）与当前 Node 加载；summary 明确 `nativeLoaded=true, executionApiCalled=false, productValidated=false`。独立 macOS/Windows/真实 Agent/production acceptance workflows 不是发布 DAG 的强制依赖。Linux fake Agent、fake systemd、localhost SSH 不能外推真实 provider、生产 systemd 或全部远端/平台；这是契约已承认的限制，不因本次审查自动增设六平台功能 blocker。
+六平台使用 Linux glibc x64/arm64、macOS x64/arm64、Windows x64/arm64 原生 runner。目标 Node 25.6.0，同一 binary 在最小 Node 16.17.1（仅 Windows ARM64 使用内嵌 Node16.17.1 的 Electron22.3.14）与当前 Node 加载；summary 明确 `nativeLoaded=true, executionApiCalled=false, productValidated=false`。独立 macOS/Windows/真实 Agent/production acceptance workflows 不是发布 DAG 的强制依赖。Linux fake Agent、fake systemd、localhost SSH 不能外推真实 provider、生产 systemd 或全部远端/平台；这是契约已承认的限制，不因本次审查自动增设六平台功能 blocker。
 
 具名 npm scripts 可达性检查还发现 `test:publish-tag-release`、`test:vscode-smoke-runner-env`、runtime root ownership/preparation、startup-profile/namespace 和 execution-native-assets 未进入标准 npm 调用链。发布 workflow 与 native distribution 契约已有其他具名回归，runner env 也在独立平台 workflows 直接调用。可达性证据不等于这些功能完全未测试；建议按风险审计独立回归的接线，不能按名字直接将其全部升级为未覆盖 blocker。
 

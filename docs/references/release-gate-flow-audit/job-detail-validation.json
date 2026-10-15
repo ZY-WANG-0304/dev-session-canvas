@@ -1,0 +1,85 @@
+{
+  "scope": "静态源码、文档与图文件核对；没有运行发布或跨平台产品验收",
+  "checks": {
+    "nativeMapping": {
+      "ok": true,
+      "targets": 6,
+      "stepCounts": [
+        15,
+        15,
+        16,
+        16,
+        18,
+        18
+      ],
+      "existingSourceAnchors": 98,
+      "sourceHashes": 11
+    },
+    "publishMapping": {
+      "ok": true,
+      "jobs": 6,
+      "steps": 48,
+      "reusableCalls": 1,
+      "allConditionsNeedsOutputsCommandsPreserved": true,
+      "helperHashes": 4
+    },
+    "markdownLinks": {
+      "ok": true,
+      "checked": 43
+    },
+    "diagrams": {
+      "ok": true,
+      "count": 9,
+      "pngs": {
+        "native-jobs/linux-jobs": {
+          "width": 2400,
+          "height": 3175,
+          "sha256": "c2e1a7c98b7161ca2535eb58ee590a6f91bae678b02032eff67868730e3fea16"
+        },
+        "native-jobs/macos-jobs": {
+          "width": 2400,
+          "height": 3342,
+          "sha256": "9e59ef3036b7b334977b85f0470bb4cc06548a95f9c285f8da3ba98db5584981"
+        },
+        "native-jobs/windows-jobs": {
+          "width": 2400,
+          "height": 3678,
+          "sha256": "cfbc2c9da6773c56ed646ae0f43729589b912b41bb5137fe12714955591274e7"
+        },
+        "native-jobs/native-load-detail": {
+          "width": 2400,
+          "height": 2743,
+          "sha256": "86dd4aa004b794782cbdaf837c56273d9c9041dc2a2e365a51212ff85833ee70"
+        },
+        "publish-jobs/resolve-native": {
+          "width": 2400,
+          "height": 1736,
+          "sha256": "4244d0c821af7d92e46421af66f79e79d8a84df24eb45667d5f2ddb7e11e567d"
+        },
+        "publish-jobs/channels": {
+          "width": 2400,
+          "height": 2175,
+          "sha256": "dceb4d005eb54c5c0f30144953a19ec2f56eed718e9c8759e39e3e38613d63ee"
+        },
+        "publish-jobs/finalize": {
+          "width": 2400,
+          "height": 2635,
+          "sha256": "631ee4921a8bc2269d556c2335a2401213571a6ec1a0d5e22fe30cdafb920f59"
+        },
+        "publish-jobs/prepare-validation": {
+          "width": 2400,
+          "height": 2400,
+          "sha256": "16743e2d09a9f61ccfbbe4a371c400bb245afb2cd39e877831f3e996defd80de"
+        },
+        "publish-jobs/prepare-artifacts": {
+          "width": 2400,
+          "height": 2225,
+          "sha256": "6c7f655dbd3339bfefa1e185f978483bb32f774616f5412e8728c0e917efac50"
+        }
+      }
+    },
+    "generatorSyntax": {
+      "ok": true
+    }
+  }
+}

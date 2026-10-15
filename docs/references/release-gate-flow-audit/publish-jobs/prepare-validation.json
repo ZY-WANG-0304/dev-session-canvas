@@ -1,0 +1,253 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1920,
+  "height": 1920,
+  "title": "发布 job 03A：prepare 的输入、完整验证与分支选择",
+  "subtitle": "Ubuntu22.04 / Node22 · 整个prepare上限90分钟 · 后半段见03B，两分支只执行其一",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "prep-0",
+      "kind": "rect",
+      "x": 60,
+      "y": 150,
+      "width": 1150,
+      "height": 115,
+      "label": "01  解析 trigger tag、版本与三个产物路径",
+      "sublabel": "^publish/vX.Y.Z$；不匹配直接失败",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "prep-1",
+      "kind": "rect",
+      "x": 60,
+      "y": 335,
+      "width": 1150,
+      "height": 115,
+      "label": "02  checkout resolve 输出SHA → 记录 release_ref",
+      "sublabel": "fetch-depth=0；Node22 → npm ci",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "prep-2",
+      "kind": "rect",
+      "x": 60,
+      "y": 520,
+      "width": 1150,
+      "height": 115,
+      "label": "03  准备完整验证环境",
+      "sublabel": "有preflight脚本：安装Chromium；配置同浏览器缓存和短Host TMP",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "prep-3",
+      "kind": "rect",
+      "x": 60,
+      "y": 705,
+      "width": 1150,
+      "height": 115,
+      "label": "04  下载同run原生资产 → 装配同ref六平台",
+      "sublabel": "needs_assets=true时运行；设置EXECUTION_ASSETS_SET",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "prep-4",
+      "kind": "rect",
+      "x": 60,
+      "y": 890,
+      "width": 1150,
+      "height": 115,
+      "label": "05  装配器核验来源与内容",
+      "sublabel": "输入SHA / 六target / archive hash / 文件名单 / regular file",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "prep-5",
+      "kind": "rect",
+      "x": 60,
+      "y": 1075,
+      "width": 1150,
+      "height": 115,
+      "label": "06  执行 release:verify -- --version X.Y.Z",
+      "sublabel": "静态preflight → npm test → Webview → clean VSIX；历史无脚本则skip",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "prep-6",
+      "kind": "rect",
+      "x": 60,
+      "y": 1260,
+      "width": 1150,
+      "height": 115,
+      "label": "07  查询正式 vX.Y.Z Release 三份资产",
+      "sublabel": "只404视为不存在；已有必须manifest + main VSIX + notifier VSIX齐备",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "verify-fail",
+      "kind": "rect",
+      "x": 1390,
+      "y": 1075,
+      "width": 470,
+      "height": 115,
+      "label": "verify失败：停止prepare",
+      "sublabel": "无always上传；渠道/收尾跳过",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "new",
+      "kind": "rect",
+      "x": 60,
+      "y": 1560,
+      "width": 820,
+      "height": 115,
+      "label": "404：选择新打包分支 → 03B左栏",
+      "sublabel": "notifier→main；生成同批manifest",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "reuse",
+      "kind": "rect",
+      "x": 1040,
+      "y": 1560,
+      "width": 820,
+      "height": 115,
+      "label": "资产齐备：选择复用分支 → 03B右栏",
+      "sublabel": "缺资产 / 非404 API错误：直接失败",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "note",
+      "kind": "rect",
+      "x": 60,
+      "y": 1740,
+      "width": 1800,
+      "height": 80,
+      "label": "普通步骤失败后停止后续步骤；prepare失败不会进入两个渠道或finalize",
+      "sublabel": "图03B仅展开查询成功选择的两个互斥分支；没有重新运行产品验收",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "prep-0",
+      "target": "prep-1",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-1",
+      "target": "prep-2",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-2",
+      "target": "prep-3",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-3",
+      "target": "prep-4",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-4",
+      "target": "prep-5",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-5",
+      "target": "prep-6",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-5",
+      "target": "verify-fail",
+      "label": "失败",
+      "source_port": "right",
+      "target_port": "left",
+      "color": "#dc2626"
+    },
+    {
+      "source": "prep-6",
+      "target": "new",
+      "label": "404",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "prep-6",
+      "target": "reuse",
+      "label": "齐备",
+      "source_port": "right",
+      "target_port": "top",
+      "color": "#16a34a"
+    }
+  ]
+}
