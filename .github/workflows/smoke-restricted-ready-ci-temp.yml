@@ -7,13 +7,19 @@ permissions:
   contents: read
   actions: read
 jobs:
-  original-restricted:
+  stage-restricted:
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2, 3, 4]
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
         with:
           ref: 9198cacbee91fc170b82578e353c16a27f3574b8
+      - name: Extract diagnostic script from temporary workflow commit
+        run: git fetch --depth=1 origin "${{ github.sha }}" && git show "${{ github.sha }}:restricted-ready-probe.py" > restricted-ready-probe.py
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -29,22 +35,27 @@ jobs:
         run: |
           node scripts/build/assemble-execution-distribution-assets.mjs --source archives --output platform --input-sha 9198cacbee91fc170b82578e353c16a27f3574b8
           echo "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=$GITHUB_WORKSPACE/platform" >> "$GITHUB_ENV"
-      - name: Original restricted smoke with unchanged internal deadline
+      - name: Add read-only stage records
+        run: python3 restricted-ready-probe.py
+      - name: Fixed-count fresh-profile restricted observations
         env:
           DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER: restricted
         run: |
           set +e
-          timeout --signal=TERM --kill-after=20s 180s npm run test:smoke > restricted.log 2>&1
-          status=$?
-          echo "$status" > restricted.exit
-          tail -n 18 restricted.log
-          exit "$status"
+          for iteration in 1 2 3 4 5 6; do
+            export DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT="$GITHUB_WORKSPACE/.debug/restricted-stage-${iteration}"
+            timeout --signal=TERM --kill-after=20s 180s npm run test:smoke > "restricted-${iteration}.log" 2>&1
+            status=$?
+            echo "$status" > "restricted-${iteration}.exit"
+            tail -n 8 "restricted-${iteration}.log"
+            if test "$status" -ne 0; then exit "$status"; fi
+          done
       - name: Preserve original restricted evidence
         if: always()
         run: |
-          tar -czf restricted-evidence.tar.gz --ignore-failed-read restricted.log restricted.exit .debug/vscode-smoke/restricted/artifacts .debug/vscode-smoke/restricted/user-data/logs .debug/vscode-smoke/restricted/smoke-host/dist/extension.js .debug/vscode-smoke/restricted/smoke-host/dist/webview.js .debug/vscode-smoke/restricted/smoke-host/dist/webview.css
+          tar -czf restricted-evidence.tar.gz --ignore-failed-read restricted-*.log restricted-*.exit probe-inputs.json .debug/restricted-stage-* .vscode-test/*/resources/app/out/vs/workbench/contrib/webview/browser/pre/index.html .vscode-test/*/resources/app/out/vs/workbench/contrib/webview/browser/pre/service-worker.js
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: original-restricted-${{ github.run_id }}
+          name: stage-restricted-${{ matrix.sample }}-${{ github.run_id }}
           path: restricted-evidence.tar.gz
