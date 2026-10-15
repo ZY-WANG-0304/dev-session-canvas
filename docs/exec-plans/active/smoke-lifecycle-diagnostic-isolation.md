@@ -16,7 +16,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) 隔离与异常清理、10项回归、协议/CLI、类型检查及六资产本地构建通过。
 - [x] (2026-10-15) 组合f8d9ad53六资产、真实原ready三时序及none20秒负例完成；原样完整release:verify已运行并保留首次failure。
 - [ ] 获取首次packaged错误与工件，闭环剩余完整门禁阻塞。
-- [ ] 同步证据与技术债，归档计划，创建单一修复 PR 并核对 CI。
+- [x] (2026-10-15) 同步证据与技术债，创建单一修复PR335；CI通过、最新main为祖先，临时workflow入口已移除。
+- [ ] packaged首败与最终发布门禁收口后归档计划。
 
 ## 正式实现与里程碑
 
@@ -56,3 +57,5 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 2026-10-15 完整组合结果更新：run38681093813 的完整命令04:30:27–04:54:17Z以failure结束，源码trusted/restricted、所有本地重开、systemd、SSHexit/retain、426项Webview已通过；latest日志位于clean-checkout packaged trusted。具体首败待工件上传，不能猜测。另run38683788069两份fallback限时阶段均exit0，此前API日志静默属于取数滞后。完整发布门禁保持阻塞，关联问题继续同修复范围审计。
 
 修复交付状态：实现与根因回归完成，可以独立创建修复PR；本计划保留active，因为packaged首次失败及最终PR327门禁尚未收口。发布验证待办登记技术债，不把单项通过写成完整通过。
+
+PR335 head1a67c717的Resolve release input/Verify release contract通过（无发布契约，六资产明确skip）；修复工作树clean，主工作区WORKFLOW.md保持。临时workflow及probe在79ba3c0f移除并推送，原运行仍保留。
