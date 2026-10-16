@@ -99,6 +99,12 @@ suite成功返回后VS Code测试进程退出；runner监听exit/close并检查�
 
 `assertNoOwnedResizeFailures` 只在trusted及七个local场景检查 `execution/resizeRejected(reason=owned-resize-failed)` 为空；restricted等场景调用此函数会直接跳过。它检查负面诊断，不替代旧代/远端的原进程几何验证；源码与packaged的八个对应场景均接入。
 
+### Agent TUI的待验证覆盖边界（2026-10-17）
+
+用户在审阅01–07时要求先记录这一项，继续检查其他场景。`local-execution-flow`的“回到waiting-input”是Host节点状态断言：fake CLI在burst等命令后打印`> `，扩展按prompt/通知、spinner与静默时间推断状态，包含无近期spinner且静默约1.6秒的兜底。这不是provider报告的回合完成。输出标记则从原执行消息或快照中查找，不要求位于屏幕最后一行，也不证明其为最终回答。
+
+后续真实TUI验收需分开“输入可用”“回答正确呈现”“当前回合完成”：输入区可在任务处理中持续接收输入，回答后可仍有输入区/footer/重绘；网络或工具等待时也可能暂时静默。需用独立于被测启发式的证据验证回合完成，不能仅用输入框、末行、静默或同一个节点状态自证。以上是待验证的覆盖缺口，不是已确认真实provider误判；本轮只记录，代码及门禁不变。背景、影响范围与后续触发条件见 [技术债记录](../../../exec-plans/tech-debt-tracker.md#2026-10-17smoke-的-fake-agent-状态断言不能代证真实-tui-回合完成待验证)，已有方案边界见 [Agent状态设计](../../../design-docs/agent-running-state-detection.md)。
+
 ## 4. 真实重开与双窗口怎样建立前提
 
 真实重开setup启用live-runtime并应用配置、打开页面，创建Agent、live Terminal与将离线完成的Terminal，验证三份原session、92×28和backend/owner。向执行发送带标记的离线输出，flush并保存原node/session/storage/slot和画布状态。local completed Terminal等待原Host PID消失后才打印并退出；runner等第一测试进程exit0，保留3秒，再启动verify。该路径使用PID存活查询，不是远端的PID/startTicks完整身份观察。

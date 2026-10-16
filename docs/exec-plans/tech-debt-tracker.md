@@ -3,6 +3,18 @@
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
 
+## 2026-10-17：smoke 的 fake Agent 状态断言不能代证真实 TUI 回合完成（待验证）
+
+背景与触发：用户审阅默认01–07 smoke时指出，真实Agent TUI底部输入区可能在任务处理中持续接收输入，回答结束位置也可能位于输入区或状态栏上方。当前`local-execution-flow`使用fake CLI，`burst`等命令完成后打印`> `；`verifyAgentExecutionFlow`分别等待原执行输出标记与Host节点`waiting-input`。输出helper在原session的连续消息或独立快照中查找标记，不要求屏幕最后一行；该标记也不是provider的回合完成事件。
+
+已核对边界：`waiting-input`来自`agentActivityHeuristics.ts`的prompt/通知/bell、spinner/redraw和静默时间推断，包含无近期spinner且静默约1.6秒的兜底。fake场景通过只证明其输入输出与扩展状态推断成立，不能证明真实TUI的输入可用性、回答呈现和回合完成识别准确。真实provider是否存在误判、涉及哪些版本及触发时序尚未验证，不写成已确认产品缺陷，也不以本条自动增加0.26.1发布阻塞。
+
+影响范围：源码和packaged复用的Agent功能链及其验收解释，尤其是持续输入区、回答后还有footer/重绘、处理中暂时静默等场景。此项延续列表中“Agent运行态判定仍缺provider原生权威事件与来源标注”的既有技术债；本轮保留现有代码、断言和门禁，只澄清证据范围。
+
+后续时机与验证目标：用户要求先记录，继续审阅01–07，待场景审查收口后再确定改进范围。分别验证输入可用、回答在真实终端页面正确呈现、当前回合完成三个目标；覆盖任务仍处理但可输入、回答不在最后一行、网络/工具等待暂时静默及完成后的TUI重绘。回合完成需有独立于被测启发式的provider证据，不能用同一个`waiting-input`状态或末行位置自证。具体信号接入方案尚未选定。
+
+关联：[smoke说明中的待验证项](../references/release-gate-flow-audit/smoke/README.md#agent-tui的待验证覆盖边界2026-10-17)、[已有Agent状态设计](../design-docs/agent-running-state-detection.md)；代码为`tests/vscode-smoke/extension-tests.cjs:5211`、`tests/vscode-smoke/execution-output.cjs:3`、`tests/vscode-smoke/fixtures/fake-agent-provider:178`、`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts:317`。
+
 ## 2026-10-15：restricted ready 诊断隔离已修复，组合门禁阻塞于 packaged，最终发布门禁待验证
 
 PR327正式9198cacb/run38665513172 attempt2在源码restricted首开editor ready20000ms失败。固定输入阶段采样19次中1次同入口自然失败，捕获真实editor ready在fake panel诊断期间被正常接受，然后`runWebviewLifecycleRaceDiagnosticsForTest`的finally恢复两个面旧快照，将editor ready/frameId回滚；诊断数组恢复还抹去ready事件。active面临时为panel使editor未bootstrap，再open复用原HTML不重发ready。原消息期间投递的受控run38678148402按20秒失败、原ready/ack先完成的完整restricted通过，因果已确认；原正式CI无Host工件，不能逐事件追认唯一定因。

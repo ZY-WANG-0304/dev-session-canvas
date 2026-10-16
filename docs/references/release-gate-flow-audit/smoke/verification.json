@@ -119,6 +119,8 @@
     "legacy-resize.svg",
     "legacy-resize.png",
     "source-map.json",
+    "../../../exec-plans/tech-debt-tracker.md#2026-10-17smoke-的-fake-agent-状态断言不能代证真实-tui-回合完成待验证",
+    "../../../design-docs/agent-running-state-detection.md",
     "../../../design-docs/legacy-supervisor-stop-timeout-investigation.md",
     "validation.json",
     "visual-review.json",
