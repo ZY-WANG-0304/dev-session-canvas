@@ -2,6 +2,16 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-10-17：发布门禁分层与产物证据（审查完成，方案待确认）
+
+用户要求检查smoke之外的环节。设计[release-gate-layering-review.md](../design-docs/release-gate-layering-review.md)基于0100abf0/main6e708c6b，覆盖普通PR、静态输入、70条npm顶层命令、六原生资产、Webview、clean checkout、packaged和渠道汇总。[证据](../references/release-gate-flow-audit/layering-review/README.md)核25源码摘要及8项现有纯逻辑：finalize接受错ref/hash；缺partial而有历史verified仍完成；verifier在历史verified时忽略本轮query=false。不是历史真实错发布的证明。
+
+建议先局部补完整范围守卫、阶段期限/always工件、渠道结果身份与历史复用口径；再实现干净双包构建、消费式packaged和原样安装、测试包与最终发布包的摘要/回执绑定，以及普通PR独立基础回归和稳定聚合检查。落点为release-preflight/publish workflows、clean-checkout/package/VSIX runner、publish-tag与共享完成判定模块。远端保护需管理员实际配置；仅文档不能形成强制约束。
+
+后续按真实依赖拆快速/前端/视觉/Marketplace/Host层，登记notifier与门禁具名回归的所属层，选定有限跨平台真实PTY操作、最低VSCode和latest/provider观察范围。Marketplace重签/远端内容身份与并发耗时未验证，不能用原ZIP摘要或性能假设直接定方案。保持双release ref完整验证、六目标来源核验、已有Release原包复用禁覆盖和VS deferred策略；新增范围不自动扩大0.26.1卡点。现有生产恢复竞态和PR327最终门禁仍按原计划闭环；本轮只更新审查资料，继续当前关联修复范围，不另建诊断/验证/文档PR。
+
+设计研究计划[release-gate-layering-review.md](completed/release-gate-layering-review.md)完成；实现、产品与完整发布验收均未执行。
+
 
 ## 2026-10-17：smoke场景与子场景重划（设计已交付，实施待推进）
 

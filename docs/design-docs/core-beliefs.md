@@ -12,6 +12,8 @@
 
 门禁名称和绿色状态不是验收范围的证明：应分别核对触发、实际执行清单、固定输入、失败证据及合并强制约束。原生加载不等于产品功能验收，成功跳过或定向场景不能冒充完整验证。依据见 `release-gate-flow-audit.md`、[两组CI逐job执行/验证清单](../references/release-gate-flow-audit/job-details.md) 和 [smoke内部流程与各对象完成条件](../references/release-gate-flow-audit/smoke/README.md)。
 
+验收证据还要明确测试对象与时间：相同源码不自动证明两次打包产物相同，同版本可见不自动证明远端内容匹配，历史verified不自动代表本轮查询成功。分层重划建议与隔离反例见[release-gate-layering-review.md](release-gate-layering-review.md)；方案尚未实施，不由反例追认历史错误发布。
+
 ## 3. 设计应服务于产品主张
 
 任何技术方案都应回到核心问题：它是否真的帮助用户在多 Agent 协作中看清全局。

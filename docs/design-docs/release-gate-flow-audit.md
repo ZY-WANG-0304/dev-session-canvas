@@ -47,6 +47,8 @@ smoke 的完成条件需按对象区分：surface ready不额外要求bootstrapA
 
 2026-10-17按用户对01–07的审阅，新增[smoke场景与子场景重划设计](smoke-scenario-boundaries.md)。它提出按验证目标分离链接、停止、退出、重启、压力和恢复，完整映射当前入口与长链调用，并保留旧代/双窗口/重开组合；仅设计静态校验，尚未实施，不改变本审查中的现有CI事实或发布阻塞状态。
 
+同日继续审查smoke之外的环节，见[发布门禁分层与产物证据审查](release-gate-layering-review.md)。本轮固定0100abf0/main6e708c6b，重核25源码摘要与远端保护；新增测试包/最终发布包的证据断点，以及finalize错ref/hash、缺partial但历史verified及本轮查询失败的隔离核对。推荐分层与完成判定尚未实施，不证明真实发布曾混用包或结果，也不替代最终完整门禁。此处仅新增研究入口，前文历史观察时间与现状图保持。
+
 ![发布 PR 的 CI 门禁](../references/release-gate-flow-audit/pr-gate.png)
 
 ## 审查发现
