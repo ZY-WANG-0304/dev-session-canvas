@@ -422,3 +422,5 @@ Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同�
 节点live=false、普通API的sessionNotFound或过滤后的registry，只能证明投影或可见性，不能证明旧存储责任已退役。测试重启前提应在原Supervisor、原会话身份和同一预算内直接观察实际退役；未知、断连或删除失败保持失败。测试模式跨进程必须显式传递，Host ExtensionMode.Test不代表独立Supervisor具有相同模式。依据见packaged-runtime-restart-admission-root-cause.md。
 
 停止请求、PTY退出、Supervisor终态和Host消费须分别取证。异步结果保护也必须覆盖RPC的前置副作用：晚到恢复可先撤销已建订阅，再因结果过时跳过补建，使真实进程已退出但Host永久等终态。并发attach的次数不代证最后订阅是否有效；受控原生因果与缺现场的历史归因分别记录。依据见legacy-supervisor-stop-timeout-investigation.md。
+
+smoke的准备、业务动作、观察断言和清理承担不同责任。原链接与Stop分组来自历史专项验收，不构成业务因果；命令exit17、前台命令Ctrl-C、会话Stop、结束后新Start和Host边界后的resume也不能相互代证。按目标重划的拟议方案见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)，当前仅完成设计与覆盖映射，尚未改变执行入口或获得新产品通过证据。

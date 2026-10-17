@@ -3,6 +3,14 @@
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
 
+## 2026-10-17：smoke场景与子场景重划（设计已交付，实施待推进）
+
+用户确认链接交互与Stop分开，并要求重梳退出、重启、高输出响应。拟议设计[smoke-scenario-boundaries.md](../design-docs/smoke-scenario-boundaries.md)按目标细化原01–07为14类，其他trusted领域与特殊拓扑完整保留；[覆盖清单](../references/release-gate-flow-audit/smoke-redesign/README.md)映射源码19/packaged8/focused3、trusted109/restricted38调用、原01–07的58项语义和特殊组合步骤。设计输入50e201ca，静态核对不构成产品验收；runner、断言、CI均未改。
+
+后续责任落点为两个smoke runner、stage依赖与tests/vscode-smoke各suite。依次落地共享目录和具名阶段结果、独立fixture及证据消费者，保持旧覆盖直到逐条断言与source/packaged等价验收后再去重；完整入口拒绝filter减少范围，未知/空集合失败，业务失败与清理失败分别记录。普通Host整场期限与分组成本须实际测量。链接成功不代Stop，前台Ctrl-C不代PTY结束，模拟Host边界不代真实退出。
+
+新增待验范围包括live页面remount、snapshot-only真实新Host恢复、自然/Stop终态经边界保持、Terminal退出与重启、原生崩溃、Stop不响应、高输出完整性/resize和真实TUI完成证据。它们不计入已有覆盖，不因登记自动扩大0.26.1阻塞；已复现恢复撤销订阅生产竞态及PR327最新正式输入完整门禁仍按原计划处理。设计研究计划[smoke-scenario-redesign.md](completed/smoke-scenario-redesign.md)已完成，实施尚未开始，继续既有修复范围，不另建诊断/验证/文档PR。
+
 ## 2026-10-17：smoke 的 fake Agent 状态断言不能代证真实 TUI 回合完成（待验证）
 
 背景与触发：用户审阅默认01–07 smoke时指出，真实Agent TUI底部输入区可能在任务处理中持续接收输入，回答结束位置也可能位于输入区或状态栏上方。当前`local-execution-flow`使用fake CLI，`burst`等命令完成后打印`> `；`verifyAgentExecutionFlow`分别等待原执行输出标记与Host节点`waiting-input`。输出helper在原session的连续消息或独立快照中查找标记，不要求屏幕最后一行；该标记也不是provider的回合完成事件。
@@ -11,7 +19,7 @@
 
 影响范围：源码和packaged复用的Agent功能链及其验收解释，尤其是持续输入区、回答后还有footer/重绘、处理中暂时静默等场景。此项延续列表中“Agent运行态判定仍缺provider原生权威事件与来源标注”的既有技术债；本轮保留现有代码、断言和门禁，只澄清证据范围。
 
-后续时机与验证目标：用户要求先记录，继续审阅01–07，待场景审查收口后再确定改进范围。分别验证输入可用、回答在真实终端页面正确呈现、当前回合完成三个目标；覆盖任务仍处理但可输入、回答不在最后一行、网络/工具等待暂时静默及完成后的TUI重绘。回合完成需有独立于被测启发式的provider证据，不能用同一个`waiting-input`状态或末行位置自证。具体信号接入方案尚未选定。
+后续时机与验证目标：用户要求先记录，继续审阅01–07；后续场景重划设计已将其列为独立`agent-tui`待验目录，尚未实施。分别验证输入可用、回答在真实终端页面正确呈现、当前回合完成三个目标；覆盖任务仍处理但可输入、回答不在最后一行、网络/工具等待暂时静默及完成后的TUI重绘。回合完成需有独立于被测启发式的provider证据，不能用同一个`waiting-input`状态或末行位置自证。具体信号接入方案尚未选定。
 
 关联：[smoke说明中的待验证项](../references/release-gate-flow-audit/smoke/README.md#agent-tui的待验证覆盖边界2026-10-17)、[已有Agent状态设计](../design-docs/agent-running-state-detection.md)；代码为`tests/vscode-smoke/extension-tests.cjs:5211`、`tests/vscode-smoke/execution-output.cjs:3`、`tests/vscode-smoke/fixtures/fake-agent-provider:178`、`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts:317`。
 

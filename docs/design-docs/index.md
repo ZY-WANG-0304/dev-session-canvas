@@ -121,6 +121,7 @@
 | `docs/design-docs/task-note-editable-nodes.md` | Task 与 Note 从占位卡片升级为可编辑真实节点的字段与状态分层设计 | 画布交互域、协作对象域、项目状态域 / 画布呈现层、共享模型与编排层 | 已选定 | 已验证 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/task-note-editable-nodes.md` | 2026-03-28 |
 | `docs/design-docs/vscode-canvas-runtime-architecture.md` | VSCode 内无限画布的运行时边界、技术路线与初步选型 | VSCode 集成域、画布交互域、协作对象域、执行编排域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/completed/canvas-architecture-research.md`、`docs/exec-plans/completed/agent-session-surface-alignment.md`、`docs/exec-plans/completed/agent-special-terminal.md`、`docs/exec-plans/completed/execution-session-platform-compatibility.md`、`docs/exec-plans/completed/canvas-surface-configurable-host.md` | 2026-04-28 |
 | `docs/design-docs/runtime-root-ownership.md` | F-03/R1 新建归属与原绑定保护有限交付完成；P1至P3、R1-01至R1-08具名证据收口，历史失败与未归因边界保留；默认 false 附着由私有画布规则替代 | VSCode 集成域、执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-multi-root-workspace-support.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-root-ownership-design.md`、`docs/exec-plans/completed/runtime-root-ownership.md` | 2026-10-11 |
+| `docs/design-docs/smoke-scenario-boundaries.md` | 按验证目标重划smoke，分离链接/停止/退出/重启/压力与恢复；完整映射19/8/3入口、trusted/restricted调用与原01–07语义，保留特殊拓扑组合；拟议方案，未实施 | VSCode 集成域、执行编排域、画布交互域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 未验证 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/smoke-scenario-redesign.md` | 2026-10-17 |
 
 ## 维护约定
 

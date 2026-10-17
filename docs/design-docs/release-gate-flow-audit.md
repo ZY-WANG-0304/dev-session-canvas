@@ -45,6 +45,8 @@ PR327 的发布材料没有被写到当前修复源码，主工作区用户的 `
 
 smoke 的完成条件需按对象区分：surface ready不额外要求bootstrapAck；原终端resize同时核对Host、DOM fit、原RPC行列及session/storage身份；用户Stop要求Host原节点终态，夹具kill不能替代；显式重启另等原存储对象退役；SSH退出/保留两态观察原PID/startTicks，而普通本地重开不具备同等身份控制。最近原样完整运行的首败仍是源码第11场景、图06第8步“Stop后等待Host终态”30秒超时；受控订阅竞态复现不能唯一追认缺少PTY/订阅现场的历史首败。
 
+2026-10-17按用户对01–07的审阅，新增[smoke场景与子场景重划设计](smoke-scenario-boundaries.md)。它提出按验证目标分离链接、停止、退出、重启、压力和恢复，完整映射当前入口与长链调用，并保留旧代/双窗口/重开组合；仅设计静态校验，尚未实施，不改变本审查中的现有CI事实或发布阻塞状态。
+
 ![发布 PR 的 CI 门禁](../references/release-gate-flow-audit/pr-gate.png)
 
 ## 审查发现

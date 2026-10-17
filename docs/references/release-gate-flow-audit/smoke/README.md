@@ -4,6 +4,8 @@
 
 设计分为三层：外层 Node runner 选择场景、建立私有环境并启动 VS Code；Extension Host 内的测试 suite 触发产品操作并串行断言；真实 Webview、执行进程和 Supervisor 提供观测结果。Supervisor 是独立于窗口的执行管理进程，长期运行不代表其某个终端会话没有退出。
 
+2026-10-17新增[按目标重划的拟议设计](../../../design-docs/smoke-scenario-boundaries.md)及[旧覆盖迁移目录](../smoke-redesign/README.md)：链接、Stop、退出、重启、压力和恢复分别归属，准备与清理单列。该方案尚未实施，本页及六张图仍描述当前实际流程。
+
 ## 流程图入口
 
 | 图 | 要看什么 | SVG | PNG |

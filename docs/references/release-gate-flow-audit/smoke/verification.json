@@ -106,6 +106,8 @@
     }
   },
   "readmeLinks": [
+    "../../../design-docs/smoke-scenario-boundaries.md",
+    "../smoke-redesign/README.md",
     "entry-scenarios.svg",
     "entry-scenarios.png",
     "single-host.svg",
