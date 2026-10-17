@@ -2,6 +2,14 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-10-17：CI与发布门禁重设计（方案选定，实施与实际验收待完成）
+
+用户要求从分层审查推进为重设计，选定[release-gate-redesign.md](../design-docs/release-gate-redesign.md)：普通PR保守分类、发布PR/最终tag各自完整验证、15验证job按依赖产物执行、一次clean双包和消费式packaged/三x64原样安装、阶段期限/always工件、严格渠道内容回执与原包恢复。保留发布六外层job、六native来源、现有19/8默认与3focused诊断、双阶段验证和VS deferred策略。smoke按目标方案同步为已选定，未实施。
+
+拟议落点为scripts/gates目录、ci-validation reusable、两个现有runner及package-clean/prepare/完成判定模块；此轮仅设计资料，不创建程序接口。迁移[清单和核对](../references/release-gate-redesign/README.md)覆盖70顶层命令、8Marketplace分支、10补充named检查、22smoke入口/152拟议case目录。先完成严格范围/回执/取证与旧adapter，再同批双包/安装/渠道内容口径，再纯前端build与独立case，最后切新required检查；旧门禁在等价验收前保留。当前产品恢复竞态和PR327最新正式输入门禁不由本设计关闭。
+
+仍需实际校准固定Node22.23.3/VSCode1.142.0环境及基础设施预算、六平台PTY操作/三x64原样安装、渠道重签与canonical内容口径。native load成功不代证操作、原样本地安装不代证Marketplace依赖下载；最低VSCode、arm64安装、真实TUI完成信号和系统通知呈现继续独立待验。远端required保护需实际配置/红灯验证。设计控制不代替CI/产品验收；研究计划release-gate-redesign完成后归档，后续实现必须建立实施ExecPlan，关联修复继续现有PR范围。
+
 ## 2026-10-17：发布门禁分层与产物证据（审查完成，方案待确认）
 
 用户要求检查smoke之外的环节。设计[release-gate-layering-review.md](../design-docs/release-gate-layering-review.md)基于0100abf0/main6e708c6b，覆盖普通PR、静态输入、70条npm顶层命令、六原生资产、Webview、clean checkout、packaged和渠道汇总。[证据](../references/release-gate-flow-audit/layering-review/README.md)核25源码摘要及8项现有纯逻辑：finalize接受错ref/hash；缺partial而有历史verified仍完成；verifier在历史verified时忽略本轮query=false。不是历史真实错发布的证明。

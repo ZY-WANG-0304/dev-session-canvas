@@ -1,11 +1,11 @@
 ---
 title: Smoke 场景与子场景的验证边界重划
-decision_status: 比较中
+decision_status: 已选定
 validation_status: 未验证
 domains: [VSCode 集成域, 执行编排域, 画布交互域, 项目状态域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md]
+related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md]
 updated_at: 2026-10-17
 ---
 
@@ -13,7 +13,7 @@ updated_at: 2026-10-17
 
 ## 问题与范围
 
-用户确认链接交互与停止应分开验证，并要求重新分析退出、重启和高输出响应等场景。本设计提出按验证目标组织 smoke：一个场景回答一个产品问题，子场景对应同一问题的不同触发条件；有因果关系的动作保留为具名步骤。名称不再沿用历史修复批次。方案待审阅，当前 runner、断言、CI 和发布范围均未实施本设计。
+用户确认链接交互与停止应分开验证，并要求重新分析退出、重启和高输出响应等场景；随后要求整体门禁重新设计。本次选定按验证目标组织 smoke：一个场景回答一个产品问题，子场景对应同一问题的不同触发条件；有因果关系的动作保留为具名步骤。名称不再沿用历史修复批次。整体执行/产物/失败契约见[CI与发布门禁重设计](release-gate-redesign.md)；当前runner、断言、CI和发布范围均未实施。
 
 研究输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`。当前 Linux 源码默认19项、packaged默认8项、focused-only3项，以及 trusted/restricted 的109/38处直接 await 调用均进入[迁移清单](../references/release-gate-flow-audit/smoke-redesign/coverage-map.json)。调用点数量不是测试数量。原01–07的主要语义覆盖另外逐项映射；清单是拆分检查的输入，不代替逐条断言的实施 review。
 
@@ -31,9 +31,9 @@ updated_at: 2026-10-17
 | --- | --- | --- | --- |
 | 仅把06拆成链接与Stop，其余改名 | 改动小 | 01/07及trusted仍混合退出、重启、压力；失败归属仍不清楚 | 不足以满足本次要求 |
 | 每条断言单独启动Host | 隔离直接 | 破坏原执行连续性，重复启动成本大；有因果步骤无法按同一身份验证 | 不采用 |
-| 按目标分场景、按触发条件分子场景，保留有限组合流程 | 可定向运行，身份和失败阶段清晰，兼顾启动成本 | 需要迁移fixture与证据消费者，不能一次删掉旧链 | 推荐，待审阅 |
+| 按目标分场景、按触发条件分子场景，保留有限组合流程 | 可定向运行，身份和失败阶段清晰，兼顾启动成本 | 需要迁移fixture与证据消费者，不能一次删掉旧链 | 已选定，未实施 |
 
-## 拟议方案
+## 正式方案
 
 ### 1. 场景、子场景、步骤与运行环境
 
@@ -133,7 +133,7 @@ flowchart TD
 
 ### 6. 共享目录与源码/packaged覆盖
 
-拟议新增 `tests/vscode-smoke/scenario-registry.cjs`作为两个runner的声明式目录，字段至少为稳定scenario/case ID、中文目标、suite、环境要求、preActivation准备、fixture类型、具名步骤、各阶段预算、default-source/default-packaged/focused标记和证据要求。`scripts/smoke/run-vscode-smoke.mjs`与`run-vscode-vsix-smoke.mjs`都从它生成执行清单，suite只接受被明确选择的case；不存在兜底执行trusted的未知case。
+统一新增 `scripts/smoke/smoke-catalog.mjs`作为两个runner的声明式目录，字段至少为稳定scenario/case ID、中文目标、suite、环境要求、preActivation准备、fixture类型、具名步骤、各阶段预算、default-source/default-packaged/focused标记和证据要求。`scripts/gates/catalog.mjs`引用它冻结正式计划；两个runner消费同一计划并将具名任务序列化交给suite，suite只接受明确选择的case，不兜底执行trusted的未知case。此处与整体[门禁重设计](release-gate-redesign.md)统一目录路径，不再维护第二份CJS registry；这些程序文件尚未创建。
 
 目录及所有case依赖必须由stage逻辑一起进入测试Host/packaged测试扩展，避免fixture依赖只在源码工作树存在。源码和packaged应运行相同产品case实现；payload来源是维度。packaged仍是开发Host承载生产包解出的payload，不是原样Marketplace双VSIX安装，测试报告须保留该限制。
 
@@ -152,7 +152,7 @@ flowchart TD
 
 每个结果携带输入SHA、payload/原生资产摘要、环境、scenario/case/step、阶段、开始/完成时间和deadline，以及Host PID/启动身份、Supervisor owner/profile/PID、原node/root/session/execution/generation、页面frame/readId/revision等适用身份。身份不存在时写原因，例如准备失败未取得PTY；不能编造PID。
 
-阶段结果为 `passed / failed / timed-out / not-run`，阶段为 `prepare / action / assert / cleanup / host-exit`。整体case只有业务断言及必需清理均成功才通过；业务通过但清理失败明确显示两者各自结果，并使整个run失败。业务已失败时，清理错误是附加失败，不覆盖原首败。首败后默认余项`not-run`，诊断另起run可继续收集，不把拼接结果合成一次完整release通过。
+阶段结果为 `passed / failed / timed-out / not-run`，阶段为 `prepare / action / assert / cleanup / host-exit`。整体case只有业务断言及必需清理均成功才通过；业务通过但清理失败明确显示两者各自结果，并使整个run失败。业务已失败时，清理错误是附加失败，不覆盖原首败。case内首败后续业务步骤`not-run`；只有能证明fixture完全清理时，同Host可继续其他独立case收集证据，整场仍失败；清理未知/失败则停止本Host组，其余case `not-run`。无依赖的其他job继续运行，聚合不把缺结果或拼接结果合成完整通过，统一按整体门禁规则收口。
 
 Stop业务完成、保存完成、reader消费、存储退役、Host退出与Supervisor退出分别记录。私有夹具资源回收可kill，但必须记录发生在取证/清理，并且不能修改先前业务failed。普通runtime窗口关闭不等于远端Host退出；SSH exit/retain按原PID/startTicks建立前提，离线Terminal完成另设屏障。真实resize按原进程几何验证，禁止由“没有owned-resize-failed”或停后尺寸保护代替。
 

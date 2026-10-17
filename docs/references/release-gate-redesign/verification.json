@@ -1,0 +1,248 @@
+{
+  "scope": "design-model-only-not-ci-product-release",
+  "sourceHashChecks": 12,
+  "validationJobs": 15,
+  "publishJobs": 6,
+  "nativeTargets": 6,
+  "installedTargets": 3,
+  "legacyTopLevelMappings": 70,
+  "marketplaceBranches": 8,
+  "smokeRoutes": 22,
+  "caseCatalog": 152,
+  "documentLinks": 10,
+  "controls": [
+    {
+      "case": "complete-final-ref",
+      "observed": true,
+      "expected": true
+    },
+    {
+      "case": "missing-layer",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "duplicate-layer-hides-missing",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "missing-native-assets-case",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "missing-source-host-case",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "missing-packaged-host-case",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "missing-installed-pair-case",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "duplicate-case-hides-missing",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "native-load-pass-operation-fail",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "wrong-schemaVersion",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "wrong-inputSHA",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "wrong-planHash",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "wrong-version",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "wrong-environmentHash",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "wrong-mode",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "prepare-failure",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "action-failure",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "assert-failure",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "cleanup-failure",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "host-exit-failure",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "job-failure",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "job-cancelled",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "job-skipped",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "job-timed-out",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "changed-package",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "self-claimed-provenance",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "diagnostic-never-accepts",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "open-vsx-and-github-vs-deferred",
+      "observed": true,
+      "expected": true
+    },
+    {
+      "case": "required-channel-missing",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "channel-wrong-inputSHA",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "channel-wrong-version",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "channel-wrong-sourcePackageHash",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "channel-wrong-contentPolicyHash",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "channel-wrong-schemaVersion",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "version-present-content-unknown",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "fresh-query-unknown",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "new-release-rejects-history",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "retry-explicit-history-original-package",
+      "observed": true,
+      "expected": true
+    },
+    {
+      "case": "selected-retry-needs-fresh",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "retry-mismatch-blocks-history",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "vs-deferred-does-not-block",
+      "observed": true,
+      "expected": true
+    },
+    {
+      "case": "deferred-result-wrong-identity-rejected",
+      "observed": false,
+      "expected": false
+    },
+    {
+      "case": "unknown-submission-not-resubmitted",
+      "observed": "query-only",
+      "expected": "query-only"
+    },
+    {
+      "case": "pr-package-not-final-package",
+      "observed": false,
+      "expected": false
+    }
+  ],
+  "productTestsRun": false,
+  "workflowChanged": false,
+  "hashes": {
+    "design-model.json": "a62ddb1d73f90df0abce7174ae00f952ccccc91a45988c0f7a5c669863cd1740",
+    "migration-map.json": "558acf3b8ca9d1994cacae0f8ed5c9199e8b0adc9803ea6efa242f2b1aa66552"
+  },
+  "documentLinksAcrossDelivery": 31,
+  "deliveryDocSha256": {
+    "docs/design-docs/release-gate-redesign.md": "7237abaf9876d0bee493cf5ef03b48d5cc1a953c2a68b830d6a60b4c70496590",
+    "docs/design-docs/smoke-scenario-boundaries.md": "7d5d01c671f0b08de6f8cd4f55f3607e5a74ff4a406e47a46bd7838777d4a451",
+    "docs/references/release-gate-redesign/README.md": "7c680059b7e72addd108d0d932bcfc364e436d9c32c78ecb020b6b2c32fefe7b",
+    "docs/exec-plans/completed/release-gate-redesign.md": "7fdf092535de834ae55430b51b56719c9dd3944e899b73781b45536213008ecc"
+  }
+}

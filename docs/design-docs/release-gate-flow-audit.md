@@ -49,6 +49,8 @@ smoke 的完成条件需按对象区分：surface ready不额外要求bootstrapA
 
 同日继续审查smoke之外的环节，见[发布门禁分层与产物证据审查](release-gate-layering-review.md)。本轮固定0100abf0/main6e708c6b，重核25源码摘要与远端保护；新增测试包/最终发布包的证据断点，以及finalize错ref/hash、缺partial但历史verified及本轮查询失败的隔离核对。推荐分层与完成判定尚未实施，不证明真实发布曾混用包或结果，也不替代最终完整门禁。此处仅新增研究入口，前文历史观察时间与现状图保持。
 
+用户进一步要求重设计，已收口[CI与发布门禁重设计](release-gate-redesign.md)及[三张拟议流程图](../references/release-gate-redesign/README.md)。新设计按责任分层、消费式双包验收、严格渠道回执与原包恢复；已选定、未实施。本文及旧图继续是当前实现的事实，不能把新图当作已经运行CI。
+
 ![发布 PR 的 CI 门禁](../references/release-gate-flow-audit/pr-gate.png)
 
 ## 审查发现

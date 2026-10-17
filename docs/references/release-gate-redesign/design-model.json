@@ -1,0 +1,423 @@
+{
+  "schemaVersion": 1,
+  "status": "selected-design-not-implemented",
+  "jobs": [
+    {
+      "id": "resolve",
+      "tier": "base",
+      "needs": [],
+      "consumes": [],
+      "produces": [],
+      "responsibility": "冻结不可变SHA/范围/环境与任务计划",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "input-contract",
+      "tier": "base",
+      "needs": [
+        "resolve"
+      ],
+      "consumes": [],
+      "produces": [],
+      "responsibility": "静态输入与分类一致性",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "regression",
+      "tier": "base",
+      "needs": [
+        "resolve"
+      ],
+      "consumes": [],
+      "produces": [],
+      "responsibility": "类型/协议/状态/夹具/门禁自身回归",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "frontend-build",
+      "tier": "base",
+      "needs": [
+        "resolve"
+      ],
+      "consumes": [],
+      "produces": [
+        "frontend-bundle"
+      ],
+      "responsibility": "真实浏览器入口独立构建",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "webview-function",
+      "tier": "base",
+      "needs": [
+        "frontend-build"
+      ],
+      "consumes": [
+        "frontend-bundle"
+      ],
+      "produces": [],
+      "responsibility": "前端交互/协议",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "webview-visual",
+      "tier": "base",
+      "needs": [
+        "frontend-build"
+      ],
+      "consumes": [
+        "frontend-bundle"
+      ],
+      "produces": [],
+      "responsibility": "固定环境视觉基线",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "marketplace-browser",
+      "tier": "base",
+      "needs": [
+        "frontend-build"
+      ],
+      "consumes": [
+        "frontend-bundle"
+      ],
+      "produces": [],
+      "responsibility": "本地浏览器/HTTP fixture",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "native-assets",
+      "tier": "functional",
+      "needs": [
+        "input-contract"
+      ],
+      "consumes": [],
+      "produces": [
+        "native-set"
+      ],
+      "responsibility": "六目标原生构建/load；操作独立结果",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "source-build",
+      "tier": "functional",
+      "needs": [
+        "input-contract",
+        "native-assets"
+      ],
+      "consumes": [
+        "native-set"
+      ],
+      "produces": [
+        "source-bundle"
+      ],
+      "responsibility": "主/notifier development bundle",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "source-host",
+      "tier": "functional",
+      "needs": [
+        "source-build"
+      ],
+      "consumes": [
+        "source-bundle"
+      ],
+      "produces": [],
+      "responsibility": "全部标准源码case与Host组合",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "marketplace-host",
+      "tier": "functional",
+      "needs": [
+        "source-build"
+      ],
+      "consumes": [
+        "source-bundle"
+      ],
+      "produces": [],
+      "responsibility": "VSCode Marketplace fixture",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "package-clean",
+      "tier": "artifact",
+      "needs": [
+        "input-contract",
+        "native-assets"
+      ],
+      "consumes": [
+        "native-set"
+      ],
+      "produces": [
+        "package-pair"
+      ],
+      "responsibility": "干净来源一次双包生产构建",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "packaged-host",
+      "tier": "artifact",
+      "needs": [
+        "package-clean"
+      ],
+      "consumes": [
+        "package-pair"
+      ],
+      "produces": [],
+      "responsibility": "消费双包的instrumented集成",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "installed-pair",
+      "tier": "artifact",
+      "needs": [
+        "package-clean"
+      ],
+      "consumes": [
+        "package-pair"
+      ],
+      "produces": [],
+      "responsibility": "三x64系统原样双包安装",
+      "failure": "dependent-not-run-independent-continue"
+    },
+    {
+      "id": "verify-result",
+      "tier": "aggregate",
+      "needs": [
+        "resolve",
+        "input-contract",
+        "regression",
+        "frontend-build",
+        "webview-function",
+        "webview-visual",
+        "marketplace-browser",
+        "native-assets",
+        "source-build",
+        "source-host",
+        "marketplace-host",
+        "package-clean",
+        "packaged-host",
+        "installed-pair"
+      ],
+      "consumes": [],
+      "produces": [
+        "gate-result"
+      ],
+      "responsibility": "always严格聚合",
+      "failure": "missing-or-nonpass-fails",
+      "always": true
+    }
+  ],
+  "modes": {
+    "pr-base": {
+      "tiers": [
+        "base"
+      ],
+      "requiredNativeOperations": false,
+      "acceptance": false
+    },
+    "pr-functional": {
+      "tiers": [
+        "base",
+        "functional"
+      ],
+      "requiredNativeOperations": false,
+      "acceptance": false
+    },
+    "pr-artifact": {
+      "tiers": [
+        "base",
+        "functional",
+        "artifact"
+      ],
+      "requiredNativeOperations": false,
+      "acceptance": false
+    },
+    "release-pr": {
+      "tiers": [
+        "base",
+        "functional",
+        "artifact"
+      ],
+      "requiredNativeOperations": true,
+      "acceptance": true
+    },
+    "release-tag": {
+      "tiers": [
+        "base",
+        "functional",
+        "artifact"
+      ],
+      "requiredNativeOperations": true,
+      "acceptance": true
+    },
+    "diagnostic": {
+      "tiers": [],
+      "requiredNativeOperations": false,
+      "acceptance": false
+    }
+  },
+  "nativeTargets": [
+    "linux-x64-glibc",
+    "linux-arm64-glibc",
+    "darwin-x64",
+    "darwin-arm64",
+    "win32-x64",
+    "win32-arm64"
+  ],
+  "installedTargets": [
+    "linux-x64",
+    "darwin-x64",
+    "win32-x64"
+  ],
+  "nativeOperations": [
+    "spawn",
+    "input-output",
+    "resize-observed",
+    "natural-exit",
+    "stop",
+    "cleanup"
+  ],
+  "publishJobs": [
+    {
+      "id": "resolve-release",
+      "needs": []
+    },
+    {
+      "id": "verify-release",
+      "needs": [
+        "resolve-release"
+      ]
+    },
+    {
+      "id": "prepare-release",
+      "needs": [
+        "resolve-release",
+        "verify-release"
+      ]
+    },
+    {
+      "id": "publish-open-vsx",
+      "needs": [
+        "prepare-release"
+      ]
+    },
+    {
+      "id": "publish-visual-studio",
+      "needs": [
+        "prepare-release"
+      ]
+    },
+    {
+      "id": "finalize-release",
+      "needs": [
+        "prepare-release",
+        "publish-open-vsx",
+        "publish-visual-studio"
+      ],
+      "always": true
+    }
+  ],
+  "requiredCompletionTargets": [
+    "github-release-assets",
+    "open-vsx"
+  ],
+  "deferredTarget": "visual-studio",
+  "extensions": [
+    "main",
+    "notifier"
+  ],
+  "identityFields": [
+    "schemaVersion",
+    "inputSHA",
+    "planHash",
+    "version",
+    "environmentHash",
+    "mode"
+  ],
+  "mandatoryCases": {
+    "source-host": [
+      "local-execution-flow",
+      "owned-canvas-reconciliation",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-preparation-failure",
+      "local-links-and-stop",
+      "local-pty-robustness",
+      "runtime-checkpoint-refresh",
+      "trusted",
+      "restricted",
+      "legacy-supervisor-upgrade",
+      "real-reopen",
+      "multi-root-real-reopen",
+      "single-to-multi-root-real-reopen",
+      "two-window-shared-runtime",
+      "systemd-user-real-reopen",
+      "systemd-fallback-real-reopen",
+      "remote-ssh-real-reopen-exit",
+      "remote-ssh-real-reopen-retain"
+    ],
+    "packaged-host": [
+      "local-execution-flow",
+      "owned-canvas-reconciliation",
+      "snapshot-only-manual-recovery",
+      "local-surface-cutover",
+      "local-preparation-failure",
+      "local-links-and-stop",
+      "local-pty-robustness",
+      "trusted"
+    ],
+    "installed-pair": [
+      "linux-x64",
+      "darwin-x64",
+      "win32-x64"
+    ]
+  },
+  "packageReceiptFields": [
+    "schemaVersion",
+    "inputSHA",
+    "nativeSetHash",
+    "lockHash",
+    "profile",
+    "admission",
+    "artifacts",
+    "producer"
+  ],
+  "phases": [
+    "prepare",
+    "action",
+    "assert",
+    "cleanup",
+    "host-exit"
+  ],
+  "phaseStatuses": [
+    "passed",
+    "failed",
+    "timed-out",
+    "not-run"
+  ],
+  "infraBudgetsMs": {
+    "npmCi": 600000,
+    "download": 300000,
+    "hostStartup": 180000,
+    "hostExit": 30000,
+    "cleanup": 60000,
+    "evidence": 30000,
+    "jobReserve": 300000
+  },
+  "classification": {
+    "unknownPath": "artifact",
+    "functionalImpliesBase": true,
+    "artifactImpliesFunctional": true,
+    "versionWithoutContract": "fail"
+  },
+  "releaseRetry": {
+    "rebuild": false,
+    "exactOriginalPair": true,
+    "selectedTargetNeedsFresh": true,
+    "historicalReuseRequiresTrustedProvenance": true,
+    "explicitMismatchBlocksReuse": true
+  }
+}

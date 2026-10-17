@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1680,
+  "height": 1600,
+  "title": "02  双包交接与验收",
+  "subtitle": "每个预合并/最终tag输入各自构建验收；最终发布消费最终SHA上验过的同批文件",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "title_size": 30,
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "input",
+      "x": 60,
+      "y": 140,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "固定源码 + lock + 同run六目标native-set",
+      "sublabel": "git archive SHA；隔离HOME/config/npm依赖；native不在dist内",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "build",
+      "x": 60,
+      "y": 340,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "package-clean：主/notifier各构建打包一次",
+      "sublabel": "正式platform/profile/admission；保留补丁、资源、README-ref与file-list检查",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "pair",
+      "x": 60,
+      "y": 540,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "固定路径双包 + package-receipt",
+      "sublabel": "main.vsix / notifier.vsix；ID/版本/SHA/size、源码与asset-set摘要",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "instrument",
+      "x": 60,
+      "y": 740,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "packaged-host：只消费两个包的测试副本",
+      "sublabel": "wrapper/manifest/test-mode变更清单；notifier禁止从源码dist替代",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "installed",
+      "x": 60,
+      "y": 940,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "installed-pair：原样双包安装",
+      "sublabel": "空extensionsDir；独立driver/公开入口；三x64系统；产品无smoke模式",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "accept",
+      "x": 60,
+      "y": 1140,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "聚合包验收与其他完整层 → acceptance回执",
+      "sublabel": "原包前后摘要不变；case/输入/环境/producer来源一致",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "prepare",
+      "x": 60,
+      "y": 1340,
+      "width": 920,
+      "height": 104,
+      "kind": "rect",
+      "label": "最终tag：prepare只下载、核验和交付同批包",
+      "sublabel": "不重打包；远端GitHub资产核摘要 → 两渠道消费原包",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "notserial",
+      "x": 1110,
+      "y": 740,
+      "width": 510,
+      "height": 104,
+      "kind": "rect",
+      "label": "两层验收独立执行",
+      "sublabel": "图按交接展开；installed不依赖packaged成功",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "differentref",
+      "x": 1110,
+      "y": 140,
+      "width": 510,
+      "height": 104,
+      "kind": "rect",
+      "label": "PR与最终tag是不同输入",
+      "sublabel": "两阶段分别全量验证；不拿PR包直接发布",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "exact",
+      "x": 1110,
+      "y": 540,
+      "width": 510,
+      "height": 104,
+      "kind": "rect",
+      "label": "不以mtime / glob选择包",
+      "sublabel": "每个消费边界重新计算原包摘要",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "bad",
+      "x": 1110,
+      "y": 1140,
+      "width": 510,
+      "height": 104,
+      "kind": "rect",
+      "label": "错包 / 缺回执 / 未验收",
+      "sublabel": "不能发布；保留现场与原输入",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "retry",
+      "x": 1110,
+      "y": 1340,
+      "width": 510,
+      "height": 104,
+      "kind": "rect",
+      "label": "已有Release恢复原双包",
+      "sublabel": "匹配原acceptance；拒绝自动重打或覆盖",
+      "title_size": 21,
+      "fill": "#faf5ff",
+      "stroke": "#d8b4fe",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "input",
+      "target": "build",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "build",
+      "target": "pair",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#16a34a"
+    },
+    {
+      "source": "pair",
+      "target": "instrument",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#16a34a"
+    },
+    {
+      "source": "pair",
+      "target": "installed",
+      "label": "",
+      "source_port": "left",
+      "target_port": "left",
+      "color": "#16a34a"
+    },
+    {
+      "source": "instrument",
+      "target": "accept",
+      "label": "",
+      "source_port": "right",
+      "target_port": "right",
+      "color": "#2563eb"
+    },
+    {
+      "source": "installed",
+      "target": "accept",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "accept",
+      "target": "prepare",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#16a34a"
+    },
+    {
+      "source": "prepare",
+      "target": "retry",
+      "label": "重跑",
+      "source_port": "right",
+      "target_port": "left",
+      "color": "#9333ea"
+    }
+  ],
+  "legend": [
+    {
+      "label": "验证 / 输入依赖",
+      "color": "#2563eb"
+    },
+    {
+      "label": "同批产物 / 完成",
+      "color": "#16a34a"
+    },
+    {
+      "label": "失败 / 未完成",
+      "color": "#dc2626"
+    },
+    {
+      "label": "恢复 / 可deferred",
+      "color": "#9333ea"
+    }
+  ],
+  "legend_x": 60,
+  "legend_y": 1556,
+  "legend_orientation": "horizontal"
+}

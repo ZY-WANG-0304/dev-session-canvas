@@ -14,6 +14,8 @@
 
 验收证据还要明确测试对象与时间：相同源码不自动证明两次打包产物相同，同版本可见不自动证明远端内容匹配，历史verified不自动代表本轮查询成功。分层重划建议与隔离反例见[release-gate-layering-review.md](release-gate-layering-review.md)；方案尚未实施，不由反例追认历史错误发布。
 
+按责任分层时应让必跑集合、输入产物和完成回执来自同一契约；独立失败可以继续产生可解释证据，少任务、错身份、清理失败或未知发布不能变成成功。[CI与发布门禁重设计](release-gate-redesign.md)已选定这些工程规则，实施及新增覆盖验收仍须另行完成。
+
 ## 3. 设计应服务于产品主张
 
 任何技术方案都应回到核心问题：它是否真的帮助用户在多 Agent 协作中看清全局。
@@ -425,4 +427,4 @@ Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同�
 
 停止请求、PTY退出、Supervisor终态和Host消费须分别取证。异步结果保护也必须覆盖RPC的前置副作用：晚到恢复可先撤销已建订阅，再因结果过时跳过补建，使真实进程已退出但Host永久等终态。并发attach的次数不代证最后订阅是否有效；受控原生因果与缺现场的历史归因分别记录。依据见legacy-supervisor-stop-timeout-investigation.md。
 
-smoke的准备、业务动作、观察断言和清理承担不同责任。原链接与Stop分组来自历史专项验收，不构成业务因果；命令exit17、前台命令Ctrl-C、会话Stop、结束后新Start和Host边界后的resume也不能相互代证。按目标重划的拟议方案见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)，当前仅完成设计与覆盖映射，尚未改变执行入口或获得新产品通过证据。
+smoke的准备、业务动作、观察断言和清理承担不同责任。原链接与Stop分组来自历史专项验收，不构成业务因果；命令exit17、前台命令Ctrl-C、会话Stop、结束后新Start和Host边界后的resume也不能相互代证。按目标重划的选定方案见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)，当前仅完成设计与覆盖映射，尚未改变执行入口或获得新产品通过证据。

@@ -17,6 +17,8 @@ updated_at: 2026-10-17
 
 本文是可审阅的设计建议，未实施 workflow、产品、测试或仓库设置改动。`validation_status: 未验证` 指推荐方案没有运行验收；源码事实检查和隔离纯逻辑核对已完成，不构成产品、完整门禁或发布成功证据。已有恢复竞态和 PR327 的最终完整门禁仍按原计划闭环，本轮不自动增加 0.26.1 发布契约范围。
 
+后续用户已要求重新设计，完整选定方案见[CI与发布门禁重设计](release-gate-redesign.md)：明确15验证job、发布六外层job、入口范围、同批双包/回执、失败取证和原包恢复。本审查保留形成方案时的事实与比较过程，当前实现仍未变，新增正式范围需按新设计完成实际验收后切换。
+
 输入为修复分支 `0100abf07a6bb09ef36a12b32d989ad0c7e759aa`，fetch 后主线为 `6e708c6b93ce4b2b343729c422f59099f4fb42ba`。固定的25份输入中只有根 `package.json` 与源码 smoke runner 不同于主线：前者多两项回归，后者显式传测试模式；发布 workflow、打包和发布脚本相同。[inputs.json](../references/release-gate-flow-audit/layering-review/inputs.json) 保存 SHA、文件摘要及带时间的 GitHub 只读观察。
 
 现有逐 job 流程继续见[原审查](release-gate-flow-audit.md)与[两组 CI 明细](../references/release-gate-flow-audit/job-details.md)。smoke 场景设计见[场景与子场景重划](smoke-scenario-boundaries.md)。以下流程图描述推荐边界，不替换已有现状图。
