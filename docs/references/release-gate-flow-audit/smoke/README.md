@@ -41,7 +41,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | 1 | local-execution-flow | Agent/Terminal输入输出、部分输入、burst、重启、拒绝重复启动、最终保存 | extension-tests |
 | 2 | owned-canvas-reconciliation | reload及workspace组合后仍属于原执行 | extension-tests |
-| 3 | snapshot-only-manual-recovery | snapshot恢复保留手动Agent恢复语义，禁止自动resume | extension-tests |
+| 3 | snapshot-only-manual-recovery | 模拟Host边界中断本地活动执行后的快照恢复；页面重挂载禁止自动resume | extension-tests |
 | 4 | local-surface-cutover | Editor/Panel切换与重新读取画布后的原会话输出 | extension-tests |
 | 5 | local-preparation-failure | 缺CLI时未启动节点结算及准确的一次错误反馈 | extension-tests |
 | 6 | local-links-and-stop | 页面终端链接、原执行Stop完成、queued-exit及Claude上下文 | extension-tests |
@@ -104,6 +104,22 @@ suite成功返回后VS Code测试进程退出；runner监听exit/close并检查�
 用户在审阅01–07时要求先记录这一项，继续检查其他场景。`local-execution-flow`的“回到waiting-input”是Host节点状态断言：fake CLI在burst等命令后打印`> `，扩展按prompt/通知、spinner与静默时间推断状态，包含无近期spinner且静默约1.6秒的兜底。这不是provider报告的回合完成。输出标记则从原执行消息或快照中查找，不要求位于屏幕最后一行，也不证明其为最终回答。
 
 后续真实TUI验收需分开“输入可用”“回答正确呈现”“当前回合完成”：输入区可在任务处理中持续接收输入，回答后可仍有输入区/footer/重绘；网络或工具等待时也可能暂时静默。需用独立于被测启发式的证据验证回合完成，不能仅用输入框、末行、静默或同一个节点状态自证。以上是待验证的覆盖缺口，不是已确认真实provider误判；本轮只记录，代码及门禁不变。背景、影响范围与后续触发条件见 [技术债记录](../../../exec-plans/tech-debt-tracker.md#2026-10-17smoke-的-fake-agent-状态断言不能代证真实-tui-回合完成待验证)，已有方案边界见 [Agent状态设计](../../../design-docs/agent-running-state-detection.md)。
+
+### 场景03的重载时机与中断前提（2026-10-17）
+
+`snapshot-only-manual-recovery`并不验证“任意reload都要中断执行”。普通Webview重建、页面关闭再打开、surface切换和画布状态重读，在模式未变且Host仍持有原活动执行时应继续使用原执行。关闭Runtime Persistence只取消跨Host的进程存活承诺，仍会保存终端快照及可信provider恢复身份，不等于完全不持久化。产品规则见 [运行时持久化规格第7节](../../../product-specs/runtime-persistence-modes.md#7-验收标准)。
+
+此场景采用默认关闭持久化的私有环境。`verifyRuntimeReloadRecovery:8894`先停止创建时的两份执行，再显式启动Agent/Terminal并确认原本地执行及started事件；Agent的burst回复另外确认fake provider停止提示处理已就绪。随后在`:8935`调用`simulateRuntimeReload`。`CanvasPanelManager.simulateRuntimeReloadForTest:3843`复用同一个Host/manager，先执行`prepareForHostBoundary`，结束Host持有的本地执行、等待原最终保存，保留可信恢复上下文，再读取保存状态并恢复测试owner准入。它没有执行`workbench.action.reloadWindow`、新建Host或证明原Host PID退出；它模拟的是扩展运行实例结束的清理与恢复边界。
+
+| 时机/动作 | 原Host或扩展实例 | 执行预期与本次覆盖 |
+| --- | --- | --- |
+| 普通页面重建、关闭再打开、surface切换；无模式变更 | 仍持有原活动执行 | 保留执行，不因snapshot-only强制resume-ready/interrupted；场景04验切面/画布重读，不能代证所有页面组合 |
+| `reloadPersistedStateForTest`画布状态重读 | 复用原manager/owner | reconcile保留活动执行；场景02/04覆盖相关输入与原身份 |
+| 场景03的`simulateRuntimeReloadForTest` | PID不退出、复用实例，显式运行Host边界清理 | 本地活动执行被该钩子结束并保存；有可信身份Agent为resume-ready，Terminal为interrupted |
+| 场景03随后关闭全部Editor并重开 | 仍是同一Host，原本地执行此前已结束 | 仅验证页面mount不自动resume；显式恢复新执行使用原provider恢复身份 |
+| 真正Reload Window、扩展deactivation或Host结束 | 按实际扩展生命周期观察；远端不能仅凭本地client重载判定Host退出 | snapshot-only在原执行被该边界中断后手动恢复；live-runtime原会话仍活时重附着；场景03不提供真实Host退出/重开证据 |
+
+恢复分类还要求原执行此前仍活动且未主动停止。已观测自然退出或用户Stop保持真实终态，不能仅因为有恢复ID就升级为resume-ready。该约束及真实deactivation/模拟边界的受控回归见 [手动恢复收口计划](../../../exec-plans/completed/snapshot-only-manual-reload-recovery.md)。本轮只核对代码/规格并澄清说明，没有新Host实验，也没有改变smoke断言。
 
 ## 4. 真实重开与双窗口怎样建立前提
 
