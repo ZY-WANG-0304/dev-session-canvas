@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/active/release-gate-implementation.md]
+related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
 updated_at: 2026-10-18
 ---
 
@@ -15,9 +15,9 @@ updated_at: 2026-10-18
 
 用户要求把[分层审查](release-gate-layering-review.md)和[smoke场景重划](smoke-scenario-boundaries.md)推进为完整设计。本设计选定按验证责任组织job、按不可变输入传递产物、按独立回执判定完成的流程。一个失败应直接说明是输入、构建、产品动作、观察、清理还是交付失败；发布的包必须就是最终输入上验收过的那批文件。
 
-`已选定`表示工程设计已收口，`验证中`表示workflow与程序接口已进入实现和验证，跨平台及最终发布输入验收仍未完成。本文选择工程边界，不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，现有生产恢复竞态和最终正式预合并完整门禁继续按既有要求关闭。
+`已选定`表示工程设计已收口。现有覆盖迁移与分层CI已在PR335 ed9257bd及其与未改PR327的真实临时组合上完成完整验收；`验证中`仍保留最终发布输入、真实渠道和补充覆盖的验证边界。本文不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，两项生产竞态修复落地及最终正式预合并完整门禁继续按既有要求关闭。
 
-研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。设计研究时未改workflow与发布脚本；2026-10-18起按本文实施，落点及真实验证边界见[活计划](../exec-plans/active/release-gate-implementation.md)。实现、回归、根因与文档继续集中PR335，不另建诊断、验证或文档PR。
+研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。设计研究时未改workflow与发布脚本；2026-10-18起按本文实施，落点及真实验证边界见[已完成实施计划](../exec-plans/completed/release-gate-implementation.md)。实现、回归、根因与文档继续集中PR335，不另建诊断、验证或文档PR。
 
 ## 正式方案
 
@@ -272,6 +272,16 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 | 发布六job与恢复 | [publish-flow.svg](../references/release-gate-redesign/publish-flow.svg) | [PNG](../references/release-gate-redesign/publish-flow.png) |
 
 ## 实施状态（2026-10-18）
+
+当前已验代码为PR335 **ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff**。正式完整 [39128423778](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128423778) 的真预合并为 **1d9bb54b1256f63277ba0ecc29792c4addb1d833**，精确parents为main6e708c6b与该head。247 jobs全部成功，330 actual/passed、324 required/requiredPassed，另外六项为普通PR原生操作校准项且均通过。原aggregate artifact12138480651/producer117684261922/ZIP59e38150、acceptance摘要18540443及原candidate12137068102/producer117679779394/ZIPe6703151均独立验真；同批0.26.0主包d5b8d102/notifier7503971e原bytes与包回执472d023f一致。118源码Host、104packaged Host、六native、两个Marketplace Host及三x64原样安装均在本轮通过。
+
+同已验head与未改PR327 **8313fc725c18c28c51c04cc5f4aa5bd9121f290a** 的最新临时0.26.1组合 [39128957644](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128957644) 也已247 jobs全部成功，**330 required/actual/passed/requiredPassed**。真实输入 **63b168e2baadaab4becfd52bb280fc789760d508** 的精确parents为main6e708c6b与组合949432c3，双PR ancestry已核。原aggregate12138705324/producer117687946856/ZIP342e7fa3、acceptance摘要6feb2ffa与原candidate12137876850/producer117683586127/ZIP4e07b3b0独立验真；原0.26.1双包65af3977/e4c0f723与包回执c984a32a一致。结果仅属于该临时输入，不能替代修复合入后PR327的最终正式预合并或release-tag验收。
+
+两批各三份原样安装报告均独立核实际producer、upload ID、ZIP和evidence manifest：productTestMode=false、产品manifest/main未改、测试命令不存在；精确旧Terminal全集恢复后一次公开创建，原PID/父PID同fd fresh几何、Stop后原shell/子进程absence、通知原token确认/居中/selection保留/用户ack、中英文及两个原Host公开退出和全部八步cleanup通过。PR335原浏览器报告还按冻结434目录独立核 **431功能+3视觉全通过、retry0**。原Actions聚合已完整运行；本地没有重新下载全部task再聚合，二者不混账。完整SHA、原工件来源、包bytes、安装几何和验证日志见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。
+
+临时远端分支`ci-0261-premerge-redesign-temp`已在两run终态后按原head pinned lease删除，本地历史及失败证据保留，临时入口未进入PR335。后续只同步验收文档，最终文档head须由自己的稳定CI检查验收，不能套用ed9257bd回执。两项确定产品竞态（旧代恢复迟到撤销当前订阅；生产Runtime mode-switch删除期间接纳callback并缓存失败）未修，仍阻塞0.26.1。15个新增未实施目标、真实TUI、最低宿主/arm64安装/真实systemd与渠道，以及未配置main合并保护分别保持原边界；历史ready45秒、panel焦点10秒、CIM机制及macOS原EPERM仍未定因。
+
+以下保留各历史输入的首次失败、受控修正与当时待验状态，不表示当前ed9257bd仍待完整验收。
 
 第十轮 [39124063678](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124063678) 的 head0d02a8b0、真预合并b511d9bf精确main/head parents已核。247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准）；唯一业务首败是Windows中文创建前身份基线歧义，取证/cleanup通过，两个聚合入口正确失败。原aggregate artifact12136700189/producer117671239737/ZIP9e91e19b与原candidate12134839128/producer117666644922/ZIPc992e167及规范包回执5707f95a均独立验真，不签发acceptance。
 

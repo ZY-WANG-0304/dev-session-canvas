@@ -1,6 +1,16 @@
 # CI 改造的实施与验证输入
 
-最新状态（2026-10-18）：第十轮PR335 [39124063678](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124063678) 在真预合并b511d9bf/head0d02a8b0结束失败，247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准），errors/notRun空。唯一业务首败为Windows中文新Terminal身份绑定歧义。原aggregate12136700189/producer117671239737/ZIP9e91e19b及同批candidate12134839128/ZIPc992e167独立核；其余118 source/104 packaged、六native、2 Marketplace Host、Linux/macOS安装同批通过，无acceptance。
+最新状态（2026-10-18）：PR335 ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff 的正式完整 [39128423778](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128423778) 已 **247 jobs全部成功、330 actual/passed、324 required/requiredPassed**，errors/notRun空，六普通PR原生操作校准项也通过。真预合并1d9bb54b的精确main/head parents已核；原aggregate12138480651/producer117684261922/ZIP59e38150/acceptance18540443与candidate12137068102/producer117679779394/ZIPe6703151/包回执472d023f各自独立验真，原0.26.0双包d5b8d102/7503971e bytes一致。
+
+同head与未改PR3278313fc72的最新临时0.26.1组合 [39128957644](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128957644) 已 **247 jobs全部成功、330 required/actual/passed/requiredPassed**。真输入63b168e2的精确parents为main6e708c6b与组合949432c3，双PR ancestry已核；原aggregate12138705324/producer117687946856/ZIP342e7fa3/acceptance6feb2ffa与candidate12137876850/producer117683586127/ZIP4e07b3b0/包回执c984a32a独立验真，原0.26.1双包65af3977/e4c0f723 bytes一致。临时远端分支已按原63b168e2 pinned lease退役，原日志与本地历史保留，临时入口不进入PR335。
+
+两批118 source/104 packaged、六native、两个Marketplace Host及三x64原样安装同批通过。六份原安装报告逐一核producer/upload ID/ZIP/evidence：productTestMode=false、产品manifest/main未改/测试命令不存在；精确两旧Terminal恢复后一次创建、同PID/父PID fresh同fd几何、Stop后原shell/子进程absence、通知确认/居中/selection保留/用户ack、中英文、两个原Host公开正常退出及全部八步cleanup通过。PR335原浏览器报告按冻结434目录独立核431功能+3视觉全通过、retry0。Windows原cached几何仍70×22，fresh观察才是132×42，不把缓存当resize证据。
+
+本地未再次下载这两轮全部task再聚合；原Actions完整验收、独立aggregate/acceptance检查及原双包字节验证分开记账。当前记录仅接受上述各自输入；最终文档follow-up的SHA必须另收稳定CI，不能用ed9257bd回执代证。两项确定产品竞态未修，PR327最终正式预合并/最终tag、15未实施目标、真实渠道/最低宿主等仍保持原边界，root acceptance=false不表示任何发布授权。完整原SHA、来源、报告路径、摘要和退役日志见[local-results.json](local-results.json)。
+
+以下记录保留历史输入的首败和当时待验状态，不表示当前已验代码仍未通过。
+
+此前第十轮PR335 [39124063678](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124063678) 在真预合并b511d9bf/head0d02a8b0结束失败，247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准），errors/notRun空。唯一业务首败为Windows中文新Terminal身份绑定歧义。原aggregate12136700189/producer117671239737/ZIP9e91e19b及同批candidate12134839128/ZIPc992e167独立核；其余118 source/104 packaged、六native、2 Marketplace Host、Linux/macOS安装同批通过，无acceptance。
 
 同head与未改PR3278313fc72的最新组合 [39124249017](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124249017) 已247 jobs全成功、330 required/actual/passed。真实输入65b53ad2精确parents为main6e708c6b和组合1ced1789，双PR ancestry已核；原aggregate12136247599/producer117673887800/ZIPa6c27486和原acceptance摘要037d8cbb独立验真。原candidate12135812518/ZIP8afa6e39及包回执b63e5081、主66addaf7/notifieraedfc41c原bytes与验收一致。第一次候选单range60秒超期保留，原五分钟内较小非重叠range最终验真；该轮全task本地再下载/再聚合未执行，原Actions验收和本地字节验真分别记账。
 
@@ -20,7 +30,7 @@
 
 组合39119845747的全部逐task本地下载仍在原300000ms终止，部分原现场保留，独立本地全量再聚合未完成。其Actions正式aggregate的330项验收、原aggregate/acceptance来源校验和同批双包字节验真分别已完成；这些证据不能写成全部task本地再下载成功。
 
-此目录属于参考证据，不取代正式设计和逐任务验收。正式决策在[release-gate-redesign.md](../../../design-docs/release-gate-redesign.md)，推进状态在[实施计划](../../../exec-plans/active/release-gate-implementation.md)。实现和证据继续随 PR335，发布 PR327 保留。
+此目录属于参考证据，不取代正式设计和逐任务验收。正式决策在[release-gate-redesign.md](../../../design-docs/release-gate-redesign.md)，推进状态在[实施计划](../../../exec-plans/completed/release-gate-implementation.md)。实现和证据继续随 PR335，发布 PR327 保留。
 
 此前第八轮（2026-10-18）：[39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051)在真正预合并e4331d26/head03930c18终态失败，精确parents已API核为main6e708c6b与该head；247 jobs为241成功/6失败，330 actual、324 required、321 required passed，326 total passed含5个校准操作。未改PR327的组合[39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317)在真正预合并4dd88eaa/组合6109a027终态失败，精确main/组合parents和双PR ancestry已核，247 jobs为242成功/5失败，330全部required、327通过。两批source117/118、packaged104/104、Linux原样安装通过；required失败各为一个source与两平台安装，PR335另有Windows身份校准失败，errors/notRun空，均无acceptance。
 

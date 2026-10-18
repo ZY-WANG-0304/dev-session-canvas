@@ -14,7 +14,7 @@
 
 验收证据还要明确测试对象与时间：相同源码不自动证明两次打包产物相同，同版本可见不自动证明远端内容匹配，历史verified不自动代表本轮查询成功。分层重划建议与隔离反例见[release-gate-layering-review.md](release-gate-layering-review.md)；方案已进入实现验证，反例不追认历史错误发布。
 
-按责任分层时应让必跑集合、输入产物和完成回执来自同一契约；独立失败可以继续产生可解释证据，少任务、错身份、清理失败或未知发布不能变成成功。[CI与发布门禁重设计](release-gate-redesign.md)已选定这些工程规则，实现按[活计划](../exec-plans/active/release-gate-implementation.md)验证；静态映射、本地诊断、实际Actions和最终发布输入不能相互代证。
+按责任分层时应让必跑集合、输入产物和完成回执来自同一契约；独立失败可以继续产生可解释证据，少任务、错身份、清理失败或未知发布不能变成成功。[CI与发布门禁重设计](release-gate-redesign.md)已选定这些工程规则，实现按[已完成实施计划](../exec-plans/completed/release-gate-implementation.md)验证；静态映射、本地诊断、实际Actions和最终发布输入不能相互代证。
 
 冻结的预算与实际helper必须一致；准备阶段拒绝过时摘要是有效失败。修正应在提交前重新生成并审查预算，本地入口也核对当前源码，不能让正式CI自动重生成或删除校验去迁就遗漏。
 
@@ -443,6 +443,6 @@ Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同�
 
 停止请求、PTY退出、Supervisor终态和Host消费须分别取证。异步结果保护也必须覆盖RPC的前置副作用：晚到恢复可先撤销已建订阅，再因结果过时跳过补建，使真实进程已退出但Host永久等终态。并发attach的次数不代证最后订阅是否有效；受控原生因果与缺现场的历史归因分别记录。依据见legacy-supervisor-stop-timeout-investigation.md。
 
-smoke的准备、业务动作、观察断言和清理承担不同责任。原链接与Stop分组来自历史专项验收，不构成业务因果；命令exit17、前台命令Ctrl-C、会话Stop、结束后新Start和Host边界后的resume也不能相互代证。按目标重划的选定方案见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)，当前已接共享目录与独立case，137映射保留implemented-unverified、15缺口保持not-implemented；新提交source/packaged及原样安装的完整真实验收仍须完成。
+smoke的准备、业务动作、观察断言和清理承担不同责任。原链接与Stop分组来自历史专项验收，不构成业务因果；命令exit17、前台命令Ctrl-C、会话Stop、结束后新Start和Host边界后的resume也不能相互代证。按目标重划的选定方案见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)，现有迁移已取得同输入source/packaged及原样安装的完整真实验收，137映射仍保留implemented-unverified、15缺口保持not-implemented；映射追踪、实际输入验收和产品缺陷关闭各自需要证据。
 
 公开命令可能等待真实用户确认；CI 必须在原期限内完成同一交互，再核原身份及用户可见结果。视口居中或 view reveal 不保证文档已经获得焦点，稳定矩形也不能替代焦点和实际命中。首轮异步集合排空只证明当时已接纳责任完成，不能证明下一次 await 不再进入回调；生产边界同样受影响时保留产品阻塞，不能用测试静默期隐藏。依据见 [release-gate-redesign.md](release-gate-redesign.md) 与 [runtime-shared-root-canvas-sync.md](runtime-shared-root-canvas-sync.md)。

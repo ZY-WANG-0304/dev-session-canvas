@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域, 画布交互域, 项目状态域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/active/release-gate-implementation.md]
+related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
 updated_at: 2026-10-18
 ---
 
@@ -180,6 +180,12 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 
 ## 当前实施与验证状态（2026-10-18）
 
+现有smoke迁移已在PR335 **ed9257bd** 的正式完整 [39128423778](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128423778) 验收：真预合并1d9bb54b精确parents已核，**324必跑全部通过、330实际任务全部通过、247 jobs全部成功**。同head与未改PR3278313fc72的真实临时0.26.1组合 [39128957644](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128957644) 为 **330全部必跑通过、247 jobs全部成功**；输入63b168e2的main/组合949432c3精确parents及双PR ancestry已核。两轮118源码Host、104packaged Host、六native、两个Marketplace Host及三x64原样安装同批通过，原acceptance与同批双包来源/bytes各自独立验真。三平台安装原报告分别核精确恢复全集、一次创建、fresh同fd实际resize、原进程Stop、通知与两locale、原Host公开退出和全部cleanup；productTestMode=false。PR335原浏览器431功能/3视觉还按冻结434目录独立核全通过、retry0。
+
+本地没有再下载两轮全部task重新聚合；原Actions完整验收与独立原字节检查分别记账，来源见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。152设计目的地依旧137 implemented-unverified/15 not-implemented：这是迁移追踪状态，不从运行数反写为所有设计目标已验证。15缺口、真实provider TUI完成、两项未修产品竞态和PR327合入修复后的正式完整输入仍独立待办。链接与Stop已按目标分开，旧代/双窗口/真实重开保因果suite；原业务期限和身份/保存/reader/退役断言保持。最终文档head的CI另按该head验收，历史输入不代证。
+
+以下历史记录保留各输入首次失败与当时待验范围，后续完整通过不追认历史首败永久修复。
+
 第十轮39124063678以head0d02a8b0/预合并b511d9bf完成：247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准）。唯一业务首败是Windows中文新Terminal身份歧义，aggregate/稳定入口按预期失败。原报告无创建前基线，不能反推精确ID样本；同原production bundle已受控复现外壳先于旧节点恢复的误报窗口。现安装夹具在英文公开关闭前冻结实际Terminal全集，中文原20秒内先核精确恢复，再发一次创建/公开导航/Stop；旧身份丢失、未知/重复及真多新增继续失败，断言前保留采样。原432条目完整保留，新增两项真实前端恢复/拒绝回归；完整当前输入Actions与最新PR327组合仍须重跑。
 
 第九轮39119709105的118 source、104 packaged、六native操作、两个Marketplace Host及三x64原样安装同批通过，整轮仍因时钟合同和覆盖快照计数观察失败，无acceptance。同head与未改PR327的真实临时组合39119845747则330 required/actual/passed、247 jobs全成功，原aggregate来源与完整acceptance已独立核；两批分别记账，不把偶发绿灯当作历史根因已修或产品竞态豁免。
@@ -190,7 +196,7 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 
 `scripts/smoke/smoke-catalog.mjs`现登记102个独立product-case、13个默认因果suite和3个focused诊断。独立case各自从prepare开始，以实际执行的prepare/action/assert step写Host回执；旧代、多窗口、真实重开等继续保留完整因果步骤和原身份。源码默认115项加3个notifier/locale辅助，packaged默认102项加2notifier辅助；两个Marketplace Host单独归层。152个设计目的地由`scripts/smoke/smoke-implementation-map.json`完整映射：137现有目的地为implemented-unverified，15proposed-gap为not-implemented。数字不是实跑通过数；任何mapping或AST检查都不能签发acceptance。
 
-本地独立fixture、特殊拓扑及Marketplace新Host包装器已有真实诊断和保留的首败→修正→复验证据，详见[实施计划](../exec-plans/active/release-gate-implementation.md)。其输入是当前工作树与旧dist/native，不外推新SHA、六native或原样安装。原产品resize/ready/Stop/保存/reader等待保持，修正只解决明确夹具前提：mounted/fit尺寸、Host原身份传递、短systemd/VSCode socket、Remote SSH官方依赖及环境、已空graph避免重复reset、locale语言包。
+本地独立fixture、特殊拓扑及Marketplace新Host包装器已有真实诊断和保留的首败→修正→复验证据，详见[实施计划](../exec-plans/completed/release-gate-implementation.md)。其输入是当前工作树与旧dist/native，不外推新SHA、六native或原样安装。原产品resize/ready/Stop/保存/reader等待保持，修正只解决明确夹具前提：mounted/fit尺寸、Host原身份传递、短systemd/VSCode socket、Remote SSH官方依赖及环境、已空graph避免重复reset、locale语言包。
 
 fake Agent输入区状态仍只覆盖受控启发式，不证明真实TUI回合完成，也不假设回答位于末行。live remount、真实snapshot-only新Host、原生崩溃/Stop不响应及额外压力范围仍按15项未实施缺口记录。产品旧代恢复撤销订阅竞态未修，不能因重划case或延长期限让该确定故障通过。
 

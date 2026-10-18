@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "implementation-local-diagnostics-and-actual-actions-not-complete-acceptance",
+  "scope": "local-diagnostics-and-original-actions-acceptance-bound-to-individual-inputs-not-release-authorization",
   "acceptance": false,
   "workingTreeBase": "3fbae6a9e6a7883f65751938d9960caf4e3acf57",
   "originMain": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
@@ -1097,12 +1097,12 @@
     }
   },
   "notYetVerified": [
-    "new exact locale baseline PR335 head complete formal Actions on newly frozen input",
-    "latest exact locale baseline PR335 + unchanged PR327 real pre-merge full release-pr",
+    "PR327 latest real pre-merge after PR335 and both product race fixes are merged; final release-tag full validation",
     "two independently confirmed product race fixes remain outside current CI-observer implementation",
-    "historical all-task local reaggregation missing; latest aggregate/acceptance and candidate bytes verified separately"
+    "newly frozen documentation follow-up head; old inputs cannot accept a new SHA",
+    "independent local all-task redownload/reaggregation was not performed for these runs; original Actions aggregate and candidate bytes were checked separately"
   ],
-  "releaseBlocker": "Legacy restore subscription revocation race and production Runtime mode-switch callback boundary remain confirmed and unfixed; original intermittent ready/panel-focus causes are unresolved; one accepted temporary combination cannot waive confirmed product failures or validate corrected new head",
+  "releaseBlocker": "Original PR335 ed9257bd and unchanged PR327 temporary combination each completed full corresponding CI acceptance; two independently confirmed legacy restore subscription and production Runtime mode-switch callback races remain unfixed, so 0.26.1 is not unlocked. Historical intermittent ready/panel-focus, CIM blocking mechanism and original macOS EPERM causes remain unresolved.",
   "requiredProtection": {
     "configured": false,
     "observed": "404 Branch not protected"
@@ -3379,6 +3379,2228 @@
       "pr327Head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
       "combinedHeadSHA": "1ced17898f771a5f4bb4243cf9a2d65663841c17",
       "releaseCaveat": "This combination does not accept the new locale correction or waive two independently confirmed production blockers"
+    },
+    {
+      "runID": "39128423778",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128423778",
+      "attempt": 1,
+      "mode": "pr",
+      "version": "0.26.0",
+      "runHeadSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+      "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+      "inputSHA": "1d9bb54b1256f63277ba0ecc29792c4addb1d833",
+      "pr335Head": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+      "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+      "parentsVerified": true,
+      "parents": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff"
+      ],
+      "parentsAPIEvidence": {
+        "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/verified-premerge.json",
+        "sha256": "a2114b599c38f8110588ab1e7069eaace6146e3358d6bdc61b0c569f3c6669f2"
+      },
+      "status": "completed",
+      "conclusion": "success",
+      "acceptance": true,
+      "scope": "Original Actions aggregate/actual jobs/acceptance and original candidate separately checked; not independent local all-task reaggregation",
+      "plan": {
+        "artifactID": 12136354130,
+        "archiveSHA256": "b8118cb9c1b17cb4c3778a79117a6ef9a406004817b98d3a87808804985c2774",
+        "planDigest": "1d7c6557777f1b36e05c62692cf731b958afb2e63d46f9bddfefb8baa41f0fa9",
+        "inputSHA": "1d9bb54b1256f63277ba0ecc29792c4addb1d833",
+        "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+        "run": {
+          "id": "39128423778",
+          "attempt": 1,
+          "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff"
+        },
+        "scope": "Original plan archive and actual producer binding from independently checked original aggregate provenance; not local all-task reaggregation",
+        "artifactBinding": {
+          "id": 12136354130,
+          "name": "gate-transfer-plan-39128423778-1",
+          "expired": false,
+          "runID": "39128423778",
+          "attempt": 1,
+          "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+          "jobID": 117678421171,
+          "archiveHash": "b8118cb9c1b17cb4c3778a79117a6ef9a406004817b98d3a87808804985c2774",
+          "receiptDigests": []
+        }
+      },
+      "counts": {
+        "required": 324,
+        "actual": 330,
+        "passed": 330,
+        "requiredPassed": 324,
+        "failed": 0
+      },
+      "jobs": {
+        "total": 247,
+        "success": 247
+      },
+      "failures": [],
+      "calibration": [],
+      "notRun": [],
+      "errors": [],
+      "firstFailure": null,
+      "failedJobs": [],
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39128423778-download-1",
+        "originalResult": {
+          "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-acceptance-39128423778-1/gate-acceptance-39128423778-1/gate-final/gate-result.json",
+          "sha256": "e55d54183bfc269737b10624b8516235de89b32d5995191100943abc73fed923"
+        },
+        "originalAggregateProvenance": {
+          "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-acceptance-39128423778-1/gate-acceptance-39128423778-1/gate-provenance.json",
+          "sha256": "6f2968a12ac5b0de258be598f2bf4c0f34fbaf094eb3f95265793bba97e7f0f7"
+        },
+        "aggregateArtifactBinding": {
+          "id": 12138480651,
+          "name": "gate-acceptance-39128423778-1",
+          "expired": false,
+          "runID": "39128423778",
+          "attempt": 1,
+          "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+          "jobID": 117684261922,
+          "archiveHash": "59e381501edf3e26c05d9d65f70d7af02f078ab82aeaba5899dd6a4c9b0c0647",
+          "receiptDigests": [
+            "18540443ae3247d7c2805fe50d7cc54931384e386ebca78d7e2ad3655b6854d6"
+          ]
+        },
+        "jobs": {
+          "path": "/dev/shm/dsc-ci-actions-39128423778-jobs-final-1.json",
+          "sha256": "43ecfba340a2c193a916b8a85447c3fc688f253322bc3e490e6cf6804017d89e"
+        },
+        "packageByteVerification": {
+          "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/independent-package-byte-verification.json",
+          "sha256": "3d0bf0318f635fd585f6e5c78cc4f21e7186400c082886288205a0530ccacd5d"
+        },
+        "checkedAcceptance": {
+          "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/checked-acceptance.json",
+          "sha256": "d66868893eefd46bada5edc87fdbd169fecca60046c1836b9f648b624df5b0e5"
+        },
+        "originalAcceptanceDigest": "18540443ae3247d7c2805fe50d7cc54931384e386ebca78d7e2ad3655b6854d6",
+        "independentAllTaskReaggregation": "not-performed"
+      },
+      "candidateTransfer": {
+        "id": 12137068102,
+        "name": "gate-transfer-candidate-39128423778-1",
+        "expired": false,
+        "runID": "39128423778",
+        "attempt": 1,
+        "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+        "jobID": 117679779394,
+        "archiveHash": "e670315153c08e6d570c72bc1ace37488b0107cd906da90be618fe55a4b14797",
+        "receiptDigests": [
+          "472d023f7f5f9ab2ac575dd11147557b350b2fb56c717d6f5c71f6b597c21738"
+        ]
+      },
+      "packages": [
+        {
+          "id": "devsessioncanvas.dev-session-canvas",
+          "version": "0.26.0",
+          "path": "main.vsix",
+          "size": 5999744,
+          "sha256": "d5b8d102ac545f2c323d40b35f6c15ae7234eaadf357ee94534bbc8215b281e4",
+          "payloadDigest": "89d50e9d63d34cff3022309120ed849401fa8816f3faa45397a45184f91a520c"
+        },
+        {
+          "id": "devsessioncanvas.dev-session-canvas-notifier",
+          "version": "0.26.0",
+          "path": "notifier.vsix",
+          "size": 160171,
+          "sha256": "7503971e133347bbe80b0c47cbccafc8b5bf1fae1427610cf83b29db8a2084da",
+          "payloadDigest": "9f2479e741470f4697a7f25afebc2897bb7ef2a84563840b72a022e35732b50f"
+        }
+      ],
+      "packageReceiptDigest": "472d023f7f5f9ab2ac575dd11147557b350b2fb56c717d6f5c71f6b597c21738",
+      "installedPairReports": [
+        {
+          "platform": "linux-x64-glibc",
+          "status": "passed",
+          "artifactBinding": {
+            "id": 12137551873,
+            "name": "gate-installed-pair-linux-x64-glibc-39128423778-1",
+            "expired": false,
+            "runID": "39128423778",
+            "attempt": 1,
+            "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+            "jobID": 117680046136,
+            "archiveHash": "aa5e22cef199271cc3dccbec7dfce1b6e65f6c02eaa28869758fa3049c0cc376",
+            "receiptDigests": [
+              "568aecc536cd0f53c71fc28b1ad760734fa3addbfb7dfe933698ee97da216098"
+            ],
+            "evidenceDigest": "5ff9246eeef53fba95a034649ab09b20a7d067e162ccaa0749a364573c563eeb"
+          },
+          "report": {
+            "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-installed-pair-linux-x64-glibc-39128423778-1/gate-installed-pair-linux-x64-glibc-39128423778-1/installed-pair/linux-x64-glibc/installed/installed-pair.json",
+            "sha256": "5e54c2695787d8c60cb72beec7b3c15694192f43a59f2e6c9d332c943128715d"
+          },
+          "inputSHA": "1d9bb54b1256f63277ba0ecc29792c4addb1d833",
+          "packageReceiptDigest": "472d023f7f5f9ab2ac575dd11147557b350b2fb56c717d6f5c71f6b597c21738",
+          "productTestMode": false,
+          "productManifestsUnmodified": true,
+          "testCommandsAbsent": true,
+          "cleanup": "passed",
+          "hostExit": "passed",
+          "terminal": {
+            "nodeID": "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+            "before": {
+              "pid": 3476,
+              "ppid": 3473,
+              "nonce": "startup",
+              "observedAt": 1792328417810,
+              "cols": 64,
+              "rows": 20,
+              "cached": {
+                "cols": 64,
+                "rows": 20
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "after": {
+              "pid": 3476,
+              "ppid": 3473,
+              "nonce": "ced51ba9966a415a8daada1738e45e36",
+              "observedAt": 1792328418845,
+              "cols": 105,
+              "rows": 34,
+              "cached": {
+                "cols": 105,
+                "rows": 34
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "subjectIdentity": {
+              "pid": 3476,
+              "startTicks": "130211",
+              "state": "S"
+            },
+            "shellIdentity": {
+              "pid": 3473,
+              "startTicks": "130158",
+              "state": "S"
+            },
+            "geometryRequest": {
+              "nonce": "ced51ba9966a415a8daada1738e45e36",
+              "requestedAt": 1792328418756
+            },
+            "stopped": {
+              "expected": {
+                "pid": 3476,
+                "startTicks": "130211",
+                "state": "S"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "shellStopped": {
+              "expected": {
+                "pid": 3473,
+                "startTicks": "130158",
+                "state": "S"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "publicStopObserved": true
+          },
+          "locales": {
+            "en": "en",
+            "zh": "zh-cn",
+            "closedSubjects": {
+              "ids": [
+                "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+              ],
+              "observedAt": 1792328421453,
+              "originalHost": {
+                "pid": 3342,
+                "startTicks": "129690",
+                "state": "S"
+              }
+            },
+            "preparation": [
+              {
+                "phase": "restored-baseline-observation",
+                "ids": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "originalIDs": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "deadline": 1792328449078,
+                "observedAt": 1792328429396
+              },
+              {
+                "phase": "restored-baseline-ready",
+                "ids": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "originalIDs": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "deadline": 1792328449078
+              },
+              {
+                "phase": "public-create-requested",
+                "originalIDs": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "deadline": 1792328449078,
+                "requestedAt": 1792328429396
+              },
+              {
+                "phase": "public-create-completed",
+                "originalIDs": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "deadline": 1792328449078,
+                "completedAt": 1792328429498
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede",
+                  "terminal-4-7bcd766a-f06d-4e29-840d-4f89c27e4f90"
+                ],
+                "originalIDs": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "deadline": 1792328449078,
+                "observedAt": 1792328429588
+              },
+              {
+                "phase": "original-node-bound",
+                "nodeID": "terminal-4-7bcd766a-f06d-4e29-840d-4f89c27e4f90",
+                "existing": [
+                  "terminal-2-3ccff129-cebd-42af-aea6-b396e14b39f9",
+                  "terminal-3-ca75e9b3-7a6d-4391-90e3-ab2e3273cede"
+                ],
+                "overview": "false",
+                "deadline": 1792328449078
+              },
+              {
+                "phase": "localized-stop-interactive",
+                "nodeID": "terminal-4-7bcd766a-f06d-4e29-840d-4f89c27e4f90",
+                "overview": "false",
+                "name": "停止",
+                "deadline": 1792328449078
+              }
+            ],
+            "stop": "停止"
+          },
+          "publicExits": [
+            {
+              "locale": "en",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 3342,
+                  "startTicks": "129690",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792328451554,
+              "completedAt": 1792328421967
+            },
+            {
+              "locale": "zh-cn",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 3663,
+                  "startTicks": "130824",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792328460500,
+              "completedAt": 1792328431013
+            }
+          ],
+          "notification": {
+            "callbackCenters": true,
+            "selectionPreserved": true,
+            "attentionPreservedUntilUserClick": true,
+            "userAcknowledged": true
+          },
+          "cleanupSteps": [
+            {
+              "phase": "disconnect-cdp",
+              "startedAt": 1792328431048,
+              "status": "passed",
+              "completedAt": 1792328431049
+            },
+            {
+              "phase": "retire-original-process-group",
+              "startedAt": 1792328431049,
+              "status": "passed",
+              "completedAt": 1792328431049,
+              "result": {
+                "status": "passed",
+                "boundary": "original-process-group",
+                "observed": "absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-3342",
+              "startedAt": 1792328431049,
+              "status": "passed",
+              "completedAt": 1792328431049,
+              "result": {
+                "expected": {
+                  "pid": 3342,
+                  "startTicks": "129690",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-3663",
+              "startedAt": 1792328431049,
+              "status": "passed",
+              "completedAt": 1792328431049,
+              "result": {
+                "expected": {
+                  "pid": 3663,
+                  "startTicks": "130824",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-child-close",
+              "startedAt": 1792328431049,
+              "status": "passed",
+              "completedAt": 1792328431049,
+              "result": {
+                "code": 0,
+                "signal": null
+              }
+            },
+            {
+              "phase": "verify-original-package-bytes",
+              "startedAt": 1792328431049,
+              "status": "passed",
+              "completedAt": 1792328431067
+            },
+            {
+              "phase": "flush-original-host-log",
+              "startedAt": 1792328431067,
+              "status": "passed",
+              "completedAt": 1792328431067
+            },
+            {
+              "phase": "retire-private-runtime",
+              "startedAt": 1792328431067,
+              "status": "passed",
+              "completedAt": 1792328431081
+            }
+          ]
+        },
+        {
+          "platform": "darwin-x64",
+          "status": "passed",
+          "artifactBinding": {
+            "id": 12137850221,
+            "name": "gate-installed-pair-darwin-x64-39128423778-1",
+            "expired": false,
+            "runID": "39128423778",
+            "attempt": 1,
+            "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+            "jobID": 117680046178,
+            "archiveHash": "b6f7f8d7950e273d9da8b99e783ac02cf5561792ffcccc2ec70c47330f7c9113",
+            "receiptDigests": [
+              "f1a7b8725bfb7cd927bfbc0a03f0f71a9b395d4696080be730fa04ef4e04cde5"
+            ],
+            "evidenceDigest": "580f9fbc224fa149a9aa8b632dd71d099fd9956288a46cac451c57ae23b81b57"
+          },
+          "report": {
+            "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-installed-pair-darwin-x64-39128423778-1/gate-installed-pair-darwin-x64-39128423778-1/installed-pair/darwin-x64/installed/installed-pair.json",
+            "sha256": "8ab213388419a31ecc5c5338333526e42adba0e9ef91ea31c18e1ab2255b903b"
+          },
+          "inputSHA": "1d9bb54b1256f63277ba0ecc29792c4addb1d833",
+          "packageReceiptDigest": "472d023f7f5f9ab2ac575dd11147557b350b2fb56c717d6f5c71f6b597c21738",
+          "productTestMode": false,
+          "productManifestsUnmodified": true,
+          "testCommandsAbsent": true,
+          "cleanup": "passed",
+          "hostExit": "passed",
+          "terminal": {
+            "nodeID": "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+            "before": {
+              "pid": 6249,
+              "ppid": 6245,
+              "nonce": "startup",
+              "observedAt": 1792328090229,
+              "cols": 64,
+              "rows": 20,
+              "cached": {
+                "cols": 64,
+                "rows": 20
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "after": {
+              "pid": 6249,
+              "ppid": 6245,
+              "nonce": "e7fffa0f136d4d34806d1e2bfbb7ced7",
+              "observedAt": 1792328092487,
+              "cols": 97,
+              "rows": 31,
+              "cached": {
+                "cols": 97,
+                "rows": 31
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "subjectIdentity": {
+              "pid": 6249,
+              "startTime": "Sun Oct 18 12:54:50 2026"
+            },
+            "shellIdentity": {
+              "pid": 6245,
+              "startTime": "Sun Oct 18 12:54:48 2026"
+            },
+            "geometryRequest": {
+              "nonce": "e7fffa0f136d4d34806d1e2bfbb7ced7",
+              "requestedAt": 1792328092361
+            },
+            "stopped": {
+              "expected": {
+                "pid": 6249,
+                "startTime": "Sun Oct 18 12:54:50 2026"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "shellStopped": {
+              "expected": {
+                "pid": 6245,
+                "startTime": "Sun Oct 18 12:54:48 2026"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "publicStopObserved": true
+          },
+          "locales": {
+            "en": "en",
+            "zh": "zh-cn",
+            "closedSubjects": {
+              "ids": [
+                "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+              ],
+              "observedAt": 1792328096374,
+              "originalHost": {
+                "pid": 5911,
+                "startTime": "Sun Oct 18 12:54:36 2026"
+              }
+            },
+            "preparation": [
+              {
+                "phase": "restored-baseline-observation",
+                "ids": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "originalIDs": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "deadline": 1792328128707,
+                "observedAt": 1792328109128
+              },
+              {
+                "phase": "restored-baseline-ready",
+                "ids": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "originalIDs": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "deadline": 1792328128707
+              },
+              {
+                "phase": "public-create-requested",
+                "originalIDs": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "deadline": 1792328128707,
+                "requestedAt": 1792328109128
+              },
+              {
+                "phase": "public-create-completed",
+                "originalIDs": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "deadline": 1792328128707,
+                "completedAt": 1792328109233
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "originalIDs": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "deadline": 1792328128707,
+                "observedAt": 1792328109302
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9",
+                  "terminal-4-18e68f3b-0f18-42ec-a364-28a14e442bee"
+                ],
+                "originalIDs": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "deadline": 1792328128707,
+                "observedAt": 1792328109518
+              },
+              {
+                "phase": "original-node-bound",
+                "nodeID": "terminal-4-18e68f3b-0f18-42ec-a364-28a14e442bee",
+                "existing": [
+                  "terminal-2-48d21a6c-9099-4eca-8a3f-f7c12f58b9dc",
+                  "terminal-3-00af30f9-588b-4b98-841a-3251c3e7a4c9"
+                ],
+                "overview": "false",
+                "deadline": 1792328128707
+              },
+              {
+                "phase": "localized-stop-interactive",
+                "nodeID": "terminal-4-18e68f3b-0f18-42ec-a364-28a14e442bee",
+                "overview": "false",
+                "name": "停止",
+                "deadline": 1792328128707
+              }
+            ],
+            "stop": "停止"
+          },
+          "publicExits": [
+            {
+              "locale": "en",
+              "command": "workbench.action.quit",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 5911,
+                  "startTime": "Sun Oct 18 12:54:36 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792328126485,
+              "completedAt": 1792328097630
+            },
+            {
+              "locale": "zh-cn",
+              "command": "workbench.action.quit",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 6626,
+                  "startTime": "Sun Oct 18 12:55:00 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792328140578,
+              "completedAt": 1792328111511
+            }
+          ],
+          "notification": {
+            "callbackCenters": true,
+            "selectionPreserved": true,
+            "attentionPreservedUntilUserClick": true,
+            "userAcknowledged": true
+          },
+          "cleanupSteps": [
+            {
+              "phase": "disconnect-cdp",
+              "startedAt": 1792328111598,
+              "status": "passed",
+              "completedAt": 1792328111599
+            },
+            {
+              "phase": "retire-original-process-group",
+              "startedAt": 1792328111599,
+              "status": "passed",
+              "completedAt": 1792328111600,
+              "result": {
+                "status": "passed",
+                "boundary": "original-process-group",
+                "observed": "absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-5911",
+              "startedAt": 1792328111600,
+              "status": "passed",
+              "completedAt": 1792328111623,
+              "result": {
+                "expected": {
+                  "pid": 5911,
+                  "startTime": "Sun Oct 18 12:54:36 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-6626",
+              "startedAt": 1792328111623,
+              "status": "passed",
+              "completedAt": 1792328111647,
+              "result": {
+                "expected": {
+                  "pid": 6626,
+                  "startTime": "Sun Oct 18 12:55:00 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-child-close",
+              "startedAt": 1792328111647,
+              "status": "passed",
+              "completedAt": 1792328111647,
+              "result": {
+                "code": 0,
+                "signal": null
+              }
+            },
+            {
+              "phase": "verify-original-package-bytes",
+              "startedAt": 1792328111647,
+              "status": "passed",
+              "completedAt": 1792328111676
+            },
+            {
+              "phase": "flush-original-host-log",
+              "startedAt": 1792328111676,
+              "status": "passed",
+              "completedAt": 1792328111676
+            },
+            {
+              "phase": "retire-private-runtime",
+              "startedAt": 1792328111676,
+              "status": "passed",
+              "completedAt": 1792328111712
+            }
+          ]
+        },
+        {
+          "platform": "win32-x64",
+          "status": "passed",
+          "artifactBinding": {
+            "id": 12137785369,
+            "name": "gate-installed-pair-win32-x64-39128423778-1",
+            "expired": false,
+            "runID": "39128423778",
+            "attempt": 1,
+            "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+            "jobID": 117680046181,
+            "archiveHash": "dec5e9a77533d468a74716226f2d14b1f6adbfc529fd3ba79b901d3f53d143d4",
+            "receiptDigests": [
+              "0372cb717ad2bb75bc74751f376198e1b45480fe4571eec42fa036bd6b3529bc"
+            ],
+            "evidenceDigest": "c07b080440b0d899ca02b08266b5616dad7c2f553de84e65638a57c2044f63b1"
+          },
+          "report": {
+            "path": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-installed-pair-win32-x64-39128423778-1/gate-installed-pair-win32-x64-39128423778-1/installed-pair/win32-x64/installed/installed-pair.json",
+            "sha256": "84d5b9799c99b8d136a10328a98a6e362cd7722a39ddac86227346c7f2576f5b"
+          },
+          "inputSHA": "1d9bb54b1256f63277ba0ecc29792c4addb1d833",
+          "packageReceiptDigest": "472d023f7f5f9ab2ac575dd11147557b350b2fb56c717d6f5c71f6b597c21738",
+          "productTestMode": false,
+          "productManifestsUnmodified": true,
+          "testCommandsAbsent": true,
+          "cleanup": "passed",
+          "hostExit": "passed",
+          "terminal": {
+            "nodeID": "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+            "before": {
+              "pid": 4080,
+              "ppid": 5144,
+              "nonce": "startup",
+              "observedAt": 1792328020611,
+              "cols": 70,
+              "rows": 22,
+              "cached": {
+                "cols": 70,
+                "rows": 22
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "after": {
+              "pid": 4080,
+              "ppid": 5144,
+              "nonce": "53bcb8f0ad8246b4a2674b2a4f986fad",
+              "observedAt": 1792328022216,
+              "cols": 132,
+              "rows": 42,
+              "cached": {
+                "cols": 70,
+                "rows": 22
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "subjectIdentity": {
+              "pid": 4080,
+              "startTime": "2026-10-18T12:53:40.5439685Z"
+            },
+            "shellIdentity": {
+              "pid": 5144,
+              "startTime": "2026-10-18T12:53:39.8558791Z"
+            },
+            "geometryRequest": {
+              "nonce": "53bcb8f0ad8246b4a2674b2a4f986fad",
+              "requestedAt": 1792328022093
+            },
+            "stopped": {
+              "expected": {
+                "pid": 4080,
+                "startTime": "2026-10-18T12:53:40.5439685Z"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "shellStopped": {
+              "expected": {
+                "pid": 5144,
+                "startTime": "2026-10-18T12:53:39.8558791Z"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "publicStopObserved": true
+          },
+          "locales": {
+            "en": "en",
+            "zh": "zh-cn",
+            "closedSubjects": {
+              "ids": [
+                "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+              ],
+              "observedAt": 1792328028721,
+              "originalHost": {
+                "pid": 7488,
+                "startTime": "2026-10-18T12:53:32.8168221Z"
+              }
+            },
+            "preparation": [
+              {
+                "phase": "restored-baseline-observation",
+                "ids": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "originalIDs": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "deadline": 1792328056808,
+                "observedAt": 1792328037283
+              },
+              {
+                "phase": "restored-baseline-ready",
+                "ids": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "originalIDs": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "deadline": 1792328056808
+              },
+              {
+                "phase": "public-create-requested",
+                "originalIDs": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "deadline": 1792328056808,
+                "requestedAt": 1792328037283
+              },
+              {
+                "phase": "public-create-completed",
+                "originalIDs": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "deadline": 1792328056808,
+                "completedAt": 1792328037387
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212",
+                  "terminal-4-e49191cb-cc0c-422c-b82a-8ed1b9613e39"
+                ],
+                "originalIDs": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "deadline": 1792328056808,
+                "observedAt": 1792328037486
+              },
+              {
+                "phase": "original-node-bound",
+                "nodeID": "terminal-4-e49191cb-cc0c-422c-b82a-8ed1b9613e39",
+                "existing": [
+                  "terminal-2-18f2585d-e840-495e-af04-fe290708ac80",
+                  "terminal-3-93cc095e-95c4-449f-8c5d-58850f306212"
+                ],
+                "overview": "true",
+                "deadline": 1792328056808
+              },
+              {
+                "phase": "localized-stop-interactive",
+                "nodeID": "terminal-4-e49191cb-cc0c-422c-b82a-8ed1b9613e39",
+                "overview": "false",
+                "name": "停止",
+                "deadline": 1792328056808
+              }
+            ],
+            "stop": "停止"
+          },
+          "publicExits": [
+            {
+              "locale": "en",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 7488,
+                  "startTime": "2026-10-18T12:53:32.8168221Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792328058824,
+              "completedAt": 1792328029575
+            },
+            {
+              "locale": "zh-cn",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 4668,
+                  "startTime": "2026-10-18T12:53:51.1294914Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792328068539,
+              "completedAt": 1792328039292
+            }
+          ],
+          "notification": {
+            "callbackCenters": true,
+            "selectionPreserved": true,
+            "attentionPreservedUntilUserClick": true,
+            "userAcknowledged": true
+          },
+          "cleanupSteps": [
+            {
+              "phase": "disconnect-cdp",
+              "startedAt": 1792328039372,
+              "status": "passed",
+              "completedAt": 1792328039372
+            },
+            {
+              "phase": "retire-original-process-group",
+              "startedAt": 1792328039372,
+              "status": "passed",
+              "completedAt": 1792328039484,
+              "result": {
+                "status": "passed",
+                "boundary": "windows-taskkill-tree",
+                "code": 128,
+                "error": null,
+                "output": "ERROR: The process \"3968\" not found.\r\n"
+              }
+            },
+            {
+              "phase": "observe-original-host-7488",
+              "startedAt": 1792328039484,
+              "status": "passed",
+              "completedAt": 1792328039712,
+              "result": {
+                "expected": {
+                  "pid": 7488,
+                  "startTime": "2026-10-18T12:53:32.8168221Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-4668",
+              "startedAt": 1792328039712,
+              "status": "passed",
+              "completedAt": 1792328039950,
+              "result": {
+                "expected": {
+                  "pid": 4668,
+                  "startTime": "2026-10-18T12:53:51.1294914Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-child-close",
+              "startedAt": 1792328039950,
+              "status": "passed",
+              "completedAt": 1792328039950,
+              "result": {
+                "code": 0,
+                "signal": null
+              }
+            },
+            {
+              "phase": "verify-original-package-bytes",
+              "startedAt": 1792328039950,
+              "status": "passed",
+              "completedAt": 1792328039971
+            },
+            {
+              "phase": "flush-original-host-log",
+              "startedAt": 1792328039971,
+              "status": "passed",
+              "completedAt": 1792328039971
+            },
+            {
+              "phase": "retire-private-runtime",
+              "startedAt": 1792328039971,
+              "status": "passed",
+              "completedAt": 1792328040031
+            }
+          ]
+        }
+      ],
+      "browserReports": {
+        "schemaVersion": 1,
+        "runID": "39128423778",
+        "scope": "Original same-run reports independently compared with current frozen browser catalogue",
+        "reports": [
+          {
+            "kind": "functional",
+            "reportPath": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-webview-function-default-39128423778-1/gate-webview-function-default-39128423778-1/webview-function/default/webview-functional/playwright-execution.json",
+            "reportSHA256": "3fa0f6dcf4965ac57d6efea069b809a45f5de2dc6f972ff53a2e1658bdfe73ca",
+            "catalogDigest": "a02658528a7ee02897963acaac53fb894c0ed0b750eb23fe02f8baad8997858f",
+            "status": "passed",
+            "count": 431,
+            "testSetDigest": "71f66384618551b62bd475ab51a7c6753379fd3a941caccc2f59ace2dc26ae0e",
+            "artifactBinding": {
+              "id": 12136963747,
+              "name": "gate-webview-function-default-39128423778-1",
+              "expired": false,
+              "runID": "39128423778",
+              "attempt": 1,
+              "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+              "jobID": 117678615566,
+              "archiveHash": "e4f1e9a45f7df26f445bc805b8173da1e3a26f9c3ac036014d548ee466cb337d",
+              "receiptDigests": [
+                "64d1a72182e5d13996682638b2586e1209c7186b41b67d67d2cfc7978f835781",
+                "e6d3c6fe5f37c766200b79b1f43d8bfeb00dc52e10580cc0a4ff8267f3011091",
+                "5d99220fefe0feab158ee2bc19ac3293ebc9bc815921d90d9d2846ed4429dd83",
+                "934cefee5ad9362c1f2af1bd61289a3a2463cc9935d21f1cd12ac4153971f757"
+              ],
+              "evidenceDigest": "ff6b5a29cfc4f700117f7b95c7e29ae284ec7eecc54d8ba6383a516f81e5f6d7"
+            }
+          },
+          {
+            "kind": "visual",
+            "reportPath": "/dev/shm/dsc-ci-actions-39128423778-download-1/gate-webview-visual-default-39128423778-1/gate-webview-visual-default-39128423778-1/webview-visual/default/webview-visual/playwright-execution.json",
+            "reportSHA256": "b7d9d82079a746fdee55feb7f1159666e1a7f13b0daefee384252e95a095c021",
+            "catalogDigest": "a02658528a7ee02897963acaac53fb894c0ed0b750eb23fe02f8baad8997858f",
+            "status": "passed",
+            "count": 3,
+            "testSetDigest": "2928d6e40b026700f64d30f3db52bfc5b95beb454ba8f2224f3ce403628212ad",
+            "artifactBinding": {
+              "id": 12136379227,
+              "name": "gate-webview-visual-default-39128423778-1",
+              "expired": false,
+              "runID": "39128423778",
+              "attempt": 1,
+              "headSHA": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+              "jobID": 117678615656,
+              "archiveHash": "b2c336fb34c5c00e314fc45c4cab4ead61a4b41416092399ee9a3a6a0d24fb30",
+              "receiptDigests": [
+                "be146bdae7f2404c2a49ce3669a5da88012cd33248b0b47e4abf42f9792ff309"
+              ],
+              "evidenceDigest": "612f4a82a8bccfaaa7b5ae2f3125e0acd01485152e1ac5567c8ff3fa0fd93d44"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "runID": "39128957644",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39128957644",
+      "attempt": 1,
+      "mode": "release-pr",
+      "version": "0.26.1",
+      "runHeadSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+      "headSHA": "949432c3dbdb9f072253900a4b27d6d400137918",
+      "inputSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+      "pr335Head": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+      "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+      "parentsVerified": true,
+      "parents": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "949432c3dbdb9f072253900a4b27d6d400137918"
+      ],
+      "parentsAPIEvidence": {
+        "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/verified-premerge.json",
+        "sha256": "2a349818cd1821c172582068a8d7a3b55cc1d02038f8b0b26cd93cd6676bb15c"
+      },
+      "status": "completed",
+      "conclusion": "success",
+      "acceptance": true,
+      "scope": "Original Actions aggregate/actual jobs/acceptance and original candidate separately checked; not independent local all-task reaggregation",
+      "plan": {
+        "artifactID": 12137228735,
+        "archiveSHA256": "047c0125b48dacd6c2a1b96930873956c341de1947b3523bf1789736cfc35223",
+        "planDigest": "7429d70145530f8b616dc441e966dc542a6a6bb2b8b5cfad4e86824ec9bca357",
+        "inputSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+        "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "headSHA": "949432c3dbdb9f072253900a4b27d6d400137918",
+        "run": {
+          "id": "39128957644",
+          "attempt": 1,
+          "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508"
+        },
+        "scope": "Original plan archive and actual producer binding from independently checked original aggregate provenance; not local all-task reaggregation",
+        "artifactBinding": {
+          "id": 12137228735,
+          "name": "gate-transfer-plan-39128957644-1",
+          "expired": false,
+          "runID": "39128957644",
+          "attempt": 1,
+          "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+          "jobID": 117680217010,
+          "archiveHash": "047c0125b48dacd6c2a1b96930873956c341de1947b3523bf1789736cfc35223",
+          "receiptDigests": []
+        }
+      },
+      "counts": {
+        "required": 330,
+        "actual": 330,
+        "passed": 330,
+        "requiredPassed": 330,
+        "failed": 0
+      },
+      "jobs": {
+        "total": 247,
+        "success": 247
+      },
+      "failures": [],
+      "calibration": [],
+      "notRun": [],
+      "errors": [],
+      "firstFailure": null,
+      "failedJobs": [],
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39128957644-download-1",
+        "originalResult": {
+          "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/gate-acceptance-39128957644-1/gate-acceptance-39128957644-1/gate-final/gate-result.json",
+          "sha256": "e8f4731b74ba307c8f45498e89d855f4af0f417e3421957f99877af452dd74ba"
+        },
+        "originalAggregateProvenance": {
+          "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/gate-acceptance-39128957644-1/gate-acceptance-39128957644-1/gate-provenance.json",
+          "sha256": "77a64c4bb6ffd956c61f4050fc66186258f500a5b4a558e668cb80e1e9ac0e49"
+        },
+        "aggregateArtifactBinding": {
+          "id": 12138705324,
+          "name": "gate-acceptance-39128957644-1",
+          "expired": false,
+          "runID": "39128957644",
+          "attempt": 1,
+          "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+          "jobID": 117687946856,
+          "archiveHash": "342e7fa3c636d214c775bf036f0898b8f67c0d48520b89699018bafde23de0e1",
+          "receiptDigests": [
+            "6feb2ffa23b4990f5a4a4040dfec5a55f3fbfb424ad402fbfecd72662d17eef2"
+          ]
+        },
+        "jobs": {
+          "path": "/dev/shm/dsc-ci-actions-39128957644-jobs-final-1.json",
+          "sha256": "2492ea289bab2fa48102e3bcea4d96714ae50933257287d63ec117881789f10a"
+        },
+        "packageByteVerification": {
+          "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/independent-package-byte-verification.json",
+          "sha256": "e28198d5591fddc39b8ea8db56ef2b3fc24e60f4471399c2ba60214042cb74f1"
+        },
+        "checkedAcceptance": {
+          "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/checked-acceptance.json",
+          "sha256": "2315c6bb2cc873b6dc105e85f0db53bca83360780c7a33b651ef7296ec436bfd"
+        },
+        "originalAcceptanceDigest": "6feb2ffa23b4990f5a4a4040dfec5a55f3fbfb424ad402fbfecd72662d17eef2",
+        "independentAllTaskReaggregation": "not-performed"
+      },
+      "candidateTransfer": {
+        "id": 12137876850,
+        "name": "gate-transfer-candidate-39128957644-1",
+        "expired": false,
+        "runID": "39128957644",
+        "attempt": 1,
+        "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+        "jobID": 117683586127,
+        "archiveHash": "4e07b3b0dcbc4fcbe5148222e6e3b7a10d365d42bdb54b53867dd9fe096b1a90",
+        "receiptDigests": [
+          "c984a32a7825fb01d4df76cee89f2c9988d7e9f30d37d454db3b3ff8e96e7ae9"
+        ]
+      },
+      "packages": [
+        {
+          "id": "devsessioncanvas.dev-session-canvas",
+          "version": "0.26.1",
+          "path": "main.vsix",
+          "size": 6000888,
+          "sha256": "65af39774ea6c7f2febeef3f1a4c5495b99ccc8656139ae67a90ad0dcead5f5f",
+          "payloadDigest": "e7a660b7b6111499237896854a5746c4b9373490f04dcb1fffbc677c75d2e6d4"
+        },
+        {
+          "id": "devsessioncanvas.dev-session-canvas-notifier",
+          "version": "0.26.1",
+          "path": "notifier.vsix",
+          "size": 160412,
+          "sha256": "e4c0f723a3ea62781b129115b3d00e7acbe16b817fbeed9c1654e4fdd6928a1a",
+          "payloadDigest": "e08ecf8a86bb22ec2aff3cdd9b6a0fd66105de65fce23a4e3f4ce6911647c101"
+        }
+      ],
+      "packageReceiptDigest": "c984a32a7825fb01d4df76cee89f2c9988d7e9f30d37d454db3b3ff8e96e7ae9",
+      "installedPairReports": [
+        {
+          "platform": "linux-x64-glibc",
+          "status": "passed",
+          "artifactBinding": {
+            "id": 12137204104,
+            "name": "gate-installed-pair-linux-x64-glibc-39128957644-1",
+            "expired": false,
+            "runID": "39128957644",
+            "attempt": 1,
+            "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+            "jobID": 117683875618,
+            "archiveHash": "f247a254141e1e9872f25fa2b74f524a5869341ff067fbb63b2da784b569a634",
+            "receiptDigests": [
+              "0140573653e991f269c91a1700f9f3c050cd86808a719778e7e10bb1cf168963"
+            ],
+            "evidenceDigest": "35a9e8360e326d2ddf73f4fbe0e148cf63c3fc0caa95cde9cf4084418b72aa43"
+          },
+          "report": {
+            "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/gate-installed-pair-linux-x64-glibc-39128957644-1/gate-installed-pair-linux-x64-glibc-39128957644-1/installed-pair/linux-x64-glibc/installed/installed-pair.json",
+            "sha256": "a16c4298673c9723645810b2ce7e72b92ac2f96f0617c39b5a4b456c8fc01700"
+          },
+          "inputSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+          "packageReceiptDigest": "c984a32a7825fb01d4df76cee89f2c9988d7e9f30d37d454db3b3ff8e96e7ae9",
+          "productTestMode": false,
+          "productManifestsUnmodified": true,
+          "testCommandsAbsent": true,
+          "cleanup": "passed",
+          "hostExit": "passed",
+          "terminal": {
+            "nodeID": "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+            "before": {
+              "pid": 3288,
+              "ppid": 3272,
+              "nonce": "startup",
+              "observedAt": 1792329635195,
+              "cols": 64,
+              "rows": 20,
+              "cached": {
+                "cols": 64,
+                "rows": 20
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "after": {
+              "pid": 3288,
+              "ppid": 3272,
+              "nonce": "178c94d28e0d43e4996f71762b808f76",
+              "observedAt": 1792329635730,
+              "cols": 105,
+              "rows": 34,
+              "cached": {
+                "cols": 105,
+                "rows": 34
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "subjectIdentity": {
+              "pid": 3288,
+              "startTicks": "121811",
+              "state": "S"
+            },
+            "shellIdentity": {
+              "pid": 3272,
+              "startTicks": "121751",
+              "state": "S"
+            },
+            "geometryRequest": {
+              "nonce": "178c94d28e0d43e4996f71762b808f76",
+              "requestedAt": 1792329635709
+            },
+            "stopped": {
+              "expected": {
+                "pid": 3288,
+                "startTicks": "121811",
+                "state": "S"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "shellStopped": {
+              "expected": {
+                "pid": 3272,
+                "startTicks": "121751",
+                "state": "S"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "publicStopObserved": true
+          },
+          "locales": {
+            "en": "en",
+            "zh": "zh-cn",
+            "closedSubjects": {
+              "ids": [
+                "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+              ],
+              "observedAt": 1792329637911,
+              "originalHost": {
+                "pid": 3169,
+                "startTicks": "121509",
+                "state": "S"
+              }
+            },
+            "preparation": [
+              {
+                "phase": "restored-baseline-observation",
+                "ids": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "originalIDs": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "deadline": 1792329664910,
+                "observedAt": 1792329645085
+              },
+              {
+                "phase": "restored-baseline-ready",
+                "ids": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "originalIDs": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "deadline": 1792329664910
+              },
+              {
+                "phase": "public-create-requested",
+                "originalIDs": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "deadline": 1792329664910,
+                "requestedAt": 1792329645086
+              },
+              {
+                "phase": "public-create-completed",
+                "originalIDs": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "deadline": 1792329664910,
+                "completedAt": 1792329645188
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "originalIDs": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "deadline": 1792329664910,
+                "observedAt": 1792329645199
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a",
+                  "terminal-4-3f809064-c279-4e0b-82e0-5ebf97f08d41"
+                ],
+                "originalIDs": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "deadline": 1792329664910,
+                "observedAt": 1792329645329
+              },
+              {
+                "phase": "original-node-bound",
+                "nodeID": "terminal-4-3f809064-c279-4e0b-82e0-5ebf97f08d41",
+                "existing": [
+                  "terminal-2-02a7d087-5556-40b6-9379-0c3d60894c8d",
+                  "terminal-3-c3ba4848-e728-44ee-9e79-03bde9e7523a"
+                ],
+                "overview": "false",
+                "deadline": 1792329664910
+              },
+              {
+                "phase": "localized-stop-interactive",
+                "nodeID": "terminal-4-3f809064-c279-4e0b-82e0-5ebf97f08d41",
+                "overview": "false",
+                "name": "停止",
+                "deadline": 1792329664910
+              }
+            ],
+            "stop": "停止"
+          },
+          "publicExits": [
+            {
+              "locale": "en",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 3169,
+                  "startTicks": "121509",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792329668012,
+              "completedAt": 1792329638316
+            },
+            {
+              "locale": "zh-cn",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 3470,
+                  "startTicks": "122282",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792329676040,
+              "completedAt": 1792329646350
+            }
+          ],
+          "notification": {
+            "callbackCenters": true,
+            "selectionPreserved": true,
+            "attentionPreservedUntilUserClick": true,
+            "userAcknowledged": true
+          },
+          "cleanupSteps": [
+            {
+              "phase": "disconnect-cdp",
+              "startedAt": 1792329646363,
+              "status": "passed",
+              "completedAt": 1792329646364
+            },
+            {
+              "phase": "retire-original-process-group",
+              "startedAt": 1792329646364,
+              "status": "passed",
+              "completedAt": 1792329646364,
+              "result": {
+                "status": "passed",
+                "boundary": "original-process-group",
+                "observed": "absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-3169",
+              "startedAt": 1792329646364,
+              "status": "passed",
+              "completedAt": 1792329646364,
+              "result": {
+                "expected": {
+                  "pid": 3169,
+                  "startTicks": "121509",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-3470",
+              "startedAt": 1792329646364,
+              "status": "passed",
+              "completedAt": 1792329646364,
+              "result": {
+                "expected": {
+                  "pid": 3470,
+                  "startTicks": "122282",
+                  "state": "S"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-child-close",
+              "startedAt": 1792329646364,
+              "status": "passed",
+              "completedAt": 1792329646364,
+              "result": {
+                "code": 0,
+                "signal": null
+              }
+            },
+            {
+              "phase": "verify-original-package-bytes",
+              "startedAt": 1792329646364,
+              "status": "passed",
+              "completedAt": 1792329646384
+            },
+            {
+              "phase": "flush-original-host-log",
+              "startedAt": 1792329646384,
+              "status": "passed",
+              "completedAt": 1792329646384
+            },
+            {
+              "phase": "retire-private-runtime",
+              "startedAt": 1792329646384,
+              "status": "passed",
+              "completedAt": 1792329646392
+            }
+          ]
+        },
+        {
+          "platform": "darwin-x64",
+          "status": "passed",
+          "artifactBinding": {
+            "id": 12138265679,
+            "name": "gate-installed-pair-darwin-x64-39128957644-1",
+            "expired": false,
+            "runID": "39128957644",
+            "attempt": 1,
+            "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+            "jobID": 117683875541,
+            "archiveHash": "3ba131ca2a8d87d2160a04b937ef839f4e8b20e1910e0d81092d52974b2805dc",
+            "receiptDigests": [
+              "b273910370a82e3f65d9732ef1c0c460ea7233b72cfe5aed3b7f5325b3314798"
+            ],
+            "evidenceDigest": "ca91f7d40131d3d31996b2b2d9e41946c86aa729585af59ce1dcadf6d8527461"
+          },
+          "report": {
+            "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/gate-installed-pair-darwin-x64-39128957644-1/gate-installed-pair-darwin-x64-39128957644-1/installed-pair/darwin-x64/installed/installed-pair.json",
+            "sha256": "1da294bad83d3e0760e889ddafe942ff690583998ee44399b727592c3cf3f2e0"
+          },
+          "inputSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+          "packageReceiptDigest": "c984a32a7825fb01d4df76cee89f2c9988d7e9f30d37d454db3b3ff8e96e7ae9",
+          "productTestMode": false,
+          "productManifestsUnmodified": true,
+          "testCommandsAbsent": true,
+          "cleanup": "passed",
+          "hostExit": "passed",
+          "terminal": {
+            "nodeID": "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+            "before": {
+              "pid": 24223,
+              "ppid": 24209,
+              "nonce": "startup",
+              "observedAt": 1792329253749,
+              "cols": 64,
+              "rows": 20,
+              "cached": {
+                "cols": 64,
+                "rows": 20
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "after": {
+              "pid": 24223,
+              "ppid": 24209,
+              "nonce": "8d6b110e270e405a80de6d28708db5f5",
+              "observedAt": 1792329256531,
+              "cols": 97,
+              "rows": 31,
+              "cached": {
+                "cols": 97,
+                "rows": 31
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "subjectIdentity": {
+              "pid": 24223,
+              "startTime": "Sun Oct 18 13:14:13 2026"
+            },
+            "shellIdentity": {
+              "pid": 24209,
+              "startTime": "Sun Oct 18 13:14:11 2026"
+            },
+            "geometryRequest": {
+              "nonce": "8d6b110e270e405a80de6d28708db5f5",
+              "requestedAt": 1792329256285
+            },
+            "stopped": {
+              "expected": {
+                "pid": 24223,
+                "startTime": "Sun Oct 18 13:14:13 2026"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "shellStopped": {
+              "expected": {
+                "pid": 24209,
+                "startTime": "Sun Oct 18 13:14:11 2026"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "publicStopObserved": true
+          },
+          "locales": {
+            "en": "en",
+            "zh": "zh-cn",
+            "closedSubjects": {
+              "ids": [
+                "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+              ],
+              "observedAt": 1792329261172,
+              "originalHost": {
+                "pid": 23882,
+                "startTime": "Sun Oct 18 13:14:00 2026"
+              }
+            },
+            "preparation": [
+              {
+                "phase": "restored-baseline-observation",
+                "ids": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "originalIDs": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "deadline": 1792329297924,
+                "observedAt": 1792329278395
+              },
+              {
+                "phase": "restored-baseline-ready",
+                "ids": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "originalIDs": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "deadline": 1792329297924
+              },
+              {
+                "phase": "public-create-requested",
+                "originalIDs": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "deadline": 1792329297924,
+                "requestedAt": 1792329278395
+              },
+              {
+                "phase": "public-create-completed",
+                "originalIDs": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "deadline": 1792329297924,
+                "completedAt": 1792329278502
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "originalIDs": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "deadline": 1792329297924,
+                "observedAt": 1792329278634
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0",
+                  "terminal-4-92e7512f-06be-4310-a086-437f94790232"
+                ],
+                "originalIDs": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "deadline": 1792329297924,
+                "observedAt": 1792329278781
+              },
+              {
+                "phase": "original-node-bound",
+                "nodeID": "terminal-4-92e7512f-06be-4310-a086-437f94790232",
+                "existing": [
+                  "terminal-2-05b6563f-e178-406b-9baa-97b3d5fa2688",
+                  "terminal-3-cf71d0e9-8505-4908-b43e-331bc8d003b0"
+                ],
+                "overview": "false",
+                "deadline": 1792329297924
+              },
+              {
+                "phase": "localized-stop-interactive",
+                "nodeID": "terminal-4-92e7512f-06be-4310-a086-437f94790232",
+                "overview": "false",
+                "name": "停止",
+                "deadline": 1792329297924
+              }
+            ],
+            "stop": "停止"
+          },
+          "publicExits": [
+            {
+              "locale": "en",
+              "command": "workbench.action.quit",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 23882,
+                  "startTime": "Sun Oct 18 13:14:00 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792329291276,
+              "completedAt": 1792329262456
+            },
+            {
+              "locale": "zh-cn",
+              "command": "workbench.action.quit",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 24668,
+                  "startTime": "Sun Oct 18 13:14:26 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792329310057,
+              "completedAt": 1792329281710
+            }
+          ],
+          "notification": {
+            "callbackCenters": true,
+            "selectionPreserved": true,
+            "attentionPreservedUntilUserClick": true,
+            "userAcknowledged": true
+          },
+          "cleanupSteps": [
+            {
+              "phase": "disconnect-cdp",
+              "startedAt": 1792329282030,
+              "status": "passed",
+              "completedAt": 1792329282032
+            },
+            {
+              "phase": "retire-original-process-group",
+              "startedAt": 1792329282032,
+              "status": "passed",
+              "completedAt": 1792329282033,
+              "result": {
+                "status": "passed",
+                "boundary": "original-process-group",
+                "observed": "absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-23882",
+              "startedAt": 1792329282033,
+              "status": "passed",
+              "completedAt": 1792329282061,
+              "result": {
+                "expected": {
+                  "pid": 23882,
+                  "startTime": "Sun Oct 18 13:14:00 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-24668",
+              "startedAt": 1792329282061,
+              "status": "passed",
+              "completedAt": 1792329282087,
+              "result": {
+                "expected": {
+                  "pid": 24668,
+                  "startTime": "Sun Oct 18 13:14:26 2026"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-child-close",
+              "startedAt": 1792329282087,
+              "status": "passed",
+              "completedAt": 1792329282087,
+              "result": {
+                "code": 0,
+                "signal": null
+              }
+            },
+            {
+              "phase": "verify-original-package-bytes",
+              "startedAt": 1792329282087,
+              "status": "passed",
+              "completedAt": 1792329282140
+            },
+            {
+              "phase": "flush-original-host-log",
+              "startedAt": 1792329282140,
+              "status": "passed",
+              "completedAt": 1792329282140
+            },
+            {
+              "phase": "retire-private-runtime",
+              "startedAt": 1792329282140,
+              "status": "passed",
+              "completedAt": 1792329282237
+            }
+          ]
+        },
+        {
+          "platform": "win32-x64",
+          "status": "passed",
+          "artifactBinding": {
+            "id": 12137727828,
+            "name": "gate-installed-pair-win32-x64-39128957644-1",
+            "expired": false,
+            "runID": "39128957644",
+            "attempt": 1,
+            "headSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+            "jobID": 117683875524,
+            "archiveHash": "c92f8f438d3eb6b814fb7c8c5e8bb2ff1bd89a25b4017b4c76d3b322ffe839a5",
+            "receiptDigests": [
+              "ae7bdcc91e8d7c0a90c153151cb787df904010dae08a6011b95089383098feca"
+            ],
+            "evidenceDigest": "514f73684285bbf8aaae1bfb84dc3e5e2aea2257b9dda1377a5c0a6b3537d1e7"
+          },
+          "report": {
+            "path": "/dev/shm/dsc-ci-actions-39128957644-download-1/gate-installed-pair-win32-x64-39128957644-1/gate-installed-pair-win32-x64-39128957644-1/installed-pair/win32-x64/installed/installed-pair.json",
+            "sha256": "686bc39d77a386d70c22d27de21e328fe59924392c4ae4e9fbf5be9ad48eda2e"
+          },
+          "inputSHA": "63b168e2baadaab4becfd52bb280fc789760d508",
+          "packageReceiptDigest": "c984a32a7825fb01d4df76cee89f2c9988d7e9f30d37d454db3b3ff8e96e7ae9",
+          "productTestMode": false,
+          "productManifestsUnmodified": true,
+          "testCommandsAbsent": true,
+          "cleanup": "passed",
+          "hostExit": "passed",
+          "terminal": {
+            "nodeID": "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+            "before": {
+              "pid": 7288,
+              "ppid": 6324,
+              "nonce": "startup",
+              "observedAt": 1792329168870,
+              "cols": 70,
+              "rows": 22,
+              "cached": {
+                "cols": 70,
+                "rows": 22
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "after": {
+              "pid": 7288,
+              "ppid": 6324,
+              "nonce": "51b56e7832e6473f818e3182d8415889",
+              "observedAt": 1792329170444,
+              "cols": 132,
+              "rows": 42,
+              "cached": {
+                "cols": 70,
+                "rows": 22
+              },
+              "method": "original-stdout-fresh-tty-handle"
+            },
+            "subjectIdentity": {
+              "pid": 7288,
+              "startTime": "2026-10-18T13:12:48.8056807Z"
+            },
+            "shellIdentity": {
+              "pid": 6324,
+              "startTime": "2026-10-18T13:12:48.0173701Z"
+            },
+            "geometryRequest": {
+              "nonce": "51b56e7832e6473f818e3182d8415889",
+              "requestedAt": 1792329170344
+            },
+            "stopped": {
+              "expected": {
+                "pid": 7288,
+                "startTime": "2026-10-18T13:12:48.8056807Z"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "shellStopped": {
+              "expected": {
+                "pid": 6324,
+                "startTime": "2026-10-18T13:12:48.0173701Z"
+              },
+              "actual": null,
+              "result": "original-absent"
+            },
+            "publicStopObserved": true
+          },
+          "locales": {
+            "en": "en",
+            "zh": "zh-cn",
+            "closedSubjects": {
+              "ids": [
+                "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+              ],
+              "observedAt": 1792329175789,
+              "originalHost": {
+                "pid": 2064,
+                "startTime": "2026-10-18T13:12:41.6858557Z"
+              }
+            },
+            "preparation": [
+              {
+                "phase": "restored-baseline-observation",
+                "ids": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "originalIDs": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "deadline": 1792329203829,
+                "observedAt": 1792329183872
+              },
+              {
+                "phase": "restored-baseline-ready",
+                "ids": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "originalIDs": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "deadline": 1792329203829
+              },
+              {
+                "phase": "public-create-requested",
+                "originalIDs": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "deadline": 1792329203829,
+                "requestedAt": 1792329183872
+              },
+              {
+                "phase": "public-create-completed",
+                "originalIDs": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "deadline": 1792329203829,
+                "completedAt": 1792329183978
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "originalIDs": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "deadline": 1792329203829,
+                "observedAt": 1792329184056
+              },
+              {
+                "phase": "post-create-observation",
+                "ids": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181",
+                  "terminal-4-d5b06591-60a7-4f61-b04e-bfba09d717f4"
+                ],
+                "originalIDs": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "deadline": 1792329203829,
+                "observedAt": 1792329184252
+              },
+              {
+                "phase": "original-node-bound",
+                "nodeID": "terminal-4-d5b06591-60a7-4f61-b04e-bfba09d717f4",
+                "existing": [
+                  "terminal-2-bcae4df9-389c-474b-9ed5-86bb8414829b",
+                  "terminal-3-5a301259-29dc-4738-ae81-c10cede04181"
+                ],
+                "overview": "true",
+                "deadline": 1792329203829
+              },
+              {
+                "phase": "localized-stop-interactive",
+                "nodeID": "terminal-4-d5b06591-60a7-4f61-b04e-bfba09d717f4",
+                "overview": "false",
+                "name": "停止",
+                "deadline": 1792329203829
+              }
+            ],
+            "stop": "停止"
+          },
+          "publicExits": [
+            {
+              "locale": "en",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 2064,
+                  "startTime": "2026-10-18T13:12:41.6858557Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792329205892,
+              "completedAt": 1792329176532
+            },
+            {
+              "locale": "zh-cn",
+              "command": "workbench.action.closeWindow",
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "absence": {
+                "expected": {
+                  "pid": 1924,
+                  "startTime": "2026-10-18T13:12:58.0727428Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              },
+              "deadline": 1792329215095,
+              "completedAt": 1792329185846
+            }
+          ],
+          "notification": {
+            "callbackCenters": true,
+            "selectionPreserved": true,
+            "attentionPreservedUntilUserClick": true,
+            "userAcknowledged": true
+          },
+          "cleanupSteps": [
+            {
+              "phase": "disconnect-cdp",
+              "startedAt": 1792329185920,
+              "status": "passed",
+              "completedAt": 1792329185921
+            },
+            {
+              "phase": "retire-original-process-group",
+              "startedAt": 1792329185921,
+              "status": "passed",
+              "completedAt": 1792329186029,
+              "result": {
+                "status": "passed",
+                "boundary": "windows-taskkill-tree",
+                "code": 128,
+                "error": null,
+                "output": "ERROR: The process \"9060\" not found.\r\n"
+              }
+            },
+            {
+              "phase": "observe-original-host-2064",
+              "startedAt": 1792329186029,
+              "status": "passed",
+              "completedAt": 1792329186249,
+              "result": {
+                "expected": {
+                  "pid": 2064,
+                  "startTime": "2026-10-18T13:12:41.6858557Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-original-host-1924",
+              "startedAt": 1792329186249,
+              "status": "passed",
+              "completedAt": 1792329186460,
+              "result": {
+                "expected": {
+                  "pid": 1924,
+                  "startTime": "2026-10-18T13:12:58.0727428Z"
+                },
+                "actual": null,
+                "result": "original-absent"
+              }
+            },
+            {
+              "phase": "observe-child-close",
+              "startedAt": 1792329186460,
+              "status": "passed",
+              "completedAt": 1792329186460,
+              "result": {
+                "code": 0,
+                "signal": null
+              }
+            },
+            {
+              "phase": "verify-original-package-bytes",
+              "startedAt": 1792329186460,
+              "status": "passed",
+              "completedAt": 1792329186479
+            },
+            {
+              "phase": "flush-original-host-log",
+              "startedAt": 1792329186479,
+              "status": "passed",
+              "completedAt": 1792329186479
+            },
+            {
+              "phase": "retire-private-runtime",
+              "startedAt": 1792329186479,
+              "status": "passed",
+              "completedAt": 1792329186517
+            }
+          ]
+        }
+      ],
+      "pr327Head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+      "combinedHeadSHA": "949432c3dbdb9f072253900a4b27d6d400137918",
+      "bothPRAncestriesVerified": true,
+      "releaseCaveat": "This temporary combined pre-merge is not the PR327 final pre-merge and does not waive two independently confirmed unfixed product races"
     }
-  ]
+  ],
+  "temporaryBranchRetirement": {
+    "branch": "ci-0261-premerge-redesign-temp",
+    "expectedHead": "63b168e2baadaab4becfd52bb280fc789760d508",
+    "status": "retired",
+    "at": "2026-10-18T13:41:37.128178+00:00",
+    "pinnedLease": true,
+    "remoteAbsenceVerified": true,
+    "localHistory": "preserved",
+    "temporaryWorkflowInPR335": false,
+    "evidence": {
+      "path": "/dev/shm/dsc-ci-temp-branch-retirement-1.log",
+      "sha256": "24cbe7205761aeb4819b34baa52fb22c33c106cdf3d1cb211d6ad24929632df7"
+    }
+  },
+  "documentationFollowup": {
+    "parentHead": "ed9257bdec3a78110fec0eb6c30a2bb587ecb7ff",
+    "scope": "Only synchronize documented original acceptance and coverage boundaries; archive completed finite CI implementation plan and preserve active product blocker plan",
+    "implementationChanged": false,
+    "acceptanceInheritedFromParent": false,
+    "formalHeadChecks": "Pending push; final run/input/terminal checks will be recorded in PR335 and original Actions artifacts without another evidence commit",
+    "combinedReleaseRerun": "Not repeated for documentation-only follow-up; existing original combination receipt remains bound to its own input"
+  }
 }

@@ -2,13 +2,17 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
-## 2026-10-18：CI与发布门禁重设计（实现验证中，正式输入与跨平台待验）
+## 2026-10-18：CI与发布门禁重设计（现有覆盖迁移已验，产品阻塞与补充范围保留）
 
-最新第十轮39124063678终态323/324 required通过、330 actual/329 total passed（含六校准），247 jobs为244成功/3失败，仅Windows中文节点身份绑定业务首败。原报告缺创建前ID，不补造历史基线；同production bundle受控一次创建/迟到bootstrap先红，当前关闭前精确全集恢复观察、真多新增拒绝及原概览Stop3/3通过。115合同、434目录的431功能/3视觉及原第十轮双包Linux完整公开诊断通过，原20秒/包摘要/一次动作不变。新head三平台与完整验收待提交后重跑。
+最新已验PR335 ed9257bd：正式完整39128423778在真预合并1d9bb54b完成，精确main/head parents已核，247 jobs全部成功、330 actual/passed、324 required/requiredPassed，六native校准操作亦通过。同head与未改PR3278313fc72的最新临时0.26.1组合39128957644也247 jobs全成功、330全部必跑通过；输入63b168e2的main/组合949432c3精确parents及双PR ancestry已核。两批原aggregate/acceptance的actual producer、ZIP与同批双包原bytes独立验真，118 source/104 packaged、六native、两个Marketplace Host及三x64原样安装同批通过。六份安装原报告全部核精确恢复全集/一次创建/fresh同fd几何/原进程Stop/通知/两locale/原Host公开退出与cleanup；PR335原431功能/3视觉按冻结434目录独立核全通过、retry0。
 
-最新未改PR327组合39124249017已330/330、247 jobs全通过；原aggregate/acceptance与同批双包实际producer/ZIP/hash分别独立核，不追认第十轮失败。该组合全task本地再下载/再聚合未执行，原candidate首个60秒传输失败保留。两项生产竞态仍未修，固定环境/合并保护和15新增缺口继续各自记录，不能靠当前绿灯放行0.26.1。
+原Actions已执行完整聚合，本地未再次下载这两轮全部task再聚合，二者分开记账。临时远端分支已按63b168e2 pinned lease退役，原历史/失败证据保留；最终文档head另收自己的稳定CI，不套用旧回执。两项生产竞态（旧代恢复撤销当前订阅；生产mode-switch删除期间接纳callback并缓存失败）仍未修，最终修复落地后PR327真实预合并和release-tag完整验收保持阻塞。main合并保护、15新增缺口、真实TUI、最低宿主/arm64安装/真实systemd/渠道及历史间歇机制均分别保留，不由临时组合绿灯放行0.26.1。完整来源与边界见正式设计和local-results.json。
 
-[release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[活计划](active/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器有本地通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真实Actions第三轮39095480885/head924cae96/input612a891c：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片与source-build同批通过。隔离双包各build一次/checkout清理成功，后置文件清单错读外层dist失败；聚合另拒Windows反斜杠回执。现修candidate原包dist私有消费与producer路径序列化，保真实staging/ZIP双层和严格路径；原失败包仅诊断，无正式transfer，packaged/三安装仍not-run。新提交完整验收继续，不能把映射或独立补验视为通过。
+以下保留历史输入与当时待验状态；新输入验收不追认历史首败永久修复。
+
+此前第十轮39124063678终态323/324 required通过、330 actual/329 total passed（含六校准），247 jobs为244成功/3失败，仅Windows中文节点身份绑定业务首败。原报告缺创建前ID，不补造历史基线；同production bundle受控一次创建/迟到bootstrap先红，关闭前精确全集恢复观察、真多新增拒绝及原概览Stop3/3通过。115合同、434目录的431功能/3视觉及原第十轮双包Linux完整公开诊断通过，原20秒/包摘要/一次动作不变。
+
+[release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[已完成实施计划](completed/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器有本地通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真实Actions第三轮39095480885/head924cae96/input612a891c：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片与source-build同批通过。隔离双包各build一次/checkout清理成功，后置文件清单错读外层dist失败；聚合另拒Windows反斜杠回执。现修candidate原包dist私有消费与producer路径序列化，保真实staging/ZIP双层和严格路径；原失败包仅诊断，无正式transfer，packaged/三安装仍not-run。新提交完整验收继续，不能把映射或独立补验视为通过。
 
 第五轮39101493143及0.26.1组合39101774719已终态：前者330 actual/324 required/318 required passed，六校准项包含于324 total passed；后者330全必跑328通过，source118/packaged104全通过，仅macOS长IPC和Windowscached geometry失败，均无acceptance。当前原包焦点tab红绿、稳定hit-target/完整pointer、短路径设置与日志、安全退役、同fd fresh geometry及有界transport恢复已落实；105合同、429浏览器目录的426功能/3视觉、当前production文件视图诊断通过。123 suite原期限逐项不变；最新三平台原样安装与新组合仍需实跑，旧资产诊断不能补验收。
 
@@ -18,7 +22,7 @@
 
 第八轮39113768051和未改PR327组合39113960317已终态失败，分别321/324与327/330 required通过；packaged104及Linux安装同批通过，source各117/118。新Process原身份/公开Quit/概览中文Stop观察实现已有113合同、430登记的427功能/3视觉与原生产页面/原双包Linux局部诊断通过。两轮全量task本地独立下载原5分钟失败，未完成再聚合；不与正式aggregate混账。source real-reopen原45秒未ready和panel原10秒无documentFocus仍未定因，当前原动作只读CDP通过不能解除；新head完整跨平台和两生产竞态持续待验/阻塞。
 
-六平台有限操作已有多轮同批实际验证；新head三x64原样安装仍须真实runner验收，固定环境/基础设施预算继续校准。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
+六平台有限操作及ed9257bd/最新临时组合三x64原样安装已有真实runner同批验收，固定环境/基础设施预算的持续成本校准仍保留为后续工作。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 
 关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。
 
@@ -931,10 +935,12 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 
 ## 分层CI真实验收与覆盖边界（2026-10-18）
 
-最新第九轮39119709105已有118 source/104 packaged、六native操作、两个Marketplace Host与三x64原样安装同批通过，但中文Stop二次时钟合同和覆盖快照pending计数仍使原整轮失败，严格拒绝31task（含失败producer连带项），293/324 required，无acceptance。两处CI观察修正已有同原生产bundle的受控先红后绿、114合同及429功能/3视觉通过；430→432保全部旧条目，原预算/正文严格计数/进程组退役保持。新修正提交后的正式输入仍须验收。
+现有迁移与新验证图在PR335 ed9257bd/真预合并1d9bb54b的39128423778及未改PR327最新临时组合/真输入63b168e2的39128957644完成整批验收：各247 jobs全成功，分别324/324与330/330必跑通过，actual/passed均330；118 source/104 packaged、六native、两个Marketplace Host及三x64原样安装同批通过。原aggregate/acceptance、同批双包及六安装报告按actual producer/ZIP/bytes分别独立验真；PR335原431功能/3视觉按冻结434目录独立核通过、retry0。原业务期限、一次公开动作、原身份/Stop/保存/reader/退役断言保持。最终文档新head另验，完整原始来源和保留历史见实施目录。
+
+此前第九轮39119709105虽已有118 source/104 packaged、六native操作、两个Marketplace Host与三x64原样安装同批通过，中文Stop二次时钟合同和覆盖快照pending计数仍使原整轮失败，严格拒绝31task（含失败producer连带项），293/324 required，无acceptance。修正有同原production bundle受控先红后绿、114合同及429功能/3视觉证据，后续精确恢复基线再补115合同与434目录；这些历史失败不由当前整批通过重写。
 
 同head与未改PR327的真实临时组合39119845747已330/330、247 jobs全成功；原aggregate/acceptance实际producer、ZIP及精确双parents独立核验，结果仅属于该输入。两项独立已确认产品竞态（旧代恢复迟到撤销当前订阅；生产mode-switch删除期间仍接纳callback并缓存失败）未修，持续阻塞0.26.1；不能靠偶发绿色、增加等待或删断言关闭。历史real-reopen45秒未ready、panel10秒缺焦点、CIM服务阻塞机制和macOS原EPERM继续未定因，当前实跑通过不当作永久修复。
 
-PR335已实现固定输入/实际Actions来源、15验证job、六发布job、一次clean双包、消费式packaged和三x64原样安装；第四轮39097246318的六native操作、118source Host、2 Marketplace Host及原双包通过，packaged103/104。完整330回执已核，原Windows路径问题消失；7个失败job含regression源码字符串、官方macOS入口、安装CDP观察和合成MouseEvent缺view，整轮无acceptance。当前对应fixture修正的Linux原包完整公开流程、两个原包先红后绿浏览器回归及93合同通过；新head104packaged、三安装、全量聚合与PR327最新真实组合仍待验，不能拼接历史通过。
+PR335已实现固定输入/实际Actions来源、15验证job、六发布job、一次clean双包、消费式packaged和三x64原样安装；当前整批通过不改变第四轮39097246318的packaged103/104和7个失败job历史。原源码字符串、官方macOS入口、安装CDP观察及合成MouseEvent缺view各保留受控证据与修正回归，不将历史单项通过拼接为新的完整验收。渠道模块仅完成本地HTTP/内存合同，不据CI绿色宣称真实交付验证完成。
 
-main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正式设置需实际负例验证。152设计目的地中15新增范围仍明确not-implemented，真实TUI完成信号尚未选定，其余最低宿主、arm64安装、真实systemd/桌面呈现/Marketplace自动依赖和渠道重签边界不外推。生产旧代恢复撤销订阅竞态已复现未修，仍是0.26.1阻塞；CI迁移不能删除原身份/Stop/保存/reader/退役断言或用新等待抹去故障。活计划release-gate-implementation.md、正式设计release-gate-redesign.md、原竞态legacy-supervisor-stop-timeout-investigation.md分别可追溯。
+main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正式设置需实际负例验证。152设计目的地中15新增范围仍明确not-implemented，真实TUI完成信号尚未选定，其余最低宿主、arm64安装、真实systemd/桌面呈现/Marketplace自动依赖和渠道重签边界不外推。生产旧代恢复撤销订阅竞态已复现未修，仍是0.26.1阻塞；CI迁移不能删除原身份/Stop/保存/reader/退役断言或用新等待抹去故障。已完成实施计划release-gate-implementation.md、正式设计release-gate-redesign.md、原竞态legacy-supervisor-stop-timeout-investigation.md分别可追溯。

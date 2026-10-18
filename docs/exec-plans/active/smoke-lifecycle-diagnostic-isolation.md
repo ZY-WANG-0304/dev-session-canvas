@@ -10,6 +10,7 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 ## 进度
 
 
+- [x] (2026-10-18 13:43Z) 分层CI现有覆盖迁移有限阶段完成：PR335 ed9257bd/run39128423778与未改PR327最新临时组合39128957644各247 jobs全成功、324/330必跑全通过；原acceptance/同批双包、六安装及434浏览器报告独立验真。CI实施计划归档，临时远端分支按原head pinned lease退役，产品两竞态与最终PR327/tag验收仍由本active主计划承接。
 - [x] (2026-10-16) 按用户要求展开smoke现有流程设计：核对源码19/packaged8场景、单Host、trusted/restricted、两阶段重开、双窗口、旧代Stop及原resize；六套SVG/PNG、16源码hash、109/38直接调用点与链接核对通过，逐图视觉检查完成；仅交付流程资料。
 
 - [x] (2026-10-15) 用户确认六平台原生CI并追加发布workflow六job；补逐步说明、九张SVG/PNG及原YAML48步/六平台代码映射，严格布局与视觉检查通过；纠正仅Windows ARM64最小宿主为Electron。
@@ -27,7 +28,7 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) systemd仅传显式smoke标志，startup36/36、旧实现先红、typecheck/build通过。
 - [x] (2026-10-15) 源码入口补齐后55c619ad/run38696319881无过滤完整门禁exit1；完整trusted/restricted通过，首败为旧代Terminal停止30秒仍stopping/live=true。
 - [x] (2026-10-15) 确认并原生复现晚到恢复撤销订阅的生产竞态，历史首败唯一归因仍缺现场。
-- [ ] 实施关联恢复竞态修复；修复合入后最终PR327完整门禁。
+- [ ] 实施旧代恢复撤销订阅竞态及生产Runtime mode-switch删除期间迟到callback/缓存失败修复；修复合入后最终PR327真实预合并完整门禁，两项不由CI改造绿色解除。
 - [x] (2026-10-15) 核对原工件清单：旧代场景54份文件只有Host/VS Code日志与失败快照，没有原Supervisor registry、PTY进程或内部队列现场。
 - [x] (2026-10-15) 固定55c619ad与原run六资产诊断已完成并取回，真实Stop/30秒保持；活动入口移除。
 - [x] (2026-10-15) 四份原生诊断样本完成：独立旧代三份、默认源码前置顺序一份全部通过；PTY退出2–5ms、Host终态10–22ms；不追认原首败已修复。
@@ -92,6 +93,8 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 工作分支基于 main6e708c6b，已有调查提交1522579e。每次推送前 fetch/rebase；已推送分支重写使用固定 force-with-lease。临时 CI 证据保存 run/input SHA、六资产 manifest 与第一次失败日志。根磁盘无空余，所有构建、日志和临时 worktree 放 devshm，不清理他人文件。根因原自然时序和前/期间消息对照位于 docs/references/smoke-restricted-ready-root-cause/，旧证据保留历史语义。
 
 ## 结果与复盘
+
+2026-10-18 CI实施阶段收口：15 reusable验证job、六发布外层job、固定计划/实际来源严格验收、现有smoke独立目标迁移、clean同批双包/消费式packaged与三x64原样安装已在PR335 ed9257bd和未改PR327最新真实临时组合分别完整验收，各247 jobs成功、324/330必跑全部通过。原acceptance、candidate bytes、六安装报告和434浏览器执行目录独立核；临时远端分支退役，原失败/局限保留。详见[已完成CI实施计划](../completed/release-gate-implementation.md)和正式设计；最终文档head检查另记录PR335，不移植旧回执。两项确定产品竞态、修复合入后的正式PR327/tag和补充范围仍待办，本计划保持active，当前不表示0.26.1可发布。
 
 2026-10-15 细化交付：job-details.md补齐六平台的逐步构建、静态校验、真实require、有限归档与always边界，以及发布resolve/native/prepare/两个渠道/finalize的实际条件、原YAML步骤、ref/VSIX验证和deferred/删tag策略。新增九图全部校验通过、中文字体与箭头逐图视觉检查，图宽2400；原YAML48步、六target及源码hash/链接已核对。没有修改CI、生产实现或PR327，没有执行发布或新的完整门禁。当前恢复竞态修复和最终正式门禁仍待后续收口。
 
