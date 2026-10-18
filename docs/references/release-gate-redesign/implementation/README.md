@@ -2,9 +2,11 @@
 
 此目录属于参考证据，不取代正式设计和逐任务验收。正式决策在[release-gate-redesign.md](../../../design-docs/release-gate-redesign.md)，推进状态在[实施计划](../../../exec-plans/active/release-gate-implementation.md)。实现和证据继续随 PR335，发布 PR327 保留。
 
-最新状态（2026-10-18）：第六轮 [39108395021](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108395021) 终态失败，324 required/320 required passed，326 total passed 含六校准操作；最新真实 0.26.1 组合 [39108780795](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108780795) 330 required/328通过、source118/packaged104全通过，剩两平台安装URI确认失败。Linux原样安装和六native同批通过；原aggregate/两失败安装工件已独立绑定job/hash，第六轮双包artifact12128899187/ZIP d509e627原bytes已核，原包摘要不变。不同轮次不互补验收，均无acceptance。全量原任务下载仍待收齐。
+最新状态（2026-10-18）：第七轮 [39112933251](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39112933251) 在resolve正确拒过时helper摘要，原业务任务未运行，17 jobs为1成功/3失败/13 skipped，无acceptance。输入7e4d71fc的双parents已独立核为main6e708c6b与head0201c58f；重新生成123预算的期限、wait表达式、倍数、parts与有限循环逐项不变，只同步摘要和行号。真实当前源码核对/副本未审查改动拒绝与panel焦点合同2/2通过；后续完整新输入仍需验证。
 
-公开URI确认按真实VSCode DOM和Uri.toString完整title核原token、不记忆授权，在原20秒完成；受控不存在token的真实Host诊断通过仅说明确认/命令派发/退出，不代证原通知token回跳。panel file/views原probe缺document focus，补公开view focus的production+旧native诊断通过，原10秒和file/split/mounted/reader断言保留。最终108门禁/发布/恢复合同同批通过，0失败/0跳过，四workflow actionlint通过；新head三平台完整安装尚须实跑。
+第六轮 [39108395021](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108395021) 终态失败，324 required/320 required passed，326 total passed 含六校准操作；真实 0.26.1 组合 [39108780795](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108780795) 330 required/328通过、source118/packaged104全通过，剩两平台安装URI确认失败。Linux原样安装和六native同批通过；原aggregate/两失败安装工件已独立绑定job/hash，第六轮双包artifact12128899187/ZIP d509e627原bytes已核，原包摘要不变。不同轮次不互补验收，均无acceptance。第六轮全量原任务本地下载在原5分钟期限终止，已下载部分保留于`/dev/shm/dsc-ci-actions-39108395021-download-1/all-original`，日志`/dev/shm/dsc-ci-actions-39108395021-full-readonly-2.log`；独立全量再聚合未完成。
+
+公开URI确认按真实VSCode DOM和Uri.toString完整title核原token、不记忆授权，在原20秒完成；受控不存在token的真实Host诊断通过仅说明确认/命令派发/退出，不代证原通知token回跳。panel file/views原probe缺document focus，补公开view focus的production+旧native诊断通过，原10秒和file/split/mounted/reader断言保留。当前109门禁/发布/恢复合同同批通过（含冻结源码核对与未审查改动拒绝），0失败/0跳过，四workflow actionlint通过；新head三平台完整安装尚须实跑。
 
 [runtime-mode-switch-reproduction.mjs](runtime-mode-switch-reproduction.mjs) 从仓库根执行，直接加载原生产Host类并受控回调进入时机；JSON记录四生产/模拟×共享/非共享路径都复现delete后pending拒绝和后续缓存失败。脚本是定位资料，输出`acceptance=false`、`status=reproduced-production-mode-switch-path`，不是产品回归通过。原正式source首败与受控源码hash各自记录，正式责任在[runtime-shared-root-canvas-sync.md](../../../design-docs/runtime-shared-root-canvas-sync.md)。产品mode-switch边界和旧代恢复订阅竞态均未修，CI不得增加静默期/重试或放宽原断言掩盖。
 

@@ -10,6 +10,8 @@
 
 第六轮39108395021与最新组合39108780795已终态失败：前者324 required/320 required passed（326 total passed含六校准），后者330 required/328 passed。两者Linux安装、六native、104packaged及基础层通过；组合source118全通过。两平台真实resize/Stop通过，新首败均是vscode.open等真实确认框；已补公开确认并保原token/完整URI/不记忆和20秒，原Host受控不存在token诊断通过不代证完整回跳。source file/views原panel缺文档focus，公开view focus对照通过，原10秒及全部file/split/reader断言不变。macOS原附加kill EPERM尚无具体syscall/对象/栈，新增严格阶段取证，不吞错。
 
+第七轮39112933251正确拒绝遗漏更新的helper源码hash，业务任务未运行；已重生成并核123期限/wait/倍数/循环完全一致，只改hash/证据行号，补本地正反例避免完整合同漏报。第六轮全量原task本地下载在原5分钟期限终止，部分证据保留，不称独立全量再聚合完成。新输入及PR327组合仍须各自完整运行，历史失败不能拼接通过。
+
 六平台有限操作已有多轮同批实际验证；新head三x64原样安装仍须真实runner验收，固定环境/基础设施预算继续校准。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 
 关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。

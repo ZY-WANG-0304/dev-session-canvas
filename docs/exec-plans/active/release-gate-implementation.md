@@ -10,6 +10,7 @@
 
 ## 进度
 
+- [x] (2026-10-18 08:49Z) 第七轮39112933251以真正预合并7e4d71fc/head0201c58f在resolve失败；API独立核双parents为main6e708c6b及该head。原错误为面板focus改动遗漏冻结helper摘要，17 jobs中1成功/3失败/13 skipped，业务任务未运行且无acceptance。重新生成并核123场景全部期限、wait表达式、倍数、parts和loop bounds不变，仅源码hash与行号变；新增真实源码校验及未审查改动拒绝正反例2/2通过。当前完整门禁/发布/恢复合同同批109通过/0失败/0跳过（161103ms），四workflow actionlint通过；后续新输入完整运行仍须完成。
 - [x] (2026-10-18) 第四轮39097246318在真正预合并aa969012/headcdf40738结束：六native load/六有限操作、118源码Host、2 Marketplace Host、423功能/3视觉、source-build及一次clean双包通过，packaged103/104。实际247 jobs为240成功/7失败；全量330回执已采集，299满足验收，errors/notRun为空，整轮无acceptance。
 - [x] (2026-10-18) 定因并修测试输入/观察：native回归改调用真实stager而非源码字符串；macOS同官方包plist入口Code；原安装CDP先连接再创建、固定nodeID、画布内完整resize、launch env receiver、按正式契约center/preserve/用户ack及独立locale。第四轮原包Linux公开全流程exit0，64×20→105×34、原进程Stop和两个Host正常退出通过；诊断acceptance=false，原双包前后摘要不变。
 - [x] (2026-10-18) packaged文件点击原生产bundle event.view=null在minimal/card两个回归均复现，补齐测试MouseEvent所属view/坐标/buttons后2/2通过，连续文件打开及后续公开drag正常；生产drag未加容错、文件/分组/mounted断言保留。真实Playwright登记426→428，仅新增两个行为回归，原426没有删改，完整production425功能和3视觉同输入通过，冻结注册全量一致、基线不变。
@@ -82,6 +83,10 @@ packaged原失败trace的production bundle行/列指向d3-drag nodrag(event.view
 URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×20，旧 helper 却以 92×28 Start；snapshot restore 临时 resize 为 92×28，随后 deferred fit 恢复 64×20。鼠标已进入正确单元，URL provider 与 hover 均实际执行，但第二次 resize 触发 xterm linkLeave，取消尚未显示的 tooltip。修正只在测试夹具：用原 10 秒 probe 等待已 mounted 且 projection 完成的实际 fit 几何，再以该几何 Start。tooltip 文字、清 hover、浏览器路由和 OSC8 断言及原等待全部保留，未改产品行为。`/dev/shm/dsc-ci-url-inspection-7/dom.json` 中的 buffer-resize 调用栈保留取证；复验 17 秒通过。
 
 ## 决策记录
+
+决策：预算源码变动后在提交前显式重生成并审查清单，本地门禁合同与正式resolve都核真实源码；不在正式CI自动修摘要。
+理由：第七轮正确拒绝漏更新的helper hash，原完整108合同没有调用该校验导致本地漏报。新正反例直接调用原模块，当前源码成立、同副本追加未审查内容立即失败；123预算逐项不变，不能借更新hash暗改等待。
+日期/作者：2026-10-18 / Codex。
 
 决策：公开通知URI确认与vscode.open并行，核宿主公开Uri序列化的完整title/原token和默认不记忆选项；panel文件点击显式执行公开view focus，全部共用原20秒/10秒。清理增加真实阶段、syscall/栈及原group/signal，权限错误仍失败。
 理由：两个原平台截图和实际VSCode DOM证明缺少用户确认；source原probe证明panel矩形稳定但document无focus。真实受控对照补前提后通过，产品功能、原包、原断言与等待不变。EPERM原现场不足，只补必要取证不能追认已解决。

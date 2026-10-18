@@ -359,11 +359,40 @@
       "caveat": "Production Host methods, controlled external store/delete/state callback; no real PTY/Electron or other platforms"
     },
     "finalContracts": {
-      "passed": 108,
+      "passed": 109,
       "failed": 0,
       "skipped": 0,
-      "log": "/dev/shm/dsc-ci-gate-contract-implementation-11.log",
-      "scope": "final production gate/notification/panel/cleanup evidence + release/completion/delivery contract batch"
+      "log": "/dev/shm/dsc-ci-gate-contract-implementation-12.log",
+      "logSHA256": "cc08ce04e94201e9f817d5002d335c0de74fd85bb3a2f45e4d1dca019c8fa334",
+      "durationMs": 161103.573323,
+      "scope": "current frozen source, production gate/notification/panel/cleanup + release/completion/delivery contract batch"
+    },
+    "budgetEntrySynchronization": {
+      "status": "passed",
+      "acceptance": false,
+      "sourceSHA256Before": "58b6effd58d20f9f9adc54bd76c6cf687ba30be1f534fb9a8bcd960ee63e71f6",
+      "sourceSHA256After": "5945a73b896f59e45e274bf2f744bc7086caef816974c30ca54cc692309a7b2a",
+      "suites": 123,
+      "allTimeoutsIdentical": true,
+      "waitExpressionsMultipliersPartsAndLoopsIdentical": true,
+      "changes": [
+        "source SHA256",
+        "original evidence line references"
+      ],
+      "contracts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0,
+        "log": "/dev/shm/dsc-ci-budget-entry-contract-1.log",
+        "logSHA256": "1ef8388a44549fe5c0c88580d9267f212972d657b93ddaa8829210cc2119c9d4"
+      },
+      "inventoryGenerationLog": "/dev/shm/dsc-ci-smoke-budget-rebuild-4.log",
+      "formalAutoRegeneration": false
+    },
+    "currentWorkflowSyntax": {
+      "status": "passed",
+      "workflows": 4,
+      "log": "/dev/shm/dsc-ci-actionlint-9.log"
     }
   },
   "notYetVerified": [
@@ -468,7 +497,7 @@
     },
     {
       "file": "scripts/smoke/installed-pair-driver.cjs",
-      "sha256": "3bf9d44419679c3ec2aa249fb99e2447a38bf68b4bf6660d88b95d4745cdac68"
+      "sha256": "e216cd020232739d0b5c30db61b4c3dd448235965be1a263d3f9fccaf8b884bc"
     },
     {
       "file": "scripts/smoke/installed-ui-observation.mjs",
@@ -480,7 +509,7 @@
     },
     {
       "file": "scripts/smoke/run-installed-pair.mjs",
-      "sha256": "2190042e3eff972c00847fc5b53d902fa2af282adbbfeb9361193fc34bfbff23"
+      "sha256": "912c71c299938f4122924411a4981f022d6be9b7c9a3c76e792747a83598ce54"
     },
     {
       "file": "scripts/smoke/run-native-operation.mjs",
@@ -500,7 +529,7 @@
     },
     {
       "file": "scripts/test/test-gate-contracts.mjs",
-      "sha256": "1a2054f28bcb25805c08a64d7f7dda637d6c85266db38fc4a4dceaa4372d2d35"
+      "sha256": "5f7e68d1863bc3021989a8fd6fed3b1662d7d26063efd1dacdf2c392ef6dfd7f"
     },
     {
       "file": "scripts/test/test-linux-execution-candidate-assets.mjs",
@@ -520,7 +549,7 @@
     },
     {
       "file": "tests/vscode-smoke/extension-tests.cjs",
-      "sha256": "58b6effd58d20f9f9adc54bd76c6cf687ba30be1f534fb9a8bcd960ee63e71f6"
+      "sha256": "5945a73b896f59e45e274bf2f744bc7086caef816974c30ca54cc692309a7b2a"
     }
   ],
   "actions": [
@@ -1138,7 +1167,12 @@
           "receiptDigests": []
         },
         "originalProducerProvenanceCount": 253,
-        "independentFullTaskDownload": "pending",
+        "independentFullTaskDownload": {
+          "status": "failed-at-original-300000ms-deadline",
+          "root": "/dev/shm/dsc-ci-actions-39108395021-download-1/all-original",
+          "log": "/dev/shm/dsc-ci-actions-39108395021-full-readonly-2.log",
+          "reaggregationCompleted": false
+        },
         "candidateRoot": "/dev/shm/dsc-ci-actions-39108395021-download-1/candidate-original-1792312997721/gate-transfer-candidate-39108395021-1"
       },
       "candidateTransfer": {
@@ -1271,6 +1305,33 @@
         },
         "originalProducerProvenanceCount": 253,
         "independentFullTaskDownload": "pending"
+      }
+    },
+    {
+      "runID": "39112933251",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39112933251",
+      "attempt": 1,
+      "headSHA": "0201c58fde4b6b03a01e97e2bf000de396efda62",
+      "inputSHA": "7e4d71fc0f1e7a09e60a02e3ef12a9597aef97d1",
+      "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+      "actualParentsVerified": true,
+      "status": "completed",
+      "conclusion": "failure",
+      "acceptance": false,
+      "businessTasksExecuted": false,
+      "jobs": {
+        "total": 17,
+        "success": 1,
+        "failure": 3,
+        "skipped": 13
+      },
+      "firstFailure": {
+        "jobID": 117632741274,
+        "job": "Gate resolve (default)",
+        "reason": "Smoke budget source changed: tests/vscode-smoke/extension-tests.cjs; regenerate and review the bounded wait inventory",
+        "rootCause": "Panel-focus helper changed without synchronizing the frozen source hash; formal resolve correctly rejected stale inventory.",
+        "originalLog": "/dev/shm/dsc-ci-actions-39112933251-resolve-original.log",
+        "originalLogSHA256": "16d7eff6a2dd333cc41aa933d7d73c57466f55ef002f157a5663d6a6e9412217"
       }
     }
   ]

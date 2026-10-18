@@ -8,6 +8,7 @@ import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import vm from 'node:vm';
+import { pathToFileURL } from 'node:url';
 import { buildPlan, validateFrozenPlan, classifyChanges, assertFormalEnvironment, planJobs } from '../gates/resolve-plan.mjs';
 import { aggregateResults } from '../gates/verify-result.mjs';
 import { newTaskReceipt, objectDigest, verifyPackageFiles, validateTaskReceipt, readJSON } from '../gates/receipts.mjs';
@@ -25,6 +26,7 @@ import { chromium } from 'playwright';
 import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
+import { smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
 import { withinDeadline } from '../gates/deadline.mjs';
 import { runNativeOperation, retireNativeResources } from '../smoke/run-native-operation.mjs';
@@ -71,6 +73,23 @@ function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
   refresh();return {plan,receipts,provenance,packageReceipt,refresh};
 }
 const rejects=f=>{const result=aggregateResults(f);assert.equal(result.result.status,'failed');assert.equal(result.acceptance,null);return result;};
+test('frozen smoke budgets match the current sources and reject an unreviewed helper change', async t => {
+  verifySmokeBudgetSources();
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-frozen-budget-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const modulePath = path.join(root, 'scripts/smoke/smoke-budget.mjs');
+  for (const file of ['scripts/smoke/smoke-budget.mjs', 'scripts/smoke/smoke-budget-inventory.json',
+    ...Object.keys(smokeBudgetInventory.sourceHashes)]) {
+    const destination = path.join(root, file);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.copyFile(file, destination);
+  }
+  const frozen = await import(pathToFileURL(modulePath));
+  frozen.verifySmokeBudgetSources();
+  await fs.appendFile(path.join(root, 'tests/vscode-smoke/extension-tests.cjs'), '\n// Unreviewed helper change\n');
+  assert.throws(() => frozen.verifySmokeBudgetSources(),
+    /Smoke budget source changed: tests\/vscode-smoke\/extension-tests\.cjs/u);
+});
 test('file click preparation waits for focus and stable geometry within one deadline and never retries a rejected click', async () => {
   const source = await fs.readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
   const start = source.indexOf('async function performWebviewDomAction(');
