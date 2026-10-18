@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -7,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { digest, objectDigest, readJSON, writeJSON } from './receipts.mjs';
 import { verifyEvidenceManifest } from './evidence.mjs';
+import { requestBytes } from '../release/channel-client.mjs';
 
 export function expectedArtifactProducer(name, plan) {
   const suffix=`-${plan.run.id}-${plan.run.attempt}`;assert(name.endsWith(suffix));
@@ -42,13 +42,21 @@ export async function inspectArtifactArchive(bytes, destination) {
 // Receipts are parsed from these downloaded bytes, not from caller self-reports.
 export async function collectGitHubProvenance(plan,{repository=process.env.GITHUB_REPOSITORY,output, scope='all',
   allowHistoricalRun=false,
-  api=route=>JSON.parse(execFileSync('gh',['api',route],{encoding:'utf8',maxBuffer:32*1024**2})),
-  log=id=>execFileSync('gh',['api',`repos/${repository}/actions/jobs/${id}/logs`],
-    {encoding:'utf8',maxBuffer:64*1024**2}),
-  download=id=>execFileSync('gh',['api',`repos/${repository}/actions/artifacts/${id}/zip`],
-    {maxBuffer:512*1024**2})}={}) {
+  deadline=Date.now()+300000, token=process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN,
+  apiURL=process.env.GITHUB_API_URL ?? 'https://api.github.com', request=requestBytes,
+  api, log, download}={}) {
   assert(repository&&!String(plan.run.id).startsWith('local-'),'GitHub run identity required');assert(output);
+  assert.match(repository,/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u);
   assert(['all','native-load','acceptance','candidate'].includes(scope),'Unknown provenance collection scope');
+  assert(Number.isFinite(deadline)&&deadline>Date.now(),'GitHub provenance original deadline exhausted');
+  const headers={Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',
+    ...(token?{Authorization:`Bearer ${token}`}:{})};
+  // Job logs and ZIPs are binary HTTP payloads, never terminal-rendered gh
+  // output. All queries/redirects share this one absolute collection deadline.
+  const bytes=(route,maxBytes)=>request(new URL(`/${route}`,apiURL),{deadline,maxBytes,headers});
+  api??=async route=>JSON.parse((await bytes(route,32*1024**2)).toString('utf8'));
+  log??=async id=>(await bytes(`repos/${repository}/actions/jobs/${id}/logs`,64*1024**2)).toString('utf8');
+  download??=id=>bytes(`repos/${repository}/actions/artifacts/${id}/zip`,512*1024**2);
   const run=await api(`repos/${repository}/actions/runs/${plan.run.id}`);
   assert.equal(run.id,Number(plan.run.id));assert.equal(run.head_sha,plan.run.headSHA);
   if(allowHistoricalRun) assert(run.run_attempt>=plan.run.attempt,'Original run attempt is unavailable');

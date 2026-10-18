@@ -12,7 +12,7 @@
 
 - [x] (2026-10-17) 核对正式设计、工作流及工作区；实施工作树起点3fbae6a9、远端main6e708c6b；用户主工作区dirty WORKFLOW保持不动。
 - [x] (2026-10-18) 实现唯一任务目录、冻结计划、逐task回执、严格聚合及实际GitHub job/ZIP/artifact绑定；普通PR基础必跑，保守追加全部功能/产物，发布两阶段完整范围。
-- [x] (2026-10-18) 新增15个reusable job和六发布外层job；共享production浏览器构建、同批clean双包、消费式packaged、三x64公开驱动及原包恢复/父状态链接线完成。四workflow actionlint和配置契约通过，实际Actions尚未运行。
+- [x] (2026-10-18) 新增15个reusable job和六发布外层job；共享production浏览器构建、同批clean双包、消费式packaged、三x64公开驱动及原包恢复/父状态链接线完成。四workflow actionlint和配置契约通过；实际Actions已运行两轮，完整验收尚未通过。
 - [x] (2026-10-18) 实际423前端功能、3视觉和Marketplace浏览器通过，未修改baseline。先前浏览器下载超5分钟失败保留，后续本地使用实际核对的Chromium1217缓存，不追认冷下载通过。
 - [x] (2026-10-18) 完整登记80项regression同批80 passed/0 failed；此前78/80及codicon服务/runner drain首败保留。合同已增至80项并同批通过；新增有界证据3项专项通过，最终全合同复验83 passed/0 failed/0 skipped；收口后策略摘要及证据路径变更需针对相关模块复验。
 - [x] (2026-10-18) 独立目录落实102product-case、13默认因果suite和3focused诊断；source115+3辅助，packaged104，Marketplace Host2。152设计目的地137 implemented-unverified/15 not-implemented，旧22 routes/真实helper注册/AST可达及因果step检查通过，不将静态结果当验收。
@@ -21,11 +21,16 @@
 - [x] (2026-10-18) Remote SSH固定官方三依赖包/hash，显式extensionEnvironment、XDG_STATE_HOME短socket及零节点cleanup观察修复。两种原Host退出/保留在第四轮同批2/2实际诊断通过，原Host/Supervisor/离线完成/resize/cleanup齐全。
 - [x] (2026-10-18) Marketplace两个Host夹具修复：复用共享私有TMP路径，preview显式zh-cn并stage语言包；第三轮2/2实际诊断通过，原中文/HTTP/页面断言保留。
 - [x] (2026-10-18) 工件改为有界必要证据+内容清单，拒截断结构化文件、篡改、超限和超时；活动local checkout拒并发复制/删除。真实SSH现场导出42文件/461626bytes，未包含依赖缓存/私钥；专项3/3通过，workflow契约/actionlint通过。
-- [ ] 同步最终文档与验证，提交并fetch/rebase/pinnedlease推PR335；新提交实际Actions的六native/source/clean/packaged/三原样安装和全量来源聚合待运行。
+- [x] (2026-10-18) 主实现455a494f及首轮夹具修复4c3fa9bf已fetch/rebase后推PR335；真实预合并首轮39093713215和第二轮39094300198均有实际job/工件证据。第二轮三regression分片、输入、production前端/视觉、Marketplace浏览器和Linux/macOS四native通过，六native-load均通过。
+- [ ] 修复真实采集/观察卡点并重跑新head：新版gh拒ANSI日志已改有界HTTP；Windows两架构原IO输出已证实OSC标题前缀造成raw换行漏判；production CSS将0.82压缩为.82，前端测试须验数值语义。不能改变15秒产品等待、认命令回显或改回development构建。真正clean/packaged/三原样安装和全量来源聚合继续待验。
 - [ ] 原样安装和跨平台有限操作真实验收，校准固定环境/基础设施上限；渠道只做本地受控测试，不实际发布。
 - [ ] 修复与PR327的最新真实预合并临时分支完整门禁；不另PR、不tag、不改版本。既有生产旧代恢复撤销订阅竞态未修，发布仍阻塞。
 
 ## 意外与发现
+
+第二轮39094300198证实首轮工件文件名/浏览器依赖修复生效。source-build/package-clean仍被新版gh的ANSI日志终端保护阻断，未进入业务构建；有界HTTP采集已实际读取首轮六archive并核actual job/上传ID/原ZIP hash，保留首轮取消事实，不签发验收。超限HTTP响应在Node22可销毁已经detach错误listener的socket，导致未捕获异常；现显式reject后无Error销毁，超限/原deadline反例通过。Windows x64/arm64实际输出均含独立GATE_IO正文，其前方插入OSC窗口标题；raw换行比较漏判，采用锁定xterm终端cells观察，保留有序批次、sealed flush、回显/标题/wrap反例。Linux旧asset诊断完整有限操作通过，Windows新head实跑仍须验证。
+
+第二轮webview-function实际422/423，唯一失败是CSS变量字符串".82"与"0.82"比较。production minifier合法删除leading zero，视觉/实际样式不因该序列化改变；修正为完整Number转换后精确0.82语义检查，保留其他16px/3s/clip/层级/颜色断言和固定截图。不能为了旧测试把真实production前端降为development。
 
 2026-10-18 续跑已收齐完整80项regression同批通过，以及Remote SSH原Host退出/保留两态、两个Marketplace Host的新包装器诊断通过。实跑发现原工件路径复制了node_modules与完整宿主缓存：30个case约33GiB，SSH两态约3.6GiB，必要Host回执与artifacts仅数百KiB。本轮按正式设计补有界证据导出与ZIP内容验真；依赖缓存不当作失败现场，结构化证据不得截断，取证缺失或超限保持失败。本地run-local的finally也必须先确认原执行settle，不能无界fs.cp/fs.rm活动checkout。
 
@@ -55,6 +60,10 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 决策：每case或因果suite私有Host先证明隔离，不共用前一个case业务状态；需要复用Host时再提供成本/隔离证据。trace/probe/控制输入完整导出，依赖/宿主缓存与SSH私钥排除并写明；日志有限区间和原hash显式保留，取证异常使真实producer失败。
 理由：本地实跑出现数GiB重复缓存及长socket，错误工件收口本身会阻塞；不能以删原产品断言或延长业务等待解决。local未settle拒并发复制/删除，失败现场保持可恢复。
+日期/作者：2026-10-18 / Codex。
+
+决策：GitHub来源采集直接读有界HTTP原始字节；Windows和Unix有限操作统一用锁定xterm parser观察完整逻辑行，原实际几何输出必须精确匹配。CSS数字变量按完整数值比较，不按minifier的文本拼写。
+理由：实际两轮Actions分别证明gh终端保护、ConPTY OSC和production数字压缩属于采集/观察问题；保留原产品动作/期限、来源绑定、独立正文及错误几何反例，不能用宽includes、版本可见或dev包替代。
 日期/作者：2026-10-18 / Codex。
 
 ## 结果与复盘
@@ -95,7 +104,7 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 旧六资产在/dev/shm/dsc-lifecycle-fix-evidence/formal-platform和formal-archives，本地Linux有限操作/dev/shm/dsc-ci-native-diagnostic-2仅诊断；不改inputCommit冒充新SHA。官方Remote SSH三包版本/hash位于scripts/smoke/remote-ssh-extension-inputs.json，实际下载核验完成。渠道/恢复正反例用本地HTTP/内存，不写真实渠道。四workflows actionlint通过。main保护API404 Branch not protected，尚无required配置，不能宣称远端阻断已成立。
 
-docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是覆盖审查，均不代替实际CI和产品结果。当前真正clean双包/消费式packaged/三原样安装及新提交Actions未运行，生产恢复竞态及PR327最终完整门禁仍阻塞。后续证据集中既有references/实施目录并用实际SHA/run/attempt/hash记录。
+docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是覆盖审查，均不代替实际CI和产品结果。新提交Actions已实际运行，但真正clean双包/消费式packaged/三原样安装尚未触达，生产恢复竞态及PR327最终完整门禁仍阻塞。后续证据集中既有references/实施目录并用实际SHA/run/attempt/hash记录。
 
 ## 接口与依赖
 
@@ -114,3 +123,5 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 修订记录：2026-10-18 接续80regression同批、SSH两态/两个Marketplace Host及真实工件容量证据；同步102/13/3实际目录与137/15映射边界，补有界证据和local checkout settlement守卫，保留未验正式输入与产品阻塞。
 
 2026-10-18 实际Actions首批run39093713215：head455a494f，真正预合并354e6129（main6e708c6b+PR head）。输入、production前端构建/视觉及Linux/macOS四native构建和有限操作通过。regression缺少sidebar-session-history浏览器预装，部分结果上传因task文件名含冒号被GitHub NTFS通用规则拒绝；已补显式锁定浏览器依赖及可逆唯一文件名编码，taskID和业务断言不变。Windows x64 native-load通过，finite I/O首个正文观察在15秒失败，原cleanup settled；首版回执漏raw输出，当前先补有限实际输出/批次/原身份取证，根因待实际样本，不降低原断言或延长产品等待。首批失败保留，不计完整验收。
+
+修订记录：2026-10-18 接续两轮实际Actions，固定第二轮预合并040883c8/head4c3fa9bf，记录三regression分片/六load与四native操作通过及完整失败。HTTP原字节collector核首轮六实际producer，ConPTY终端语义观察和production CSS数值修复保留原动作/超时/反例；gate59与release29分开通过，后续clean/packaged/installed未触达仍须实跑。

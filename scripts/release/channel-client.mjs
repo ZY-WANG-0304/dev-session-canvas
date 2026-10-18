@@ -25,17 +25,30 @@ export async function requestBytes(url, { deadline, method = 'GET', headers = {}
       if (response.statusCode < 200 || response.statusCode >= 300) {
         response.resume(); reject(new HTTPFailure(response.statusCode)); return;
       }
-      const chunks = []; let length = 0;
+      const chunks = []; let length = 0, exceeded = false;
       response.on('data', chunk => {
+        if (exceeded) return;
         length += chunk.length;
-        if (length > maxBytes) { request.destroy(new Error('HTTP response exceeds the bounded artifact size')); return; }
+        if (length > maxBytes) {
+          exceeded = true;
+          const error = new Error('HTTP response exceeds the bounded artifact size');
+          // Reject explicitly before destroying. When an entire response has
+          // already arrived, Node may have detached the socket's request error
+          // handler; forwarding this Error to that idle socket is uncaught.
+          reject(error); request.destroy(); return;
+        }
         chunks.push(chunk);
       });
-      response.once('error', reject); response.once('end', () => resolve({ bytes: Buffer.concat(chunks) }));
+      // A destroyed response can report both its original socket error and a
+      // subsequent abort. Keep listeners until retirement, and never resolve
+      // a partial oversize response on an already queued end event.
+      response.on('error', reject);
+      response.once('end', () => { if (!exceeded) resolve({ bytes: Buffer.concat(chunks) }); });
     });
-    const timer = setTimeout(() => request.destroy(new Error('HTTP query/submission deadline exceeded')),
-      Math.max(1, Math.min(60000, deadline - Date.now())));
-    request.once('close', () => clearTimeout(timer)); request.once('error', reject);
+    const timer = setTimeout(() => {
+      reject(new Error('HTTP query/submission deadline exceeded')); request.destroy();
+    }, Math.max(1, Math.min(60000, deadline - Date.now())));
+    request.once('close', () => clearTimeout(timer)); request.on('error', reject);
     if (body) request.write(body); request.end();
   });
   if (!result.redirect) return result.bytes;

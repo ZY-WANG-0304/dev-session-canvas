@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "scope": "implementation-and-local-diagnostics-not-actions-acceptance",
+  "scope": "implementation-local-diagnostics-and-actual-actions-not-complete-acceptance",
   "acceptance": false,
   "workingTreeBase": "3fbae6a9e6a7883f65751938d9960caf4e3acf57",
   "originMain": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
@@ -48,6 +48,31 @@
       "passed": 2,
       "failed": 0,
       "input": "working source with previous dist/native; diagnostic only"
+    },
+    "latestGateContracts": {
+      "passed": 59,
+      "failed": 0,
+      "skipped": 0,
+      "logFile": "/dev/shm/dsc-ci-gate-contract-implementation-7.log"
+    },
+    "latestReleaseContracts": {
+      "passed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "logFile": "/dev/shm/dsc-ci-release-http-contract-1.log"
+    },
+    "productionCSS": {
+      "before": "failed: .82 != 0.82 string comparison",
+      "after": "passed: exact numeric 0.82",
+      "production": true,
+      "logFile": "/dev/shm/dsc-ci-css-production-after-1.log"
+    },
+    "nativeTerminalObserver": {
+      "contracts": 2,
+      "result": "passed",
+      "native": "Linux x64 old asset diagnostic passed",
+      "productDeadlineChanged": false,
+      "diagnosticReceipt": "/dev/shm/dsc-ci-native-observer-linux-diagnostic-1/native-operation.json"
     }
   },
   "notYetVerified": [
@@ -82,7 +107,7 @@
     },
     {
       "file": ".github/workflows/ci-validation.yml",
-      "sha256": "52b18431f2f840ef236f4644dbad931df0716a9bdfaf045a073b7785c4b9d11d"
+      "sha256": "bc5c01a7446fa139e04eb57a83f5ff13784cf5cee339c7201feeb1570e7b9b7e"
     },
     {
       "file": ".github/workflows/release-preflight.yml",
@@ -95,6 +120,83 @@
     {
       "file": ".github/workflows/publish-marketplace-release.yml",
       "sha256": "49c8796c2fbda7ae19385b6899f70a046a883abba72737762331631e3810c902"
+    },
+    {
+      "file": "scripts/gates/github-provenance.mjs",
+      "sha256": "de462502c568299159f92d1834ee549a7d383e99411909008085a949b8d788c7"
+    },
+    {
+      "file": "scripts/release/channel-client.mjs",
+      "sha256": "550d15c7ab9375dd0e2b8320aa27ecc0e31080bc87779f30e13c7fcd6d368f56"
+    },
+    {
+      "file": "scripts/smoke/run-native-operation.mjs",
+      "sha256": "38921c3ee3751ca3e7db39f76d0323a5f9d6557405999a48566e5729a8323013"
+    },
+    {
+      "file": "scripts/smoke/native-terminal-observer.mjs",
+      "sha256": "36754a4464e23b8da6794c316f73a4ea796410e2465bc1cf1a66e0de7383a17c"
+    },
+    {
+      "file": "tests/playwright/webview-harness.spec.mjs",
+      "sha256": "e24543c4696ad821510f2d15d00dc076c8fafdf8a0426cf2b9971be5cb1266ec"
+    }
+  ],
+  "actions": [
+    {
+      "runID": "39093713215",
+      "attempt": 1,
+      "headSHA": "455a494f7e4731105289a5b5070af8904c087205",
+      "inputSHA": "354e6129b0ca4e645a4c0f7427dab4badaed98e5",
+      "conclusion": "cancelled",
+      "acceptance": false,
+      "httpNativeProvenanceRecheck": {
+        "artifactCount": 6,
+        "result": "passed",
+        "scope": "historical actual producer and bytes, not run acceptance",
+        "file": "/dev/shm/dsc-ci-http-native-provenance-39093713215-proxied.json"
+      }
+    },
+    {
+      "runID": "39094300198",
+      "attempt": 1,
+      "headSHA": "4c3fa9bfb06d25453dbf06de1bb7904e3987a9e8",
+      "inputSHA": "040883c8cb7398da00f2a27e7e858fbb204d4a67",
+      "conclusion": "failure",
+      "acceptance": false,
+      "passedJobs": [
+        "input-contract",
+        "regression/shard-1",
+        "regression/shard-2",
+        "regression/shard-3",
+        "frontend-build",
+        "webview-visual",
+        "marketplace-browser",
+        "native-assets/linux-x64-glibc",
+        "native-assets/linux-arm64-glibc",
+        "native-assets/darwin-x64",
+        "native-assets/darwin-arm64"
+      ],
+      "nativeLoadsPassed": 6,
+      "failures": [
+        {
+          "job": "webview-function",
+          "detail": "422/423 passed, production .82/0.82 CSS numeric token string mismatch"
+        },
+        {
+          "job": "native-assets/win32-x64",
+          "detail": "independent IO body delivered but OSC title prevented raw line recognition"
+        },
+        {
+          "job": "native-assets/win32-arm64",
+          "detail": "same OSC-prefixed IO body observation defect"
+        },
+        {
+          "job": "source-build and package-clean",
+          "detail": "gh rejects original ANSI upload job logs before actual build"
+        }
+      ],
+      "downstream": "source-host, marketplace-host, packaged-host and installed-pair not run"
     }
   ]
 }

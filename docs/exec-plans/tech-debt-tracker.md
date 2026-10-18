@@ -4,7 +4,7 @@
 
 ## 2026-10-18：CI与发布门禁重设计（实现验证中，正式输入与跨平台待验）
 
-[release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[活计划](active/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真正clean/packaged/installed和Actions完整验收尚需运行，不能把实施映射视为通过。
+[release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[活计划](active/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器有本地通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真实Actions两轮已有证据：第二轮三regression分片、输入、production前端/视觉、Marketplace浏览器及Linux/macOS四native通过，六native-load通过；Windows OSC正文漏判、gh日志保护和CSS数字拼写观察缺陷修正后仍须重跑完整新输入。真正clean/packaged/installed尚未触达，不能把实施映射或独立补验视为通过。
 
 六平台有限操作与三x64原样安装须实际runner验证，Node/VSCode/Chromium及基础设施预算须校准；最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 

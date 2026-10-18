@@ -996,9 +996,9 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
           titleBlockWidthToken: getComputedStyle(header)
             .getPropertyValue('--pane-gallery-root-running-title-block-width')
             .trim(),
-          titleBlockOpacityToken: getComputedStyle(header)
+          titleBlockOpacityToken: Number(getComputedStyle(header)
             .getPropertyValue('--pane-gallery-root-running-title-block-opacity')
-            .trim(),
+            .trim()),
           titleBlockClipped: getComputedStyle(header).overflow === 'hidden',
           titleBlockTop: getComputedStyle(header, '::after').top,
           titleBlockBottom: getComputedStyle(header, '::after').bottom,
@@ -1016,7 +1016,7 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
       titleBlockAnimationDuration: '3s',
       titleBlockFilter: 'none',
       titleBlockWidthToken: '16px',
-      titleBlockOpacityToken: '0.82',
+      titleBlockOpacityToken: 0.82,
       titleBlockClipped: true,
       titleBlockTop: '0px',
       titleBlockBottom: '0px',

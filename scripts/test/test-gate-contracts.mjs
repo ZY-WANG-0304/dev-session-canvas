@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import vm from 'node:vm';
@@ -13,6 +14,7 @@ import { executeTask, resultPath } from '../gates/run-task.mjs';
 import { runProcess,processGroupExists } from '../gates/process.mjs';
 import JSZip from 'jszip';
 import {collectGitHubProvenance,inspectArtifactArchive} from '../gates/github-provenance.mjs';
+import { requestBytes } from '../release/channel-client.mjs';
 import {validateAcceptance} from '../gates/check-acceptance.mjs';
 import {digest} from '../gates/receipts.mjs';
 import {verifyInstrumentation} from '../smoke/package-instrumentation.mjs';
@@ -22,6 +24,7 @@ import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
 import { withinDeadline } from '../gates/deadline.mjs';
 import { runNativeOperation, retireNativeResources } from '../smoke/run-native-operation.mjs';
+import { NativeTerminalObserver } from '../smoke/native-terminal-observer.mjs';
 import { readSmokeImplementationMap, validateSmokeImplementationMap, verifySmokeImplementationSources } from '../gates/smoke-implementation.mjs';
 import { retireCandidateCheckout } from '../release/build-release-candidate.mjs';
 import { ensureExtensionFixtureInputs, verifyExtensionFixture, validateExtensionFixtureInput } from '../smoke/extension-fixture-inputs.mjs';
@@ -374,6 +377,69 @@ test('native input provenance ignores unrelated running jobs and binds actual ZI
     await assert.rejects(()=>inspectArtifactArchive(traversal.generateAsync({type:'nodebuffer'}),path.join(temp,'unsafe')));
   }finally{await fs.rm(temp,{recursive:true,force:true});}
 });
+test('GitHub HTTP provenance binds raw ANSI upload logs and original ZIP bytes without forwarding redirect credentials', async t => {
+  const f=fixture({changedPaths:['packages/a.ts']});
+  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-http-provenance-'));
+  t.after(()=>fs.rm(temp,{recursive:true,force:true}));
+  const zip=new JSZip();zip.file('native-load.task.json',JSON.stringify(f.receipts.find(r=>r.taskID==='native-load')));
+  const archive=await zip.generateAsync({type:'nodebuffer'});
+  const artifact={id:100,name:`gate-native-load-linux-x64-glibc-${f.plan.run.id}-${f.plan.run.attempt}`,
+    expired:false,digest:`sha256:${digest(archive)}`,workflow_run:{id:12345,head_sha:sha}};
+  const jobs=[{id:1,name:'Validation / Gate native-assets (linux-x64-glibc)',status:'completed',conclusion:'failure'}];
+  const redirectedHeaders=[];let fault;
+  const downloads=http.createServer((req,res)=>{
+    redirectedHeaders.push(req.headers);
+    if(req.url==='/logs')res.end(Buffer.from(`\u001b[32mUploaded artifact successfully\u001b[0m\nArtifact ID is ${fault==='upload-id'?1001:100}\n`));
+    else if(req.url==='/zip')res.end(archive);
+    else {res.statusCode=404;res.end();}
+  });
+  await new Promise(resolve=>downloads.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{downloads.closeAllConnections();return new Promise(resolve=>downloads.close(resolve));});
+  const downloadURL=`http://127.0.0.1:${downloads.address().port}`;
+  const apiHeaders=[];
+  const server=http.createServer((req,res)=>{
+    apiHeaders.push(req.headers);
+    if(req.url==='/repos/test/repo/actions/runs/12345')
+      res.end(JSON.stringify({id:12345,head_sha:fault==='run-head'?base:sha,run_attempt:fault==='attempt'?3:2}));
+    else if(req.url.includes('/attempts/2/jobs?'))res.end(JSON.stringify({jobs}));
+    else if(req.url.includes('/12345/artifacts?'))
+      res.end(JSON.stringify({artifacts:[fault==='zip-digest'?{...artifact,digest:`sha256:${hash}`} : artifact]}));
+    else if(req.url==='/repos/test/repo/actions/jobs/1/logs'||req.url==='/repos/test/repo/actions/artifacts/100/zip') {
+      res.statusCode=302;res.setHeader('Location',`${downloadURL}/${req.url.endsWith('/logs')?'logs':'zip'}`);res.end();
+    } else {res.statusCode=404;res.end();}
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
+  const options={repository:'test/repo',scope:'native-load',token:'fixture-read-only-token',
+    apiURL:`http://127.0.0.1:${server.address().port}`};
+  const collected=await collectGitHubProvenance(f.plan,{...options,output:path.join(temp,'valid')});
+  assert.equal(collected.artifacts.length,1);assert.equal(collected.artifacts[0].jobID,1);
+  assert.equal(collected.artifacts[0].archiveHash,digest(archive));
+  assert.equal(collected.artifacts[0].receiptDigests[0],objectDigest(f.receipts.find(r=>r.taskID==='native-load')));
+  assert(apiHeaders.length>0&&apiHeaders.every(headers=>headers.authorization==='Bearer fixture-read-only-token'));
+  assert(redirectedHeaders.length===2&&redirectedHeaders.every(headers=>headers.authorization===undefined));
+  for(const [kind,pattern]of [['upload-id',/bind artifact ID/u],['zip-digest',/Downloaded archive differs/u],
+    ['run-head',/strictly equal/u],['attempt',/Run attempt changed/u]]) {
+    fault=kind;
+    await assert.rejects(()=>collectGitHubProvenance(f.plan,{...options,output:path.join(temp,kind)}),pattern);
+  }
+});
+test('provenance HTTP size and absolute deadline failures cannot become successful evidence', async t => {
+  const server=http.createServer((req,res)=>{
+    if(req.url==='/oversize')res.end(Buffer.alloc(1024,'x'));
+    else if(req.url==='/redirect'){res.statusCode=302;res.setHeader('Location','/delayed');res.end();}
+    else {const timer=setTimeout(()=>res.end('too late'),500);timer.unref();}
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
+  const baseURL=`http://127.0.0.1:${server.address().port}`;
+  await assert.rejects(()=>requestBytes(`${baseURL}/oversize`,{deadline:Date.now()+2000,maxBytes:8}),/bounded artifact size/u);
+  await assert.rejects(()=>requestBytes(`${baseURL}/redirect`,{deadline:Date.now()+100}),/deadline exceeded/u);
+  const f=fixture();let queried=false;
+  await assert.rejects(()=>collectGitHubProvenance(f.plan,{repository:'test/repo',output:'/unused',deadline:Date.now()-1,
+    request:async()=>{queried=true;return Buffer.from('{}');}}),/original deadline exhausted/u);
+  assert.equal(queried,false,'An expired collection may not acquire fresh query time');
+});
 test('packaged instrumentation forbids unexpected payload changes and notifier substitution',()=>{
   const input={beforeMain:[{path:'dist/extension.js',sha256:hash},{path:'package.json',sha256:hash}],beforeNotifier:[{path:'dist/extension.js',sha256:hash}],
     afterMain:[{path:'dist/extension.js',sha256:hash},{path:'package.json',sha256:'d'.repeat(64)},{path:'extension.js',sha256:hash}],
@@ -448,6 +514,39 @@ test('bounded installed operation expires before cleanup and preserves cooperati
     retired = true;
   }, { settlementDeadline: Date.now() + 300 }), error => /deadline/.test(error.message) && !error.unsettled);
   assert(retired);
+});
+test('native terminal observation recognizes ConPTY OSC and cursor output without accepting a title or command echo', async t => {
+  const terminal = new NativeTerminalObserver(80, 24);
+  t.after(() => terminal.dispose());
+  let sequence=0;
+  const consume = text => terminal.consume([{ sequence: ++sequence, text }]);
+  const marker='GATE_IO_9896';
+  const prompt=`D:\\a\\dev-session-canvas\\dev-session-canvas\\gate-results\\native-assets\\win32-x64\\operation>`;
+  await consume(`\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001h\u001b[?7l\u001b[?7hMicrosoft Windows\r\n`
+    + `\u001b]0;Administrator: cmd.exe\u001b\\\r\n${prompt}\u001b[4;11Hecho ${marker}\r\n`);
+  assert.equal(terminal.hasExactLine(marker),false,'Wrapped echoed input is not the independent response');
+  await consume(`\u001b]0;Administrator: cmd.exe - echo ${marker}`);
+  assert.equal(terminal.hasExactLine(marker),false,'An incomplete OSC title cannot become output');
+  await consume(`\u001b\\${marker.slice(0,7)}`);
+  assert.equal(terminal.hasExactLine(marker),false,'A partial response cannot pass');
+  await consume(`${marker.slice(7)}\r\n\u001b]0;Administrator: cmd.exe\u001b\\\r\n${prompt}`);
+  assert.equal(terminal.hasExactLine(marker),true);
+  assert.equal(terminal.flushFinal({ lastDataSequence:sequence }),sequence);
+  assert.throws(()=>terminal.flushFinal({ lastDataSequence:sequence+1 }),/sealed output/u);
+  await assert.rejects(()=>terminal.consume([{ sequence:sequence+2,text:'foreign' }]),/original ordered output/u);
+});
+test('native terminal exact responses reject wrapped suffixes and require actual geometry output', async t => {
+  const terminal = new NativeTerminalObserver(12,5);t.after(()=>terminal.dispose());
+  const marker='GATE_IO_1';
+  await terminal.consume([{sequence:1,text:`echo        ${marker}\r\n`}]);
+  assert.equal(terminal.hasExactLine(marker),false,'A marker wrapped onto its own visual row remains part of the echo');
+  terminal.resize(113,37);
+  await terminal.consume([{sequence:2,text:'\u001b[2J\u001b[H\u001b]0;GATE_GEOMETRY=113,37\u0007GATE_GEOMETRY=80,24\r\n'}]);
+  assert.equal(terminal.hasExactLine('GATE_GEOMETRY=113,37'),false);
+  await terminal.consume([{sequence:3,text:'\u001b[32mGATE_GEOMETRY=113,37\u001b[0m\r\n'}]);
+  assert.equal(terminal.hasExactLine('GATE_GEOMETRY=113,37'),true);
+  await terminal.consume([{sequence:4,text:'\u001b[2J\u001b[HX'+marker+'\r\n'}]);
+  assert.equal(terminal.hasExactLine(marker),false);
 });
 test('native setup failure still records its original error and independent cleanup', async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-native-setup-'));

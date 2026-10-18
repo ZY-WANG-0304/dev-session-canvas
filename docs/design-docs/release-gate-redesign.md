@@ -89,7 +89,7 @@ Host分组是fixture/环境复用方式，不是业务场景目录。目录保�
 
 六目标native操作是独立、有限的真实shell契约，必须调用本次目标asset的spawn/input/output/resize/exit/Stop并确认资源释放；resize用子进程实际几何，退出code/signal与cleanup分别验证。load报告继续保留`productValidated=false`，操作报告是另一个证据。原样安装先要求三个x64系统的双包公开入口、基本I/O/resize/Stop和notification路由；arm64仅六原生操作，不外推arm64安装/TUI/旧OS均已验。扩展最低VSCode`^1.80.0`的运行承诺与Node minimum load分账，最低宿主和真实provider范围列为后续受控验收，不能降宣manifest来让门禁通过。
 
-native操作driver通过当前平台provider消费本次addon，Stop在这层指按provider终止同一原进程并核退出/资源，不假设所有addon导出同名Stop函数；用户UI Stop及Host/save/reader结算仍由source/installed层承担。minimum Node仍只做load，不外推minimum Node全套行为验收。
+native操作driver通过当前平台provider消费本次addon，Stop在这层指按provider终止同一原进程并核退出/资源，不假设所有addon导出同名Stop函数；用户UI Stop及Host/save/reader结算仍由source/installed层承担。minimum Node仍只做load，不外推minimum Node全套行为验收。`scripts/smoke/native-terminal-observer.mjs`用锁定xterm parser消费原有序输出并验完整逻辑正文行；ConPTY OSC窗口标题、光标序列和自动换行不能使原命令回显成为回应。终态flush核sealed序号，resize仍要求子进程真实输出精确几何，不能从观察器自行resize或provider ACK推定。
 
 ### 4. 同批双包、回执与消费式验证
 
@@ -113,7 +113,7 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 | `gate-result.json` | 必跑/实跑/失败/未跑清单、首败、附加cleanup失败、输入/包身份、实际job结果；不在失败时伪造acceptance |
 | `acceptance-receipt.json` | final/PR mode、inputSHA、plan/包回执/每层结果摘要、完整任务集合、实际producer来源；只能由正式全量聚合成功产生 |
 
-schema、类型、版本和必需字段严格检查，未知状态不默认成功。artifact及回执的GitHub producer run/job/attempt还要由调用方的下载来源/实际job结果独立核验，不能相信JSON自报“成功”；签名不是当前必要的新平台依赖。重跑某job时使用该attempt的结果，不混用上一attempt失败前的文件；明确允许复用的包/历史渠道证据保留原producer，同时本轮消费者写新的校验回执。
+schema、类型、版本和必需字段严格检查，未知状态不默认成功。artifact及回执的GitHub producer run/job/attempt还要由调用方的下载来源/实际job结果独立核验，不能相信JSON自报“成功”；签名不是当前必要的新平台依赖。`scripts/gates/github-provenance.mjs`直接读取有界HTTP原始日志/ZIP字节，原上传ID仍须绑定实际已结束job；重定向共享绝对采集期限，跨origin删除Authorization，拒TLS降级、超限或部分bytes，不经gh终端渲染。重跑某job时使用该attempt的结果，不混用上一attempt失败前的文件；明确允许复用的包/历史渠道证据保留原producer，同时本轮消费者写新的校验回执。
 
 任务目录还定义每类任务的必需阶段：Host任务含五阶段，纯构建/静态检查不要求host-exit，cleanup只在任务创建私有资源时适用。计划记录适用性及原因，不能在运行后把失败阶段改成“不适用”。`not-run`表示应该运行而未运行，永远不作为成功；无此阶段的构建任务不编造Host退出。设计checker用统一五阶段样本检查拒绝规则，未实现完整按任务适用性schema。
 
@@ -213,6 +213,8 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 当前实现包括15个reusable job、六发布外层job、保守PR分类、固定输入与阶段回执、共享production浏览器构建、同批双包/消费式packaged/三x64原样安装及原包恢复模块。真实旧覆盖迁移由`scripts/smoke/smoke-implementation-map.json`绑定152个设计目的地，其中137项为implemented-unverified、15项not-implemented；静态AST可达/实际step审查不产生产品验收。旧入口与具体断言的迁移替换理由保留在同一映射，未把未实现缺口记成通过。
 
-已实跑：423前端功能、3固定视觉、Marketplace浏览器；完整登记80项regression同批80通过；source独立case及SSH退出/保留、旧代/多窗口/重开和两个Marketplace Host的本地诊断。诊断用旧dist/旧native资产，只证明夹具与新观察接线，不能代证新提交SHA。当前有界证据正反例已通过，SSH实际导出42文件/461626bytes；SSH依赖包固定官方版本/摘要、显式extensionEnvironment、真实短socket路径、零节点cleanup观察与Marketplace中文locale夹具已修，产品等待和断言含义保持。正式Actions、真正clean双包、packaged同批消费及三原样安装待运行。
+已实跑：本地423前端功能、3固定视觉、Marketplace浏览器；完整登记80项regression同批80通过；source独立case及SSH退出/保留、旧代/多窗口/重开和两个Marketplace Host的本地诊断。诊断用旧dist/旧native资产，只证明夹具与新观察接线，不能代证新提交SHA。当前有界证据正反例已通过，SSH实际导出42文件/461626bytes；SSH依赖包固定官方版本/摘要、显式extensionEnvironment、真实短socket路径、零节点cleanup观察与Marketplace中文locale夹具已修，产品等待和断言含义保持。
+
+真实Actions首轮39093713215（预合并354e6129/head455a494f）取消，第二轮39094300198（预合并040883c8/head4c3fa9bf）失败；各轮独立记账。第二轮三个regression分片、输入、production浏览器构建/视觉、Marketplace浏览器和Linux/macOS四native操作通过，六native-load均通过；Windows两架构OSC正文漏判、gh原日志保护及production CSS变量文本拼写错误已有原始证据和针对修复。前端数值变量按完整Number转换精确比较0.82，不把production改回development或改截图基线。真正clean双包、packaged同批消费及三原样安装未触达，完整来源聚合与PR327最终输入仍待验。
 
 `main`保护API返回404 Branch not protected，尚未配置required check，不能声称已有强制合并阻断。生产旧代恢复撤销订阅竞态依然是独立发布阻塞；即使CI改造通过也不由此宣称0.26.1可发布。渠道模块只在本地HTTP/内存受控输入验证过，未进行真实发布/上传重签对照，未知内容继续拒绝完成。
