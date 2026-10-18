@@ -909,3 +909,10 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 完整流程审查确认：main 没有有效保护/ruleset；release:verify 继承 smoke filter，trusted 可将默认源码19/packaged8缩为1/1；PR与tag prepare失败未自动上传完整宿主/clean-checkout现场。普通VS Code启动等待进程退出无独立期限，浮动stable/Node patch影响重现。标准链有notifier源码/build但不含独立类型、回跳/locale smoke；普通无契约PR成功skip不证明功能回归通过。影响是强制性、验收范围、首败复盘和补充验收可追溯性，不代表已确认所有未接线named script完全没有覆盖。
 
 当前边界：本次只审查/出图，未修改门禁或远端设置；正式workflow默认无filter，0.26.1仍要求原样完整verify。已有恢复撤销订阅生产竞态仍单独阻塞，诊断通过不替代修复与最终PR327验收。建议在门禁后续修复中先处理过滤保护、有限取证、Host进程期限，并由管理员配置required check；按契约补notifier独立证据。普通PR回归、固定/最新双宿主与重复构建优化可随后推进，不借审查扩张当前产品修复。所有关联文档/回归继续当前PR335范围，发布材料保留PR327；报告与准确代码/API锚点见docs/design-docs/release-gate-flow-audit.md，证据/图见docs/references/release-gate-flow-audit/。
+
+
+## 分层CI真实验收与覆盖边界（2026-10-18）
+
+PR335已实现固定输入/实际Actions来源、15验证job、六发布job、一次clean双包、消费式packaged和三x64原样安装；第四轮39097246318的六native操作、118source Host、2 Marketplace Host及原双包通过，packaged103/104。完整330回执已核，原Windows路径问题消失；7个失败job含regression源码字符串、官方macOS入口、安装CDP观察和合成MouseEvent缺view，整轮无acceptance。当前对应fixture修正的Linux原包完整公开流程、两个原包先红后绿浏览器回归及93合同通过；新head104packaged、三安装、全量聚合与PR327最新真实组合仍待验，不能拼接历史通过。
+
+main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正式设置需实际负例验证。152设计目的地中15新增范围仍明确not-implemented，真实TUI完成信号尚未选定，其余最低宿主、arm64安装、真实systemd/桌面呈现/Marketplace自动依赖和渠道重签边界不外推。生产旧代恢复撤销订阅竞态已复现未修，仍是0.26.1阻塞；CI迁移不能删除原身份/Stop/保存/reader/退役断言或用新等待抹去故障。活计划release-gate-implementation.md、正式设计release-gate-redesign.md、原竞态legacy-supervisor-stop-timeout-investigation.md分别可追溯。

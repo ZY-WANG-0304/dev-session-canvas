@@ -35,13 +35,14 @@ export function aggregateResults({plan,receipts,provenance,packageReceipt}) {
     try{assert(expected.has(key),'Unplanned task/variant result');validateTaskReceipt(receipt,plan,expected.get(key));}
     catch(error){errors.push({key,reason:error.message});}
   }
-  const passed=[],failed=[],notRun=[],calibration=[];
+  const passed=[],failed=[],notRun=[],calibration=[],executionFailures=[];
   for(const [key,task]of expected) {
     const receipt=actual.get(key);let structuralError,actionError;
     try {
       assert(receipt,'Missing execution receipt');validateTaskReceipt(receipt,plan,task);
       const job=bindProducer({plan,receipt,provenance,artifactName:`gate-${task.job}-${task.variant}-${plan.run.id}-${plan.run.attempt}`,
         digest:objectDigest(receipt)});
+      if(receipt.status!=='passed')executionFailures.push({key,reason:`Task result is ${receipt.status}`,failures:receipt.failures});
       if(job.conclusion!=='success') {
         // A native failure may be explained only by the operation step after a
         // successful load and successful uploads. Cancellation/infra remain fatal.
@@ -81,7 +82,8 @@ export function aggregateResults({plan,receipts,provenance,packageReceipt}) {
   const complete=!errors.length&&!failed.length&&!notRun.length;
   const result={schemaVersion:1,mode:plan.mode,inputSHA:plan.inputSHA,planDigest:objectDigest(plan),status:complete?'passed':'failed',
     required:plan.tasks.filter(task=>task.required).map(taskKey),actual:[...actual.keys()],passed,failed,notRun,calibration,errors,
-    provenanceDigest:objectDigest(provenance),firstFailure:errors[0]??failed[0]??notRun[0]??null};
+    provenanceDigest:objectDigest(provenance),firstFailure:executionFailures.find(failure=>failed.some(item=>item.key===failure.key))
+      ??errors[0]??failed[0]??notRun[0]??null};
   const acceptance=complete&&['pr','release-pr','release-tag'].includes(plan.mode)?{
     schemaVersion:1,mode:plan.mode,inputSHA:plan.inputSHA,version:plan.version,planDigest:objectDigest(plan),
     catalogDigest:plan.catalogDigest,policyDigest:plan.policyDigest,environmentDigest:plan.environmentDigest,

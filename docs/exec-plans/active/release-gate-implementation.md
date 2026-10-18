@@ -10,12 +10,17 @@
 
 ## 进度
 
+- [x] (2026-10-18) 第四轮39097246318在真正预合并aa969012/headcdf40738结束：六native load/六有限操作、118源码Host、2 Marketplace Host、423功能/3视觉、source-build及一次clean双包通过，packaged103/104。实际247 jobs为240成功/7失败；全量330回执已采集，299满足验收，errors/notRun为空，整轮无acceptance。
+- [x] (2026-10-18) 定因并修测试输入/观察：native回归改调用真实stager而非源码字符串；macOS同官方包plist入口Code；原安装CDP先连接再创建、固定nodeID、画布内完整resize、launch env receiver、按正式契约center/preserve/用户ack及独立locale。第四轮原包Linux公开全流程exit0，64×20→105×34、原进程Stop和两个Host正常退出通过；诊断acceptance=false，原双包前后摘要不变。
+- [x] (2026-10-18) packaged文件点击原生产bundle event.view=null在minimal/card两个回归均复现，补齐测试MouseEvent所属view/坐标/buttons后2/2通过，连续文件打开及后续公开drag正常；生产drag未加容错、文件/分组/mounted断言保留。真实Playwright登记426→428，仅新增两个行为回归，原426没有删改，完整production425功能和3视觉同输入通过，冻结注册全量一致、基线不变。
+- [x] (2026-10-18) 当前typecheck、native-assets完整链、vscode-runner环境、93门禁/发布/恢复合同同批通过，四workflow actionlint及结构合同通过。新增真实首败摘要修正只改善指向，producer红灯的成功task仍不能验收；新增首败摘要与严格验收/校准25项针对复验通过；冻结浏览器目录的425功能/3视觉同输入完整复验通过。
+- [ ] 更新PR335新head，完整Actions重跑，特别是104 packaged、三x64原样安装及独立全量来源聚合；不能将原包本地诊断补成第四轮验收。
 - [x] (2026-10-18) 第三轮39095480885在真实预合并612a891c/head924cae96完成：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片及source-build同批通过；隔离双包一次构建/checkout退役通过，后置文件清单错误依赖外层dist而失败，packaged/三安装未运行。聚合另拒Windows原回执反斜杠；整轮失败/无acceptance。
 - [x] (2026-10-18) 选定同批原包dist私有提取+真实production stager/vsce ls+原ZIP双层检查，外层两dist均不存在的源码夹具诊断通过；原包hash不变/无新build。Windows证据路径在producer序列化，原历史回执不重写；原路径拒绝及原hash对照通过。最终gate62完整批次与release29独立批次通过；四workflow actionlint及结构合同通过。
 
 - [x] (2026-10-17) 核对正式设计、工作流及工作区；实施工作树起点3fbae6a9、远端main6e708c6b；用户主工作区dirty WORKFLOW保持不动。
 - [x] (2026-10-18) 实现唯一任务目录、冻结计划、逐task回执、严格聚合及实际GitHub job/ZIP/artifact绑定；普通PR基础必跑，保守追加全部功能/产物，发布两阶段完整范围。
-- [x] (2026-10-18) 新增15个reusable job和六发布外层job；共享production浏览器构建、同批clean双包、消费式packaged、三x64公开驱动及原包恢复/父状态链接线完成。四workflow actionlint和配置契约通过；实际Actions已运行两轮，完整验收尚未通过。
+- [x] (2026-10-18) 新增15个reusable job和六发布外层job；共享production浏览器构建、同批clean双包、消费式packaged、三x64公开驱动及原包恢复/父状态链接线完成。四workflow actionlint和配置契约通过；实际Actions已运行四轮，完整验收尚未通过。
 - [x] (2026-10-18) 实际423前端功能、3视觉和Marketplace浏览器通过，未修改baseline。先前浏览器下载超5分钟失败保留，后续本地使用实际核对的Chromium1217缓存，不追认冷下载通过。
 - [x] (2026-10-18) 完整登记80项regression同批80 passed/0 failed；此前78/80及codicon服务/runner drain首败保留。合同已增至80项并同批通过；新增有界证据3项专项通过，最终全合同复验83 passed/0 failed/0 skipped；收口后策略摘要及证据路径变更需针对相关模块复验。
 - [x] (2026-10-18) 独立目录落实102product-case、13默认因果suite和3focused诊断；source115+3辅助，packaged104，Marketplace Host2。152设计目的地137 implemented-unverified/15 not-implemented，旧22 routes/真实helper注册/AST可达及因果step检查通过，不将静态结果当验收。
@@ -25,11 +30,18 @@
 - [x] (2026-10-18) Marketplace两个Host夹具修复：复用共享私有TMP路径，preview显式zh-cn并stage语言包；第三轮2/2实际诊断通过，原中文/HTTP/页面断言保留。
 - [x] (2026-10-18) 工件改为有界必要证据+内容清单，拒截断结构化文件、篡改、超限和超时；活动local checkout拒并发复制/删除。真实SSH现场导出42文件/461626bytes，未包含依赖缓存/私钥；专项3/3通过，workflow契约/actionlint通过。
 - [x] (2026-10-18) 主实现455a494f及首轮夹具修复4c3fa9bf已fetch/rebase后推PR335；真实预合并首轮39093713215和第二轮39094300198均有实际job/工件证据。第二轮三regression分片、输入、production前端/视觉、Marketplace浏览器和Linux/macOS四native通过，六native-load均通过。
-- [ ] 修复真实采集/观察卡点并重跑新head：新版gh拒ANSI日志已改有界HTTP；Windows两架构原IO输出已证实OSC标题前缀造成raw换行漏判；production CSS将0.82压缩为.82，前端测试须验数值语义。不能改变15秒产品等待、认命令回显或改回development构建。真正clean/packaged/三原样安装和全量来源聚合继续待验。
-- [ ] 原样安装和跨平台有限操作真实验收，校准固定环境/基础设施上限；渠道只做本地受控测试，不实际发布。
+- [x] 第四轮已真实验证前次有界HTTP、Windows两架构OSC终端正文、production CSS数值、同批原包文件清单和Windows引用路径修正；六native操作通过。原15秒等待、几何/退出/清理及production构建保留，未追认历史失败。
+- [x] 第四轮六native load/有限操作真实同批通过，minimum load不外推产品能力。
+- [ ] 三x64原样安装的新输入真实验收及固定环境/基础设施上限校准；渠道只做本地受控测试，不实际发布。
 - [ ] 修复与PR327的最新真实预合并临时分支完整门禁；不另PR、不tag、不改版本。既有生产旧代恢复撤销订阅竞态未修，发布仍阻塞。
 
 ## 意外与发现
+
+第四轮真正预合并aa969012478b280e3e7595257f64a7fe124f33f2已独立核parents精确为main6e708c6b及headcdf40738。package-clean原双包各build1、正式transfer artifact12125466855/原ZIP86937a58上传成功；Windows证据路径修正使all provenance errors为空。失败为regression固定stager源码字符串、darwin官方入口改名、Linux/Windows CDP漏内层frame、packaged文件点击；聚合和稳定检查正确拒绝。330task中的31失败包含regression分片producer红灯连带拒绝，不能把typecheck误写为原失败。
+
+原样安装公开流程实跑逐步确认：旧持续.last随新Terminal改变目标；固定bottom-right拖出frame，缺mouseup；VSCode登录shell覆盖receiver PATH；通知回跳按规格不自动ack；中文重开restore先于CDP；Stop名称来自button可见span而非aria-label。当前修正全部在夹具/launch准备，Linux原包全流程通过，正式macOS/Windows与新批次仍待验。
+
+packaged原失败trace的production bundle行/列指向d3-drag nodrag(event.view)，event.view为null。原包浏览器行为回归在minimal/card均实际失败；修后私有production build两个回归通过并保后续真实drag，不改产品click/Host打开文件或d3监听器。浏览器观察尚不能代替完整Host visible editor/split group后置验收，新head仍须实跑该case。
 
 第二轮39094300198证实首轮工件文件名/浏览器依赖修复生效。source-build/package-clean仍被新版gh的ANSI日志终端保护阻断，未进入业务构建；有界HTTP采集已实际读取首轮六archive并核actual job/上传ID/原ZIP hash，保留首轮取消事实，不签发验收。超限HTTP响应在Node22可销毁已经detach错误listener的socket，导致未捕获异常；现显式reject后无Error销毁，超限/原deadline反例通过。Windows x64/arm64实际输出均含独立GATE_IO正文，其前方插入OSC窗口标题；raw换行比较漏判，采用锁定xterm终端cells观察，保留有序批次、sealed flush、回显/标题/wrap反例。Linux旧asset诊断完整有限操作通过，Windows新head实跑仍须验证。
 
@@ -48,6 +60,14 @@
 URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×20，旧 helper 却以 92×28 Start；snapshot restore 临时 resize 为 92×28，随后 deferred fit 恢复 64×20。鼠标已进入正确单元，URL provider 与 hover 均实际执行，但第二次 resize 触发 xterm linkLeave，取消尚未显示的 tooltip。修正只在测试夹具：用原 10 秒 probe 等待已 mounted 且 projection 完成的实际 fit 几何，再以该几何 Start。tooltip 文字、清 hover、浏览器路由和 OSC8 断言及原等待全部保留，未改产品行为。`/dev/shm/dsc-ci-url-inspection-7/dom.json` 中的 buffer-resize 调用栈保留取证；复验 17 秒通过。
 
 ## 决策记录
+
+决策：修正实际fixture准备和输入，不改产品行为以获得绿灯。独立driver激活握手后连接CDP，再用公开命令创建；固定nodeID和真实可用的画布内resize路径；用launch flag保receiver环境而非activate后修改env；通知center/preserve/用户ack按正式规格验证；locale独立重开，读取真实可访问名称。
+理由：单变量原包诊断和公开全流程已证明上述前提错误。原包、真实PTY几何、原进程/Host退出、产品等待和原断言保持，不能从Linux旧包推定新head三平台验收。
+日期/作者：2026-10-18 / Codex。
+
+决策：MouseEvent测试helper补所属document.defaultView及真实坐标/buttons；补原包先红后绿行为回归，真实Playwright新增两个注册项，其余426完全保留。聚合首败优先选实际task failure，不把失败producer中的成功兄弟task误写为根因。
+理由：原生产bundle及锁定d3-drag源码、原包两个视图的实际pageError一致；缺view是不完整测试输入。聚合改摘要不放宽producer失败判定和acceptance，仍须完整新head和PR327组合验证。
+日期/作者：2026-10-18 / Codex。
 
 决策：候选文件清单测试从已验原双VSIX提取私有dist，真实stager增加显式dist输入；保留staging/vsce ls与生产ZIP两层检查，并复算原包摘要。
 理由：第三轮39095480885的隔离production双包与清理均成功，后续测试读取设计上不存在的外层dist而ENOENT。额外build、借development产物或跳过原staging检查都会违背同批包和验证责任。真实预合并612a891c的parents已通过API核为main6e708c6b及head924cae96；失败producer包只能诊断。
@@ -78,6 +98,8 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 日期/作者：2026-10-18 / Codex。
 
 ## 结果与复盘
+
+第四轮证明同批候选/全量来源和Windows路径已正常工作，独立source118/Marketplace2与packaged103通过，但原安装3、packaged文件打开和regression一分片仍红。当前Linux原样安装完整诊断和两个文件合成点击生产回归通过，只证明对应夹具修正；新提交完整CI、PR327组合和产品竞态未闭环，不能发布0.26.1。
 
 严格入口、真实浏览器配置和 reusable 任务图已有初版及部分行为验证，尚无新 CI/产品完整通过。设计模型验证不是实施验证。每一阶段完成后在此写实际命令、结果和剩余边界；最终发布输入完整通过前不宣称 0.26.1 可以发布。2026-10-18 再 fetch 后 origin/main 仍为 6e708c6b93ce4b2b343729c422f59099f4fb42ba，用户主工作区 dirty 文件未动。
 
@@ -115,7 +137,7 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 旧六资产在/dev/shm/dsc-lifecycle-fix-evidence/formal-platform和formal-archives，本地Linux有限操作/dev/shm/dsc-ci-native-diagnostic-2仅诊断；不改inputCommit冒充新SHA。官方Remote SSH三包版本/hash位于scripts/smoke/remote-ssh-extension-inputs.json，实际下载核验完成。渠道/恢复正反例用本地HTTP/内存，不写真实渠道。四workflows actionlint通过。main保护API404 Branch not protected，尚无required配置，不能宣称远端阻断已成立。
 
-docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是覆盖审查，均不代替实际CI和产品结果。新提交Actions已实际运行，但真正clean双包/消费式packaged/三原样安装尚未触达，生产恢复竞态及PR327最终完整门禁仍阻塞。后续证据集中既有references/实施目录并用实际SHA/run/attempt/hash记录。
+docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是覆盖审查，均不代替实际CI和产品结果。四轮Actions已实际运行，第四轮clean双包通过且消费式packaged103/104通过，三原样安装仍失败。当前Linux原包安装诊断已全流程通过；新提交整批正式验收、生产恢复竞态及PR327最终完整门禁仍阻塞。后续证据集中既有references/实施目录并用实际SHA/run/attempt/hash记录。
 
 ## 接口与依赖
 
@@ -138,3 +160,5 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 修订记录：2026-10-18 接续两轮实际Actions，固定第二轮预合并040883c8/head4c3fa9bf，记录三regression分片/六load与四native操作通过及完整失败。HTTP原字节collector核首轮六实际producer，ConPTY终端语义观察和production CSS数值修复保留原动作/超时/反例；gate59与release29分开通过，后续clean/packaged/installed未触达仍须实跑。
 
 修订记录：2026-10-18 接续第三轮完整终态及原双包hash，核612a891c精确parents；登记外层dist依赖和Windows路径序列化两项CI错误及修复，保留原失败producer/not-run/无acceptance事实。当前package无外层dist诊断、最终gate62与另批release29已核，下一提交正式同批验收仍须完整运行。
+
+修订记录：2026-10-18 同步第四轮全部终态/330回执及同批原双包；登记stager行为、官方macOS入口、CDP/resize/receiver/locale公开安装前提和MouseEvent缺view根因、Linux原包全流程及两个原包先红后绿回归。静态登记与诊断无acceptance，新增首败摘要仍保producer严格失败判定；继续新head完整门禁和PR327组合。

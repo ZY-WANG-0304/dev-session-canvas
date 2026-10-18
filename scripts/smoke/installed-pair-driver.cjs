@@ -27,16 +27,21 @@ exports.activate=async function(context) {
   const commands=await vscode.commands.getCommands(true);
   assert(!commands.some(name=>name.startsWith('devSessionCanvas.__test.')||name.startsWith('devSessionCanvasNotifier.__test.')),
     'Installed subjects must not register product test commands');
-  await vscode.commands.executeCommand('devSessionCanvas.openCanvasInEditor');
-  await vscode.commands.executeCommand('devSessionCanvas.createTerminalFromExplorerResource',vscode.Uri.file(config.workspace));
+  const receiverRoot=path.resolve(path.dirname(config.notificationReceiver));
+  assert.equal(path.resolve((process.env.PATH??'').split(path.delimiter)[0]),receiverRoot,
+    'Installed Host replaced the controlled notification receiver PATH');
+  assert.equal(process.env.DSC_NOTIFICATION_CAPTURE,config.notificationCapture);
+  assert.equal(process.env.DSC_NOTIFICATION_ACTIVATE,config.notificationActivate);
   await writeAtomic(config.receipt,({schemaVersion:1,subjects,hostPID:process.pid,
-    testCommandsAbsent:true,createdTerminalThroughPublicCommand:true,locale:vscode.env.language,launchArgs:process.argv}));
+    testCommandsAbsent:true,locale:vscode.env.language,launchArgs:process.argv,
+    notificationReceiver:{executable:config.notificationReceiver,environmentVerified:true}}));
   let busy=false;
   const timer=setInterval(async()=>{if(busy)return;busy=true;
     let request;
     try {
       request=JSON.parse(await fs.readFile(config.request,'utf8'));await fs.unlink(config.request);
       const allowed=['devSessionCanvasNotifier.postSystemNotification','workbench.action.closeWindow',
+        'workbench.action.closeAllEditors',
         'workbench.view.extension.devSessionCanvasNotifier','devSessionCanvasNotifier.status.focus',
         'devSessionCanvasNotifier.notes.focus','devSessionCanvasNotifier.codex.focus',
         'devSessionCanvas.openCanvasInEditor','devSessionCanvas.createTerminalFromExplorerResource','vscode.open'];

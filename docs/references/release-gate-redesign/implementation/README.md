@@ -11,3 +11,12 @@
 第三轮[39095480885](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39095480885)以预合并612a891c/head924cae96结束失败；API核原parents为main6e708c6b及该head。六native load及实际有限操作、118源码Host、两个Marketplace Host、三regression分片、423功能/3视觉及source-build同批通过。原双包各构建一次且clean checkout退役通过，随后文件清单测试错读外层dist使producer失败；原包仅在always证据artifact12124438854保存，没有正式candidate transfer，104packaged与三安装not-run。聚合又因Windows原回执使用反斜杠而拒绝Unsafe evidence path，稳定检查保持失败。
 
 修复后的candidate模式在外层两dist均不存在的私有源码夹具消费第三轮原包，通过真实production staging、vsce ls及原ZIP检查；没有额外build或原包修改。生产ZIP源码/debug、本地化缺失、路径sanitization和helper权限反例通过；Windows路径修在producer写入，历史原回执仍验证失败，诊断仅核规范化引用可对上原hash。最终完整gate62项同批通过；渠道/恢复29项另批通过。正式修正输入须重跑clean/packaged/三安装/全量聚合及PR327最新预合并完整验收。设计映射152名称只代表目的地；137项implemented-unverified与15项not-implemented不能计为产品通过。main未配置保护检查，已复现生产恢复撤销订阅竞态未修，当前不能发布0.26.1。
+
+
+第四轮[39097246318](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39097246318)在真正预合并aa969012/headcdf40738完成：247 jobs为240成功/7失败，六native load/操作、118源码Host、2 Marketplace Host、423功能/3视觉、source-build与一次clean双包通过；packaged103/104。正式candidate artifact12125466855/ZIP86937a58已独立核，原Windows回执无需重写即验真。全量330task已采集，299可验收、31被拒（含失败regression producer连带拒绝），errors/notRun为空；整体失败且无acceptance。
+
+本轮关联修正有真实对照：native回归改验证真实staging行为；macOS官方同包入口解析CFBundleExecutable=Code；独立driver先连接CDP再创建公开canvas、固定nodeID、画布内完整resize，launch环境保receiver，通知按center/preserve/用户ack契约，locale独立重开并核真实button名称。Linux第四轮原包全公开流程exit0，PTY子进程64×20→105×34，Stop后原shell/child absence，两个Host公开退出0，中英文及通知回跳全部通过。诊断目录`/dev/shm/dsc-ci-installed-public-flow-diagnostic-5`，原双包前后hash一致，acceptance=false，不追认第四轮正式安装或其他平台。
+
+packaged文件视图失败的原生产bundle指向d3-drag处理合成mousedown时event.view=null。minimal/card两个真实浏览器回归在原包均复现同一pageError；修后私有production build2/2通过，连续文件打开及后续公开drag正常。原Host可见文件/split group/mounted断言保持，新head仍须实跑。实际Playwright注册426→428只新增这两项，其余426完全保留；3固定视觉通过/基线不变，完整425功能与3视觉回归通过，实际执行集合精确匹配冻结目录。
+
+当前typecheck、native-assets完整链、vscode-runner环境、四workflow actionlint及结构合同通过。93门禁/发布恢复合同同批通过后，新增首败摘要/目录变更的25项针对复验通过；摘要优先指出原失败task，但成功兄弟task仍不能从失败producer获得acceptance。最新完整Actions、新批次104packaged/三安装及PR327真实组合继续待验；生产恢复撤销订阅竞态未修，0.26.1未放行。

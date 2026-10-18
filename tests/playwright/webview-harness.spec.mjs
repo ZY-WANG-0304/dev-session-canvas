@@ -2292,6 +2292,51 @@ test('minimal file nodes render only the primary label and open the target file 
   });
 });
 
+for (const fileNodeDisplayStyle of ['minimal', 'card']) {
+  test(`smoke file clicks preserve repeated opens and public dragging in ${fileNodeDisplayStyle} view`, async ({ page }) => {
+    await openHarness(page);
+    await applyWorkbenchTheme(page, 'dark');
+    await bootstrap(page, createFileNodeState(), createRuntimeContext({ fileNodeDisplayStyle }));
+
+    const fileNode = nodeById(page, 'file-src-main');
+    await expect(fileNode.locator('.file-node-action')).toBeVisible();
+    await settleWebview(page, 3);
+
+    for (let click = 0; click < 2; click += 1) {
+      await clearPostedMessages(page);
+      await performTestDomAction(page, {
+        kind: 'clickFileEntry',
+        nodeId: 'file-src-main',
+        filePath: '/workspace/src/main.ts'
+      });
+      expect(pageDiagnosticsByPage.get(page).pageErrors).toEqual([]);
+      const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+      expect(message.payload).toEqual({ nodeId: 'file-src-main', filePath: '/workspace/src/main.ts' });
+      await expect(page.locator('.canvas-shell .react-flow')).toBeVisible();
+    }
+
+    // A smoke click must finish the real drag listener lifecycle. Verify a
+    // subsequent public gesture still moves the file without opening it.
+    const box = await fileNode.locator('.file-node-action').boundingBox();
+    expect(box).not.toBeNull();
+    await clearPostedMessages(page);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    try {
+      await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 80, { steps: 12 });
+    } finally {
+      await page.mouse.up();
+    }
+    const move = await waitForPostedMessageByType(page, 'webview/moveNode');
+    expect(move.payload.id).toBe('file-src-main');
+    expect(move.payload.position.x).not.toBe(720);
+    expect(move.payload.position.y).not.toBe(200);
+    expect(await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages()
+      .filter(entry => entry.type === 'webview/openCanvasFile'))).toEqual([]);
+    expect(pageDiagnosticsByPage.get(page).pageErrors).toEqual([]);
+  });
+}
+
 test('card file nodes do not fall back to owner counts when no secondary path label exists', async ({ page }) => {
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>

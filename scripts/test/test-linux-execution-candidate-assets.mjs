@@ -9,6 +9,8 @@ import { buildCandidateAssets, candidateCompilerArguments, candidateAssetRelativ
 import { LINUX_EXECUTION_EXPORTS, NODE_PTY_UNIX_SHA256 } from '../build/linux-execution-provider-patch.mjs';
 import { readLinuxExecutionRequirements } from '../build/linux-execution-elf.mjs';
 import { linuxExecutionElf } from './fixtures/linux-execution-elf.mjs';
+import { writeExecutionAssetSet } from './fixtures/execution-candidate-assets-set.mjs';
+import { stageMainPackageFiles } from '../release/package-vsix.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-candidate-assets-test-'));
@@ -164,12 +166,34 @@ try {
 
   test('normal build includes the formal worker and existing VSIX staging includes dist assets', () => {
     const build = fs.readFileSync(path.join(root, 'scripts/build/build.mjs'), 'utf8');
-    const packaging = fs.readFileSync(path.join(root, 'scripts/release/package-vsix.mjs'), 'utf8');
     assert(build.includes("src/panel/linuxExecutionProviderMain.ts"));
     assert(build.includes("fromMainExtensionDist('linux-execution-provider.js')"));
     assert(build.includes('esbuild.build(linuxExecutionProviderConfig)'));
     assert(build.includes('linuxExecutionProviderContext.watch()'));
-    assert(packaging.includes("cpSync(path.join(mainExtensionRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true })"));
+    const dist = path.join(temporary, 'package-input-dist'); fs.mkdirSync(dist);
+    const targets = writeExecutionAssetSet(path.join(temporary, 'package-native-input'));
+    for (const target of targets) {
+      const owner = { linux: 'linux', darwin: 'macos', win32: 'windows' }[target.manifest.platform];
+      const to = path.join(dist, 'native', `${owner}-execution-candidate`, target.name);
+      fs.mkdirSync(path.dirname(to), { recursive: true }); fs.cpSync(target.directory, to, { recursive: true });
+    }
+    fs.writeFileSync(path.join(dist, 'linux-execution-provider.js'), 'controlled runtime worker bytes');
+    fs.writeFileSync(path.join(dist, 'execution-candidate-selection.json'), JSON.stringify({ schemaVersion: 1,
+      profile: 'platform', admissionLimits: { executions: null, starting: 1, pending: 2 } }));
+    const stage = path.join(temporary, 'package-stage'); fs.mkdirSync(stage);
+    const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'extensions/vscode/dev-session-canvas/package.json'), 'utf8'));
+    stageMainPackageFiles(stage, packageJson, 'README.marketplace.md', { dist });
+    const checkTree = (source, destination) => {
+      assert.deepEqual(fs.readdirSync(destination).sort(), fs.readdirSync(source).sort());
+      for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+        const from = path.join(source, entry.name), to = path.join(destination, entry.name);
+        if (entry.isDirectory()) checkTree(from, to);
+        else assert.deepEqual(fs.readFileSync(to), fs.readFileSync(from), `Staged dist changed: ${entry.name}`);
+      }
+    };
+    checkTree(dist, path.join(stage, 'dist'));
+    assert.throws(() => stageMainPackageFiles(stage, packageJson, 'README.marketplace.md',
+      { dist: path.join(temporary, 'missing-package-dist') }), /ENOENT/u);
   });
 
   console.log(`Linux execution candidate assets: ${passed}/${passed} pure cases passed (synthetic binary only, no compiler or native load).`);

@@ -92,14 +92,153 @@
       "contractLog": "/dev/shm/dsc-ci-evidence-path-contract-1.log",
       "diagnostic": "/dev/shm/dsc-ci-windows-evidence-path-diagnostic-39095480885.json",
       "receiptRewritten": false
+    },
+    "installedPairPublicLinux": {
+      "status": "passed",
+      "acceptance": false,
+      "productTestMode": false,
+      "inputSHA": "aa969012478b280e3e7595257f64a7fe124f33f2",
+      "receipt": "/dev/shm/dsc-ci-installed-public-flow-diagnostic-5/installed-pair.json",
+      "before": {
+        "pid": 3804672,
+        "ppid": 3804665,
+        "cols": 64,
+        "rows": 20
+      },
+      "after": {
+        "pid": 3804672,
+        "ppid": 3804665,
+        "cols": 105,
+        "rows": 34
+      },
+      "cleanup": "passed",
+      "hostExit": "passed",
+      "publicExits": [
+        {
+          "locale": "en",
+          "exit": {
+            "code": 0,
+            "signal": null
+          },
+          "absence": {
+            "expected": {
+              "pid": 3803099,
+              "startTicks": "292445175",
+              "state": "S"
+            },
+            "actual": null,
+            "result": "original-absent"
+          }
+        },
+        {
+          "locale": "zh-cn",
+          "exit": {
+            "code": 0,
+            "signal": null
+          },
+          "absence": {
+            "expected": {
+              "pid": 3806946,
+              "startTicks": "292446355",
+              "state": "S"
+            },
+            "actual": null,
+            "result": "original-absent"
+          }
+        }
+      ],
+      "originalPackagesUnmodified": true,
+      "notification": {
+        "callbackCenters": true,
+        "selectionPreserved": true,
+        "attentionPreservedUntilUserClick": true,
+        "userAcknowledged": true
+      },
+      "locales": {
+        "en": "en",
+        "zh": "zh-cn",
+        "visibleTerminalStop": "停止"
+      },
+      "caveat": "Current driver using original fourth-round immutable pair; cannot retroactively accept fourth round or other platforms"
+    },
+    "syntheticMouseClick": {
+      "acceptance": false,
+      "before": {
+        "status": "failed",
+        "failed": 2,
+        "input": "original fourth-round production browser bytes",
+        "log": "/dev/shm/dsc-ci-synthetic-click-before-1.log",
+        "error": "Cannot read properties of null (reading 'document')"
+      },
+      "after": {
+        "status": "passed",
+        "passed": 2,
+        "production": true,
+        "log": "/dev/shm/dsc-ci-synthetic-click-after-1.log",
+        "subsequentPublicDrag": "passed"
+      },
+      "productOpenAndDragUnmodified": true,
+      "hostVisibleEditorAndSplitAssertionsRetained": true,
+      "caveat": "Browser callback regression does not prove packaged Host visible editor and split group outcome"
+    },
+    "officialDarwinEntry": {
+      "version": "1.142.0",
+      "executable": "Contents/MacOS/Code",
+      "regularExecutable": true,
+      "officialZipSHA256": "cbe7bfbfe576f4315ffd5d4ac67c8dd550972659b7f1785999ed96505f25a31a",
+      "diagnostic": "/dev/shm/dsc-ci-vscode-darwin-entry-official-diagnostic-1.json",
+      "realMacOSInstall": "not-yet-verified"
+    },
+    "currentGateContracts": {
+      "passed": 93,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/dev/shm/dsc-ci-current-gate-contracts-1.log",
+      "caveat": "Full batch predates additional first-failure summary contract; 25 targeted follow-up contracts passed"
+    },
+    "currentRegression": {
+      "typecheck": "passed",
+      "nativeAssets": "passed",
+      "vscodeSmokeEnvironment": "passed",
+      "actionlint": "passed",
+      "workflowContracts": "passed",
+      "logs": [
+        "/dev/shm/dsc-ci-current-typecheck-1.log",
+        "/dev/shm/dsc-ci-current-native-assets-1.log",
+        "/dev/shm/dsc-ci-current-vscode-env-1.log",
+        "/dev/shm/dsc-ci-current-actionlint-1.log",
+        "/dev/shm/dsc-ci-current-workflow-contract-1.log",
+        "/dev/shm/dsc-ci-current-publish-workflow-contract-1.log"
+      ]
+    },
+    "firstFailureSummary": {
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/dev/shm/dsc-ci-original-failure-summary-contract-1.log",
+      "producerFailureStillBlocksAcceptance": true,
+      "scope": "Additional original-failure summary, complete acceptance negatives and calibration follow-up"
+    },
+    "currentBrowser": {
+      "functionalPassed": 425,
+      "visualPassed": 3,
+      "failed": 0,
+      "retry": 0,
+      "baselineChanged": false,
+      "production": true,
+      "registered": 428,
+      "previousRegisteredRetained": 426,
+      "addedRegressionCases": 2,
+      "functionalReceipt": "/dev/shm/dsc-ci-current-browser-functional-1/playwright-execution.json",
+      "visualReceipt": "/dev/shm/dsc-ci-current-browser-visual-1/playwright-execution.json",
+      "caveat": "Current source private production browser build; does not replace new-head Actions or packaged Host acceptance"
     }
   },
   "notYetVerified": [
-    "candidate package-clean stage including independent file-list on the next commit",
-    "packaged consumers of that exact pair",
-    "three x64 original pair installs",
-    "actual Actions complete provenance aggregation",
-    "latest PR327 pre-merge release-pr"
+    "current head full source/packaged consumers on newly built same candidate pair",
+    "current head three x64 original pair installs",
+    "current head actual complete Actions provenance and acceptance",
+    "latest PR327 real pre-merge release-pr"
   ],
   "releaseBlocker": "Confirmed legacy runtime restore subscription race remains unfixed; CI redesign cannot waive it",
   "requiredProtection": {
@@ -108,24 +247,12 @@
   },
   "files": [
     {
-      "file": "scripts/gates/catalog.mjs",
-      "sha256": "64fd3367bf395d954cac6c28ffa5607c4c32349db4a16d5867cec309029c2019"
-    },
-    {
-      "file": "scripts/gates/resolve-plan.mjs",
-      "sha256": "56d81a72832890692885d56c05815a33bfae153a73d77c2bbcfb4dcee8d4dfba"
-    },
-    {
-      "file": "scripts/smoke/smoke-catalog.mjs",
-      "sha256": "38cd40f90c76a14ccaac955c61dc9abf0c2537b697e0182fe6c2417ee4477e43"
-    },
-    {
-      "file": "scripts/smoke/smoke-implementation-map.json",
-      "sha256": "77437c5d023bc81f45efe9bd3150742798a0d70d015ecada8087f286c129db46"
-    },
-    {
       "file": ".github/workflows/ci-validation.yml",
       "sha256": "bc5c01a7446fa139e04eb57a83f5ff13784cf5cee339c7201feeb1570e7b9b7e"
+    },
+    {
+      "file": ".github/workflows/publish-marketplace-release.yml",
+      "sha256": "49c8796c2fbda7ae19385b6899f70a046a883abba72737762331631e3810c902"
     },
     {
       "file": ".github/workflows/release-preflight.yml",
@@ -136,56 +263,104 @@
       "sha256": "a7fa544c676d68afd84dea5c57482580f86ff859880f7a1cbe3fdc15b41ae800"
     },
     {
-      "file": ".github/workflows/publish-marketplace-release.yml",
-      "sha256": "49c8796c2fbda7ae19385b6899f70a046a883abba72737762331631e3810c902"
+      "file": "extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs",
+      "sha256": "d82bfec66d0eb2b51d6e51c17215feecb52220c98f10aceba874019e3296c278"
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas/src/webview/main.tsx",
+      "sha256": "63d6fe51fed89eeb419cefef9a1195760ac11e36fc50d8bb4be7d0f48aeb1673"
+    },
+    {
+      "file": "scripts/gates/browser-catalog.json",
+      "sha256": "bcc7423220ab0de5af29c397bc3ea49aac7da7c812802ea00c90b79f112c544c"
+    },
+    {
+      "file": "scripts/gates/catalog.mjs",
+      "sha256": "64fd3367bf395d954cac6c28ffa5607c4c32349db4a16d5867cec309029c2019"
     },
     {
       "file": "scripts/gates/github-provenance.mjs",
       "sha256": "de462502c568299159f92d1834ee549a7d383e99411909008085a949b8d788c7"
     },
     {
-      "file": "scripts/release/channel-client.mjs",
-      "sha256": "550d15c7ab9375dd0e2b8320aa27ecc0e31080bc87779f30e13c7fcd6d368f56"
-    },
-    {
-      "file": "scripts/smoke/run-native-operation.mjs",
-      "sha256": "38921c3ee3751ca3e7db39f76d0323a5f9d6557405999a48566e5729a8323013"
-    },
-    {
-      "file": "scripts/smoke/native-terminal-observer.mjs",
-      "sha256": "36754a4464e23b8da6794c316f73a4ea796410e2465bc1cf1a66e0de7383a17c"
-    },
-    {
-      "file": "tests/playwright/webview-harness.spec.mjs",
-      "sha256": "e24543c4696ad821510f2d15d00dc076c8fafdf8a0426cf2b9971be5cb1266ec"
-    },
-    {
-      "file": "scripts/release/package-vsix.mjs",
-      "sha256": "5ffc1a1a64f6fa6ae79fe071f299fdd5a51242fc5d1f63db4b37927db5f22300"
-    },
-    {
-      "file": "extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs",
-      "sha256": "d82bfec66d0eb2b51d6e51c17215feecb52220c98f10aceba874019e3296c278"
-    },
-    {
-      "file": "scripts/release/build-release-candidate.mjs",
-      "sha256": "1956c8b38aa9a9a1b3c9741ac41062399d36b52b3dc80b900698d58ec4143483"
-    },
-    {
-      "file": "scripts/release/vsix-file-list.mjs",
-      "sha256": "130041caaec363d56a1480586900e68f517dfa7961942d6d91e345a6553c297c"
-    },
-    {
-      "file": "scripts/test/test-package-vsix-file-list.mjs",
-      "sha256": "06f2d1100baf2926f33a27a4fb4c9c6be45aede8fa77123801b8f1590da7339d"
+      "file": "scripts/gates/resolve-plan.mjs",
+      "sha256": "56d81a72832890692885d56c05815a33bfae153a73d77c2bbcfb4dcee8d4dfba"
     },
     {
       "file": "scripts/gates/run-task.mjs",
       "sha256": "599725b0d0e50bc6e24acf6af363d930296944dde2130f37a0de428894c3acc3"
     },
     {
+      "file": "scripts/gates/verify-result.mjs",
+      "sha256": "c4ed42bf4ed01f982da898fdc42a47305aac056a88fda7b2680b801235719424"
+    },
+    {
+      "file": "scripts/release/build-release-candidate.mjs",
+      "sha256": "1956c8b38aa9a9a1b3c9741ac41062399d36b52b3dc80b900698d58ec4143483"
+    },
+    {
+      "file": "scripts/release/channel-client.mjs",
+      "sha256": "550d15c7ab9375dd0e2b8320aa27ecc0e31080bc87779f30e13c7fcd6d368f56"
+    },
+    {
+      "file": "scripts/release/package-vsix.mjs",
+      "sha256": "5ffc1a1a64f6fa6ae79fe071f299fdd5a51242fc5d1f63db4b37927db5f22300"
+    },
+    {
+      "file": "scripts/release/vsix-file-list.mjs",
+      "sha256": "130041caaec363d56a1480586900e68f517dfa7961942d6d91e345a6553c297c"
+    },
+    {
+      "file": "scripts/smoke/installed-pair-driver.cjs",
+      "sha256": "3bf9d44419679c3ec2aa249fb99e2447a38bf68b4bf6660d88b95d4745cdac68"
+    },
+    {
+      "file": "scripts/smoke/installed-ui-observation.mjs",
+      "sha256": "2456ed1dfa957b14da7a3a780d92e2599d8b8dc1e1fb6b0fad6db43fab7fb1ee"
+    },
+    {
+      "file": "scripts/smoke/native-terminal-observer.mjs",
+      "sha256": "36754a4464e23b8da6794c316f73a4ea796410e2465bc1cf1a66e0de7383a17c"
+    },
+    {
+      "file": "scripts/smoke/run-installed-pair.mjs",
+      "sha256": "a3460d3fbbf1e49590a551f62eecec79e16e264e9df897e2fbdf71d4843eef5c"
+    },
+    {
+      "file": "scripts/smoke/run-native-operation.mjs",
+      "sha256": "38921c3ee3751ca3e7db39f76d0323a5f9d6557405999a48566e5729a8323013"
+    },
+    {
+      "file": "scripts/smoke/smoke-catalog.mjs",
+      "sha256": "38cd40f90c76a14ccaac955c61dc9abf0c2537b697e0182fe6c2417ee4477e43"
+    },
+    {
+      "file": "scripts/smoke/smoke-implementation-map.json",
+      "sha256": "77437c5d023bc81f45efe9bd3150742798a0d70d015ecada8087f286c129db46"
+    },
+    {
+      "file": "scripts/smoke/vscode-smoke-runner.mjs",
+      "sha256": "c1f75e0a8600672867d74de68fa4e128f431c19d31f5b05a89f8117ca36d3985"
+    },
+    {
       "file": "scripts/test/test-gate-contracts.mjs",
-      "sha256": "bc6d4ebcef27300543959f411468fc68b7af908996917fb764f3c538ed3376fb"
+      "sha256": "81dab8e429ee798a2321ed17eaa78cc5858bee37ede241e606ab32f407f97130"
+    },
+    {
+      "file": "scripts/test/test-linux-execution-candidate-assets.mjs",
+      "sha256": "b6d18b2658637ed038e52ef0ecdd73a12ee79dfe6c111f48ca1c72074a055ff2"
+    },
+    {
+      "file": "scripts/test/test-package-vsix-file-list.mjs",
+      "sha256": "06f2d1100baf2926f33a27a4fb4c9c6be45aede8fa77123801b8f1590da7339d"
+    },
+    {
+      "file": "scripts/test/test-vscode-smoke-runner-env.mjs",
+      "sha256": "e293dd58f757d0d6aacd7149013b4c2b3b3900da562a9a53687b3a3f427efcb3"
+    },
+    {
+      "file": "tests/playwright/webview-harness.spec.mjs",
+      "sha256": "a71e63fd9f3a9929134c233e152ba9ad987f43fc2aad397688c627356a53b56e"
     }
   ],
   "actions": [
@@ -318,6 +493,98 @@
         "artifacts": "/dev/shm/dsc-ci-actions-39095480885-artifacts-3.json",
         "packageLog": "/dev/shm/dsc-ci-actions-39095480885-package-clean.log",
         "aggregateLog": "/dev/shm/dsc-ci-actions-39095480885-aggregate.log"
+      }
+    },
+    {
+      "runID": "39097246318",
+      "attempt": 1,
+      "headSHA": "cdf407389f46bf3965cda0f632328311eb66cce8",
+      "inputSHA": "aa969012478b280e3e7595257f64a7fe124f33f2",
+      "parentsVerified": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "cdf407389f46bf3965cda0f632328311eb66cce8"
+      ],
+      "conclusion": "failure",
+      "acceptance": false,
+      "completedJobs": 247,
+      "successfulJobs": 240,
+      "failedJobs": 7,
+      "sourceHostJobsPassed": 118,
+      "marketplaceHostJobsPassed": 2,
+      "nativeLoadsPassed": 6,
+      "nativeOperationsPassed": 6,
+      "webviewFunctionalPassed": 423,
+      "webviewVisualPassed": 3,
+      "packagedPassed": 103,
+      "packagedFailed": 1,
+      "candidateBuild": {
+        "mainBuildCount": 1,
+        "notifierBuildCount": 1,
+        "checkoutCleanup": "passed",
+        "producerStatus": "passed",
+        "officialCandidateTransferUploaded": true,
+        "artifactID": 12125466855,
+        "archiveSHA256": "86937a586e62efc58dcff8fee81f67506cf4b064724ea439698833d47fa24c5e",
+        "packages": [
+          {
+            "id": "devsessioncanvas.dev-session-canvas",
+            "version": "0.26.0",
+            "size": 5999311,
+            "sha256": "a0c29825eaee470f2d6e1c533b0b659f998276669c19be0871dca32ea0a2b579",
+            "payloadDigest": "d80430c4f36927ee11822244882ebad073f5bb9854f09f8725b0b68ae116694f"
+          },
+          {
+            "id": "devsessioncanvas.dev-session-canvas-notifier",
+            "version": "0.26.0",
+            "size": 160174,
+            "sha256": "cc2cc70bad9b0b351b0083f6315dc6a3c9adc46c59ad1c6dbcd13cb3eedf00b3",
+            "payloadDigest": "4cb745dc82f1ac6d840e86559e70f7c034a955158c4a8642b2d95a90a62cb2ce"
+          }
+        ]
+      },
+      "aggregation": {
+        "actual": 330,
+        "passed": 299,
+        "rejected": 31,
+        "errors": [],
+        "notRun": [],
+        "status": "failed",
+        "archiveSHA256": "47c5b29934e968443041356b9de5d506acd02240e1795303dee86db02b7fa48b",
+        "artifactID": 12125254724,
+        "caveat": "Rejected includes passed siblings from a failed regression producer; original failed task is native-assets staging source-string check"
+      },
+      "failures": [
+        {
+          "job": "regression/shard-1",
+          "task": "test:execution-native-assets",
+          "detail": "Fixed cpSync source-string assertion differs after explicit dist staging input"
+        },
+        {
+          "job": "installed-pair/darwin-x64",
+          "detail": "Official same-package CFBundleExecutable is Code, locked test library returns nonexistent Electron"
+        },
+        {
+          "job": "installed-pair/linux-x64-glibc",
+          "detail": "Late CDP attachment misses already existing inner webview frame"
+        },
+        {
+          "job": "installed-pair/win32-x64",
+          "detail": "Late CDP attachment misses already existing inner webview frame"
+        },
+        {
+          "job": "packaged-host/execution-file-activity--views",
+          "detail": "Production d3-drag receives synthetic mousedown with event.view null; visible editor open assertion times out"
+        },
+        {
+          "job": "verify-result and Verify release contract",
+          "detail": "Complete formal acceptance absent; all provenance collected and Windows path fix verified without historical receipt rewriting"
+        }
+      ],
+      "evidence": {
+        "jobs": "/dev/shm/dsc-ci-actions-39097246318-jobs-14.json",
+        "root": "/dev/shm/dsc-ci-actions-39097246318-download-1",
+        "packagedFailureArtifactID": 12125795979,
+        "packagedFailureArchiveSHA256": "8faa52c2a14e19762cc01694551c4cf0058e4f11d008a3663299eb6fedc3d37f"
       }
     }
   ]

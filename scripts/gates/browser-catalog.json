@@ -728,6 +728,11 @@
       "title": "agent local output credit follows actual writes and cancels when the page unmounts"
     },
     {
+      "id": "a03daaf9564243b49609-5acf6b2db652ddf39e43",
+      "file": "webview-harness.spec.mjs",
+      "title": "smoke file clicks preserve repeated opens and public dragging in card view"
+    },
+    {
       "id": "a03daaf9564243b49609-5aec25cc2d42a6aec0bd",
       "file": "webview-harness.spec.mjs",
       "title": "double-clicking the title input keeps the current viewport unchanged"
@@ -1706,6 +1711,11 @@
       "id": "a03daaf9564243b49609-cdce128bc4135eb9397a",
       "file": "webview-harness.spec.mjs",
       "title": "terminal hard-wrapped styled path boundary rejects same-style-outside-window after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-cf41e7e5c3be2a7d314e",
+      "file": "webview-harness.spec.mjs",
+      "title": "smoke file clicks preserve repeated opens and public dragging in minimal view"
     },
     {
       "id": "a03daaf9564243b49609-cf55b875aaf728cf934a",

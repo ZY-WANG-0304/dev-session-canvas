@@ -9889,18 +9889,20 @@ function setControlledFieldValue(
 }
 
 function dispatchSyntheticMouseClick(target: Element, point?: { x: number; y: number }): void {
+  const box = target.getBoundingClientRect();
   const eventInit = {
     bubbles: true,
     cancelable: true,
     composed: true,
     button: 0,
-    clientX: point?.x ?? 0,
-    clientY: point?.y ?? 0
+    view: target.ownerDocument.defaultView,
+    clientX: point?.x ?? box.x + box.width / 2,
+    clientY: point?.y ?? box.y + box.height / 2
   };
 
-  target.dispatchEvent(new MouseEvent('mousedown', eventInit));
-  target.dispatchEvent(new MouseEvent('mouseup', eventInit));
-  target.dispatchEvent(new MouseEvent('click', eventInit));
+  target.dispatchEvent(new MouseEvent('mousedown', { ...eventInit, buttons: 1 }));
+  target.dispatchEvent(new MouseEvent('mouseup', { ...eventInit, buttons: 0 }));
+  target.dispatchEvent(new MouseEvent('click', { ...eventInit, buttons: 0, detail: 1 }));
 }
 
 function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number; y: number }): void {
@@ -9912,8 +9914,11 @@ function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number;
       cancelable: true,
       composed: true,
       button: 0,
-      clientX: point?.x ?? 0,
-      clientY: point?.y ?? 0
+      buttons: 0,
+      detail: 2,
+      view: target.ownerDocument.defaultView,
+      clientX: point?.x ?? target.getBoundingClientRect().x + target.getBoundingClientRect().width / 2,
+      clientY: point?.y ?? target.getBoundingClientRect().y + target.getBoundingClientRect().height / 2
     })
   );
 }

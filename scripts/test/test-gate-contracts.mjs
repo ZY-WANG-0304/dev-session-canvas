@@ -19,6 +19,7 @@ import {validateAcceptance} from '../gates/check-acceptance.mjs';
 import {digest} from '../gates/receipts.mjs';
 import {verifyInstrumentation} from '../smoke/package-instrumentation.mjs';
 import {readNotificationInvocation} from '../smoke/notification-receiver.mjs';
+import { selectInstalledResizeGesture, installedNodeIsCentered } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
@@ -336,6 +337,19 @@ test('formal plan retains foundation, independent cases, causal combinations and
 test('passing aggregate requires actual receipt set, producer and same candidate pair',()=>{
   assert(aggregateResults(fixture()).acceptance);assert(aggregateResults(fixture({mode:'release-pr'})).acceptance);
 });
+test('failed shard reports the original failed task before passed tasks rejected with their producer',()=>{
+  const f=fixture({mode:'release-pr'});
+  const original=f.receipts.find(receipt=>receipt.taskID==='test:execution-native-assets');
+  original.status='failed';original.stages.assert.status='failed';
+  original.failures.push({stage:'assert',reason:'Staged native input changed'});
+  f.provenance.jobs.find(job=>job.name===original.producer.jobName).conclusion='failure';f.refresh();
+  const {result,acceptance}=aggregateResults(f);
+  assert.equal(acceptance,null);assert.equal(result.status,'failed');
+  assert(result.failed.some(item=>item.key==='regression/shard-1/typecheck'),
+    'A passing sibling cannot be accepted from a failed producer');
+  assert.equal(result.firstFailure.key,'regression/shard-1/test:execution-native-assets');
+  assert.deepEqual(result.firstFailure.failures,original.failures);
+});
 for(const [name,mutate]of Object.entries({
   missing:f=>f.receipts.pop(),duplicate:f=>f.receipts.push(f.receipts[0]),wrongSHA:f=>{f.receipts[0].inputSHA=base;},
   wrongPlan:f=>{f.receipts[0].planDigest=hash;},wrongVariant:f=>{f.receipts[0].variant='unknown';},
@@ -514,6 +528,30 @@ test('notification receivers validate actual OS invocation rather than product t
   assert.throws(()=>readNotificationInvocation({args:['title','message']},'linux'));
   assert.equal(readNotificationInvocation({args:['-title','title','-message','message','-open','vscode://notifier/focus']},'darwin').callback,'vscode://notifier/focus');
   assert.throws(()=>readNotificationInvocation({args:['-EncodedCommand',Buffer.from('exit 0','utf16le').toString('base64')]},'win32'));
+});
+test('installed resize keeps the complete growth gesture inside the actual clipped canvas',()=>{
+  const canvas={x:350,y:60,width:625,height:800};
+  const handles={
+    'top-left':{x:560,y:390,width:6,height:6},
+    'bottom-right':{x:967,y:826,width:6,height:6}
+  };
+  const gesture=selectInstalledResizeGesture(canvas,handles);
+  assert.equal(gesture.direction,'top-left');
+  assert(gesture.end.x<gesture.start.x&&gesture.end.y<gesture.start.y);
+  for(const point of [gesture.start,gesture.end]) {
+    assert(point.x>=gesture.bounds.left&&point.x<=gesture.bounds.right);
+    assert(point.y>=gesture.bounds.top&&point.y<=gesture.bounds.bottom);
+  }
+  assert.throws(()=>selectInstalledResizeGesture(canvas,{
+    'top-left':{x:349,y:59,width:6,height:6},
+    'bottom-right':{x:967,y:826,width:6,height:6}
+  }),/No public resize corner/u);
+  assert.throws(()=>selectInstalledResizeGesture({...canvas,width:NaN},handles),/bounds are unavailable/u);
+});
+test('installed callback observation needs actual node centering rather than an unchanged attention flag',()=>{
+  assert(!installedNodeIsCentered(null));
+  assert(!installedNodeIsCentered({attention:'true',centerDistance:{x:100,y:0}}));
+  assert(installedNodeIsCentered({attention:'true',centerDistance:{x:1.5,y:-2}}));
 });
 test('deadline abort waits for action retirement before fixture cleanup',async()=>{
   const f=fixture(),temp=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-settlement-'));let retired=false,cleaned=false;

@@ -10,7 +10,9 @@ import { PassThrough } from 'node:stream';
 import {
   buildVSCodeArgs,
   buildVSCodeChildEnv,
+  normalizeVSCodeExecutablePath,
   prepareRuntime,
+  resolveVSCodeAppRoot,
   resolveVSCodeSmokeDebugRoot,
   spawnPreparedVSCodeScenario
 } from '../smoke/vscode-smoke-runner.mjs';
@@ -77,6 +79,30 @@ try {
     ], `${platform} smoke launch arguments`);
   }
   assert.deepStrictEqual(buildVSCodeArgs(argsOptions), buildVSCodeArgs(argsOptions, process.platform));
+
+  const darwinDownload = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-official-darwin-entry-'));
+  try {
+    const contents = path.join(darwinDownload, 'Visual Studio Code.app', 'Contents');
+    await fs.mkdir(path.join(contents, 'MacOS'), { recursive: true });
+    await fs.mkdir(path.join(contents, 'Resources', 'app'), { recursive: true });
+    await fs.writeFile(path.join(contents, 'Resources', 'app', 'package.json'), '{"version":"1.142.0"}');
+    const staleLibraryPath = path.join(contents, 'MacOS', 'Electron');
+    const actual = path.join(contents, 'MacOS', 'Code');
+    await fs.writeFile(path.join(contents, 'Info.plist'),
+      '<?xml version="1.0"?><plist><dict><key>CFBundleExecutable</key><string>Code</string></dict></plist>');
+    await fs.writeFile(actual, 'Official current executable name; fixture is not executed.', { mode: 0o755 });
+    assert.equal(normalizeVSCodeExecutablePath(staleLibraryPath, 'darwin'), actual,
+      'The pinned download library old Electron path must resolve the executable declared by this same app');
+    assert.equal(normalizeVSCodeExecutablePath(darwinDownload, 'darwin'), actual);
+    assert.equal(await resolveVSCodeAppRoot(actual, 'darwin'), path.join(contents, 'Resources', 'app'));
+    for (const invalid of ['../Code', 'UnknownMissingEntry']) {
+      await fs.writeFile(path.join(contents, 'Info.plist'),
+        `<plist><dict><key>CFBundleExecutable</key><string>${invalid}</string></dict></plist>`);
+      assert.throws(() => normalizeVSCodeExecutablePath(staleLibraryPath, 'darwin'), /valid executable|ENOENT/u);
+    }
+    await fs.writeFile(path.join(contents, 'Info.plist'), '<plist><dict></dict></plist>');
+    assert.throws(() => normalizeVSCodeExecutablePath(staleLibraryPath, 'darwin'), /declare a valid executable/u);
+  } finally { await fs.rm(darwinDownload, { recursive: true, force: true }); }
 
   const remoteOptions = { remoteHomeDir: '/private/remote-home', remoteConfigDir: '/private/config',
     remoteCacheDir: '/private/cache', remoteDataDir: '/private/data', remoteRuntimeDir: '/private/runtime',

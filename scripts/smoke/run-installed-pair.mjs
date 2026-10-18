@@ -20,6 +20,7 @@ import { buildVSCodeArgs, buildVSCodeChildEnv, ensureVSCodeExecutable, prepareRu
   shouldReRunInsideXvfb, runInsideXvfb, snapshotVSCodeLogs } from './vscode-smoke-runner.mjs';
 import { installCandidateVsix } from './installed-execution-candidate.mjs';
 import { processIdentity, waitForHostAbsence } from './host-evidence.mjs';
+import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered } from './installed-ui-observation.mjs';
 
 const { values } = parseArgs({ options: { plan: { type: 'string' }, candidate: { type: 'string' }, output: { type: 'string' } } });
 assert(values.plan && values.candidate && values.output);
@@ -95,13 +96,14 @@ const requestPath = path.join(output, 'driver-request.json'), responsePath = pat
 // mode. Only the driver is loaded as development; both subjects stay installed.
 await fs.copyFile(fileURLToPath(new URL('./installed-pair-driver.cjs',import.meta.url)),path.join(driverRoot,'driver.cjs'));
 await writeJSON(path.join(driverRoot,'config.json'),{expected,workspace:output,extensionsDir:runtime.extensionsDir,
-  receipt:driverReceipt,request:requestPath,response:responsePath});
+  receipt:driverReceipt,request:requestPath,response:responsePath,notificationReceiver:receiver.executable,
+  notificationCapture:receiver.capture,notificationActivate:receiver.release});
 
 const env = buildVSCodeChildEnv({...runtime.environment,...receiver.env});
 for (const key of Object.keys(env)) if (/^DEV_SESSION_CANVAS_(?:SMOKE|TEST|GATE)/.test(key)) delete env[key];
 const args = buildVSCodeArgs({ workspacePath: output, extensionDevelopmentPath: driverRoot,
   userDataDir: runtime.userDataDir, extensionsDir: runtime.extensionsDir, disableWorkspaceTrust: true,
-  disableExtensions: false, extraLaunchArgs: [`--remote-debugging-port=${port}`, '--locale=en'] });
+  disableExtensions: false, extraLaunchArgs: [`--remote-debugging-port=${port}`, '--locale=en', '--force-disable-user-env'] });
 assert(!args.some(arg => arg.startsWith('--extensionTestsPath')));
 log = await fs.open(path.join(output, 'host.log'), 'wx');
 attachLog=process=>{process.stdout.on('data',chunk=>{writes=writes.then(()=>log.write(chunk));});
@@ -129,6 +131,9 @@ driverCommand = async (command, args) => {
 };
   const driver = await wait('Installed subject activation', () => readJSON(driverReceipt), value => value.subjects?.length === 2,
     Date.now() + 180000);
+  facts.driver=driver;
+  facts.productManifestsUnmodified=true;
+  facts.desktopPresentation='observational';
   originalHost = await processIdentity(driver.hostPID); assert(originalHost); originalHosts.push(originalHost);
   await wait('CDP startup', async () => {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1000) });
@@ -136,20 +141,24 @@ driverCommand = async (command, args) => {
   }, value => value === true, Date.now() + 180000);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`,{timeout:Math.max(1,Math.min(20000,deadline-Date.now()))});
   for (const context of browser.contexts()) { context.setDefaultTimeout(20000);context.setDefaultNavigationTimeout(20000); }
+  await driverCommand('devSessionCanvas.openCanvasInEditor',[]);
+  await driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[]);
   const frame = await wait('Original package canvas', async () => {
     for (const context of browser.contexts()) for (const page of context.pages()) for (const frame of page.frames()) {
       if (await frame.locator('[data-node-kind="terminal"]').count()) return frame;
     }
     return null;
   }, value => value !== null);
-  const node = frame.locator('[data-node-kind="terminal"]').last();
-  const nodeID = await node.getAttribute('data-node-id'); assert(nodeID);
+  const nodeID = await frame.locator('[data-node-kind="terminal"]').last().getAttribute('data-node-id'); assert(nodeID);
+  const node = frame.locator(`[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`);
   const textarea = node.locator('textarea.xterm-helper-textarea'); await textarea.waitFor({ state: 'attached' });
+  await wait('Original installed Terminal mounted first output',()=>node.locator('.xterm-rows').innerText(),text=>/\S/u.test(text));
   const marker = `INSTALLED_PAIR_${nonce.replaceAll('-', '')}`;
   const type=async text=>{await textarea.focus();await frame.page().keyboard.insertText(text);await textarea.press('Enter');};
   await type(`echo ${marker}`);
   await wait('Real installed Terminal output', () => node.locator('.xterm-rows').innerText(), value =>
     value.split('\n').filter(line => line.trim() === marker).length > 0);
+  facts.terminal={nodeID,marker,outputObserved:true};
   const geometryFile = path.join(output, 'child-geometry.json');
   const subject = path.join(output, 'geometry-subject.cjs');
   await fs.writeFile(subject, `const fs=require('node:fs');const readline=require('node:readline');
@@ -160,21 +169,25 @@ readline.createInterface({input:process.stdin}).on('line',line=>{if(line==='geom
   const before = await wait('PTY child geometry', () => readJSON(geometryFile), value => value.cols > 0 && value.rows > 0);
   const subjectIdentity = await processIdentity(before.pid); assert(subjectIdentity);
   const shellIdentity=await processIdentity(before.ppid);assert(shellIdentity,'Original Terminal shell identity is unavailable');
+  Object.assign(facts.terminal,{before,subjectIdentity,shellIdentity});
   await node.locator('.window-chrome').click();
-  const handle = node.locator('[data-node-resize-direction="se"]'); const box = await handle.boundingBox(); assert(box);
-  await frame.page().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await frame.page().mouse.down(); await frame.page().mouse.move(box.x + 180, box.y + 120, { steps: 8 }); await frame.page().mouse.up();
+  const gesture=await resizeInstalledNode(frame,node);
+  facts.terminal.gesture=gesture;
   const after = await wait('Installed product resize changes real child geometry', () => readJSON(geometryFile), value =>
     value.pid === before.pid && value.cols > 0 && value.rows > 0 && (value.cols !== before.cols || value.rows !== before.rows));
+  facts.terminal.after=after;
   await node.getByRole('button', { name: 'Stop', exact: true }).click();
   const stopped=await waitForHostAbsence(subjectIdentity,Math.min(deadline,Date.now()+30000));
   const shellStopped=await waitForHostAbsence(shellIdentity,Math.min(deadline,Date.now()+30000));
   await node.locator('[data-node-action-id=restart]').waitFor();
-  await node.locator('[data-node-action-id=delete]').click();
+  Object.assign(facts.terminal,{stopped,shellStopped,publicStopObserved:true});
   await driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[]);
-  const notificationNode=frame.locator('[data-node-kind="terminal"]').last();
-  const notificationNodeID=await notificationNode.getAttribute('data-node-id');assert(notificationNodeID&&notificationNodeID!==nodeID);
+  const notificationNodeID=await wait('New notification Terminal reaches installed canvas',()=>frame.locator('[data-node-kind="terminal"]').last().getAttribute('data-node-id'),
+    value=>Boolean(value)&&value!==nodeID);
+  const notificationNode=frame.locator(`[data-node-kind="terminal"][data-node-id=${JSON.stringify(notificationNodeID)}]`);
   const notificationInput=notificationNode.locator('textarea.xterm-helper-textarea');
+  await wait('Notification Terminal mounted first output',()=>notificationNode.locator('.xterm-rows').innerText(),text=>/\S/u.test(text));
+  facts.notificationRoute={notificationNodeID};
   const notify=path.join(output,'emit-notification.cjs');
   const notificationPIDFile=path.join(output,'notification-subject.json');
   await fs.writeFile(notify,`require('node:fs').writeFileSync(${JSON.stringify(notificationPIDFile)},JSON.stringify({pid:process.pid,ppid:process.ppid}));
@@ -184,25 +197,49 @@ readline.createInterface({input:process.stdin}).on('line',line=>{if(line==='geom
   const notificationProcess=await wait('Original notification subject startup',()=>readJSON(notificationPIDFile),value=>Number.isSafeInteger(value.pid));
   const notificationSubject=await processIdentity(notificationProcess.pid),notificationShell=await processIdentity(notificationProcess.ppid);
   assert(notificationSubject&&notificationShell,'Original notification Terminal processes are unobservable');
+  Object.assign(facts.notificationRoute,{notificationSubject,notificationShell});
   await fs.rm(receiver.capture,{force:true});await fs.rm(receiver.release,{force:true});
   await notificationInput.focus();await frame.page().keyboard.insertText('notify');await notificationInput.press('Enter');
   const received=await wait('Original main to notifier OS route',()=>readJSON(receiver.capture),value=>Array.isArray(value.args));
   const invocation=readNotificationInvocation(received);
   assert(invocation.message.includes(marker),'Notifier receiver did not observe this real Terminal notification');
   assert(invocation.callback==='direct-action'||/^vscode[^:]*:\/\//.test(invocation.callback));
+  Object.assign(facts.notificationRoute,{received,invocation});
   await wait('Main node attention',()=>notificationNode.locator('.window-chrome').getAttribute('data-execution-attention-pending'),value=>value==='true');
+  // Select the already stopped original node and fit the entire scene. The
+  // real target must be displaced before its callback can prove centering.
+  await frame.locator('.react-flow__controls-fitview').click();
+  await node.locator('.window-chrome').click();
+  const selected=await wait('Different node selected before notification callback',()=>observeInstalledCanvas(frame,notificationNodeID),
+    value=>value?.selected.length===1&&value.selected[0]===nodeID&&value.attention==='true');
+  facts.notificationRoute.selectedBeforeCallback=selected;
+  const beforeCallback=await wait('Notification target displaced before callback',()=>observeInstalledCanvas(frame,notificationNodeID),
+    value=>value!==null&&!installedNodeIsCentered(value)
+      && Math.hypot(value.centerDistance.x,value.centerDistance.y)>40);
+  assert.deepEqual(beforeCallback.selected,selected.selected);
+  facts.notificationRoute.beforeCallback=beforeCallback;
   await fs.writeFile(receiver.release,'activate\n');
   if(invocation.callback!=='direct-action') await driverCommand('vscode.open',[invocation.callback]);
-  await wait('Notifier click returns to original node',()=>notificationNode.locator('.window-chrome').getAttribute('data-execution-attention-pending'),value=>value==='false');
+  const afterCallback=await wait('Notifier callback centers original node',()=>observeInstalledCanvas(frame,notificationNodeID),installedNodeIsCentered);
+  assert.deepEqual(afterCallback.selected,beforeCallback.selected,'Notification callback must preserve the user selection');
+  assert.equal(afterCallback.attention,'true','Notification callback must keep attention until the user clicks the target');
+  assert.notEqual(afterCallback.activeElement.nodeID,notificationNodeID,'Notification callback must not focus target input');
+  facts.notificationRoute.afterCallback=afterCallback;
+  await notificationNode.locator('.window-chrome').click();
+  await wait('User click acknowledges notification target',()=>notificationNode.locator('.window-chrome').getAttribute('data-execution-attention-pending'),value=>value==='false');
+  facts.notificationRoute.userAcknowledged=true;
   await notificationNode.locator('[data-node-action-id=stop]').click();
   const notificationRetirement={subject:await waitForHostAbsence(notificationSubject,Math.min(deadline,Date.now()+30000)),
     shell:await waitForHostAbsence(notificationShell,Math.min(deadline,Date.now()+30000))};
   await notificationNode.locator('[data-node-action-id=restart]').waitFor();
+  facts.notificationRoute.notificationRetirement=notificationRetirement;
   const invalid = await driverCommand('devSessionCanvasNotifier.postSystemNotification', [{}]);
   assert.equal(invalid.status, 'error', 'Notifier public command must validate the request');
-  facts = { driver, terminal: { nodeID, marker, before, after, stopped,shellStopped },
-    notificationRoute: {notificationNodeID,received,invocation,notificationSubject,notificationShell,notificationRetirement},
-    desktopPresentation: 'observational', productManifestsUnmodified: true };
+  facts.notificationRoute.invalidRequestRejected=true;
+  // Locale is an independent installed UI check. Publicly close the scene
+  // so restart cannot restore its inner frame before the observer attaches.
+  await driverCommand('workbench.action.closeAllEditors',[]);
+  await wait('Original canvas closed before independent locale restart',()=>frame.isDetached(),value=>value===true);
   const close=await driverCommand('workbench.action.closeWindow',[]);assert.equal(close.status,'close-requested');
   let exited;childExit.then(value=>{exited=value;});
   const exit=await wait('Public close completes original UI exit',()=>exited,value=>value!==undefined,
@@ -224,22 +261,26 @@ readline.createInterface({input:process.stdin}).on('line',line=>{if(line==='geom
     catch(error){if(error.cause?.code==='ECONNREFUSED')return false;throw error;}},value=>value===true);
   browser=await chromium.connectOverCDP(`http://127.0.0.1:${port}`,{timeout:Math.max(1,Math.min(20000,deadline-Date.now()))});
   for (const context of browser.contexts()) { context.setDefaultTimeout(20000);context.setDefaultNavigationTimeout(20000); }
+  facts.locales={en:driver.locale,zh:localized.locale};
   for(const command of ['workbench.view.extension.devSessionCanvasNotifier','devSessionCanvasNotifier.status.focus',
     'devSessionCanvasNotifier.notes.focus','devSessionCanvasNotifier.codex.focus'])await driverCommand(command,[]);
   const localeText=await wait('Unmodified notifier sidebar localization',async()=>{
     const texts=[];for(const context of browser.contexts())for(const page of context.pages())for(const candidateFrame of page.frames())
       texts.push(await candidateFrame.locator('body').innerText().catch(()=>''));return texts.join('\n');
   },text=>text.includes('当前环境')&&text.includes('发送测试通知')&&text.includes('本机 UI 端'));
+  facts.locales.notifierText=localeText;
   await driverCommand('devSessionCanvas.openCanvasInEditor',[]);
+  await driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[]);
   const localizedCanvas=await wait('Unmodified Terminal zh-cn action',async()=>{
     for(const context of browser.contexts())for(const page of context.pages())for(const candidateFrame of page.frames()) {
       const terminal=candidateFrame.locator('[data-node-kind="terminal"]').last();
       if(await terminal.count()&&await terminal.locator('[data-node-action-id=stop]').count())return terminal;
     }return null;
   },value=>value!==null);
-  assert.equal(await localizedCanvas.locator('[data-node-action-id=stop]').getAttribute('aria-label'),'停止');
-  await localizedCanvas.locator('[data-node-action-id=stop]').click();
-  facts.locales={en:driver.locale,zh:localized.locale,notifierText:localeText,terminalStop:'停止'};
+  const localizedStop=localizedCanvas.getByRole('button',{name:'停止',exact:true});
+  await localizedStop.waitFor({state:'visible'});
+  await localizedStop.click();
+  facts.locales.terminalStop='停止';
   await driverCommand('workbench.action.closeWindow',[]);exited=undefined;childExit.then(value=>{exited=value;});
   const localeExit=await wait('Localized Host public close',()=>exited,value=>value!==undefined,Math.min(deadline,Date.now()+30000));
   assert.equal(localeExit.code,0);assert.equal(localeExit.signal,null);

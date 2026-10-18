@@ -99,9 +99,23 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 第三轮实际Actions已证明隔离双包构建及checkout清理成功，随后文件清单回归错误地依赖外层checkout的dist。选定修正为：候选模式先核同批包回执与原VSIX摘要，再把原包dist解到测试私有目录并核构建文件摘要；真实主/notifier stager通过显式dist输入运行原staging规则和`vsce ls`，主包仍使用production准入。生产ZIP独立检查必需资源、禁止源码/debug目录及六native目标，检查后复算原包摘要。默认本地stager路径不变；不在外层补build，不借source-build输出，也不在candidate模式跳过staging断言。失败producer的原包仅供诊断，不能因单项复验通过补发正式transfer或拼接验收。
 
+旧原生资产回归对打包器`cpSync`固定源码字符串的检查不能证明复制行为；显式dist接口改造后改为实际调用production stager，逐文件检查原fixture dist与六资产复制字节，以及源缺失时失败。正常打包默认输入仍为主扩展dist；原worker构建接线检查保留，结构fixture不加载原生机器码，不外推平台验收。
+
 `packaged-host`只复制/解包两个输入包到测试副本，记录删除依赖声明、wrapper、测试命令与测试模式的变更清单；notifier也从输入VSIX stage，禁止偷用源码dist。记录原VSIX摘要和测试副本摘要/变更规则，原包前后摘要必须相同。它证明实际production payload的instrumented集成，不称原样安装。
 
 `installed-pair`在空extensionsDir用原VSIX安装；driver作为单独扩展/外部自动化，使用公开命令/UI并读取外部可见证据，被测包无测试main、manifest改写或smoke模式。安装前后原包摘要相同，记录扩展ID/版本、依赖、activation、打开画布、Terminal响应/几何/Stop、主与notifier路由、回跳和locale。操作系统通知可用平台适配的测试接收者证明路由，系统桌面实际呈现另标manual/observational，不能以本地双包安装代证Marketplace自动下载companion。
+
+独立driver先验证原样安装/activation并完成控制握手，外部观察器连接固定Host的CDP后，才由公开命令创建画布/Terminal。实际Linux诊断证明晚连接可漏掉已经创建的内层webview frame；连接后创建的单变量对照读到真实正文及PTY子进程尺寸。准备顺序不改变被测包、CSP或产品等待。resize使用实际公开角把手并发送完整指针动作，不使用不存在的`se`标识；读取当前frame视口与把手位置选取画布内的有限增长路径。原bottom-right固定向外拖动在已fit的狭窄画布中越界，仅pointerdown进入产品页面，pointerup缺失；top-left画布内对照收齐事件，完整公开流程诊断中的真实原子进程由64×20变105×34。正式检查保留实际UI变化与原PTY子进程几何，不派内部消息或以观察器几何代证PTY；en/zh-cn重开均从自己的公开准备动作开始。
+
+通知夹具的 receiver 是外部操作系统后端替身，不改主/notifier包。实际输入记录证明原Node CLI收到`notify`并发出OSC9、真实节点attention=true；独立driver只读观察证明Linux的VSCode登录shell解析覆盖了launch PATH，receiver目录丢失。installed启动显式`--force-disable-user-env`，保留冻结的私有receiver环境；不在产品activate后改process.env，不改变system桥接配置，也不把fallback工作台消息当系统路由通过。driver只记录所需receiver路径是否生效，不导出完整环境。新Terminal先等待真实mounted终端出现可见首批输出，再输入，准备和实际动作仍在原等待期限内；前置握手、正文、原子进程/几何/Stop等已观察事实逐阶段保留，后续失败不抹掉它们。
+
+系统通知回跳遵守`canvas-node-notifications.md`：回调只居中目标、保持原selection和attention，不自动输入/focus或确认。接收前用原Stop节点建立不同selection，通过公开fit-all把目标移离视口中心；点击receiver或打开其原protocol URI后核真实目标在视口中心、selection未变且attention仍为true。最后由用户UI左键点击目标，才要求attention=false。真实桌面呈现继续标observational；不得改产品令回跳自动确认来适配错误旧断言，也不得仅以attention仍true代证回调执行。
+
+原样安装的locale重开不验证状态恢复，英文Terminal全部Stop并核原进程退役后，用公开`closeAllEditors`关闭画布，再公开closeWindow且核原Host正常退出；中文Host由自己的CDP连接与公开创建动作开始。原Stop按钮通过可见文本提供可访问名称，没有单独aria-label；中文断言通过真实button角色/精确名称“停止”核对并实际点击，不新增产品属性来适配错误夹具。节点locator固定初始nodeID，不能用持续`.last()`把新节点当原节点。
+
+第四轮packaged文件打开失败保留原producer：实际生产bundle的d3-drag在夹具合成mousedown的`event.view=null`处访问document失败，随后click路由未生效。原bundle原行/列与锁定d3-drag源码一致。选定修正为测试DOM动作给MouseEvent传所属document.defaultView及真实目标中心、buttons等浏览器字段；不绕过产品onClick/Host.openCanvasFile，也不给生产drag加null容错去支持不完整测试输入。原包浏览器回归在minimal/card均先复现同一异常，修后私有production build两个行为回归通过，保连续打开和后续真实拖动；原可见文件/split group/画布保持mounted断言仍由Host用例验收，不能以浏览器消息替代。真实Actions新输入才能验收。
+
+固定VSCode下载仍只使用计划的1.142.0；macOS官方包的`Info.plist/CFBundleExecutable`声明入口为`Contents/MacOS/Code`，锁定test-electron返回旧`Electron`路径。解析实际同包plist并要求声明文件存在，再核同包app/package.json版本；不可将不存在的旧路径再次当作安装目录，也不回退其他版本/系统宿主。官方ZIP入口、plist与SHA保留作诊断输入，真正macOS安装与运行仍由实际runner验证。
 
 `verify-result`绑定package回执与全部必跑结果，通过后写`acceptance-receipt.json`。PR候选包只供PR证据；最终tag重新在最终SHA建并验自己的双包。发布prepare下载最终tag这一批文件并校验，不再package。所有边界重新计算摘要，传输损坏/路径替换/错版本/ref/profile直接失败。
 
@@ -134,6 +148,8 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 工件导出是独立、有界的取证动作。正式输出保留任务/Host回执、环境、原身份、实际步骤、probe/快照、截图/trace、生成的工作区与控制输入、SSH配置和sshd日志；原包、源码构建与native archive由各自不可变transfer工件保留。依赖副本、宿主/浏览器缓存、SSH私钥和完整HOME不进入结果工件。每个结果工件带内容清单，记录实际保留路径、长度、摘要及明确排除的目录类别；聚合从实际下载ZIP复算清单，缺失/改动不能通过。日志超2MiB时保留头64KiB及尾部，其原长度和保留区间显式记录；结构化回执、probe、trace或失败输入不能截断。首轮取证容量上限为每工件256MiB、单非日志文件64MiB及10000个文件，超限或取证超时使job失败并保留已收集证据，不能静默丢弃。预算与容量属于待Actions校准的基础设施输入，不扩展产品等待。
 
 任务回执与工件清单中的相对路径统一在producer写入时序列化为`/`，Windows本地文件访问仍使用系统路径。第三轮真实Windows回执使用反斜杠而清单使用`/`，聚合按原不安全路径规则正确拒绝；修正producer，不在下载后重写原回执或放宽验证端路径规则。历史Windows工件只可做明确标注的序列化对照，不能借修正后的内存对象追认原轮验收。
+
+聚合失败摘要优先指出实际失败task及其原阶段证据，再指出来源/结构错误和未运行项。第四轮regression分片中的native-assets回归失败使整个producer红灯，其他已成功执行的task也不能满足正式验收，但不得把这些连带拒绝的typecheck写成根因。`firstFailure`表示冻结目录顺序下优先选出的原task失败，不声称是不同并行job的墙钟最早失败；producer红灯仍使整批失败，不放宽来源、上传或取消检查。
 
 本地隔离验证同样先确认执行进程及其清理已settle，再在取证30秒/清理60秒储备内导出必要证据和回收checkout；不对仍活动的checkout并发复制或删除。未settle、取证失败或清理失败保留私有目录位置并使本地结果失败。源工作区和其他任务目录不在此回收范围。
 
@@ -221,6 +237,10 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 真实Actions首轮39093713215（预合并354e6129/head455a494f）取消，第二轮39094300198（预合并040883c8/head4c3fa9bf）失败；各轮独立记账。第三轮39095480885以真实预合并612a891c/head924cae96运行，parents独立核为最新main6e708c6b与该head。同轮三regression分片、输入、production浏览器构建、423功能/3视觉、Marketplace浏览器、六load及六原生有限操作、source-build、118源码Host和两个Marketplace Host均通过。原production双包各构建一次且隔离checkout退役通过，后续文件清单测试错读外层dist使package-clean失败；无正式candidate transfer，104packaged和三原样安装not-run。聚合另按原路径规则拒绝Windows回执反斜杠证据引用；稳定检查失败，未签发acceptance。
 
-candidate模式现消费该轮原包dist并运行真实production stager/vsce ls及原ZIP检查，在外层两dist均不存在的私有源码夹具诊断通过；原包摘要不变，没有新增构建。篡改/源码debug混入/缺本地化/不安全ZIP路径和helper权限反例通过。Windows证据引用改在producer序列化为`/`，原历史工件不重写不追认；真实原回执反斜杠经诊断转换可对应清单原hash。第三轮通过只属于其固定输入；这些修正仍需下一轮同批clean、packaged、三安装及全量来源聚合验收，PR327最终输入和已确认生产恢复竞态保持未闭环。
+candidate模式现消费该轮原包dist并运行真实production stager/vsce ls及原ZIP检查，在外层两dist均不存在的私有源码夹具诊断通过；原包摘要不变，没有新增构建。篡改/源码debug混入/缺本地化/不安全ZIP路径和helper权限反例通过。Windows证据引用改在producer序列化为`/`，原历史工件不重写不追认；真实原回执反斜杠经诊断转换可对应清单原hash。第三轮通过只属于其固定输入；第四轮下述结果验证了这两项修正，三安装/剩余packaged及PR327最终输入和已确认生产恢复竞态仍未闭环。
+
+第四轮[39097246318](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39097246318)在真正预合并aa969012/headcdf40738完成，parents核为main6e708c6b及该head。247 jobs为240成功/7失败，六load/六有限操作、118源码Host、2 Marketplace Host、423功能/3视觉、source-build及package-clean同批通过；双包各build一次且正式candidate artifact12125466855已上传。packaged103/104通过，余项为文件视图点击；regression一分片固定源码字符串、三安装的官方入口/CDP观察失败。全量330task回执和来源实际收齐，Windows原回执无需修改即验真，errors/notRun为空；299task满足聚合、31被拒包含失败分片producer连带拒绝，整体失败/无acceptance。上一轮修复已生效，但不能据部分通过签发完整验收。
+
+当前native stager行为、macOS同包入口、安装的CDP/resize/receiver/回跳/locale前提和合成MouseEvent缺view均有明确证据与回归。Linux第四轮原双包完整公开流程诊断exit0、两个Host公开退出0，原shell/子进程Stop后absence；通知真实居中/selection保留/attention不自动清除、用户点击ack、中英文实际交互通过。原包前后SHA一致，acceptance=false。合成点击minimal/card在原包均先红，修后两个行为回归绿且后续真实drag正常；原426浏览器注册未删改，新目录428项，完整production425功能与3视觉通过，实际执行集合匹配冻结目录，baseline不变。93门禁/发布恢复合同、typecheck、native-assets完整链、vscode-runner环境、四workflow actionlint/结构合同已过；新增首败摘要及严格验收/校准25项针对复验通过，完整425功能与3视觉也通过，执行集合精确匹配冻结目录；正式104packaged/三安装及PR327组合仍须新head实跑。
 
 `main`保护API返回404 Branch not protected，尚未配置required check，不能声称已有强制合并阻断。生产旧代恢复撤销订阅竞态依然是独立发布阻塞；即使CI改造通过也不由此宣称0.26.1可发布。渠道模块只在本地HTTP/内存受控输入验证过，未进行真实发布/上传重签对照，未知内容继续拒绝完成。

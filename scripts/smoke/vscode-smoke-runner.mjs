@@ -2,7 +2,7 @@ import os from 'os';
 import assert from 'node:assert/strict';
 import path from 'path';
 import { execFile, spawn, spawnSync } from 'child_process';
-import { existsSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import esbuild from 'esbuild';
@@ -552,19 +552,28 @@ function resolveVSCodeTestCachePath(projectRoot) {
   return path.join(projectRoot, '.vscode-test');
 }
 
-function resolveVSCodeExecutablePath(installDir) {
-  if (process.platform === 'win32') {
+function resolveVSCodeExecutablePath(installDir, platform = process.platform) {
+  if (platform === 'win32') {
     return path.join(installDir, 'Code.exe');
   }
 
-  if (process.platform === 'darwin') {
-    return path.join(installDir, 'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
+  if (platform === 'darwin') {
+    return resolveDarwinVSCodeExecutable(path.join(installDir, 'Visual Studio Code.app', 'Contents'));
   }
 
   return path.join(installDir, 'code');
 }
 
-function normalizeVSCodeExecutablePath(downloadResult) {
+function resolveDarwinVSCodeExecutable(contents) {
+  const plist = readFileSync(path.join(contents, 'Info.plist'), 'utf8');
+  const match = plist.match(/<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/u);
+  assert(match && /^[A-Za-z0-9 _-]+$/u.test(match[1]), 'VS Code app must declare a valid executable in Info.plist');
+  const executable = path.join(contents, 'MacOS', match[1]);
+  assert(statSync(executable).isFile(), 'Declared VS Code executable must be a regular file');
+  return executable;
+}
+
+export function normalizeVSCodeExecutablePath(downloadResult, platform = process.platform) {
   if (existsSync(downloadResult)) {
     try {
       if (!statSync(downloadResult).isDirectory()) {
@@ -575,7 +584,11 @@ function normalizeVSCodeExecutablePath(downloadResult) {
     }
   }
 
-  return resolveVSCodeExecutablePath(downloadResult);
+  if (platform === 'darwin' && path.basename(path.dirname(downloadResult)) === 'MacOS'
+    && path.basename(path.resolve(path.dirname(downloadResult), '..')) === 'Contents') {
+    return resolveDarwinVSCodeExecutable(path.resolve(path.dirname(downloadResult), '..'));
+  }
+  return resolveVSCodeExecutablePath(downloadResult, platform);
 }
 
 function findPreferredInstalledVSCodeExecutablePath() {

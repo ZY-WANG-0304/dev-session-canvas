@@ -168,7 +168,7 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 4. 证明链接失败不会阻止定向Stop，Stop失败不会阻止定向链接；nonzero、restart、flood和restricted独立运行。验证unknown/empty/filter缩减拒绝，缺少证据失败，业务失败与清理失败区分。反例验证用真实边界或有意义的受控故障，避免仅测试registry读写。
 5. 完成等价后移除trusted重复调用与旧别名，保留旧代/重开/双窗口组合的独有前提；记录case与Host运行量及耗时变化。用同输入SHA/同run六平台原生资产跑原完整`release:verify`，再按WORKFLOW对PR327最新正式预合并输入重跑。
 
-本轮验证仅是源码hash、入口/调用映射、case引用和文档链接的静态检查，报告明确“不是产品验收”。未运行新的smoke、未修复已复现的恢复撤销订阅生产竞态，也未放行PR327。
+设计阶段的源码hash、入口/调用映射、case引用和文档链接检查只证明结构。2026-10-18实施已实际运行四轮Actions，第四轮118源码Host/2 Marketplace Host及packaged103/104通过；安装和剩余case失败仍阻止完整acceptance。生产恢复撤销订阅竞态未修，PR327未放行。
 
 ## 待验证假设与补充目录
 
@@ -185,3 +185,6 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 本地独立fixture、特殊拓扑及Marketplace新Host包装器已有真实诊断和保留的首败→修正→复验证据，详见[实施计划](../exec-plans/active/release-gate-implementation.md)。其输入是当前工作树与旧dist/native，不外推新SHA、六native或原样安装。原产品resize/ready/Stop/保存/reader等待保持，修正只解决明确夹具前提：mounted/fit尺寸、Host原身份传递、短systemd/VSCode socket、Remote SSH官方依赖及环境、已空graph避免重复reset、locale语言包。
 
 fake Agent输入区状态仍只覆盖受控启发式，不证明真实TUI回合完成，也不假设回答位于末行。live remount、真实snapshot-only新Host、原生崩溃/Stop不响应及额外压力范围仍按15项未实施缺口记录。产品旧代恢复撤销订阅竞态未修，不能因重划case或延长期限让该确定故障通过。
+
+
+第四轮39097246318保留正式输入aa969012/headcdf40738及全量330task来源，六native操作、118源码Host、2 Marketplace Host和packaged103/104同批通过；失败包文件视图存在合成MouseEvent.view=null，三个原样安装仍失败。对应fixture修正已做Linux原双包公开全流程及minimal/card原包先红后绿回归，acceptance=false。新head全部source/packaged/三安装和PR327组合仍待验，不能将运行量、静态137项映射或诊断拼成完整通过；原15个新增目标继续不进入虚假成功清单。
