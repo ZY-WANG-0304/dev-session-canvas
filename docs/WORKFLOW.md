@@ -53,10 +53,12 @@
 1. 当准备一次对外发布时，先确认当前版本对应的 feature 均已经合入 `main`；不要把尚未合并的功能分支 head 直接当成发布输入。
 2. 从最新 `main` 单独切出发布准备分支，在这条分支上集中处理版本号、`package.json`、`package-lock.json`、主扩展与 notifier `CHANGELOG.md`、Marketplace 文案、发布手册，以及 `docs/release-contracts/vX.Y.Z.md`。契约必须列出发布范围、用户 release notes、已复核文档、已知限制和验证范围；它们全部是发布前的静态输入。
 3. CHANGELOG 只写用户可见的功能、安装升级、回退和产品限制。不要写发布准备待办、gate 状态、候选 SHA、workflow run、VSIX hash 或渠道结果；这些属于发布后证据，不能等发布完成后再回写进同版本 CHANGELOG。
-4. 发布准备 PR 在创建和每次更新时，针对由最新 PR head 与基准分支生成的预合并结果运行 `npm run release:preflight -- --version X.Y.Z` 与 `npm run release:verify -- --version X.Y.Z`。`Release Preflight / Verify release contract` 会在所有非草稿 PR 上创建：没有发布契约时明确成功跳过，有契约时执行完整 verify；因此它可以由 GitHub branch protection 设为 required status check，而不会阻断普通 PR。发布契约验证未通过时不得合并。
-5. 发布准备 PR 完成 review 并合并后，才在最终 `main` release commit 创建 `publish/vX.Y.Z`。publish workflow 会在 tag checkout 的同一 ref 上再次执行 `release:verify`；它通过前不得打包、创建 Release、发布渠道或删除临时 tag。不要在未合入 `main` 的发布准备分支 head 上直接发布或打 tag。
+4. 普通非草稿 PR 与 main push 均通过 `Release Preflight` 调用唯一的 `ci-validation.yml`：基础层始终执行，保守路径分类追加全部功能/产物范围；版本或发布契约改动强制完整 `release-pr`。发布准备 PR 每次更新从最新远端目标与 head 生成真实预合并 SHA，先纯静态 `release:preflight`，再执行完整任务图。稳定检查 `Release Preflight / Verify release contract` 只在独立核对实际 Actions job/工件来源、精确必跑集合和同批产物后通过；取消、少结果、错输入及清理/取证失败不能成功跳过。当前 `main` 保护 API 返回未保护，尚不能声称该检查已强制配置；配置后须用实际红灯验证合并阻断。发布契约和完整验收未通过不得合并发布 PR。
+5. 发布准备 PR review 并合并后，才在最终 `main` release commit 创建 `publish/vX.Y.Z`。六外层发布 job 为 resolve、verify、prepare、两个独立渠道、finalize；`verify` 在同一最终 SHA 完整验收，产生一批固定 main/notifier VSIX。验证阶段可构建候选包，`prepare` 只消费实际验收的原双包，对外交付前复算 SHA/ref/version/包回执和真实来源，不重新打包。完整验证通过前不创建正式 Release、不写渠道、不删除临时 tag。不得直接发布未合入 main 的准备分支。
 6. workflow 生成的 release manifest、GitHub Release assets 和 GitHub Release notes 是发布后事实的唯一权威记录，可包含最终 ref、VSIX SHA、workflow run、渠道状态与 deferred 原因。它们不提交回仓库；发布完成后不因“记录门禁通过”再建 PR 修改该版本的 CHANGELOG 或发布契约。
 7. 已存在的历史 tag 继续按其 tag 内的发布逻辑补发渠道；发布契约和双阶段 verify 只约束包含新文件的后续版本，不追溯改写历史 release input。
+8. 部分渠道交付完成后的 `channel-retry` 下载原 Release 双包、原 acceptance 与连通父状态链，核对不可变身份/producer 后补交付；不得重打包、换 SHA、覆盖冲突资产或用历史绿色抹去本轮失败。提交结果 unknown 先查询，内容 match 才可完成；VS Marketplace 的既定 deferred 策略及原因如实保留，GitHub/Open VSX 为必需目标。
+9. `npm run ci:verify` 与 `release:verify` 的本地入口在冻结输入和隔离 checkout 上运行同一任务图，输出 `acceptance: false`；本机没有的外平台记录 not-run，不冒充 Actions 完整验收。定向 `ci:diagnose` 必须声明单 case/payload/原因，也不签发正式回执。CI改造期间用临时分支验证修复与发布 PR327 的最新真实预合并组合，证据随现有修复 PR335，不另建诊断/验证/文档 PR。
 
 ## 生产服务部署流程
 

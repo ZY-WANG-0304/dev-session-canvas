@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "scope": "implementation-and-local-diagnostics-not-actions-acceptance",
+  "acceptance": false,
+  "workingTreeBase": "3fbae6a9e6a7883f65751938d9960caf4e3acf57",
+  "originMain": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+  "catalogue": {
+    "productCases": 102,
+    "defaultCausalSuites": 13,
+    "focusedDiagnostics": 3,
+    "source": 115,
+    "sourceAuxiliary": 3,
+    "packaged": 104,
+    "marketplaceHosts": 2,
+    "designDestinations": 152,
+    "mappedUnverified": 137,
+    "notImplemented": 15
+  },
+  "local": {
+    "regression": {
+      "passed": 80,
+      "failed": 0,
+      "resultsFile": "/dev/shm/dsc-ci-regression-implementation-3/results.json"
+    },
+    "contracts": {
+      "passed": 83,
+      "failed": 0,
+      "skipped": 0,
+      "logFile": "/dev/shm/dsc-ci-gate-contract-implementation-6.log",
+      "caveat": "Final evidence reference and policy digest changes checked by focused contracts separately"
+    },
+    "browser": {
+      "functionalPassed": 423,
+      "visualPassed": 3,
+      "baselineChanged": false,
+      "marketplace": "passed"
+    },
+    "ssh": {
+      "passed": 2,
+      "failed": 0,
+      "variants": [
+        "remote-ssh-real-reopen-exit",
+        "remote-ssh-real-reopen-retain"
+      ],
+      "input": "working source with previous dist/native; diagnostic only"
+    },
+    "marketplaceHost": {
+      "passed": 2,
+      "failed": 0,
+      "input": "working source with previous dist/native; diagnostic only"
+    }
+  },
+  "notYetVerified": [
+    "same-commit six native providers",
+    "fresh clean production pair",
+    "packaged consumers of that exact pair",
+    "three x64 original pair installs",
+    "actual Actions complete provenance aggregation",
+    "latest PR327 pre-merge release-pr"
+  ],
+  "releaseBlocker": "Confirmed legacy runtime restore subscription race remains unfixed; CI redesign cannot waive it",
+  "requiredProtection": {
+    "configured": false,
+    "observed": "404 Branch not protected"
+  },
+  "files": [
+    {
+      "file": "scripts/gates/catalog.mjs",
+      "sha256": "64fd3367bf395d954cac6c28ffa5607c4c32349db4a16d5867cec309029c2019"
+    },
+    {
+      "file": "scripts/gates/resolve-plan.mjs",
+      "sha256": "56d81a72832890692885d56c05815a33bfae153a73d77c2bbcfb4dcee8d4dfba"
+    },
+    {
+      "file": "scripts/smoke/smoke-catalog.mjs",
+      "sha256": "38cd40f90c76a14ccaac955c61dc9abf0c2537b697e0182fe6c2417ee4477e43"
+    },
+    {
+      "file": "scripts/smoke/smoke-implementation-map.json",
+      "sha256": "77437c5d023bc81f45efe9bd3150742798a0d70d015ecada8087f286c129db46"
+    },
+    {
+      "file": ".github/workflows/ci-validation.yml",
+      "sha256": "52b18431f2f840ef236f4644dbad931df0716a9bdfaf045a073b7785c4b9d11d"
+    },
+    {
+      "file": ".github/workflows/release-preflight.yml",
+      "sha256": "86a66fae89e762ed369752c600256622f03c1568e1aab60f9db869d088380780"
+    },
+    {
+      "file": ".github/workflows/release-validation.yml",
+      "sha256": "a7fa544c676d68afd84dea5c57482580f86ff859880f7a1cbe3fdc15b41ae800"
+    },
+    {
+      "file": ".github/workflows/publish-marketplace-release.yml",
+      "sha256": "49c8796c2fbda7ae19385b6899f70a046a883abba72737762331631e3810c902"
+    }
+  ]
+}

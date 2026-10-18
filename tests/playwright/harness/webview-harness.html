@@ -9,7 +9,13 @@
         padding: 0 20px;
       }
     </style>
-    <link rel="stylesheet" href="../../../extensions/vscode/dev-session-canvas/dist/webview.css" />
+    <script>
+      window.__dscBrowserBundleRoot = new URL(location.href).searchParams.get('bundle')
+        || '../../../extensions/vscode/dev-session-canvas/dist/';
+      const css = document.createElement('link');
+      css.rel = 'stylesheet'; css.href = new URL('webview.css', new URL(window.__dscBrowserBundleRoot, location.href));
+      document.head.append(css);
+    </script>
   </head>
   <body>
     <div id="app"></div>
@@ -199,6 +205,10 @@
         };
       })();
     </script>
-    <script src="../../../extensions/vscode/dev-session-canvas/dist/webview.js"></script>
+    <script>
+      const bundle = document.createElement('script');
+      bundle.src = new URL('webview.js', new URL(window.__dscBrowserBundleRoot, location.href));
+      document.body.append(bundle);
+    </script>
   </body>
 </html>

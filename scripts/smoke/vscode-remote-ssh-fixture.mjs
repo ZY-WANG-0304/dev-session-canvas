@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { spawn, spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
+import { createHash } from 'node:crypto';
 
 const SSH_PATH = process.env.DEV_SESSION_CANVAS_TEST_SSH_PATH || 'ssh';
 const SSHD_PATH = process.env.DEV_SESSION_CANVAS_TEST_SSHD_PATH || 'sshd';
@@ -22,10 +23,17 @@ export async function createRemoteSSHFixture(options) {
   const remoteDataDir = path.join(fixtureRoot, 'remote-data');
   const remoteTmpDir = path.join(fixtureRoot, 'remote-tmp');
   const remoteAgentDir = path.join(fixtureRoot, 'remote-agent');
-  const remoteRuntimeDir = path.join(
-    os.tmpdir(),
-    options.remoteRuntimeDirName ?? `dsc-remote-ssh-runtime-${process.pid}`
-  );
+  const requestedRuntimeName = options.remoteRuntimeDirName ?? `dsc-remote-ssh-runtime-${process.pid}`;
+  const runtimeNonce = process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE;
+  const remoteSocket = path.join(os.tmpdir(), requestedRuntimeName, 'state', 'dsc', 'rh', '0'.repeat(24), 's.sock');
+  const runtimeName = runtimeNonce || Buffer.byteLength(remoteSocket) > 104
+    ? `dsc-ssh-${createHash('sha256').update(`${fixtureRoot}\0${requestedRuntimeName}\0${runtimeNonce ?? ''}`).digest('hex').slice(0, 16)}`
+    : requestedRuntimeName;
+  const remoteRuntimeDir = path.join(os.tmpdir(), runtimeName);
+  const remoteStateDir = path.join(remoteRuntimeDir, 'state');
+  if (Buffer.byteLength(path.join(remoteStateDir, 'dsc', 'rh', '0'.repeat(24), 's.sock')) > 104) {
+    throw new Error('Remote SSH fixture cannot provide a private systemd control path within the Unix socket limit.');
+  }
   const hostAlias = options.hostAlias ?? 'dsc-remote-smoke';
   const hostKeyPath = path.join(sshdRoot, 'ssh_host_ed25519_key');
   const clientKeyPath = path.join(sshdRoot, 'id_ed25519');
@@ -51,6 +59,7 @@ export async function createRemoteSSHFixture(options) {
   await ensurePrivateDir(remoteAgentDir);
   await fs.rm(remoteRuntimeDir, { recursive: true, force: true });
   await ensurePrivateDir(remoteRuntimeDir);
+  await ensurePrivateDir(remoteStateDir);
 
   generateEd25519Key(sshKeygenPath, hostKeyPath, 'dsc-remote-smoke-host');
   generateEd25519Key(sshKeygenPath, clientKeyPath, 'dsc-remote-smoke-client');
@@ -75,8 +84,11 @@ export async function createRemoteSSHFixture(options) {
       remoteCacheDir,
       remoteDataDir,
       remoteRuntimeDir,
+      remoteStateDir,
       remoteTmpDir,
       remoteAgentDir,
+      gateStorageRoot:fixtureRoot,
+      smokeTestMode: options.smokeTestMode,
       realReopenControlFile: options.realReopenControlFile,
       candidateControlFile: options.candidateControlFile
     }),
@@ -161,6 +173,7 @@ export async function createRemoteSSHFixture(options) {
         remoteCacheDir,
         remoteDataDir,
         remoteRuntimeDir,
+        remoteStateDir,
         remoteTmpDir,
         remoteAgentDir,
         realReopenControlFile: options.realReopenControlFile
@@ -183,8 +196,13 @@ export async function createRemoteSSHFixture(options) {
     remoteCacheDir,
     remoteDataDir,
     remoteRuntimeDir,
+    remoteStateDir,
     remoteTmpDir,
     remoteAgentDir,
+    extensionHostEnv: buildRemoteHostEnvironment({ remoteHomeDir, remoteConfigDir, remoteCacheDir,
+      remoteDataDir, remoteRuntimeDir, remoteStateDir, remoteTmpDir, remoteAgentDir, gateStorageRoot: fixtureRoot,
+      smokeTestMode: options.smokeTestMode, realReopenControlFile: options.realReopenControlFile,
+      candidateControlFile: options.candidateControlFile }),
     async dispose() {
       if (options.observeCleanup) return disposeObserved();
       try {
@@ -216,20 +234,30 @@ function generateEd25519Key(sshKeygenPath, targetPath, comment) {
   );
 }
 
-function buildSshdConfig(options) {
+export function buildRemoteHostEnvironment(options, inherited = process.env) {
   const envEntries = {
     HOME: options.remoteHomeDir,
     XDG_CONFIG_HOME: options.remoteConfigDir,
     XDG_CACHE_HOME: options.remoteCacheDir,
     XDG_DATA_HOME: options.remoteDataDir,
+    XDG_STATE_HOME: options.remoteStateDir ?? path.join(options.remoteRuntimeDir, 'state'),
     XDG_RUNTIME_DIR: options.remoteRuntimeDir,
     TMPDIR: options.remoteTmpDir,
     VSCODE_AGENT_FOLDER: options.remoteAgentDir,
+    ...(options.smokeTestMode ? { DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1' } : {}),
     DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE: options.realReopenControlFile,
+    DEV_SESSION_CANVAS_GATE_STORAGE_ROOT:inherited.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS?options.gateStorageRoot:undefined,
+    DEV_SESSION_CANVAS_GATE_STORAGE_ROOTS:inherited.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS
+      ? JSON.stringify([options.gateStorageRoot, options.remoteRuntimeDir]) : undefined,
+    ...Object.fromEntries(['DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS','DEV_SESSION_CANVAS_GATE_RUN_NONCE','DEV_SESSION_CANVAS_GATE_CASE_ID',
+      'DEV_SESSION_CANVAS_GATE_DEADLINE','DEV_SESSION_CANVAS_GATE_CLEANUP_DEADLINE'].map(key=>[key,inherited[key]])),
     DEV_SESSION_CANVAS_REMOTE_CANDIDATE_CONTROL_FILE: options.candidateControlFile
   };
-  const setEnvLines = Object.entries(envEntries)
-    .filter(([, value]) => value !== undefined)
+  return Object.fromEntries(Object.entries(envEntries).filter(([, value]) => value !== undefined));
+}
+
+function buildSshdConfig(options) {
+  const setEnvLines = Object.entries(buildRemoteHostEnvironment(options))
     .map(([key, value]) => `SetEnv ${key}=${value}`)
     .join('\n');
 

@@ -164,14 +164,17 @@ const BUILTIN_WORKBENCH_TERMINAL_THEME_EXPECTATIONS = {
   }
 };
 let lastWebviewProbe;
+let caseBoundary;
+const stepBoundary = async (id, status, phase) => caseBoundary?.({ id, status, phase });
 
 module.exports = {
   run
 };
 
-async function run() {
+async function run({ gateRecordStep, gateStepBoundary } = {}) {
+  caseBoundary=gateStepBoundary;
   try {
-    await runSmoke();
+    await runSmoke({ gateRecordStep });
     await assertNoOwnedResizeFailures();
   } catch (error) {
     await writeFailureArtifacts(error);
@@ -179,7 +182,17 @@ async function run() {
   }
 }
 
-async function runSmoke() {
+async function runSmoke({ gateRecordStep } = {}) {
+  const { pathToFileURL } = require('node:url');
+  const catalogFile = fsSync.existsSync(path.join(__dirname, 'smoke-catalog.mjs'))
+    ? path.join(__dirname, 'smoke-catalog.mjs') : path.join(__dirname, '../../scripts/smoke/smoke-catalog.mjs');
+  const { smokeCatalog } = await import(pathToFileURL(catalogFile).href);
+  const selected = smokeCatalog.find(entry => entry.id === smokeScenario && entry.testFile === 'extension-tests.cjs');
+  assert.ok(selected, `Unknown extension smoke case: ${smokeScenario}`);
+  if (selected.kind === 'product-case') {
+    await runIndependentProductCase(selected, gateRecordStep);
+    return;
+  }
   await activateVisibleExtension(vscode, EXTENSION_ID);
   await waitForCommand(vscode, COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
@@ -194,57 +207,12 @@ async function runSmoke() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await clearHostMessages();
   await clearDiagnosticEvents();
-  if (smokeScenario === 'local-execution-flow') {
-    await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
-    await createBaseNodes({ waitForAutoStart: true });
-    const snapshot = await getDebugSnapshot();
-    await verifyAgentExecutionFlow(findNodeByKind(snapshot, 'agent').id);
-    await verifyTerminalExecutionFlow(findNodeByKind(snapshot, 'terminal').id);
-    console.log('Local execution flow: Agent burst, partial input, sleep, slowspin, restart, duplicate rejection, Terminal output and final save passed.');
-    return;
-  }
-  if (smokeScenario === 'local-links-and-stop') {
-    await ensureEditorCanvasReady();
-    await createBaseNodes({ waitForAutoStart: true });
-    const snapshot = await getDebugSnapshot();
-    const agentId = findNodeByKind(snapshot, 'agent').id;
-    const terminalId = findNodeByKind(snapshot, 'terminal').id;
-    await ensureAgentStopped(agentId);
-    await verifyExecutionTerminalNativeInteractions(terminalId);
-    await ensureTerminalStopped(terminalId);
-    await verifyStopVsQueuedExitRace(agentId);
-    await verifyClaudeStopRestoresPreviousSignal();
-    await verifyClaudeExplicitSessionIdPreservesResumeContext();
-    console.log('Local links and stop: rendered links, stop completion and Claude file-confirmed resume context passed.');
-    return;
-  }
-  if (smokeScenario === 'local-preparation-failure') {
-    await ensureEditorCanvasReady();
-    await verifyMissingAgentCliFailure();
-    return;
-  }
-  if (smokeScenario === 'local-pty-robustness') {
-    await ensureEditorCanvasReady();
-    await createBaseNodes({ waitForAutoStart: true });
-    const snapshot = await getDebugSnapshot();
-    const agent = findNodeByKind(snapshot, 'agent');
-    const terminal = findNodeByKind(snapshot, 'terminal');
-    await verifyPtyRobustness(agent.id, terminal.id);
-    await verifyTerminalFloodKeepsCanvasResponsive(agent.id, terminal.id, findNodeByKind(snapshot, 'note').id);
-    return;
-  }
-  if (smokeScenario === 'local-surface-cutover') {
-    await ensureEditorCanvasReady();
-    await createBaseNodes({ waitForAutoStart: true });
-    const snapshot = await getDebugSnapshot();
-    await ensureAgentStopped(findNodeByKind(snapshot, 'agent').id);
-    await verifyLiveSessionCutoverAndReload(findNodeByKind(snapshot, 'terminal').id);
-    return;
-  }
   if (smokeScenario === 'snapshot-only-manual-recovery') {
+    await stepBoundary('fixture','started','prepare');
     await ensureEditorCanvasReady();
     await createBaseNodes({ waitForAutoStart: true });
     const snapshot = await getDebugSnapshot();
+    await stepBoundary('fixture','passed');
     await verifyRuntimeReloadRecovery(findNodeByKind(snapshot, 'agent').id, findNodeByKind(snapshot, 'terminal').id);
     await ensureTerminalStopped(findNodeByKind(snapshot, 'terminal').id);
     return;
@@ -304,10 +272,378 @@ async function runSmoke() {
     return;
   }
 
-  await runTrustedSmoke();
+  throw new Error(`Unimplemented extension smoke case: ${smokeScenario}`);
 }
 
+
+async function runIndependentProductCase(selected, recordStep) {
+  const prepare = independentCaseFunctions[selected.prepare];
+  const business = independentCaseFunctions[selected.entry];
+  assert.strictEqual(typeof prepare, 'function', `Missing independent prepare: ${selected.id}`);
+  assert.strictEqual(typeof business, 'function', `Missing independent business: ${selected.id}`);
+  const step = async (id, phase, operation) => recordStep
+    ? recordStep({ caseID: selected.id, id, phase }, operation) : operation();
+  const fixture = await step('fixture', 'prepare', () => prepare());
+  await step('business', 'action/assert', () => business(fixture));
+  await step('owned-resize-errors', 'assert', () => assertNoOwnedResizeFailures());
+}
+
+async function prepareIndependentEmpty() {
+  await prepareIndependentFirstOpen();
+  await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
+  await ensureEditorCanvasReady();
+  await clearHostMessages();
+  await clearDiagnosticEvents();
+  assert.strictEqual((await getDebugSnapshot()).state.nodes.length, 0);
+  return {};
+}
+
+async function prepareIndependentFirstOpen() {
+  await activateVisibleExtension(vscode, EXTENSION_ID);
+  await waitForCommand(vscode, COMMAND_IDS.testResetState);
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await ensureEditorCanvasReady();
+  const commands = await vscode.commands.getCommands(true);
+  for (const command of Object.values(COMMAND_IDS)) assert.ok(commands.includes(command), `Missing command ${command}.`);
+  return {};
+}
+
+async function createIndependentNode(kind, preferredPosition) {
+  const before = await getDebugSnapshot();
+  const ids = new Set(before.state.nodes.map(node => node.id));
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode',
+    payload: { kind, ...(kind === 'agent' ? { agentProvider: 'codex' } : {}), preferredPosition } });
+  const snapshot = await waitForSnapshot(value => value.state.nodes.some(node => node.kind === kind && !ids.has(node.id)));
+  const created = snapshot.state.nodes.filter(node => node.kind === kind && !ids.has(node.id));
+  assert.strictEqual(created.length, 1, 'Independent fixture must create one declared node');
+  if (kind === 'note') return { nodeId: created[0].id };
+  const original = await waitForLocalExecutionStarted(kind, created[0].id);
+  return { nodeId: created[0].id, ...original };
+}
+
+async function prepareIndependentAgent() {
+  await prepareIndependentEmpty();
+  return { agent: await createIndependentNode('agent', { x: 40, y: 40 }) };
+}
+
+async function prepareIndependentAgentPrompt() {
+  const fixture = await prepareIndependentAgent();
+  await waitForSnapshot(value => findNodeById(value, fixture.agent.nodeId).status === 'waiting-input');
+  assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'agent', fixture.agent.nodeId), fixture.agent.execution);
+  return fixture;
+}
+
+async function prepareIndependentTerminal() {
+  await prepareIndependentEmpty();
+  return { terminal: await createIndependentNode('terminal', { x: 40, y: 40 }) };
+}
+
+async function prepareIndependentPair() {
+  const fixture = await prepareIndependentAgent();
+  fixture.terminal = await createIndependentNode('terminal', { x: 660, y: 40 });
+  return fixture;
+}
+
+async function prepareIndependentStoppedAgent() {
+  const fixture = await prepareIndependentAgent();
+  await ensureAgentStopped(fixture.agent.nodeId);
+  return fixture;
+}
+
+async function prepareIndependentStoppedTerminal() {
+  const fixture = await prepareIndependentTerminal();
+  await ensureTerminalStopped(fixture.terminal.nodeId);
+  return fixture;
+}
+
+async function prepareIndependentStoppedPair() {
+  const fixture = await prepareIndependentPair();
+  await stopOwnedFixtureExecutions(fixture.agent.nodeId, fixture.terminal.nodeId);
+  return fixture;
+}
+
+async function prepareIndependentStoppedBase() {
+  const fixture = await prepareIndependentStoppedPair();
+  fixture.note = await createIndependentNode('note', { x: 40, y: 500 });
+  const snapshot = await getDebugSnapshot();
+  assert.deepStrictEqual(snapshot.state.nodes.map(node => node.kind).sort(), ['agent', 'note', 'terminal']);
+  return fixture;
+}
+
+async function prepareIndependentNote() {
+  await prepareIndependentEmpty();
+  const note = await createIndependentNode('note', { x: 40, y: 40 });
+  // Host state creation precedes React's mounted node. A DOM scenario starts
+  // only after observing its own page fixture, using the existing probe bound.
+  await waitForWebviewProbe(probe => probe.nodes.some(node => node.nodeId === note.nodeId));
+  return { note };
+}
+
+async function prepareIndependentNoteBody() {
+  const fixture = await prepareIndependentNote();
+  await dispatchWebviewMessage({ type: 'webview/updateNoteNode',
+    payload: { nodeId: fixture.note.nodeId, content: REAL_DOM_NOTE_BODY } });
+  await waitForSnapshot(value => findNodeById(value, fixture.note.nodeId).metadata.note.content === REAL_DOM_NOTE_BODY);
+  return fixture;
+}
+
+async function prepareIndependentStoppedAgentNote() {
+  const fixture = await prepareIndependentStoppedAgent();
+  fixture.note = await createIndependentNode('note', { x: 700, y: 40 });
+  return fixture;
+}
+
+async function prepareIndependentCompletedDomBase() {
+  const fixture = await prepareIndependentStoppedBase();
+  await verifyRealWebviewDomInteractions(fixture.agent.nodeId, fixture.terminal.nodeId, fixture.note.nodeId);
+  const snapshot = await getDebugSnapshot();
+  assert.strictEqual(findNodeById(snapshot, fixture.agent.nodeId).status, 'stopped');
+  assert.strictEqual(findNodeById(snapshot, fixture.terminal.nodeId).status, 'closed');
+  return fixture;
+}
+
+async function prepareIndependentRuntimeLiveBase() {
+  await prepareIndependentEmpty();
+  return prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
+}
+
+async function prepareIndependentRuntimeStoppedBase() {
+  const fixture = await prepareIndependentRuntimeLiveBase();
+  const original = await getDebugSnapshot();
+  await stopRuntimeExecutionsAfterRetirement({
+    executions: [captureRuntimeExecution(original, 'agent', fixture.agentNode.id),
+      captureRuntimeExecution(original, 'terminal', fixture.terminalNode.id)],
+    stop: execution => dispatchWebviewMessage({ type: 'webview/stopExecutionSession',
+      payload: { kind: execution.kind, nodeId: execution.nodeId } }),
+    getSnapshot: getDebugSnapshot, getRuntimeSupervisorState
+  });
+  return fixture;
+}
+
+async function prepareIndependentRuntimeResumeBase() {
+  const fixture = await prepareIndependentRuntimeLiveBase();
+  await dispatchWebviewMessage({ type: 'webview/executionInput',
+    payload: { nodeId: fixture.agentNode.id, kind: 'agent', data: 'burst 1\r' } });
+  await waitForSnapshot(snapshot => findNodeById(snapshot, fixture.agentNode.id).status === 'waiting-input'
+    && findNodeById(snapshot, fixture.agentNode.id).metadata.agent.recentOutput.includes('[fake-agent] burst 001'), 20000);
+  await ensureAgentStopped(fixture.agentNode.id);
+  await ensureTerminalStopped(fixture.terminalNode.id);
+  const metadata = findNodeById(await getDebugSnapshot(), fixture.agentNode.id).metadata.agent;
+  assert(metadata.resumeSessionId && metadata.resumeStoragePath, 'Resume classification requires a real original recovery identity');
+  return fixture;
+}
+
+async function prepareIndependentCompletedTerminal() {
+  const fixture = await prepareIndependentTerminal();
+  await verifyTerminalLineAndSnapshot(fixture.terminal.nodeId);
+  await verifyTerminalUserStop(fixture.terminal.nodeId);
+  return fixture;
+}
+
+async function prepareIndependentDualFlood() {
+  const fixture = await prepareIndependentTerminal();
+  const secondary = await createIndependentNode('terminal', { x: 680, y: 40 });
+  for (const [terminal, marker] of [[fixture.terminal, TERMINAL_FLOOD_OUTPUT_MARKER],
+    [secondary, TERMINAL_FLOOD_SECONDARY_OUTPUT_MARKER]]) {
+    await performWebviewDomAction({ kind: 'sendExecutionInput', nodeId: terminal.nodeId,
+      data: `i=0; while :; do printf '%s%s %06d\\n' '${marker.slice(0, -1)}' '${marker.slice(-1)}' "$i"; i=$((i+1)); done\r` });
+    await waitForLocalExecutionOutput(terminal.execution, marker, 'live', 8000);
+  }
+  return { terminalNodeId: fixture.terminal.nodeId, secondaryTerminalNodeId: secondary.nodeId,
+    primaryTerminal: fixture.terminal, secondaryTerminal: secondary };
+}
+
+async function runIndependentAutoStart(fixture) {
+  await verifyAgentLiveMetadata(fixture.agent.nodeId);
+  await verifyAutoStartOnCreate(fixture.agent.nodeId, fixture.terminal.nodeId);
+}
+async function runIndependentDuplicate(fixture) {
+  await verifyDuplicateLocalStartRejected('agent', fixture.agent.nodeId);
+  await verifyDuplicateLocalStartRejected('terminal', fixture.terminal.nodeId);
+}
+async function runIndependentAgentLine(fixture) {
+  await dispatchWebviewMessage({ type: 'webview/executionInput',
+    payload: { kind: 'agent', nodeId: fixture.agent.nodeId, data: 'hello line smoke\r' } });
+  await waitForLocalExecutionOutput(fixture.agent.execution, '[fake-agent] hello line smoke', 'waiting-input');
+}
+async function runIndependentAgentSnapshot(fixture) {
+  await runIndependentAgentLine(fixture);
+  await clearHostMessages();
+  await requestExecutionSnapshot('agent', fixture.agent.nodeId);
+  const matches = message => message.type === 'host/executionSnapshot'
+    && message.payload.executionSessionId === fixture.agent.execution.executionSessionId
+    && message.payload.kind === 'agent' && message.payload.nodeId === fixture.agent.nodeId
+    && message.payload.liveSession === true
+    && findExecutionOutput([message], fixture.agent.execution, '[fake-agent] hello line smoke') !== undefined;
+  const messages = await waitForHostMessages(current => current.some(matches));
+  assert.ok(messages.some(matches));
+  assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'agent', fixture.agent.nodeId), fixture.agent.execution);
+}
+async function runIndependentAgentPartial(fixture) { return verifyAgentPartialInput(fixture.agent.nodeId); }
+async function runIndependentTerminalLine(fixture) { return verifyTerminalLineAndSnapshot(fixture.terminal.nodeId); }
+async function runIndependentAgentBurst(fixture) { return verifyAgentBoundedBurst(fixture.agent.nodeId); }
+async function runIndependentAgentPrompt(fixture) { return verifyAgentBurstPrompt(fixture.agent.nodeId); }
+async function runIndependentAgentSleep(fixture) { return verifyAgentSleepState(fixture.agent.nodeId); }
+async function runIndependentAgentSpinner(fixture) { return verifyAgentSpinnerState(fixture.agent.nodeId); }
+async function runIndependentNaturalExit(fixture) { return verifyAgentNaturalExit(fixture.agent.nodeId); }
+async function runIndependentNonzeroExit(fixture) { return verifyAgentNonzeroExit(fixture.agent.nodeId); }
+async function runIndependentAgentStop(fixture) {
+  await verifyAgentUserStop(fixture.agent.nodeId);
+  await waitForOriginalLocalExecutionRetirement(fixture.agent.snapshot, 'agent', fixture.agent.nodeId);
+}
+async function runIndependentTerminalStop(fixture) { return verifyTerminalUserStop(fixture.terminal.nodeId); }
+async function runIndependentCodexStopRace(fixture) { return verifyStopVsQueuedExitRace(fixture.agent.nodeId); }
+async function runIndependentClaudeStop() { return verifyClaudeStopRestoresPreviousSignal(); }
+async function runIndependentRestartNatural(fixture) {
+  await verifyAgentNaturalExit(fixture.agent.nodeId);
+  await waitForOriginalLocalExecutionRetirement(fixture.agent.snapshot, 'agent', fixture.agent.nodeId);
+  await verifyAgentRestartAfterRetirement(fixture.agent.nodeId, fixture.agent.execution);
+}
+async function runIndependentRestartError(fixture) {
+  await verifyAgentNonzeroExit(fixture.agent.nodeId);
+  await verifyAgentRestartAfterRetirement(fixture.agent.nodeId, fixture.agent.execution);
+}
+async function runIndependentRestartStop(fixture) {
+  await runIndependentAgentStop(fixture);
+  await verifyAgentRestartAfterRetirement(fixture.agent.nodeId, fixture.agent.execution);
+}
+async function runIndependentCompletedReflow(fixture) { return verifyCompletedTerminalReflow(fixture.terminal.nodeId); }
+async function runIndependentClaudeResumeId() { return verifyClaudeExplicitSessionIdPreservesResumeContext(); }
+async function runIndependentFileLink(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'file-position'); }
+async function runIndependentImageLink(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'image'); }
+async function runIndependentCwdLink(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'cwd-and-multiline'); }
+async function runIndependentMissingLink(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'missing-fallback'); }
+async function runIndependentUrlLink(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'url-and-osc8'); }
+async function runIndependentRejectedLink(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'opener-error'); }
+async function runIndependentResourceDrop(fixture) { return verifyExecutionTerminalNativeInteractions(fixture.terminal.nodeId, 'first-resource'); }
+async function runIndependentConcurrency(fixture) {
+  return verifyExecutionConcurrency(fixture.agent.nodeId, fixture.terminal.nodeId,
+    { agent: fixture.agent.execution, terminal: fixture.terminal.execution });
+}
+async function runIndependentFloodFairness(fixture) {
+  return verifyOutputFloodFairness(fixture.agent.nodeId, fixture.terminal.nodeId, fixture.note.nodeId);
+}
+async function runIndependentFloodCtrlC(fixture) { return verifyFloodCtrlCRetainsSession(fixture); }
+
+async function runIndependentUnknownMessage() {
+  await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
+  const hostMessages = await getHostMessages();
+  assert.ok(hostMessages.some(message => message.type === 'host/error'
+    && message.payload.message === UNKNOWN_WEBVIEW_MESSAGE_ERROR));
+  let probe = await waitForWebviewProbeOnSurface('editor',
+    current => current.toastMessage === UNKNOWN_WEBVIEW_MESSAGE_ERROR, 10000);
+  assert.strictEqual(probe.toastMessage, UNKNOWN_WEBVIEW_MESSAGE_ERROR);
+  probe = await waitForWebviewProbeOnSurface('editor', current => current.toastMessage === null, 10000);
+  assert.strictEqual(probe.toastMessage, null);
+  assert.strictEqual((await getDebugSnapshot()).state.nodes.length, 0);
+}
+
+async function runIndependentNoteHostUpdate({ note }) {
+  await dispatchWebviewMessage({ type: 'webview/updateNodeTitle', payload: { nodeId: note.nodeId, title: 'Host Smoke Note' } });
+  await dispatchWebviewMessage({ type: 'webview/updateNoteNode',
+    payload: { nodeId: note.nodeId, content: 'Exercise the real webview-to-host update path.' } });
+  await dispatchWebviewMessage({ type: 'webview/moveNode', payload: { id: note.nodeId, position: { x: 680, y: 260 } } });
+  const snapshot = await getDebugSnapshot();
+  assert.strictEqual(findNodeById(snapshot, note.nodeId).title, 'Host Smoke Note');
+  assert.strictEqual(findNodeById(snapshot, note.nodeId).metadata.note.content, 'Exercise the real webview-to-host update path.');
+  assert.deepStrictEqual(findNodeById(snapshot, note.nodeId).position, { x: 680, y: 260 });
+}
+
+async function runIndependentSidebarList({ agent, terminal, note }) { return verifySidebarNodeList(agent.nodeId, terminal.nodeId, note.nodeId); }
+async function runIndependentSidebarQuickPick({ agent, terminal, note }) {
+  return verifySidebarNodeListQuickPick(agent.nodeId, terminal.nodeId, note.nodeId, { expectAgentSessionId: true });
+}
+async function runIndependentSidebarUI({ agent }) { return verifySidebarNodeListWebviewUi(agent.nodeId); }
+async function runIndependentRealProbe({ agent, terminal, note }) { return verifyRealWebviewProbe(agent.nodeId, terminal.nodeId, note.nodeId); }
+async function runIndependentDomEdit({ agent, terminal, note }) { return verifyRealWebviewDomInteractions(agent.nodeId, terminal.nodeId, note.nodeId); }
+async function runIndependentChecklist({ note }) { return verifyInteractiveNoteChecklist(note.nodeId); }
+async function runIndependentNoteFileLink({ note }) { return verifyNoteWorkspaceFileLinks(note.nodeId); }
+async function runIndependentSavedSize({ agent, terminal, note }) { return verifyNodeResizePersistence(agent.nodeId, terminal.nodeId, note.nodeId); }
+async function runIndependentDomDelete({ agent, terminal, note }) {
+  await verifyRealDeleteButton(note.nodeId);
+  const snapshot = await getDebugSnapshot();
+  assert.strictEqual(snapshot.state.nodes.some(node => node.id === note.nodeId), false);
+  assert.strictEqual(snapshot.state.nodes.length, 2);
+  assert.deepStrictEqual(snapshot.state.nodes.map(node => node.id).sort(), [agent.nodeId, terminal.nodeId].sort());
+}
+async function runIndependentManualEdge({ agent, terminal }) { return verifyManualEdgeLifecycle(agent.nodeId, terminal.nodeId); }
+async function runIndependentAttention({ agent, note }) { return verifyExecutionAttentionNotificationBridge(agent.nodeId, note.nodeId); }
+async function runIndependentLocalScrollback({ terminal }) { return verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminal.nodeId); }
+async function runIndependentEditorViewport({ terminal }) { return verifyEditorTerminalTabSwitchPreservesViewport(terminal.nodeId); }
+async function runIndependentPanelViewport({ terminal }) { return verifyPanelTerminalTabSwitchPreservesViewport(terminal.nodeId); }
+async function runIndependentTheme({ agent, terminal }) { return verifyEmbeddedTerminalThemeFollowWorkbench(agent.nodeId, terminal.nodeId); }
+async function runIndependentCompletedState({ agent, terminal, note }) {
+  await verifyPersistenceAndRecovery(note.nodeId, agent.nodeId, terminal.nodeId);
+  return verifyStorageDiagnostics();
+}
+async function runIndependentStandby({ note }) {
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  return verifyStandbySurfaceIgnoresMessages(note.nodeId);
+}
+async function runIndependentPendingFault({ note }) { return verifyPendingWebviewRequestFaultInjection(note.nodeId); }
+async function runIndependentCutover({ terminal }) { return verifyLiveSessionCutoverAndReload(terminal.nodeId); }
+async function runIndependentRecentStateFlush({ agent, terminal }) { return verifyHostBoundaryFlushesRecentLocalState(agent.nodeId, terminal.nodeId); }
+async function runIndependentLivePersistence({ agentNode, terminalNode }) { return verifyLiveRuntimePersistence(agentNode.id, terminalNode.id); }
+async function runIndependentRuntimeScrollback({ terminalNode }) { return verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(terminalNode.id); }
+async function runIndependentRuntimeCompleted({ terminalNode }) { return verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNode.id); }
+async function runIndependentBindingFailure({ agentNode, terminalNode }) { return verifyLiveRuntimeReconnectFailurePreservesBinding(agentNode.id, terminalNode.id); }
+async function runIndependentNoStaleResume({ agentNode, terminalNode }) { return verifyHistoryRestoredIgnoresStaleAutomaticResume(agentNode.id, terminalNode.id); }
+async function runIndependentRuntimeExit({ agentNode }) { return verifyLiveRuntimeResumeExitClassification(agentNode.id); }
+async function runIndependentImmediateBoundary({ agentNode, terminalNode }) { return verifyImmediateReloadAfterLiveRuntimeLaunch(agentNode.id, terminalNode.id); }
+async function runIndependentMissingCLI() {
+  const evidence = await verifyMissingAgentCliFailure();
+  assertVerifiedPreparationEvidence(evidence); return evidence;
+}
+async function runIndependentInvalidLaunch({ agent, terminal, note }) { return verifyFailurePaths(agent.nodeId, terminal.nodeId, note.nodeId, 'invalid-launch'); }
+async function runIndependentMissingNode({ agent, terminal, note }) { return verifyFailurePaths(agent.nodeId, terminal.nodeId, note.nodeId, 'missing-node'); }
+
+const independentCaseFunctions = {
+  prepareIndependentEmpty, prepareIndependentAgent, prepareIndependentAgentPrompt,
+  prepareIndependentTerminal, prepareIndependentPair, prepareIndependentStoppedAgent,
+  prepareIndependentStoppedTerminal, prepareIndependentStoppedPair, prepareIndependentStoppedBase,
+  prepareIndependentCompletedTerminal, prepareIndependentDualFlood,
+  runIndependentAutoStart, runIndependentDuplicate, runIndependentAgentLine, runIndependentAgentSnapshot,
+  runIndependentAgentPartial, runIndependentTerminalLine, runIndependentAgentBurst,
+  runIndependentAgentPrompt, runIndependentAgentSleep, runIndependentAgentSpinner,
+  runIndependentNaturalExit, runIndependentNonzeroExit, runIndependentAgentStop,
+  runIndependentTerminalStop, runIndependentCodexStopRace, runIndependentClaudeStop,
+  runIndependentRestartNatural, runIndependentRestartError, runIndependentRestartStop,
+  runIndependentCompletedReflow, runIndependentClaudeResumeId, runIndependentFileLink,
+  runIndependentImageLink, runIndependentCwdLink, runIndependentMissingLink,
+  runIndependentUrlLink, runIndependentRejectedLink, runIndependentResourceDrop,
+  runIndependentConcurrency, runIndependentFloodFairness, runIndependentFloodCtrlC,
+  prepareIndependentFirstOpen, prepareIndependentNote, prepareIndependentNoteBody,
+  prepareIndependentStoppedAgentNote, prepareIndependentCompletedDomBase,
+  prepareIndependentRuntimeLiveBase, prepareIndependentRuntimeStoppedBase, prepareIndependentRuntimeResumeBase,
+  verifyFirstOpenDefaultTemplate, runIndependentSurfaceSidebar, verifyCanvasTemplatesTrusted,
+  verifyDefaultSurfaceRequiresReload, verifyCodexSessionIdLocator, verifyClaudeSessionIdLocator,
+  verifyCodexResumeCommandHintParser, verifyClaudeResumeCommandHintParser, verifyAgentCliCacheIsolation,
+  verifyRuntimeContextRefreshesDefaultAgentProvider, verifyRuntimeContextRefreshesTerminalScrollback,
+  verifyTerminalShellPathRefreshesStoppedTerminalNode, verifySelectTerminalShellCommandPersistsExactDetectedPath,
+  verifySelectTerminalShellCommandUpdatesWorkspaceOverride, verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot,
+  verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot, verifyCreateNodeCommandQuickPick,
+  verifyExplorerResourceExecutionNodeCreation, verifyCreateNodeCommandUsesOpenCanvasSurface,
+  verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits, verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent,
+  verifyPersistedStateFiltersLegacyTaskNodes, verifyEmptyGroupDeletionSkipsConfirmation,
+  verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope, verifyCanvasLayoutArrangementPersists,
+  runIndependentNoteHostUpdate, runIndependentDomEdit, runIndependentSavedSize, runIndependentDomDelete,
+  runIndependentManualEdge, runIndependentSidebarList, runIndependentSidebarQuickPick, runIndependentSidebarUI,
+  runIndependentRealProbe, runIndependentUnknownMessage, runIndependentStandby, runIndependentPendingFault,
+  verifyWebviewLifecycleRaceDiagnostics, runIndependentChecklist, runIndependentNoteFileLink, verifyNoteMarkdownFileAssociation,
+  verifyLegacyAttentionNotificationBridgeMigration, runIndependentAttention, verifyAgentAbnormalInterruptionNotifications,
+  runIndependentLocalScrollback, runIndependentEditorViewport, runIndependentPanelViewport, runIndependentTheme,
+  runIndependentCompletedState, runIndependentCutover, runIndependentRecentStateFlush, runIndependentLivePersistence,
+  runIndependentRuntimeScrollback, runIndependentRuntimeCompleted, runIndependentBindingFailure, runIndependentNoStaleResume,
+  runIndependentRuntimeExit, runIndependentImmediateBoundary, verifyRuntimePersistenceRequiresReloadAndClearsState,
+  runIndependentMissingCLI, runIndependentInvalidLaunch, runIndependentMissingNode,
+  verifyFileActivityViewsAndOpenFiles, verifyReadExitFileActivityDrain, verifySidebarSessionHistoryRestore,
+  verifySidebarSessionHistoryForkActionUi, verifyCodexAgentBranchFromCurrentNode, verifyClaudeAgentBranchFromCurrentNode,
+  verifyAgentBranchRejectsUnsupportedSources, verifySidebarSessionHistorySearchByTitleUi, verifySidebarSessionHistoryDoubleClickUi
+};
+
 async function runRuntimeCheckpointRefreshSmoke() {
+  await stepBoundary('fixture-output','started','prepare');
   const { agentNode, terminalNode } = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
   const marker = 'DSC_CHECKPOINT_ONLY_REFRESH';
   const rowCount = 18000;
@@ -334,6 +670,8 @@ async function runRuntimeCheckpointRefreshSmoke() {
       findNodeById(snapshot, terminalNode.id).metadata.terminal.recentOutput?.includes(marker) &&
       findNodeById(snapshot, agentNode.id).metadata.agent.recentOutput?.includes('[fake-agent] burst 003'),
     20000);
+    await stepBoundary('fixture-output','passed');
+    await stepBoundary('initial-current-state','started');
     await clearDiagnosticEvents();
     await clearHostMessages();
     await requestExecutionSnapshot('terminal', terminalNode.id, 'editor');
@@ -356,7 +694,8 @@ async function runRuntimeCheckpointRefreshSmoke() {
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);
-
+    await stepBoundary('initial-current-state','passed');
+    await stepBoundary('reload-current-state','started');
     await clearDiagnosticEvents();
     await clearHostMessages();
     await simulateRuntimeReload();
@@ -404,6 +743,8 @@ async function runRuntimeCheckpointRefreshSmoke() {
     await waitForWebviewProbe((probe) =>
       readProbeTerminalVisibleLines(probe, terminalNode.id).some((line) => line.includes(marker)),
     20000);
+    await stepBoundary('reload-current-state','passed');
+    await stepBoundary('completion-drain','started');
     await ensureTerminalStopped(terminalNode.id);
     await ensureAgentStopped(agentNode.id);
     await waitForWebviewProbe((probe) =>
@@ -417,6 +758,8 @@ async function runRuntimeCheckpointRefreshSmoke() {
       const stored = persisted.state.nodes.find(candidate => candidate.id === node.id);
       assertCompletedRuntimeWithoutHistory(stored.metadata[node.kind]);
     }
+    await stepBoundary('completion-drain','passed');
+    await stepBoundary('completed-page-reopen','started');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     await clearHostMessages();
     await simulateRuntimeReload();
@@ -430,7 +773,8 @@ async function runRuntimeCheckpointRefreshSmoke() {
     }
     const reopened = await captureWebviewProbe('editor', 2000);
     assert.ok(!readProbeTerminalVisibleLines(reopened, terminalNode.id).join('\n').includes(marker));
-
+    await stepBoundary('completed-page-reopen','passed');
+    await stepBoundary('legacy-completed-migration','started');
     // Old stream-backed completions migrate without reusing their pending launch or transcript.
     const legacy = structuredClone((await getDebugSnapshot()).state);
     for (const node of legacy.nodes.filter(node => node.id === agentNode.id || node.id === terminalNode.id)) {
@@ -455,6 +799,7 @@ async function runRuntimeCheckpointRefreshSmoke() {
     }
     const migratedDisk = await flushPersistedStateSnapshot();
     assert.ok(!JSON.stringify(migratedDisk.state).includes('OLD_COMPLETED_HISTORY'));
+    await stepBoundary('legacy-completed-migration','passed');
   } finally {
     await ensureAgentStopped(agentNode.id);
     await ensureTerminalStopped(terminalNode.id);
@@ -1270,7 +1615,7 @@ async function verifyCanvasTemplatesRestricted() {
   assert.strictEqual(snapshot.state.nodes.length, 0);
 }
 
-async function runTrustedSmoke() {
+async function runIndependentSurfaceSidebar() {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvas);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
   await clearHostMessages();
@@ -1330,185 +1675,8 @@ async function runTrustedSmoke() {
     /Enabled attention signals: BEL, OSC 9, OSC 777, Agent abnormal exit, Codex abnormal text\./
   );
 
-  await verifyCanvasTemplatesTrusted();
-  await ensureEditorCanvasReady();
-  await clearHostMessages();
-  await clearDiagnosticEvents();
-
-  await verifyCodexSessionIdLocator();
-  await verifyClaudeSessionIdLocator();
-  await verifyCodexResumeCommandHintParser();
-  await verifyClaudeResumeCommandHintParser();
-  await verifyAgentCliCacheIsolation();
-
-  await dispatchWebviewMessage({ type: 'webview/not-a-real-message' });
-  let hostMessages = await getHostMessages();
-  assert.ok(
-    hostMessages.some(
-      (message) =>
-        message.type === 'host/error' &&
-        message.payload.message === UNKNOWN_WEBVIEW_MESSAGE_ERROR
-    )
-  );
-  let probe = await waitForWebviewProbeOnSurface(
-    'editor',
-    (currentProbe) => currentProbe.toastMessage === UNKNOWN_WEBVIEW_MESSAGE_ERROR,
-    10000
-  );
-  assert.strictEqual(probe.toastMessage, UNKNOWN_WEBVIEW_MESSAGE_ERROR);
-  probe = await waitForWebviewProbeOnSurface('editor', (currentProbe) => currentProbe.toastMessage === null, 10000);
-  assert.strictEqual(probe.toastMessage, null);
-  snapshot = await getDebugSnapshot();
-  assert.strictEqual(snapshot.state.nodes.length, 0);
-
-  await verifyRuntimeContextRefreshesDefaultAgentProvider();
-  await verifyRuntimeContextRefreshesTerminalScrollback();
-  await verifyTerminalShellPathRefreshesStoppedTerminalNode();
-  await verifySelectTerminalShellCommandPersistsExactDetectedPath();
-  await verifySelectTerminalShellCommandUpdatesWorkspaceOverride();
-  await verifyDefaultSurfaceRequiresReload();
-  await verifyCreateNodeCommandQuickPick();
-  await verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot();
-  await verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot();
-  await verifyExplorerResourceExecutionNodeCreation();
-  await verifyCreateNodeCommandUsesOpenCanvasSurface();
-  await verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits();
-  await verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent();
-  await verifyPersistedStateFiltersLegacyTaskNodes();
-  await clearHostMessages();
-  await clearDiagnosticEvents();
-  snapshot = await getDebugSnapshot();
-  assert.strictEqual(snapshot.state.nodes.length, 0);
-
-  await verifyEmptyGroupDeletionSkipsConfirmation();
-  await verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope();
-  await verifyCanvasLayoutArrangementPersists();
-  await clearHostMessages();
-  await createBaseNodes({ waitForAutoStart: true });
-  snapshot = await getDebugSnapshot();
-  assert.deepStrictEqual(
-    snapshot.state.nodes.map((node) => node.kind).sort(),
-    ['agent', 'note', 'terminal']
-  );
-
-  const noteNode = findNodeByKind(snapshot, 'note');
-  const terminalNode = findNodeByKind(snapshot, 'terminal');
-  const agentNode = findNodeByKind(snapshot, 'agent');
-  await dispatchWebviewMessage({
-    type: 'webview/updateNodeTitle',
-    payload: {
-      nodeId: noteNode.id,
-      title: 'Host Smoke Note'
-    }
-  });
-  await dispatchWebviewMessage({
-    type: 'webview/updateNoteNode',
-    payload: {
-      nodeId: noteNode.id,
-      content: 'Exercise the real webview-to-host update path.'
-    }
-  });
-  await dispatchWebviewMessage({
-    type: 'webview/moveNode',
-    payload: {
-      id: noteNode.id,
-      position: {
-        x: 680,
-        y: 260
-      }
-    }
-  });
-
-  snapshot = await getDebugSnapshot();
-  assert.strictEqual(findNodeById(snapshot, noteNode.id).title, 'Host Smoke Note');
-  assert.strictEqual(
-    findNodeById(snapshot, noteNode.id).metadata.note.content,
-    'Exercise the real webview-to-host update path.'
-  );
-  assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 });
-  await verifyAutoStartOnCreate(agentNode.id, terminalNode.id);
-  await stopOwnedFixtureExecutions(agentNode.id, terminalNode.id);
-  await verifySidebarNodeList(agentNode.id, terminalNode.id, noteNode.id);
-  await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
-    expectAgentSessionId: true
-  });
-  await verifySidebarNodeListWebviewUi(agentNode.id);
-
-  await verifyRealWebviewProbe(agentNode.id, terminalNode.id, noteNode.id);
-  await verifyRealWebviewDomInteractions(agentNode.id, terminalNode.id, noteNode.id);
-  await verifyInteractiveNoteChecklist(noteNode.id);
-  await verifyNoteWorkspaceFileLinks(noteNode.id);
-  await verifyNoteMarkdownFileAssociation();
-  await verifyNodeResizePersistence(agentNode.id, terminalNode.id, noteNode.id);
-  await startFixtureExecutions(agentNode.id, terminalNode.id);
-  const agentDiagnostics = await verifyAgentExecutionFlow(agentNode.id);
-  await verifySidebarNodeListQuickPick(agentNode.id, terminalNode.id, noteNode.id, {
-    expectAgentSessionId: true
-  });
-  const terminalDiagnostics = await verifyTerminalExecutionFlow(terminalNode.id);
-  await verifyLegacyAttentionNotificationBridgeMigration();
-  await verifyExecutionAttentionNotificationBridge(agentNode.id, noteNode.id);
-  await verifyAgentAbnormalInterruptionNotifications();
-  await verifyExecutionTerminalNativeInteractions(terminalNode.id);
-  await verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(terminalNode.id);
-  await verifyEditorTerminalTabSwitchPreservesViewport(terminalNode.id);
-  await verifyPanelTerminalTabSwitchPreservesViewport(terminalNode.id);
-  await verifyEmbeddedTerminalThemeFollowWorkbench(agentNode.id, terminalNode.id);
-  await verifyRuntimeReloadRecovery(agentNode.id, terminalNode.id);
-  await verifyLiveSessionCutoverAndReload(terminalNode.id);
-  await verifyPtyRobustness(agentNode.id, terminalNode.id);
-  await verifyTerminalFloodKeepsCanvasResponsive(agentNode.id, terminalNode.id, noteNode.id);
-  const preparationDiagnostics = await verifyFailurePaths(agentNode.id, terminalNode.id, noteNode.id);
-  await verifyPersistenceAndRecovery(noteNode.id, agentNode.id, terminalNode.id);
-  await verifyStandbySurfaceIgnoresMessages(noteNode.id);
-  await verifyPendingWebviewRequestFaultInjection(noteNode.id);
-  await verifyStopVsQueuedExitRace(agentNode.id);
-  await verifyClaudeStopRestoresPreviousSignal();
-  await verifyClaudeExplicitSessionIdPreservesResumeContext();
-  let runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(true);
-  await verifyLiveRuntimePersistence(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
-  await verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(runtimePersistenceNodes.terminalNode.id);
-  await verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(runtimePersistenceNodes.terminalNode.id);
-  await verifyLiveRuntimeReconnectFailurePreservesBinding(
-    runtimePersistenceNodes.agentNode.id,
-    runtimePersistenceNodes.terminalNode.id
-  );
-  await verifyHistoryRestoredIgnoresStaleAutomaticResume(
-    runtimePersistenceNodes.agentNode.id,
-    runtimePersistenceNodes.terminalNode.id
-  );
-  await verifyLiveRuntimeResumeExitClassification(runtimePersistenceNodes.agentNode.id);
-  await verifyImmediateReloadAfterLiveRuntimeLaunch(
-    runtimePersistenceNodes.agentNode.id,
-    runtimePersistenceNodes.terminalNode.id
-  );
-
-  runtimePersistenceNodes = await prepareTrustedBaseNodesForAppliedRuntimePersistenceMode(false);
-  await verifyHostBoundaryFlushesRecentLocalState(
-    runtimePersistenceNodes.agentNode.id,
-    runtimePersistenceNodes.terminalNode.id
-  );
-  await verifyTrustedDiagnostics({ agent: agentDiagnostics, terminal: terminalDiagnostics, preparation: preparationDiagnostics });
-  await verifyRealDeleteButton(runtimePersistenceNodes.noteNode.id);
-
-  snapshot = await getDebugSnapshot();
-  assert.strictEqual(snapshot.state.nodes.some((node) => node.id === runtimePersistenceNodes.noteNode.id), false);
-  assert.strictEqual(snapshot.state.nodes.length, 2);
-
-  await verifyManualEdgeLifecycle(runtimePersistenceNodes.agentNode.id, runtimePersistenceNodes.terminalNode.id);
-  await verifyFileActivityViewsAndOpenFiles();
-  await verifyReadExitFileActivityDrain();
-  await verifyRuntimePersistenceRequiresReloadAndClearsState();
-  await verifySidebarSessionHistoryRestore();
-  await verifySidebarSessionHistoryForkActionUi();
-  await verifyCodexAgentBranchFromCurrentNode();
-  await verifyClaudeAgentBranchFromCurrentNode();
-  await verifyAgentBranchRejectsUnsupportedSources();
-  await verifySidebarSessionHistorySearchByTitleUi();
-  await verifySidebarSessionHistoryDoubleClickUi();
-
-  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }
+
 async function verifySidebarNodeList(agentNodeId, terminalNodeId, noteNodeId) {
   const baselineSnapshot = await getDebugSnapshot();
   assert.strictEqual(baselineSnapshot.localExecutions.length, 0,
@@ -5130,6 +5298,7 @@ async function startFixtureExecutions(agentNodeId, terminalNodeId) {
 }
 
 async function verifyOwnedCanvasReconciliation() {
+  await stepBoundary('original-start','started','prepare');
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
   await createBaseNodes({ waitForAutoStart: true });
   const before = await getDebugSnapshot();
@@ -5137,11 +5306,15 @@ async function verifyOwnedCanvasReconciliation() {
   const terminalId = findNodeByKind(before, 'terminal').id;
   const started = (await getDiagnosticEvents()).filter(event => event.kind === 'execution/started');
   assert.strictEqual(started.length, 2);
+  await stepBoundary('original-start','passed');
+  await stepBoundary('reread','started');
   await reloadPersistedState();
   await verifyAutoStartOnCreate(agentId, terminalId);
   await setPersistedState((await getDebugSnapshot()).state);
   await verifyAutoStartOnCreate(agentId, terminalId);
   assert.strictEqual((await getDiagnosticEvents()).filter(event => event.kind === 'execution/started').length, 2);
+  await stepBoundary('reread','passed');
+  await stepBoundary('root-remap','started');
 
   const extraRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-owned-root-'));
   async function changeFolders(remove, added) {
@@ -5171,6 +5344,8 @@ async function verifyOwnedCanvasReconciliation() {
     snapshot = await waitForSnapshot(current => current.state.nodes.filter(node => node.kind === 'terminal').length === 2);
     const removedTerminalId = snapshot.state.nodes.find(node => node.kind === 'terminal' && node.id !== mappedTerminalId).id;
     await waitForTerminalLive(removedTerminalId);
+    await stepBoundary('root-remap','passed');
+    await stepBoundary('remove-root','started');
     await changeFolders(1, []);
     await waitForSnapshot(current => current.state.nodes.some(node => node.id === agentId)
       && !current.state.nodes.some(node => node.id === removedTerminalId));
@@ -5181,13 +5356,18 @@ async function verifyOwnedCanvasReconciliation() {
     assert.strictEqual(finalStarted.length, 3, 'Root changes must not create a replacement Agent or Terminal');
     assert.deepStrictEqual(finalStarted.slice(0, 2).map(event => event.detail.sessionId), started.map(event => event.detail.sessionId));
     assert.ok(!events.some(event => event.kind === 'execution/ownedProjectionRejected'));
+    await stepBoundary('remove-root','passed');
+    await stepBoundary('host-boundary','started');
     const reloaded = await simulateRuntimeReload();
     assert.strictEqual(reloaded.localExecutions.length, 0, 'One simulated reload must wait for original local saves.');
     await waitForDiagnosticEvents(current => started.every(start => current.some(event =>
       event.kind === 'execution/localFinalPersistence' && event.detail?.executionId === start.detail.sessionId
       && event.detail.result?.kind === 'saved')));
+    await stepBoundary('host-boundary','passed');
+    await stepBoundary('explicit-start','started');
     await startFixtureExecutions(agentId, terminalId);
     await stopOwnedFixtureExecutions(agentId, terminalId);
+    await stepBoundary('explicit-start','passed');
     console.log('Owned canvas reconciliation: reload, seed, root remap, input, removed-root save and simulated reload passed.');
   } finally { await fs.rm(extraRoot, { recursive: true, force: true }); }
 }
@@ -5208,9 +5388,7 @@ async function verifyAutoStartOnCreate(agentNodeId, terminalNodeId) {
   assert.ok(terminalNode.status === 'launching' || terminalNode.status === 'live');
 }
 
-async function verifyAgentExecutionFlow(agentNodeId) {
-  await clearHostMessages();
-
+async function verifyAgentLiveMetadata(agentNodeId) {
   const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
   let snapshot = original;
   let agentNode = findNodeById(snapshot, agentNodeId);
@@ -5223,6 +5401,12 @@ async function verifyAgentExecutionFlow(agentNodeId) {
       agentNode.status === 'waiting-input'
   );
 
+}
+
+async function verifyAgentBurstPrompt(agentNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
+  let agentNode = findNodeById(snapshot, agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -5244,7 +5428,7 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   assert.strictEqual(agentNode.status, 'waiting-input');
 
   await requestExecutionSnapshot('agent', agentNodeId);
-  let hostMessages = await waitForHostMessages((messages) =>
+  const hostMessages = await waitForHostMessages((messages) =>
     messages.some(
       (message) =>
         message.type === 'host/executionSnapshot' &&
@@ -5261,6 +5445,12 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     )
   );
 
+}
+
+async function verifyAgentPartialInput(agentNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
+  let agentNode = findNodeById(snapshot, agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -5288,6 +5478,12 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'waiting-input');
 
+}
+
+async function verifyAgentSleepState(agentNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
+  let agentNode = findNodeById(snapshot, agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -5313,6 +5509,12 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'waiting-input');
 
+}
+
+async function verifyAgentSpinnerState(agentNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
+  let agentNode = findNodeById(snapshot, agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -5338,6 +5540,12 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'waiting-input');
 
+}
+
+async function verifyAgentNaturalExit(agentNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
+  let agentNode = findNodeById(snapshot, agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -5387,7 +5595,11 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   });
   assert.strictEqual(exits[0].payload.message, agentNode.metadata.agent.lastExitMessage);
   const diagnostics = { execution, started, saved, reader, exit: exits[0], exitCode: agentNode.metadata.agent.lastExitCode };
+  assertVerifiedAgentEvidence(diagnostics);
+  return diagnostics;
+}
 
+async function verifyAgentRestartAfterRetirement(agentNodeId, previous) {
   await clearHostMessages();
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -5400,10 +5612,18 @@ async function verifyAgentExecutionFlow(agentNodeId) {
     }
   });
 
-  await waitForAgentLive(agentNodeId);
+  const restarted = await waitForLocalExecutionStarted('agent', agentNodeId);
+  assert.notStrictEqual(restarted.execution.executionSessionId, previous.executionSessionId);
+  await dispatchWebviewMessage({ type: 'webview/executionInput', payload: { kind: 'agent', nodeId: agentNodeId, data: 'hello restarted\r' } });
+  await waitForLocalExecutionOutput(restarted.execution, '[fake-agent] hello restarted', 'waiting-input');
 
-  await verifyDuplicateLocalStartRejected('agent', agentNodeId);
+  return restarted;
+}
 
+async function verifyAgentUserStop(agentNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('agent', agentNodeId);
+  let snapshot = original;
+  let agentNode = findNodeById(snapshot, agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
     payload: {
@@ -5423,7 +5643,6 @@ async function verifyAgentExecutionFlow(agentNodeId) {
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.ok(agentNode.metadata.agent.lastExitMessage);
   assert.strictEqual(agentNode.summary, agentNode.metadata.agent.lastExitMessage);
-  return diagnostics;
 }
 
 async function verifyPersistedStateFiltersLegacyTaskNodes() {
@@ -6694,7 +6913,7 @@ async function verifyNodeResizePersistence(agentNodeId, terminalNodeId, noteNode
   assert.deepStrictEqual(findNodeById(snapshot, noteNodeId).size, RESIZED_NODE_SIZES.note);
 }
 
-async function verifyTerminalExecutionFlow(terminalNodeId) {
+async function verifyTerminalLineAndSnapshot(terminalNodeId) {
   await clearHostMessages();
 
   const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('terminal', terminalNodeId);
@@ -6703,8 +6922,6 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.strictEqual(terminalNode.metadata.terminal.liveSession, true);
   assert.ok(terminalNode.metadata.terminal.lastCols > 0);
   assert.ok(terminalNode.metadata.terminal.lastRows > 0);
-
-  await verifyDuplicateLocalStartRejected('terminal', terminalNodeId);
 
   const outputMarker = 'DEV_SESSION_CANVAS_TERMINAL_SMOKE';
   await dispatchWebviewMessage({
@@ -6731,6 +6948,15 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.ok(liveSnapshot.payload.cols > 0 && liveSnapshot.payload.rows > 0);
   assert.deepStrictEqual(captureLocalExecutionIdentity(await getDebugSnapshot(), 'terminal', terminalNodeId), execution);
 
+  const evidence = { execution, started, liveSnapshot };
+  assertVerifiedTerminalEvidence(evidence);
+  return evidence;
+}
+
+async function verifyTerminalUserStop(terminalNodeId) {
+  const { snapshot: original, execution, started } = await waitForLocalExecutionStarted('terminal', terminalNodeId);
+  let snapshot = original;
+  let terminalNode = findNodeById(snapshot, terminalNodeId);
   await dispatchWebviewMessage({
     type: 'webview/stopExecutionSession',
     payload: {
@@ -6751,6 +6977,14 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.ok(terminalNode.metadata.terminal.lastExitMessage);
   assert.strictEqual(terminalNode.summary, terminalNode.metadata.terminal.lastExitMessage);
 
+  await waitForOriginalLocalExecutionRetirement(original, 'terminal', terminalNodeId);
+  return { execution, started };
+}
+
+async function verifyCompletedTerminalReflow(terminalNodeId) {
+  let snapshot = await getDebugSnapshot();
+  let terminalNode = findNodeById(snapshot, terminalNodeId);
+  assert.strictEqual(terminalNode.metadata.terminal.liveSession, false);
   const savedViewport = { cols: terminalNode.metadata.terminal.lastCols, rows: terminalNode.metadata.terminal.lastRows };
   const savedTerminal = cloneJsonValue(terminalNode.metadata.terminal.serializedTerminalState);
   snapshot = await dispatchWebviewMessage({
@@ -6766,7 +7000,6 @@ async function verifyTerminalExecutionFlow(terminalNodeId) {
   assert.deepStrictEqual({ cols: terminalNode.metadata.terminal.lastCols, rows: terminalNode.metadata.terminal.lastRows },
     savedViewport, 'Page reflow must keep the dimensions needed to hydrate the saved terminal.');
   assert.deepStrictEqual(terminalNode.metadata.terminal.serializedTerminalState, savedTerminal);
-  return { execution, started, liveSnapshot };
 }
 
 async function verifyExecutionAttentionNotificationBridge(agentNodeId, noteNodeId) {
@@ -8052,7 +8285,10 @@ async function verifyLegacyAttentionNotificationBridgeMigration() {
   }
 }
 
-async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
+async function verifyExecutionTerminalNativeInteractions(terminalNodeId, linkCase = 'all') {
+  assert.ok(['all', 'first-resource', 'file-position', 'image', 'opener-error',
+    'cwd-and-multiline', 'missing-fallback', 'url-and-osc8'].includes(linkCase),
+  `Unknown terminal interaction case: ${linkCase}`);
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
   await ensureTerminalStopped(terminalNodeId);
@@ -8095,14 +8331,25 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
 
   let browserSmokeServer;
   try {
+    // The fixture starts the PTY in the geometry of the mounted page. Injecting
+    // 92x28 into a 64x20 page schedules a later snapshot shrink; xterm correctly
+    // clears a hover on that resize before the tooltip delay has elapsed.
+    // Keep that product behavior, and prepare a settled viewport for links.
+    const readyPage = await waitForWebviewProbeOnSurface('editor', probe => {
+      const node = probe.nodes.find(node => node.nodeId === terminalNodeId);
+      return node && node.terminalCols > 0 && node.terminalRows > 0
+        && node.terminalCols === node.terminalFitCols && node.terminalRows === node.terminalFitRows
+        && node.terminalProjectionPending === false;
+    }, 10000);
+    const readyTerminal = readyPage.nodes.find(node => node.nodeId === terminalNodeId);
     await dispatchWebviewMessage(
       {
         type: 'webview/startExecutionSession',
         payload: {
           nodeId: terminalNodeId,
           kind: 'terminal',
-          cols: 92,
-          rows: 28
+          cols: readyTerminal.terminalCols,
+          rows: readyTerminal.terminalRows
         }
       },
       'editor'
@@ -8133,6 +8380,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       return output;
     }
 
+    if (linkCase === 'all' || linkCase === 'first-resource') {
     await performWebviewDomAction(
       {
         kind: 'sendExecutionInput',
@@ -8181,6 +8429,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       10000
     );
 
+    }
+    if (linkCase === 'all' || linkCase === 'file-position') {
     const relativeLinkPath = path.relative(workspaceFolder.uri.fsPath, linkTargetPath).split(path.sep).join('/');
     const fileLinkText = `${relativeLinkPath}:2:8`;
 
@@ -8227,6 +8477,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    }
+    if (linkCase === 'all' || linkCase === 'image' || linkCase === 'opener-error') {
     const mediaFileLinkText = path
       .relative(workspaceFolder.uri.fsPath, mediaLinkTargetPath)
       .split(path.sep)
@@ -8270,6 +8522,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    if (linkCase !== 'image') {
     await waitForLinkPage(mediaOutput);
     const expectedOpenRejection = 'Synthetic execution link opener rejection';
     const originalExecuteCommand = vscode.commands.executeCommand;
@@ -8312,6 +8565,9 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
       vscode.commands.executeCommand = originalExecuteCommand;
     }
 
+    }
+    }
+    if (linkCase === 'all' || linkCase === 'cwd-and-multiline') {
     const cwdScopedFileLinkText = 'link-target.ts:3:1';
     await performWebviewDomAction(
       {
@@ -8412,6 +8668,9 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    }
+    if (linkCase === 'all' || linkCase === 'missing-fallback') {
+    if (linkCase !== 'all') await performWebviewDomAction({ kind: 'sendExecutionInput', nodeId: terminalNodeId, data: `cd ${JSON.stringify(scratchDir)}\r` }, 'editor', 10000);
     const missingSearchLinkText = 'missing-target.ts:9:3';
     await printLinkOutput(`printf '%s\\n' '${missingSearchLinkText}'`, missingSearchLinkText);
 
@@ -8442,6 +8701,8 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
     await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
     await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
 
+    }
+    if (linkCase === 'all' || linkCase === 'url-and-osc8') {
     browserSmokeServer = await createLocalBrowserSmokeServer(`Dev Session Canvas URL Smoke ${Date.now()}`);
     await setWorkbenchBrowserOpenLocalhostLinks(true);
 
@@ -8533,6 +8794,7 @@ async function verifyExecutionTerminalNativeInteractions(terminalNodeId) {
         ),
       10000
     );
+    }
   } catch (error) {
     await captureWebviewProbe('editor', 5000).catch(() => undefined);
     await writeFailureArtifacts(error, path.join(artifactDir, 'native-interactions-before-cleanup'));
@@ -8892,6 +9154,7 @@ async function verifyEditorTerminalTabSwitchPreservesViewport(terminalNodeId) {
 }
 
 async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
+  await stepBoundary('interrupt-and-flush','started');
   await clearHostMessages();
 
   await ensureAgentStopped(agentNodeId);
@@ -8961,6 +9224,8 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   assert.strictEqual(agentNode.metadata.agent.resumeSessionId, providerSessionId);
   assert.deepStrictEqual(startRequests(await getDiagnosticEvents()), beforeManualResume);
   assert.ok(!snapshot.localExecutions.some(record => record.nodeId === agentNodeId && !record.retired));
+  await stepBoundary('interrupt-and-flush','passed');
+  await stepBoundary('manual-resume','started');
 
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -9000,7 +9265,8 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   snapshot = await waitForLocalExecutionOutput(resumedExecution, '[fake-agent] burst 001', 'waiting-input', 20000);
   agentNode = findNodeById(snapshot, agentNodeId);
   assert.strictEqual(agentNode.status, 'waiting-input');
-
+  await stepBoundary('manual-resume','passed');
+  await stepBoundary('resumed-nonzero','started');
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: {
@@ -9023,6 +9289,8 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
   assert.strictEqual(agentNode.status, 'error');
   assert.strictEqual(agentNode.metadata.agent.lastExitCode, 19);
   assert.match(agentNode.summary, /exit(?:ed with code| code) 19/);
+  await stepBoundary('resumed-nonzero','passed');
+  await stepBoundary('manual-terminal-start','started');
 
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -9034,6 +9302,7 @@ async function verifyRuntimeReloadRecovery(agentNodeId, terminalNodeId) {
     }
   });
   await waitForTerminalLive(terminalNodeId);
+  await stepBoundary('manual-terminal-start','passed');
   console.log('Snapshot-only manual recovery: resume-ready/interrupted, page remount without autostart, explicit resume, original provider identity, live output and exit 19 passed.');
 }
 
@@ -9126,57 +9395,50 @@ async function verifyLiveSessionCutoverAndReload(terminalNodeId) {
   console.log('Local surface cutover: original execution across editor/panel/reread/editor, current surface snapshots, rendered output and final save passed.');
 }
 
-async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
-  await ensureAgentStopped(agentNodeId);
-  await ensureTerminalStopped(terminalNodeId);
-  await clearHostMessages();
+async function startLocalAgent(agentNodeId, cols = 90) {
+  await dispatchWebviewMessage({ type: 'webview/startExecutionSession',
+    payload: { nodeId: agentNodeId, kind: 'agent', cols, rows: 28, provider: 'codex' } });
+  return waitForLocalExecutionStarted('agent', agentNodeId);
+}
 
-  async function startAgent(cols) {
-    await dispatchWebviewMessage({
-      type: 'webview/startExecutionSession',
-      payload: { nodeId: agentNodeId, kind: 'agent', cols, rows: 28, provider: 'codex' }
-    });
-    return waitForLocalExecutionStarted('agent', agentNodeId);
-  }
-
-  const first = await startAgent(90);
-  await dispatchWebviewMessage({
-    type: 'webview/executionInput',
-    payload: { nodeId: agentNodeId, kind: 'agent', data: 'burst 80\r' }
-  });
+async function verifyAgentBoundedBurst(agentNodeId) {
+  const first = await waitForLocalExecutionStarted('agent', agentNodeId);
+  await dispatchWebviewMessage({ type: 'webview/executionInput',
+    payload: { nodeId: agentNodeId, kind: 'agent', data: 'burst 80\r' } });
   await waitForLocalExecutionOutput(first.execution, '[fake-agent] burst 080', 'waiting-input');
+  return first;
+}
+
+async function verifyAgentNonzeroExit(agentNodeId) {
+  const { snapshot: original, execution } = await waitForLocalExecutionStarted('agent', agentNodeId);
   await dispatchWebviewMessage({
     type: 'webview/executionInput',
     payload: { nodeId: agentNodeId, kind: 'agent', data: 'exit 17\r' }
   });
-  let snapshot = await waitForSnapshot(current => {
+  const snapshot = await waitForSnapshot(current => {
     const agent = findNodeById(current, agentNodeId);
     return agent.status === 'error' && !agent.metadata.agent.liveSession && agent.metadata.agent.lastExitCode === 17;
   });
   assert.strictEqual(findNodeById(snapshot, agentNodeId).metadata.agent.lastExitCode, 17);
   assert.match(findNodeById(snapshot, agentNodeId).summary, /exit(?:ed with code| code) 17/);
-  await waitForOriginalLocalExecutionRetirement(first.snapshot, 'agent', agentNodeId);
+  await waitForOriginalLocalExecutionRetirement(original, 'agent', agentNodeId);
 
-  const second = await startAgent(88);
-  assert.notStrictEqual(second.execution.executionSessionId, first.execution.executionSessionId);
-  await dispatchWebviewMessage({
-    type: 'webview/stopExecutionSession',
-    payload: { nodeId: agentNodeId, kind: 'agent' }
-  });
-  await waitForSnapshot(current => {
-    const agent = findNodeById(current, agentNodeId);
-    return agent.status === 'stopped' && !agent.metadata.agent.liveSession;
-  });
-  await waitForOriginalLocalExecutionRetirement(second.snapshot, 'agent', agentNodeId);
+  return { execution, snapshot };
+}
 
+async function verifyExecutionConcurrency(agentNodeId, terminalNodeId, previous) {
   await clearHostMessages();
-  const concurrentAgent = await startAgent(92);
-  assert.notStrictEqual(concurrentAgent.execution.executionSessionId, second.execution.executionSessionId);
+  assert.ok(previous?.agent?.executionSessionId && previous?.terminal?.executionSessionId,
+    'Concurrency must compare both new executions with its own retired fixture identities.');
+  const concurrentAgent = await startLocalAgent(agentNodeId, 92);
+  assert.notStrictEqual(concurrentAgent.execution.executionSessionId, previous.agent.executionSessionId);
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
     payload: { nodeId: terminalNodeId, kind: 'terminal', cols: 92, rows: 28 }
   });
   const concurrentTerminal = await waitForLocalExecutionStarted('terminal', terminalNodeId);
+  assert.notStrictEqual(concurrentTerminal.execution.executionSessionId, previous.terminal.executionSessionId);
+  assert.notStrictEqual(concurrentTerminal.execution.executionSessionId, concurrentAgent.execution.executionSessionId);
   await requestExecutionSnapshot('agent', agentNodeId);
   await requestExecutionSnapshot('terminal', terminalNodeId);
   await dispatchWebviewMessage({
@@ -9202,28 +9464,10 @@ async function verifyPtyRobustness(agentNodeId, terminalNodeId) {
     findExecutionOutput([message], execution, marker) !== undefined
   )));
 
-  await dispatchWebviewMessage({
-    type: 'webview/stopExecutionSession',
-    payload: { nodeId: agentNodeId, kind: 'agent' }
-  });
-  await dispatchWebviewMessage({
-    type: 'webview/stopExecutionSession',
-    payload: { nodeId: terminalNodeId, kind: 'terminal' }
-  });
-  snapshot = await waitForSnapshot(current => {
-    const agent = findNodeById(current, agentNodeId);
-    const terminal = findNodeById(current, terminalNodeId);
-    return agent.status === 'stopped' && !agent.metadata.agent.liveSession &&
-      terminal.status === 'closed' && !terminal.metadata.terminal.liveSession;
-  });
-  assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'stopped');
-  assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed');
-  await waitForOriginalLocalExecutionRetirement(concurrentAgent.snapshot, 'agent', agentNodeId);
-  await waitForOriginalLocalExecutionRetirement(concurrentTerminal.snapshot, 'terminal', terminalNodeId);
-  console.log('Local PTY robustness: burst 80, exit 17, explicit stop, distinct restarts, concurrent output, original snapshots and final retirement passed.');
+  return { agent: concurrentAgent, terminal: concurrentTerminal };
 }
 
-async function verifyTerminalFloodKeepsCanvasResponsive(agentNodeId, terminalNodeId, noteNodeId) {
+async function verifyOutputFloodFairness(agentNodeId, terminalNodeId, noteNodeId) {
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'editor', 20000);
   await clearHostMessages();
@@ -9344,6 +9588,11 @@ async function verifyTerminalFloodKeepsCanvasResponsive(agentNodeId, terminalNod
   });
   await waitForLocalExecutionOutput(secondaryAgent.execution, TERMINAL_FLOOD_NEW_AGENT_MARKER, 'waiting-input', 15000);
 
+  return { agentNodeId, terminalNodeId, secondaryAgentNodeId, secondaryTerminalNodeId, primaryTerminal, secondaryTerminal };
+}
+
+async function verifyFloodCtrlCRetainsSession(fixture) {
+  const { terminalNodeId, secondaryTerminalNodeId, primaryTerminal, secondaryTerminal } = fixture;
   await performWebviewDomAction({
     kind: 'sendExecutionInput',
     nodeId: terminalNodeId,
@@ -9369,6 +9618,10 @@ async function verifyTerminalFloodKeepsCanvasResponsive(agentNodeId, terminalNod
   await waitForLocalExecutionOutput(primaryTerminal.execution, TERMINAL_FLOOD_AFTER_CTRL_C_MARKER, 'live', 15000);
   await waitForLocalExecutionOutput(secondaryTerminal.execution, TERMINAL_FLOOD_SECONDARY_AFTER_CTRL_C_MARKER, 'live', 15000);
 
+}
+
+async function cleanupFloodFixture(fixture) {
+  const { agentNodeId, terminalNodeId, secondaryAgentNodeId, secondaryTerminalNodeId } = fixture;
   await ensureAgentStopped(agentNodeId);
   await ensureAgentStopped(secondaryAgentNodeId);
   await ensureTerminalStopped(terminalNodeId);
@@ -9393,7 +9646,7 @@ async function verifyTerminalFloodKeepsCanvasResponsive(agentNodeId, terminalNod
       ),
     20000
   );
-  console.log('Local PTY flood: two output streams, Note selection, parallel Agent input, new nodes, Ctrl-C recovery and cleanup passed.');
+
 }
 
 async function verifyMissingAgentCliFailure() {
@@ -9492,12 +9745,13 @@ async function verifyMissingAgentCliFailure() {
   return { nodeId: claudeAgentNode.id, failure, persistence: finalPersistence[0] };
 }
 
-async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
+async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId, failureCase = 'all') {
   const diagnosticStartIndex = (await getDiagnosticEvents()).length;
-  const preparationDiagnostics = await verifyMissingAgentCliFailure();
+  const preparationDiagnostics = failureCase === 'all' ? await verifyMissingAgentCliFailure() : undefined;
   let snapshot = await getDebugSnapshot();
   let hostMessages;
   let agentNode;
+  if (failureCase !== 'missing-node') {
   await clearHostMessages();
   const nodeCountBeforeInvalidCreate = snapshot.state.nodes.length;
   await dispatchWebviewMessage({
@@ -9628,7 +9882,9 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
     !snapshot.state.nodes.some((node) => node.id === invalidLaunchNodeId),
     'Expected restoring the baseline persisted state to remove the seeded invalid-launch node from runtime projection.'
   );
+  }
 
+  if (failureCase !== 'invalid-launch') {
   await clearHostMessages();
   await dispatchWebviewMessage({
     type: 'webview/startExecutionSession',
@@ -9678,6 +9934,7 @@ async function verifyFailurePaths(agentNodeId, terminalNodeId, noteNodeId) {
         message.payload.message === 'No deletable node was found.'
     )
   );
+  }
 
   snapshot = await getDebugSnapshot();
   assert.strictEqual(findNodeById(snapshot, agentNodeId).title, REAL_DOM_AGENT_TITLE);
@@ -12075,7 +12332,6 @@ async function clearDiagnosticEvents() {
 }
 
 async function assertNoOwnedResizeFailures() {
-  if (!['trusted', 'local-execution-flow', 'owned-canvas-reconciliation', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure', 'local-links-and-stop'].includes(smokeScenario)) return;
   const failures = (await getDiagnosticEvents()).filter(event =>
     event.kind === 'execution/resizeRejected' && event.detail?.reason === 'owned-resize-failed');
   assert.deepStrictEqual(failures, [], 'Local resize failures must be checked before diagnostics are cleared.');
@@ -13562,15 +13818,21 @@ async function persistLastWebviewProbe() {
   );
 }
 
-async function verifyTrustedDiagnostics(evidence) {
-  // Evidence is returned only after each generating scenario has verified its own execution.
-  assert.ok(evidence?.agent?.started && evidence.agent.saved && evidence.agent.reader && evidence.agent.exit,
-    'Expected verified Agent start, exit, final save and reader evidence from verifyAgentExecutionFlow.');
-  assert.strictEqual(evidence.agent.exitCode, 0);
-  assert.ok(evidence?.terminal?.started && evidence.terminal.liveSnapshot,
-    'Expected verified Terminal start and live snapshot evidence from verifyTerminalExecutionFlow.');
-  assert.ok(evidence?.preparation?.failure && evidence.preparation.persistence,
-    'Expected verified missing-CLI failure evidence from verifyMissingAgentCliFailure.');
+function assertVerifiedAgentEvidence(evidence) {
+  assert.ok(evidence?.started && evidence.saved && evidence.reader && evidence.exit,
+    'Expected verified Agent start, exit, final save and reader evidence from this original execution.');
+  assert.strictEqual(evidence.exitCode, 0);
+}
+function assertVerifiedTerminalEvidence(evidence) {
+  assert.ok(evidence?.started && evidence.liveSnapshot,
+    'Expected verified Terminal start and live snapshot evidence from this original execution.');
+}
+function assertVerifiedPreparationEvidence(evidence) {
+  assert.ok(evidence?.failure && evidence.persistence,
+    'Expected verified missing-CLI failure and persistence evidence from this original attempt.');
+}
+
+async function verifyStorageDiagnostics() {
   const diagnosticEvents = await getDiagnosticEvents();
 
   assert.ok(

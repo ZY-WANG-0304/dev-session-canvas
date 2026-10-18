@@ -1,31 +1,24 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
 
 const projectRoot = process.cwd();
 
-let options;
-try {
-  options = parseArgs(process.argv.slice(2));
-} catch (error) {
-  console.error(error.message);
-  console.error('使用 --help 查看可用参数。');
-  process.exit(1);
-}
-
-if (options.help) {
-  printHelp();
-  process.exit(0);
-}
-
-try {
-  const notes = buildReleaseNotes(options);
-  const outputPath = path.resolve(projectRoot, options.output);
-  mkdirSync(path.dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, notes, 'utf8');
-  console.log(`GitHub release notes: ${path.relative(projectRoot, outputPath)}`);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  try {
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) printHelp();
+    else {
+      const notes = buildReleaseNotes(options);
+      const outputPath = path.resolve(projectRoot, options.output);
+      mkdirSync(path.dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, notes, 'utf8');
+      console.log(`GitHub release notes: ${path.relative(projectRoot, outputPath)}`);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }
 
 function parseArgs(args) {
@@ -68,7 +61,7 @@ function parseArgs(args) {
   return parsed;
 }
 
-function buildReleaseNotes({ changelog, manifest: manifestPath, version }) {
+export function buildReleaseNotes({ changelog, manifest: manifestPath, version }) {
   const changelogPath = path.resolve(projectRoot, changelog);
   const changelogText = readFileSync(changelogPath, 'utf8');
   const section = extractVersionSection(changelogText, version);
@@ -77,7 +70,7 @@ function buildReleaseNotes({ changelog, manifest: manifestPath, version }) {
   const knownBoundaries = extractSubsection(section, '已知边界与验证说明');
   const install = extractSubsection(section, '安装与升级');
   const rollback = extractSubsection(section, '回退建议');
-  const manifest = readManifest(manifestPath);
+  const manifest = typeof manifestPath === 'object' ? manifestPath : readManifest(manifestPath);
 
   const lines = [
     `# ${title}`,
@@ -182,7 +175,7 @@ function formatChannelStatus(manifest) {
 function targetIsComplete(target) {
   const entries = target || {};
   return ['main', 'notifier'].every((extension) =>
-    ['verified', 'already-published'].includes(entries[extension]?.status)
+    ['verified', 'reused-verified', 'already-published'].includes(entries[extension]?.status)
   );
 }
 
@@ -192,7 +185,8 @@ function formatTargetStatus(target) {
   }
   const parts = [];
   for (const [extension, entry] of Object.entries(target)) {
-    parts.push(`${extension}=${entry?.status || 'unknown'}${entry?.version ? ` (${entry.version})` : ''}`);
+    parts.push(`${extension}=${entry?.status || 'unknown'}${entry?.version ? ` (${entry.version})` : ''}`
+      + (entry?.evidenceUse === 'reused' ? `，复用历史验真 ${entry.reusedFrom?.verifiedAt || 'unknown'}；本轮 ${entry.observation}/${entry.content}` : ''));
   }
   return parts.join(', ');
 }
@@ -231,7 +225,7 @@ function collectIncompleteTargets(manifest) {
       continue;
     }
     for (const [extension, entry] of Object.entries(target)) {
-      if (!['verified', 'already-published'].includes(entry?.status)) {
+      if (!['verified', 'reused-verified', 'already-published'].includes(entry?.status)) {
         incomplete.push(`${label}/${extension}=${entry?.status || 'unknown'}${deferred ? '(deferred)' : ''}`);
       }
     }

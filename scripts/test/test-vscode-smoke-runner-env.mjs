@@ -14,6 +14,7 @@ import {
   resolveVSCodeSmokeDebugRoot,
   spawnPreparedVSCodeScenario
 } from '../smoke/vscode-smoke-runner.mjs';
+import { buildRemoteHostEnvironment } from '../smoke/vscode-remote-ssh-fixture.mjs';
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
 const originalVscodeIpcHookCli = process.env.VSCODE_IPC_HOOK_CLI;
@@ -58,13 +59,14 @@ try {
     assert.deepStrictEqual(buildVSCodeArgs(argsOptions, platform), [
       argsOptions.workspacePath,
       '--disable-extensions',
-      '--log=trace',
+      '--log=debug',
       `--user-data-dir=${argsOptions.userDataDir}`,
       `--extensions-dir=${argsOptions.extensionsDir}`,
       '--no-sandbox',
       '--disable-gpu-sandbox',
       ...(platform === 'linux' ? ['--disable-gpu', '--disable-dev-shm-usage'] : []),
       '--password-store=basic',
+      '--disable-crash-reporter',
       ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
       '--disable-updates',
       '--skip-welcome',
@@ -75,6 +77,27 @@ try {
     ], `${platform} smoke launch arguments`);
   }
   assert.deepStrictEqual(buildVSCodeArgs(argsOptions), buildVSCodeArgs(argsOptions, process.platform));
+
+  const remoteOptions = { remoteHomeDir: '/private/remote-home', remoteConfigDir: '/private/config',
+    remoteCacheDir: '/private/cache', remoteDataDir: '/private/data', remoteRuntimeDir: '/private/runtime',
+    remoteTmpDir: '/private/tmp', remoteAgentDir: '/private/agent', gateStorageRoot: '/private/fixture',
+    smokeTestMode: true, realReopenControlFile: '/private/control.json' };
+  const remoteEnv = buildRemoteHostEnvironment(remoteOptions, {
+    DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS: '/private/receipts', DEV_SESSION_CANVAS_GATE_RUN_NONCE: 'original',
+    DEV_SESSION_CANVAS_GATE_CASE_ID: 'remote-ssh-real-reopen-exit', DEV_SESSION_CANVAS_GATE_DEADLINE: '100',
+    DEV_SESSION_CANVAS_GATE_CLEANUP_DEADLINE: '160', GH_TOKEN: 'must-not-forward', HOME: '/user-home'
+  });
+  assert.equal(remoteEnv.HOME, remoteOptions.remoteHomeDir);
+  assert.equal(remoteEnv.XDG_STATE_HOME, path.join(remoteOptions.remoteRuntimeDir, 'state'));
+  assert.equal(remoteEnv.GH_TOKEN, undefined);
+  assert.equal(remoteEnv.DEV_SESSION_CANVAS_GATE_RUN_NONCE, 'original');
+  assert.equal(remoteEnv.DEV_SESSION_CANVAS_SMOKE_TEST_MODE, '1');
+  assert.deepEqual(JSON.parse(remoteEnv.DEV_SESSION_CANVAS_GATE_STORAGE_ROOTS), ['/private/fixture', '/private/runtime']);
+  const remoteArgs = buildVSCodeArgs({ ...argsOptions, remoteAuthority: 'ssh-remote+fixture', extensionHostEnv: remoteEnv });
+  const forwarded = remoteArgs.find(arg => arg.startsWith('--extensionEnvironment='));
+  assert.deepEqual(JSON.parse(forwarded.slice('--extensionEnvironment='.length)), remoteEnv);
+  assert.throws(() => buildVSCodeArgs({ ...argsOptions, extensionHostEnv: remoteEnv }), /declared authority/);
+  assert.equal(buildRemoteHostEnvironment({ ...remoteOptions, smokeTestMode: false }, {}).DEV_SESSION_CANVAS_SMOKE_TEST_MODE, undefined);
 
   const launchRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-original-vscode-process-'));
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
@@ -104,10 +127,13 @@ try {
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(finished, false, 'Acceptance cannot finish before the original Code process exits');
     child.emit('exit', 0, null);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(finished, false, 'Original process exit must still drain its tail output');
+    child.stdout.end(); child.stderr.end(); child.emit('close', 0, null);
     await completed;
     assert.equal(finished, true);
   } finally {
-    child?.emit('exit', 0, null);
+    child?.emit('close', 0, null);
     childProcess.spawn = originalSpawn;
     syncBuiltinESMExports();
     Object.defineProperty(process, 'platform', originalPlatform);
@@ -145,6 +171,11 @@ try {
     const fullEnv = buildVSCodeChildEnv({ ...shortRuntime.environment, DBUS_SESSION_BUS_ADDRESS: '', XDG_RUNTIME_DIR: '' });
     assert.strictEqual(fullEnv.DBUS_SESSION_BUS_ADDRESS, '');
     assert.strictEqual(fullEnv.XDG_RUNTIME_DIR, '');
+    const namedRuntime = await prepareRuntime({ debugRoot: path.join(longRoot, 'named'),
+      runtimeDirName: `dsc-${'x'.repeat(180)}` });
+    const systemdSocket = path.join(namedRuntime.environment.XDG_STATE_HOME, 'dsc', 'rh', '0'.repeat(24), 's.sock');
+    assert(Buffer.byteLength(systemdSocket) <= 107, 'Named cases must preserve real systemd control-path observation');
+    await fs.rm(namedRuntime.runtimeDir, { recursive: true, force: true });
     if (process.platform === 'linux') {
       const net = await import('node:net');
       const socket = path.join(shortRuntime.userDataDir, '1.14-main.sock');

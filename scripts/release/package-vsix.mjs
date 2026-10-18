@@ -53,7 +53,7 @@ export function assertProductionExecutionPackage(dist) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const { values } = parseArgs({ args, options: { 'development-comparison': { type: 'boolean' } } });
+  const { values } = parseArgs({ args, options: { 'development-comparison': { type: 'boolean' }, output: { type: 'string' } } });
   const packageJsonPath = path.join(mainExtensionRoot, 'package.json');
   const vsceEntry = resolveVsceEntry(projectRoot);
   const gitValidationRoot =
@@ -125,8 +125,10 @@ export async function main(args = process.argv.slice(2)) {
       const packaged = readFileSync(path.join(stagePackageRoot, vsixFilename));
       const normalized = await ensureCandidateHelperPermissions(packaged,
         { required: values['development-comparison'] !== true });
-      writeFileSync(path.join(projectRoot, vsixFilename), normalized);
-      console.log(`已生成 ${path.join(projectRoot, vsixFilename)}`);
+      const outputPath = values.output ? path.resolve(values.output) : path.join(projectRoot, vsixFilename);
+      mkdirSync(path.dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, normalized, values.output ? { flag: 'wx' } : undefined);
+      console.log(`已生成 ${outputPath}`);
     }
 
     return result.status === null ? 1 : result.status;

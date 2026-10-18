@@ -10,9 +10,15 @@ import terminalResize from '../vscode-smoke/terminal-resize.cjs';
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-const harnessUrl = pathToFileURL(
+const harnessLocation = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
-).href;
+);
+if (process.env.DEV_SESSION_CANVAS_BROWSER_ASSETS) {
+  harnessLocation.searchParams.set('bundle', pathToFileURL(
+    `${path.resolve(process.env.DEV_SESSION_CANVAS_BROWSER_ASSETS)}${path.sep}`
+  ).href);
+}
+const harnessUrl = harnessLocation.href;
 const pageDiagnosticsByPage = new WeakMap();
 const TERMINAL_VIEWPORT_ZOOM = 1.6;
 const NODE_FOCUS_ANIMATION_DURATION_MS = 280;

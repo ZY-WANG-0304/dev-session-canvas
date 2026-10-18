@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
+import { parseArgs } from 'node:util';
+import { selectSmokeSuites } from './smoke-catalog.mjs';
+import { readJSON } from '../gates/receipts.mjs';
+import { observeLocalReopenBarrier } from './host-evidence.mjs';
+import { validateFrozenPlan, assertFormalEnvironment } from '../gates/resolve-plan.mjs';
 
 import {
   buildHistoricalRuntimeSupervisorFixture,
@@ -19,6 +24,8 @@ import {
   writeUserSettings
 } from './vscode-smoke-runner.mjs';
 import { createRemoteSSHFixture } from './vscode-remote-ssh-fixture.mjs';
+import { ensureExtensionFixtureInputs } from './extension-fixture-inputs.mjs';
+import { environmentPolicy, infrastructureBudgets } from '../gates/catalog.mjs';
 const remoteHost = createRequire(import.meta.url)('../../tests/vscode-smoke/remote-host-control.cjs');
 
 const projectRoot = process.cwd();
@@ -38,85 +45,28 @@ const fakeSystemdShimPath = path.join(
 );
 const legacySupervisorBaselineRef = '5355e6a';
 const fakeSystemdProbeShimPath = path.join(smokeFixturesDir, 'fake-systemd', 'systemd-run.cjs');
-const scenarioFilter = parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER);
+const { values: gateOptions } = parseArgs({ options: { plan: { type: 'string' }, scenario: { type: 'string' },
+  group: { type: 'string' }, diagnostic: { type: 'boolean' } } });
+if (gateOptions.plan) {
+  assertFormalEnvironment();
+  const plan = validateFrozenPlan(await readJSON(gateOptions.plan));
+  assert.equal(Boolean(gateOptions.diagnostic), plan.mode === 'diagnostic', 'Diagnostic flag differs from the frozen mode');
+  assert(gateOptions.scenario || gateOptions.group, 'The dispatcher must provide a planned suite/group');
+  const required = plan.tasks.filter(task => task.job === 'source-host'
+    && (!gateOptions.scenario || task.suite === gateOptions.scenario) && (!gateOptions.group || task.hostGroup === gateOptions.group));
+  assert(required.length, 'Source smoke is outside the immutable plan');
+}
+const selectedSuites = selectSmokeSuites({ payload: 'source', group: gateOptions.group,
+  scenario: gateOptions.scenario, diagnostic: Boolean(gateOptions.diagnostic) });
+const scenarioFilter = gateOptions.scenario || gateOptions.group
+  ? new Set(selectedSuites.map(item => item.id)) : parseScenarioFilter(process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER);
+if (scenarioFilter) {
+  for (const name of scenarioFilter) assert(name === 'remote-ssh-real-reopen'
+    || selectSmokeSuites({ scenario: name, diagnostic: true }).length, `Unknown smoke scenario ${name}`);
+}
 
-const scenarios = [
-  {
-    name: 'local-execution-flow',
-    description: 'Current native Agent and Terminal output and lifecycle assertions',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'owned-canvas-reconciliation',
-    description: 'Owned executions survive canvas reload and workspace recomposition',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'snapshot-only-manual-recovery',
-    description: 'Snapshot-only Host reload preserves manual Agent recovery without automatic resume',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'local-surface-cutover',
-    description: 'Local execution output survives surface cutover and canvas reread',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'local-preparation-failure',
-    description: 'Missing Agent CLI settles the unstarted node and reports the failure once',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'local-links-and-stop',
-    description: 'Rendered terminal links and original owned execution stop completion',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'local-pty-robustness',
-    description: 'Local PTY exits, restarts and canvas responsiveness during concurrent terminal output',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'runtime-legacy-reconnect',
-    description: 'Legacy Runtime reconnect preserves bindings without automatic CLI resume',
-    focusedOnly: true,
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'linux-runtime-report-unavailable',
-    description: 'Linux activation with the shared runtime report unavailable',
-    focusedOnly: true,
-    disableWorkspaceTrust: true,
-    testFile: 'runtime-compatibility-tests.cjs'
-  },
-  {
-    name: 'runtime-completed-no-history',
-    description: 'Runtime completion drains current output without retaining history',
-    focusedOnly: true,
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'runtime-checkpoint-refresh',
-    description: 'Runtime paged terminal projection smoke',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'trusted',
-    description: 'Trusted workspace smoke',
-    disableWorkspaceTrust: true
-  },
-  {
-    name: 'restricted',
-    description: 'Restricted workspace smoke',
-    disableWorkspaceTrust: false,
-    userSettings: {
-      'security.workspace.trust.enabled': true,
-      'security.workspace.trust.startupPrompt': 'never',
-      'security.workspace.trust.banner': 'never',
-      'security.workspace.trust.untrustedFiles': 'open'
-    }
-  }
-];
+const scenarios = selectedSuites.filter(suite => suite.launcher === 'ordinary')
+  .map(suite => ({ ...suite, name: suite.id, description: suite.title, focusedOnly: suite.diagnosticOnly }));
 
 async function main() {
   if (shouldReRunInsideXvfb()) {
@@ -131,7 +81,7 @@ async function main() {
     const runtime = await prepareRuntime({
       projectRoot,
       debugRoot: path.join(smokeDebugRoot, scenario.name),
-      runtimeDirName: `dsc-vscode-smoke-runtime-${scenario.name}`,
+      runtimeDirName: `dsc-smoke-${scenario.variant}`,
       userSettings: scenario.userSettings,
       extensionTestsEnv: {
         DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
@@ -212,6 +162,7 @@ async function runLegacySupervisorUpgradeScenario() {
     debugRoot: path.join(smokeDebugRoot, scenarioName),
     runtimeDirName: `dsc-vscode-smoke-runtime-${scenarioName}`,
     extensionTestsEnv: {
+      DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
       DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
       DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
       DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
@@ -238,6 +189,7 @@ async function runLegacySupervisorUpgradeScenario() {
     disableExtensions: false,
     disableWorkspaceTrust: true,
     extensionTestsEnv: {
+      DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
       DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenarioName,
       DEV_SESSION_CANVAS_LEGACY_SUPERVISOR_REF: legacySupervisorBaselineRef,
       DEV_SESSION_CANVAS_LEGACY_SUPERVISOR_SCRIPT: legacySupervisorScript,
@@ -348,6 +300,7 @@ async function runTwoWindowSharedRuntimeScenario() {
   await fs.rm(scenarioDebugRoot, { recursive: true, force: true });
   const ownerRuntime = await prepareRuntime({
     debugRoot: path.join(scenarioDebugRoot, 'owner'),
+    gateStorageRoot:scenarioDebugRoot,
     runtimeDirName,
     userSettings: {
       'security.workspace.trust.enabled': false
@@ -355,6 +308,7 @@ async function runTwoWindowSharedRuntimeScenario() {
   });
   const attacherRuntime = await prepareRuntime({
     debugRoot: path.join(scenarioDebugRoot, 'attacher'),
+    gateStorageRoot:scenarioDebugRoot,
     runtimeDirName,
     userSettings: {
       'security.workspace.trust.enabled': false
@@ -388,6 +342,7 @@ async function runTwoWindowSharedRuntimeScenario() {
     extraLaunchArgs: ['--new-window']
   };
   const sharedEnv = {
+    DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
     DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
     DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
     DEV_SESSION_CANVAS_EXPECTED_RUNTIME_BACKEND: 'legacy-detached',
@@ -535,6 +490,7 @@ async function runPreparedLocalRealWindowReopenScenario(options) {
   );
   const stateFilePath = path.join(runtime.artifactsDir, `${options.scenarioName}-state.json`);
   const sharedEnv = {
+    DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
     DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
     DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
     PATH: smokeFixturesPath,
@@ -564,8 +520,12 @@ async function runPreparedLocalRealWindowReopenScenario(options) {
     }
   });
 
-  // Keep the Host fully closed while the dedicated completed-session fixture exits.
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  const expected = await readJSON(stateFilePath);
+  const workDeadline = Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE);
+  const barrier = await observeLocalReopenBarrier(expected,
+    Math.min(Date.now() + 30000, Number.isFinite(workDeadline) && workDeadline > 0 ? workDeadline : Infinity));
+  await fs.writeFile(path.join(runtime.artifactsDir, 'local-reopen-barrier.json'),
+    `${JSON.stringify(barrier, null, 2)}\n`, { flag: 'wx' });
 
   await writeRealReopenControlFiles([controlFilePath, workspaceFallbackControlFilePath], {
     phase: 'verify',
@@ -605,6 +565,7 @@ async function runRemoteSSHRealReopenScenario(hostScenario) {
   const stateFilePath = path.join(runtime.artifactsDir, 'remote-ssh-real-reopen-state.json');
   const fixture = await createRemoteSSHFixture({
     debugRoot,
+    smokeTestMode: true,
     realReopenControlFile: controlFilePath,
     remoteRuntimeDirName: `dsc-vscode-remote-ssh-runtime-${hostScenario}`,
     observeCleanup: true,
@@ -614,11 +575,15 @@ async function runRemoteSSHRealReopenScenario(hostScenario) {
 
   try {
     const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
+    const extensionInputs = await ensureExtensionFixtureInputs(environmentPolicy.remoteSSH,
+      path.join(path.dirname(path.dirname(vscodeExecutablePath)), 'remote-ssh-inputs'),
+      Math.min(Date.now() + infrastructureBudgets.download, Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE) || Infinity));
     await installVSCodeExtensions({
       vscodeExecutablePath,
       userDataDir: runtime.userDataDir,
       extensionsDir: runtime.extensionsDir,
-      extensionIds: ['ms-vscode-remote.remote-ssh'],
+      extensionIds: extensionInputs,
+      excludePackDependencies: true,
       environment: runtime.environment
     });
     const remoteExtensionDevelopmentPaths = await findInstalledExtensionPaths(runtime.extensionsDir, [
@@ -655,6 +620,7 @@ async function runRemoteSSHRealReopenScenario(hostScenario) {
       vscodeExecutablePath,
       folderUri: remoteProjectUri,
       remoteAuthority: fixture.remoteAuthority,
+      extensionHostEnv: fixture.extensionHostEnv,
       extensionDevelopmentPath: [remoteSmokeHostUri, ...remoteExtensionDevelopmentPaths],
       extensionTestsPath: remoteRealReopenTestsUri,
       disableWorkspaceTrust: true,
@@ -792,7 +758,8 @@ function parseScenarioFilter(rawValue) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return entries.length > 0 ? new Set(entries) : undefined;
+  assert(entries.length > 0, 'An empty diagnostic smoke filter cannot pass');
+  return new Set(entries);
 }
 
 function shouldRunScenario(name) {

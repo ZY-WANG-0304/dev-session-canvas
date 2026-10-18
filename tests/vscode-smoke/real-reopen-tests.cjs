@@ -47,15 +47,16 @@ module.exports = {
   run
 };
 
-async function run() {
+async function run({ gateSetupCompleted, gateStepBoundary } = {}) {
   try {
     await resolveRuntimeInputs();
     console.log(`[real-reopen] phase=${phase} start`);
     if (phase === 'setup') {
-      await runSetupPhase();
+      await runSetupPhase(gateStepBoundary);
       console.log('[real-reopen] phase=setup ready-for-exit');
       if (remoteHostScenario) {
         const expected = JSON.parse(await fs.readFile(stateFile, 'utf8'));
+        await gateSetupCompleted?.();
         await fs.writeFile(path.join(artifactDir, 'remote-host-setup-ready.json'), JSON.stringify(expected), { flag: 'wx' });
         // Keep the remote test running until the runner abruptly disconnects this client.
         await new Promise(() => {});
@@ -64,7 +65,7 @@ async function run() {
     }
 
     if (phase === 'verify') {
-      await runVerifyPhase();
+      await runVerifyPhase(gateStepBoundary);
       console.log('[real-reopen] phase=verify completed');
       return;
     }
@@ -76,7 +77,9 @@ async function run() {
   }
 }
 
-async function runSetupPhase() {
+async function runSetupPhase(gateStepBoundary) {
+  const step = (id, status) => gateStepBoundary?.({ id, status });
+  await step('fixture-start', 'started');
   assertExpectedWorkspaceShape();
   await activateExtension();
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
@@ -145,6 +148,8 @@ async function runSetupPhase() {
     }
   ]);
 
+  await step('fixture-start', 'passed');
+  await step('offline-fixture-and-save', 'started');
   await sendExecutionInput(agentNode.id, 'agent', `sleep ${OFFLINE_SLEEP_SECONDS}\rREAL_REOPEN_AGENT\r`);
   await sendExecutionInput(
     terminalNode.id,
@@ -190,6 +195,13 @@ async function runSetupPhase() {
     );
   }
 
+  const originalHost = await require('./gate-supervisor-cleanup.cjs').identity(process.pid);
+  assert(originalHost?.start, 'Original setup Host identity is required');
+  const localSetupHost = { pid: originalHost.pid, platform: process.platform,
+    ...(process.platform === 'linux' ? { startTicks: originalHost.start } : { startTime: originalHost.start }) };
+  const rootRegistry = liveRuntimeState.registries[expectedRuntimeBackend]?.entries?.find(entry =>
+    entry.registry?.sessions?.some(session => session.sessionId === liveAgentNode.metadata.agent.runtimeSessionId));
+  assert(rootRegistry?.registryPath && rootRegistry.socketPath, 'Original live root registry and socket are required');
   let hostState;
   if (remoteHostScenario) {
     const current = await getDebugSnapshot();
@@ -209,6 +221,9 @@ async function runSetupPhase() {
     stateFile,
     `${JSON.stringify(
       {
+        setupHost: localSetupHost,
+        rootRegistryPath: rootRegistry.registryPath,
+        rootSocketPath: rootRegistry.socketPath,
         ...(hostState ?? {}),
         agentNodeId: agentNode.id,
         terminalNodeId: terminalNode.id,
@@ -228,21 +243,40 @@ async function runSetupPhase() {
     )}\n`,
     'utf8'
   );
+  await step('offline-fixture-and-save', 'passed');
 }
 
-async function runVerifyPhase() {
+async function runVerifyPhase(gateStepBoundary) {
+  const step = (id, status) => gateStepBoundary?.({ id, status });
+  await step('original-host-condition', 'started');
   assertExpectedWorkspaceShape();
   await activateExtension();
   await openCanvasEditor();
 
   const expected = JSON.parse(await fs.readFile(stateFile, 'utf8'));
-  const hostEvidence = remoteHostScenario ? { scenario: remoteHostScenario, setupHost: expected.setupHost,
-    verifyHost: await remoteHost.readProcessIdentity(process.pid), supervisor: expected.supervisor, phases: [] } : undefined;
-  if (hostEvidence) {
+  if (!remoteHostScenario) {
+    const currentHost = await require('./gate-supervisor-cleanup.cjs').identity(process.pid);
+    assert.notStrictEqual(process.pid, expected.setupHost.pid, 'Reopen must create a new Extension Host');
+    assert(currentHost?.start, 'Verify Host start identity is required');
+    const original = await require('./gate-supervisor-cleanup.cjs').identity(expected.setupHost.pid);
+    assert(!original || original.start !== (expected.setupHost.startTicks ?? expected.setupHost.startTime),
+      'Original setup Host must be absent before verify');
+    const barrier = JSON.parse(await fs.readFile(path.join(artifactDir, 'local-reopen-barrier.json'), 'utf8'));
+    assert.deepStrictEqual(barrier.setupHost, expected.setupHost);
+    assert.strictEqual(barrier.originalHostExit.result, 'original-absent');
+    assert(barrier.sessions.some(session => session.sessionId === expected.agentSessionId && session.live));
+    assert(barrier.sessions.some(session => session.sessionId === expected.terminalSessionId && session.live));
+    assert(barrier.sessions.some(session => session.sessionId === expected.completedTerminalSessionId && session.live === false));
+  }
+  const hostEvidence = { scenario: remoteHostScenario ?? 'local-exit', setupHost: expected.setupHost,
+    supervisor: expected.supervisor ?? null, phases: [] };
+  if (remoteHostScenario) {
     hostEvidence.phases.push(await observeRemoteHostPhase(expected, 'verify-ready'));
     assert.notStrictEqual(process.pid, expected.setupHost.pid, 'Reopen must run in a new Extension Host');
   }
 
+  await step('original-host-condition', 'passed');
+  await step('reconnect-and-content', 'started');
   let snapshot = await waitForSnapshot((currentSnapshot) => {
     const agentNode = findExpectedExecutionNode(currentSnapshot, 'agent', expected);
     const terminalNode = findExpectedExecutionNode(currentSnapshot, 'terminal', expected);
@@ -353,6 +387,8 @@ async function runVerifyPhase() {
   assert.ok(!JSON.stringify(persisted.snapshot).includes(COMPLETED_TERMINAL_REOPEN_OUTPUT),
     'Offline-completed terminal content must not enter the saved canvas.');
 
+  await step('reconnect-and-content', 'passed');
+  await step('input-after-reopen', 'started');
   await sendExecutionInput(agentDisplayNodeId, 'agent', 'AFTER_REOPEN_AGENT\r');
   await sendExecutionInput(terminalDisplayNodeId, 'terminal', `echo ${TERMINAL_POST_REOPEN_OUTPUT}\r`);
 
@@ -370,7 +406,9 @@ async function runVerifyPhase() {
   assert.ok(agentNode.metadata.agent.recentOutput.includes(AGENT_POST_REOPEN_OUTPUT));
   assert.ok(terminalNode.metadata.terminal.recentOutput.includes(TERMINAL_POST_REOPEN_OUTPUT));
 
-  if (hostEvidence) {
+  await step('input-after-reopen', 'passed');
+  await step('resize', 'started');
+  {
     const targets = [
       { nodeId: agentDisplayNodeId, kind: 'agent', sessionId: expected.agentSessionId,
         runtimeStoragePath: expected.agentRuntimeStoragePath, size: agentNode.size,
@@ -384,7 +422,8 @@ async function runVerifyPhase() {
       const geometry = (expectedNodes, before) => waitForTerminalResize({ expectedNodes, before, timeoutMs: 20000,
         getSnapshot: getDebugSnapshot,
         getProbe: remaining => vscode.commands.executeCommand('devSessionCanvas.__test.captureWebviewProbe', 'editor', Math.min(5000, remaining), 0),
-        getSession: (sessionId, remaining) => remoteHost.requestSession(expected.agentRuntimeStoragePath, sessionId, remaining),
+        getSession: (sessionId, remaining) => remoteHost.requestSession(expected.agentRuntimeStoragePath, sessionId, remaining,
+          { socketPath: expected.rootSocketPath }),
         onSample: sample => samples.push(sample) });
       const before = await geometry(targets);
       const resized = targets.map((target, index) => ({ ...target,
@@ -398,18 +437,21 @@ async function runVerifyPhase() {
         resized: after.sessions.map(s => ({ sessionId: s.sessionId, cols: s.cols, rows: s.rows })) };
       const state = await getRuntimeSupervisorState();
       assertRuntimeSupervisorSessions(state, targets);
-      hostEvidence.phases.push(await observeRemoteHostPhase(expected, 'business-complete'));
+      if (remoteHostScenario) hostEvidence.phases.push(await observeRemoteHostPhase(expected, 'business-complete'));
       hostEvidence.pass = true;
     } finally {
       hostEvidence.resizeSamples = samples;
-      await fs.writeFile(path.join(artifactDir, 'remote-host-business.json'), `${JSON.stringify(hostEvidence, null, 2)}\n`);
+      await fs.writeFile(path.join(artifactDir, remoteHostScenario ? 'remote-host-business.json' : 'local-reopen-business.json'), `${JSON.stringify(hostEvidence, null, 2)}\n`);
     }
   }
 
+  await step('resize', 'passed');
+  await step('product-retirement', 'started');
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await waitForRuntimeSupervisorSettled(0, 20000);
   await setRuntimePersistenceEnabled(false);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await step('product-retirement', 'passed');
 }
 
 async function observeRemoteHostPhase(expected, stage) {

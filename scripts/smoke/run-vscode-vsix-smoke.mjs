@@ -1,7 +1,14 @@
 import path from 'path';
-import { spawnSync } from 'child_process';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
+import assert from 'node:assert/strict';
+import { parseArgs } from 'node:util';
+import JSZip from 'jszip';
+import { fileDigest, objectDigest, readJSON, verifyPackageFiles, writeJSON } from '../gates/receipts.mjs';
+import { validateFrozenPlan, assertFormalEnvironment } from '../gates/resolve-plan.mjs';
+import { selectSmokeSuites } from './smoke-catalog.mjs';
+import { treeHashes } from '../release/build-release-candidate.mjs';
+import { verifyInstrumentation } from './package-instrumentation.mjs';
 
 import {
   copyPathRecursive,
@@ -16,16 +23,27 @@ const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
-const debugRoot = path.join(projectRoot, '.debug', 'vscode-vsix-smoke');
+const debugRoot = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT
+  ? path.resolve(process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT) : path.join(projectRoot, '.debug', 'vscode-vsix-smoke');
 const unpackRoot = path.join(debugRoot, 'packaged-extension');
-const notifierExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const marketplaceReadmeMarker = '<!-- dev-session-canvas-marketplace-readme -->';
 const SMOKE_TEST_MODE_ENV_KEY = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
-const scenarios = ['owned-canvas-reconciliation', 'local-execution-flow', 'snapshot-only-manual-recovery', 'local-surface-cutover', 'local-pty-robustness', 'local-preparation-failure', 'local-links-and-stop', 'trusted'];
-const scenarioFilter = process.env.DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER;
-if (scenarioFilter && !scenarios.includes(scenarioFilter)) {
-  throw new Error(`Unsupported VSIX smoke scenario: ${scenarioFilter}`);
-}
+const { values } = parseArgs({ options: { 'main-vsix': { type: 'string' }, 'notifier-vsix': { type: 'string' },
+  'package-receipt': { type: 'string' }, plan: { type: 'string' }, scenario: { type: 'string' }, group: { type: 'string' } } });
+assert(values['main-vsix'] && values['notifier-vsix'] && values['package-receipt'] && values.plan,
+  'Packaged smoke consumes --main-vsix --notifier-vsix --package-receipt --plan; it never builds');
+assertFormalEnvironment();
+const plan = validateFrozenPlan(await readJSON(values.plan));
+const packageReceipt = await readJSON(values['package-receipt']);
+const candidateRoot = path.dirname(path.resolve(values['package-receipt']));
+assert.equal(path.resolve(values['main-vsix']), path.join(candidateRoot, 'main.vsix'));
+assert.equal(path.resolve(values['notifier-vsix']), path.join(candidateRoot, 'notifier.vsix'));
+await verifyPackageFiles(packageReceipt, plan, candidateRoot);
+const suites = selectSmokeSuites({ payload: 'packaged', scenario: values.scenario, group: values.group, diagnostic: plan.mode === 'diagnostic' });
+const scenarios = suites.map(suite => suite.id);
+assert(scenarios.length, 'Packaged suite selection must be nonempty');
+for (const scenario of scenarios) assert(plan.tasks.some(task => task.job === 'packaged-host' && task.suite === scenario),
+  'Packaged scenario is outside the frozen plan');
 
 async function main() {
   if (process.platform !== 'linux') {
@@ -39,21 +57,21 @@ async function main() {
   await fs.rm(unpackRoot, { recursive: true, force: true });
   await fs.mkdir(debugRoot, { recursive: true });
 
-  runCommand('npm', ['run', 'build:notifier'], 'Notifier companion 构建失败。');
-  runCommand('npm', ['run', 'package:vsix'], 'VSIX 打包失败。');
-
-  const vsixPath = await resolveLatestVsixPath();
-  runCommand('unzip', ['-q', '-o', vsixPath, '-d', unpackRoot], 'VSIX 解包失败。');
+  await unpackVsix(values['main-vsix'], unpackRoot);
+  const notifierUnpackRoot = path.join(debugRoot, 'packaged-notifier');
+  await fs.rm(notifierUnpackRoot, { recursive: true, force: true });
+  await unpackVsix(values['notifier-vsix'], notifierUnpackRoot);
 
   const packagedExtensionPath = path.join(unpackRoot, 'extension');
   await validatePackagedExtension(packagedExtensionPath);
   const { smokeHostRoot, notifierRuntimeRoot } = await preparePackagedSmokeHostExtension({
     packagedExtensionPath,
+    packagedNotifierPath: path.join(notifierUnpackRoot, 'extension'),
     root: debugRoot
   });
   const packagedExtensionTestsPath = resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs');
 
-  for (const scenario of scenarios.filter(name => !scenarioFilter || name === scenarioFilter)) {
+  for (const scenario of scenarios) {
     let workspacePath = projectRoot;
     if (scenario === 'owned-canvas-reconciliation') {
       workspacePath = path.join(debugRoot, 'owned-canvas.code-workspace');
@@ -61,8 +79,8 @@ async function main() {
     }
     await runVSCodeScenario({
       projectRoot,
-      debugRoot: path.join(debugRoot, scenario === 'trusted' ? 'smoke-runtime' : scenario),
-      runtimeDirName: `dsc-vscode-vsix-${scenario}`,
+      debugRoot: path.join(debugRoot, scenario),
+      runtimeDirName: `dsc-vsix-${scenario.replaceAll('/', '--')}`,
       workspacePath,
       extensionDevelopmentPath: [smokeHostRoot, notifierRuntimeRoot],
       extensionTestsPath: packagedExtensionTestsPath,
@@ -76,15 +94,19 @@ async function main() {
     });
   }
 
-  console.log(`VSIX packaged-payload smoke passed (${scenarioFilter ?? scenarios.join(', ')}).`);
+  await verifyPackageFiles(packageReceipt, plan, candidateRoot);
+  console.log(`VSIX packaged-payload smoke passed (${scenarios.join(', ')}).`);
 }
 
-async function preparePackagedSmokeHostExtension({ packagedExtensionPath, root }) {
+async function preparePackagedSmokeHostExtension({ packagedExtensionPath, packagedNotifierPath, root }) {
   const smokeHostRoot = path.join(root, 'smoke-host');
   const notifierRuntimeRoot = path.join(smokeHostRoot, 'notifier-extension');
   await fs.rm(smokeHostRoot, { recursive: true, force: true });
+  const beforeMain = await treeHashes(packagedExtensionPath);
+  const beforeNotifier = await treeHashes(packagedNotifierPath);
+  const beforeManifest=await readJSON(path.join(packagedExtensionPath,'package.json'));
   await copyPathRecursive(packagedExtensionPath, smokeHostRoot);
-  await stageNotifierExtension(notifierRuntimeRoot);
+  await copyPathRecursive(packagedNotifierPath, notifierRuntimeRoot);
   await stageSmokeTestSuite({
     projectRoot,
     targetRoot: smokeHostRoot
@@ -97,22 +119,17 @@ async function preparePackagedSmokeHostExtension({ packagedExtensionPath, root }
   packageJson.main = './extension.js';
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(smokeHostRoot, 'extension.js'), buildSmokeHostEntrySource(), 'utf8');
+  const afterMain = await treeHashes(smokeHostRoot);
+  const afterNotifier=await treeHashes(notifierRuntimeRoot);
+  const modifications = verifyInstrumentation({beforeMain,beforeNotifier,afterMain,afterNotifier,
+    beforeManifest,afterManifest:packageJson});
+  await writeJSON(path.join(root, 'instrumentation-receipt.json'), { schemaVersion: 1,
+    inputSHA: plan.inputSHA, packageReceiptDigest: objectDigest(packageReceipt),
+    originalMain: await fileDigest(values['main-vsix']), originalNotifier: await fileDigest(values['notifier-vsix']),
+    rules: ['main manifest dependency removal', 'main wrapper', 'staged test suite', 'nested notifier payload'],
+    beforeMain, beforeNotifier, afterMain, modifications });
 
   return { smokeHostRoot, notifierRuntimeRoot };
-}
-
-async function stageNotifierExtension(targetRoot) {
-  await fs.rm(targetRoot, { recursive: true, force: true });
-  await fs.mkdir(targetRoot, { recursive: true });
-
-  for (const entry of ['package.json', 'dist', 'images']) {
-    const sourcePath = path.join(notifierExtensionRoot, entry);
-    const targetPath = path.join(targetRoot, entry);
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await copyPathRecursive(sourcePath, targetPath);
-  }
-
-  return targetRoot;
 }
 
 function buildSmokeHostEntrySource() {
@@ -128,27 +145,17 @@ exports.deactivate = async function deactivate() {
 `;
 }
 
-async function resolveLatestVsixPath() {
-  const entries = await fs.readdir(projectRoot, { withFileTypes: true });
-  const candidates = await Promise.all(
-    entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.vsix'))
-      .map(async (entry) => {
-        const absolutePath = path.join(projectRoot, entry.name);
-        const stat = await fs.stat(absolutePath);
-        return {
-          absolutePath,
-          mtimeMs: stat.mtimeMs
-        };
-      })
-  );
-
-  const latest = candidates.sort((left, right) => right.mtimeMs - left.mtimeMs)[0];
-  if (!latest) {
-    throw new Error('未找到 VSIX 产物。请先确认 `npm run package:vsix` 成功。');
+async function unpackVsix(file, target) {
+  const zip = await JSZip.loadAsync(await fs.readFile(file));
+  for (const [name, entry] of Object.entries(zip.files)) {
+    assert(!name.startsWith('/') && !name.includes('\\') && !name.split('/').includes('..'), 'Unsafe VSIX member');
+    const destination = path.join(target, name);
+    if (entry.dir) await fs.mkdir(destination, { recursive: true });
+    else {
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.writeFile(destination, await entry.async('nodebuffer'), { mode: (entry.unixPermissions ?? 0o644) & 0o777 });
+    }
   }
-
-  return latest.absolutePath;
 }
 
 async function validatePackagedExtension(packagedExtensionPath) {
@@ -211,21 +218,6 @@ async function validatePackagedExtension(packagedExtensionPath) {
   const packagedReadmeContents = await fs.readFile(packagedReadmePath, 'utf8');
   if (!packagedReadmeContents.includes(marketplaceReadmeMarker)) {
     throw new Error('打包产物中的 README 未命中 Marketplace README 标记，当前 VSIX 可能仍在携带仓库根 README。');
-  }
-}
-
-function runCommand(file, args, errorMessage) {
-  const result = spawnSync(file, args, {
-    cwd: projectRoot,
-    stdio: 'inherit'
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    throw new Error(errorMessage);
   }
 }
 

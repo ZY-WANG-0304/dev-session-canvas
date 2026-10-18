@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import net from 'node:net';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { NOTIFIER_ZH_CN_LANGUAGE_PACK_FIXTURE, stageLanguagePackFixture } from './notifier-smoke-utils.mjs';
 
 import {
   launchPreparedVSCodeScenario,
@@ -22,17 +22,12 @@ const {
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
-const debugRoot = path.join(projectRoot, '.debug', 'template-marketplace-vscode-local-preview-e2e');
-const hostTmpRoot = path.join(projectRoot, '.debug', 'template-marketplace-vscode-local-preview-e2e-host-tmp');
+const debugRoot = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT?.trim()
+  || path.join(projectRoot, '.debug', 'template-marketplace-vscode-local-preview-e2e');
 const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');
 const fakeAgentProviderPath = path.join(smokeFixturesDir, 'fake-agent-provider');
 const missingAgentProviderPath = path.join(smokeFixturesDir, 'missing-agent-provider');
 const smokeFixturesPath = `${smokeFixturesDir}${path.delimiter}${process.env.PATH ?? ''}`;
-
-process.env.TMPDIR = hostTmpRoot;
-process.env.TMP = process.env.TMPDIR;
-process.env.TEMP = process.env.TMPDIR;
-fs.mkdirSync(process.env.TMPDIR, { recursive: true });
 
 async function main() {
   if (shouldReRunInsideXvfb()) {
@@ -69,6 +64,9 @@ async function main() {
       projectRoot,
       targetRoot: path.join(runtime.debugRoot, 'smoke-host')
     });
+    // This retained preview suite asserts Chinese copy. Declare and establish
+    // that locale instead of relying on the developer's global language pack.
+    await stageLanguagePackFixture(runtime, NOTIFIER_ZH_CN_LANGUAGE_PACK_FIXTURE);
 
     await launchPreparedVSCodeScenario({
       projectRoot,
@@ -78,6 +76,7 @@ async function main() {
       extensionTestsPath: resolveStagedSmokeTestPath(smokeHostRoot, 'template-marketplace-preview-tests.cjs'),
       disableExtensions: false,
       disableWorkspaceTrust: true,
+      extraLaunchArgs: ['--locale=zh-cn'],
       extensionTestsEnv
     });
 

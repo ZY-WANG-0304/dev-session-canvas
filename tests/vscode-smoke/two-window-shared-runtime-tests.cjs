@@ -38,14 +38,14 @@ module.exports = {
   run
 };
 
-async function run() {
+async function run({ gateStepBoundary } = {}) {
   try {
     await resolveRuntimeInputs();
     console.log(`[two-window-shared-runtime] role=${role} start`);
     if (role === 'owner') {
-      await runOwnerWindow();
+      await runOwnerWindow(gateStepBoundary);
     } else if (role === 'attacher') {
-      await runAttacherWindow();
+      await runAttacherWindow(gateStepBoundary);
     } else {
       throw new Error(`Unknown two-window shared runtime role: ${role}`);
     }
@@ -56,7 +56,9 @@ async function run() {
   }
 }
 
-async function runOwnerWindow() {
+async function runOwnerWindow(gateStepBoundary) {
+  const step = (id, status) => gateStepBoundary?.({ id, status, phase: 'action/assert' });
+  await step('fixture-start', 'started');
   await activateExtension();
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await waitForRuntimeSupervisorSettled(0, 20000);
@@ -115,6 +117,8 @@ async function runOwnerWindow() {
     state: snapshot.state
   });
 
+  await step('fixture-start', 'passed');
+  await step('peer-attach-and-shared-canvas', 'started');
   await waitForJsonFile(sharedPath('attacher-attached.json'), 60000);
 
   const previousIds = new Set((await getDebugSnapshot()).state.nodes.map(node => node.id));
@@ -133,6 +137,8 @@ async function runOwnerWindow() {
   await deleteNode(sharedNote.id);
   await writeJsonFile(sharedPath('owner-deleted-note.json'), { nodeId: sharedNote.id });
   await waitForJsonFile(sharedPath('attacher-saw-note-delete.json'), 60000);
+  await step('peer-attach-and-shared-canvas', 'passed');
+  await step('bidirectional-io', 'started');
 
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = findOptionalNodeById(currentSnapshot, agentNode.id);
@@ -161,6 +167,8 @@ async function runOwnerWindow() {
   });
 
   await waitForJsonFile(sharedPath('attacher-saw-owner-input.json'), 60000);
+  await step('bidirectional-io', 'passed');
+  await step('shared-resize', 'started');
   await waitForJsonFile(sharedPath('attacher-resized-terminal.json'), 60000);
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentTerminal = findOptionalNodeById(currentSnapshot, terminalNode.id);
@@ -173,6 +181,8 @@ async function runOwnerWindow() {
     ok: true
   });
 
+  await step('shared-resize', 'passed');
+  await step('shared-stop', 'started');
   await waitForJsonFile(sharedPath('attacher-stopped-terminal.json'), 60000);
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentTerminal = findOptionalNodeById(currentSnapshot, terminalNode.id);
@@ -187,6 +197,8 @@ async function runOwnerWindow() {
     ok: true
   });
 
+  await step('shared-stop', 'passed');
+  await step('shared-delete', 'started');
   await waitForJsonFile(sharedPath('attacher-deleted-agent.json'), 60000);
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentAgent = findOptionalNodeById(currentSnapshot, agentNode.id);
@@ -196,6 +208,8 @@ async function runOwnerWindow() {
     ok: true
   });
 
+  await step('shared-delete', 'passed');
+  await step('non-last-departure', 'started');
   const beforeSwitchIds = new Set((await getDebugSnapshot()).state.nodes.map(node => node.id));
   await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'terminal', preferredPosition: { x: 800, y: 500 } } });
   const switchTerminal = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'terminal' && !beforeSwitchIds.has(node.id));
@@ -217,6 +231,8 @@ async function runOwnerWindow() {
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   await waitForSnapshot(current => current.state.nodes.length === 0, 30000);
   assert(originalProcesses.every(({ pid }) => processExists(pid)), 'Non-last departure retains Supervisor');
+  await step('non-last-departure', 'passed');
+  await step('private-isolation-and-reenable', 'started');
   await simulateRuntimeReload();
   await openCanvasEditor();
   await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 100, y: 100 } } });
@@ -239,9 +255,12 @@ async function runOwnerWindow() {
   await waitForRuntimeSupervisorSettled(0, 20000);
   await setRuntimePersistenceEnabled(false);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await step('private-isolation-and-reenable', 'passed');
 }
 
-async function runAttacherWindow() {
+async function runAttacherWindow(gateStepBoundary) {
+  const step = (id, status) => gateStepBoundary?.({ id, status, phase: 'action/assert' });
+  await step('fixture-attach', 'started');
   const ownerReady = await waitForJsonFile(sharedPath('owner-ready.json'), 60000);
   await activateExtension();
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
@@ -279,6 +298,8 @@ async function runAttacherWindow() {
     ok: true
   });
 
+  await step('fixture-attach', 'passed');
+  await step('shared-canvas', 'started');
   const sharedNote = await waitForJsonFile(sharedPath('owner-created-note.json'), 60000);
   await waitForSnapshot(current => Boolean(findOptionalNodeById(current, sharedNote.nodeId)), 30000);
   await dispatchWebviewMessage({ type: 'webview/moveNode', payload: { id: sharedNote.nodeId, position: { x: 777, y: 333 } } });
@@ -294,6 +315,8 @@ async function runAttacherWindow() {
   await waitForSnapshot(current => !findOptionalNodeById(current, sharedNote.nodeId), 30000);
   await writeJsonFile(sharedPath('attacher-saw-note-delete.json'), { ok: true });
 
+  await step('shared-canvas', 'passed');
+  await step('bidirectional-io', 'started');
   await sendExecutionInput(ownerReady.agentNodeId, 'agent', `${MARKERS.attacherAgent}\r`);
   await sendExecutionInput(ownerReady.terminalNodeId, 'terminal', `echo ${MARKERS.attacherTerminal}\r`);
   snapshot = await waitForSnapshot((currentSnapshot) => {
@@ -322,6 +345,8 @@ async function runAttacherWindow() {
     ok: true
   });
 
+  await step('bidirectional-io', 'passed');
+  await step('shared-resize', 'started');
   await resizeExecution(ownerReady.terminalNodeId, 'terminal', RESIZE_COLS, RESIZE_ROWS);
   snapshot = await waitForSnapshot((currentSnapshot) => {
     const currentTerminal = findOptionalNodeById(currentSnapshot, ownerReady.terminalNodeId);
@@ -334,6 +359,8 @@ async function runAttacherWindow() {
     ok: true
   });
 
+  await step('shared-resize', 'passed');
+  await step('shared-stop', 'started');
   await waitForJsonFile(sharedPath('owner-saw-resize.json'), 60000);
   await stopExecution(ownerReady.terminalNodeId, 'terminal');
   snapshot = await waitForSnapshot((currentSnapshot) => {
@@ -349,6 +376,8 @@ async function runAttacherWindow() {
     ok: true
   });
 
+  await step('shared-stop', 'passed');
+  await step('shared-delete', 'started');
   await waitForJsonFile(sharedPath('owner-saw-terminal-stop.json'), 60000);
   await deleteNode(ownerReady.agentNodeId);
   snapshot = await waitForSnapshot(
@@ -359,6 +388,8 @@ async function runAttacherWindow() {
     ok: true
   });
 
+  await step('shared-delete', 'passed');
+  await step('last-departure', 'started');
   await waitForJsonFile(sharedPath('owner-saw-agent-delete.json'), 60000);
   const switchTerminal = await waitForJsonFile(sharedPath('owner-switch-live-terminal.json'), 60000);
   await waitForSnapshot(current => findOptionalNodeById(current, switchTerminal.nodeId)?.metadata?.terminal?.liveSession === true, 30000);
@@ -393,6 +424,8 @@ async function runAttacherWindow() {
   for (const { pid } of switchTerminal.processes) assert(!processExists(pid), 'Last departure must confirm original Supervisor exit');
   assert.equal((await getDebugSnapshot()).state.nodes.length, 0);
   await writeJsonFile(sharedPath('attacher-last-departure.json'), { supervisorProcessesExited: switchTerminal.processes });
+  await step('last-departure', 'passed');
+  await step('private-isolation-and-reenable', 'started');
   await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', preferredPosition: { x: 200, y: 200 } } });
   const privateNote = (await getDebugSnapshot()).state.nodes.find(node => node.kind === 'note');
   assert(privateNote);
@@ -410,6 +443,7 @@ async function runAttacherWindow() {
   await vscode.commands.executeCommand(COMMAND_IDS.testResetState);
   await setRuntimePersistenceEnabled(false);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await step('private-isolation-and-reenable', 'passed');
 }
 
 async function activateExtension() {

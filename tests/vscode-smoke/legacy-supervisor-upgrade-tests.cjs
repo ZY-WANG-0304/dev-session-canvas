@@ -40,7 +40,13 @@ module.exports = {
   run
 };
 
-async function run() {
+async function run({ gateStepBoundary } = {}) {
+  return runGenerationContinuity(gateStepBoundary);
+}
+
+async function runGenerationContinuity(gateStepBoundary) {
+  const step = (id, status) => gateStepBoundary?.({ id, status, phase: 'action/assert' });
+  await step('fixture-generations', 'started');
   const legacySupervisorScript = process.env.DEV_SESSION_CANVAS_LEGACY_SUPERVISOR_SCRIPT;
   const legacySupervisorRef = process.env.DEV_SESSION_CANVAS_LEGACY_SUPERVISOR_REF;
   assert.ok(legacySupervisorScript, 'Expected a historical Supervisor binary path from the smoke runner.');
@@ -138,6 +144,8 @@ async function run() {
     );
     await waitForRegistrySessions(supervisorPaths.registryPath, [legacyAgentSessionId, legacyTerminalSessionId]);
 
+    await step('fixture-generations', 'passed');
+    await step('attach-old-generations', 'started');
     await setPersistedState(
       createLegacyRuntimeState({
         runtimeStoragePath,
@@ -170,6 +178,8 @@ async function run() {
     });
     assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_AGENT_NODE_ID), LEGACY_AGENT_MARKER);
     assertLegacyInteractiveProjection(findProbeNodeById(probe, LEGACY_TERMINAL_NODE_ID), LEGACY_TERMINAL_MARKER);
+    await step('attach-old-generations', 'passed');
+    await step('old-generation-io-resize', 'started');
     await clearDiagnosticEvents();
     await performWebviewDomAction({
       kind: 'sendExecutionInput',
@@ -260,6 +270,8 @@ async function run() {
       [resizedLegacyTerminalProbe.terminalCols, resizedLegacyTerminalProbe.terminalRows]
     );
 
+    await step('old-generation-io-resize', 'passed');
+    await step('current-generation-isolation', 'started');
     const nodeIdsBeforeCurrentCreate = new Set(snapshot.state.nodes.map((node) => node.id));
     await dispatchWebviewMessage({
       type: 'webview/createDemoNode',
@@ -325,6 +337,8 @@ async function run() {
       20000
     );
 
+    await step('current-generation-isolation', 'passed');
+    await step('old-generation-retirement', 'started');
     await clearDiagnosticEvents();
     await performWebviewDomAction({
       kind: 'clickNodeActionButton',
@@ -381,6 +395,8 @@ async function run() {
     assert.deepStrictEqual(previousGenerationStreamExit, { code: 0, signal: null });
     legacySupervisorProcess = undefined;
     previousGenerationStreamSupervisorProcess = undefined;
+    await step('old-generation-retirement', 'passed');
+    await step('current-after-old-exit', 'started');
 
     await performWebviewDomAction({
       kind: 'sendExecutionInput',
@@ -402,6 +418,7 @@ async function run() {
       (currentSnapshot) => !findOptionalNodeById(currentSnapshot, currentTerminalNode.id),
       30000
     );
+    await step('current-after-old-exit', 'passed');
     scenarioPassed = true;
   } catch (error) {
     await writeFailureArtifacts(error, resizeEvidence);

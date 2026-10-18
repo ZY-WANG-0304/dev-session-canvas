@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { parseArgs } from 'node:util';
+import { infrastructureBudgets } from './catalog.mjs';
+import { writeJSON } from './receipts.mjs';
+import { runProcess, npmCommand, nodeCommand } from './process.mjs';
+const split=process.argv.indexOf('--');assert(split>=0,'Use -- before the actual infrastructure command');
+const {values}=parseArgs({args:process.argv.slice(2,split),options:{kind:{type:'string'},output:{type:'string'}}});
+assert(['install','download'].includes(values.kind)&&values.output);
+const [file,...args]=process.argv.slice(split+1);assert(file);
+const command=file==='node'?nodeCommand(args):file==='npm'?npmCommand(args):{file,args};
+const startedAt=new Date().toISOString(),deadline=Date.now()+infrastructureBudgets[values.kind];
+const destination=path.join(values.output,'infrastructure',`${values.kind}.json`);
+const observed=await runProcess(command.file,command.args,{deadline,logPath:destination.replace('.json','.log')});
+await writeJSON(destination,{schemaVersion:1,kind:values.kind,startedAt,completedAt:new Date().toISOString(),deadline,...observed});
+if(observed.status!=='passed')process.exitCode=1;

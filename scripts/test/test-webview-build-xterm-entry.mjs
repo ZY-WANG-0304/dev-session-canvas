@@ -6,18 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 import esbuild from 'esbuild';
+import { browserBuildConfig } from '../build/build-browser-assets.mjs';
 
 const require = createRequire(import.meta.url);
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-webview-xterm-entry-'));
 
 try {
-  const buildScriptContents = await readFile('scripts/build/build.mjs', 'utf8');
-  assert.match(
-    buildScriptContents,
-    /@xterm\/xterm\/lib\/xterm\.js/u,
-    'Expected the Webview build to pin @xterm/xterm to the CommonJS browser entry.'
-  );
-
   const entryFile = path.join(tempDir, 'xterm-decrqm-probe.js');
   const outfile = path.join(tempDir, 'xterm-decrqm-probe.bundle.js');
 
@@ -44,24 +38,16 @@ try {
   );
 
   await esbuild.build({
+    ...browserBuildConfig({ output: tempDir, production: true }),
     entryPoints: [entryFile],
     bundle: true,
     minify: true,
     nodePaths: [path.resolve('node_modules')],
     format: 'iife',
     outfile,
+    outdir: undefined,
     platform: 'browser',
     target: 'es2020',
-    plugins: [
-      {
-        name: 'xterm-browser-main-entry',
-        setup(build) {
-          build.onResolve({ filter: /^@xterm\/xterm$/ }, () => ({
-            path: require.resolve('@xterm/xterm/lib/xterm.js')
-          }));
-        }
-      }
-    ]
   });
 
   const result = spawnSync(process.execPath, [outfile], {

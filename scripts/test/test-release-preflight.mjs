@@ -23,13 +23,8 @@ try {
     PATH: `${path.join(tempDir, 'bin')}${path.delimiter}${process.env.PATH || ''}`,
     RELEASE_PREFLIGHT_TEST_LOG: verificationLogPath
   });
-  assert.equal(fullVerification.status, 0, fullVerification.stderr || fullVerification.stdout);
-  assert.deepEqual((await readFile(verificationLogPath, 'utf8')).trim().split(/\r?\n/u), [
-    'run test:release-preflight',
-    'run test:release-preflight-workflow',
-    'run test',
-    'run validate:clean-checkout:vsix -- --ref HEAD'
-  ]);
+  assert.notEqual(fullVerification.status, 0);
+  assert.match(fullVerification.stderr, /release:verify/u);
 
   const fakeNpmEnv = {
     PATH: `${path.join(tempDir, 'bin')}${path.delimiter}${process.env.PATH || ''}`,
@@ -59,11 +54,9 @@ try {
   await writeFixture(tempDir, '0.26.1');
   await writeFile(verificationLogPath, '');
   const nextRelease = runPreflight(['--verify'], fakeNpmEnv, '0.26.1');
-  assert.equal(nextRelease.status, 0, nextRelease.stderr || nextRelease.stdout);
-  assert.deepEqual((await readFile(verificationLogPath, 'utf8')).trim().split(/\r?\n/u), [
-    'run test:release-preflight', 'run test:release-preflight-workflow', 'run test',
-    'run validate:clean-checkout:vsix -- --ref HEAD'
-  ]);
+  assert.notEqual(nextRelease.status, 0);
+  assert.match(nextRelease.stderr, /release:verify/u);
+  assert.equal(await readFile(verificationLogPath, 'utf8'), '', 'Current releases cannot run the legacy test/package path');
   await writeFixture(tempDir, version);
 
   await writeFile(

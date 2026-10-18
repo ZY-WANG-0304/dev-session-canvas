@@ -4,31 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 import esbuild from 'esbuild';
+import { browserBuildConfig } from '../build/build-browser-assets.mjs';
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-sidebar-codicon-'));
 
 try {
-  const buildScriptContents = await readFile('scripts/build/build.mjs', 'utf8');
-  assert.match(
-    buildScriptContents,
-    /sidebar-codicon\.css/,
-    'Expected build.mjs to include the sidebar codicon bundled asset entry.'
-  );
-
-  await esbuild.build({
-    entryPoints: {
-      'sidebar-codicon': 'extensions/vscode/dev-session-canvas/src/webview/sidebar-codicon.css'
-    },
-    bundle: true,
-    format: 'iife',
-    outdir: tempDir,
-    entryNames: '[name]',
-    platform: 'browser',
-    target: 'es2020',
-    loader: {
-      '.ttf': 'file'
-    }
-  });
+  const config = browserBuildConfig({ output: tempDir });
+  assert(config.entryPoints['sidebar-codicon'].endsWith('sidebar-codicon.css'));
+  await esbuild.build(config);
 
   const outputFiles = await readdir(tempDir);
   assert.ok(
@@ -61,5 +44,6 @@ try {
 
   console.log('sidebar codicon bundle tests passed');
 } finally {
+  esbuild.stop();
   await rm(tempDir, { recursive: true, force: true });
 }

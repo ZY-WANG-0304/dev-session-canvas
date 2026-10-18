@@ -2,13 +2,13 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
-## 2026-10-17：CI与发布门禁重设计（方案选定，实施与实际验收待完成）
+## 2026-10-18：CI与发布门禁重设计（实现验证中，正式输入与跨平台待验）
 
-用户要求从分层审查推进为重设计，选定[release-gate-redesign.md](../design-docs/release-gate-redesign.md)：普通PR保守分类、发布PR/最终tag各自完整验证、15验证job按依赖产物执行、一次clean双包和消费式packaged/三x64原样安装、阶段期限/always工件、严格渠道内容回执与原包恢复。保留发布六外层job、六native来源、现有19/8默认与3focused诊断、双阶段验证和VS deferred策略。smoke按目标方案同步为已选定，未实施。
+[release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[活计划](active/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真正clean/packaged/installed和Actions完整验收尚需运行，不能把实施映射视为通过。
 
-拟议落点为scripts/gates目录、ci-validation reusable、两个现有runner及package-clean/prepare/完成判定模块；此轮仅设计资料，不创建程序接口。迁移[清单和核对](../references/release-gate-redesign/README.md)覆盖70顶层命令、8Marketplace分支、10补充named检查、22smoke入口/152拟议case目录。先完成严格范围/回执/取证与旧adapter，再同批双包/安装/渠道内容口径，再纯前端build与独立case，最后切新required检查；旧门禁在等价验收前保留。当前产品恢复竞态和PR327最新正式输入门禁不由本设计关闭。
+六平台有限操作与三x64原样安装须实际runner验证，Node/VSCode/Chromium及基础设施预算须校准；最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 
-仍需实际校准固定Node22.23.3/VSCode1.142.0环境及基础设施预算、六平台PTY操作/三x64原样安装、渠道重签与canonical内容口径。native load成功不代证操作、原样本地安装不代证Marketplace依赖下载；最低VSCode、arm64安装、真实TUI完成信号和系统通知呈现继续独立待验。远端required保护需实际配置/红灯验证。设计控制不代替CI/产品验收；研究计划release-gate-redesign完成后归档，后续实现必须建立实施ExecPlan，关联修复继续现有PR范围。
+关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。
 
 ## 2026-10-17：发布门禁分层与产物证据（审查完成，方案待确认）
 
@@ -21,13 +21,13 @@
 设计研究计划[release-gate-layering-review.md](completed/release-gate-layering-review.md)完成；实现、产品与完整发布验收均未执行。
 
 
-## 2026-10-17：smoke场景与子场景重划（设计已交付，实施待推进）
+## 2026-10-18：smoke场景与子场景重划（独立目录已接线，新增缺口仍未实施）
 
-用户确认链接交互与Stop分开，并要求重梳退出、重启、高输出响应。拟议设计[smoke-scenario-boundaries.md](../design-docs/smoke-scenario-boundaries.md)按目标细化原01–07为14类，其他trusted领域与特殊拓扑完整保留；[覆盖清单](../references/release-gate-flow-audit/smoke-redesign/README.md)映射源码19/packaged8/focused3、trusted109/restricted38调用、原01–07的58项语义和特殊组合步骤。设计输入50e201ca，静态核对不构成产品验收；runner、断言、CI均未改。
+[smoke-scenario-boundaries.md](../design-docs/smoke-scenario-boundaries.md)现落实102独立case、13默认因果suite和3focused诊断。source115加3辅助、packaged104及两个Marketplace Host分别冻结；旧22 routes/137覆盖目的地的helper注册/AST可达与实际步骤边界逐项校验，但不签发验收。source/packaged真实对应输入、特殊拓扑及清理结果须继续从Host回执与实际工件验证，不能以目录数量宣称覆盖通过。
 
-后续责任落点为两个smoke runner、stage依赖与tests/vscode-smoke各suite。依次落地共享目录和具名阶段结果、独立fixture及证据消费者，保持旧覆盖直到逐条断言与source/packaged等价验收后再去重；完整入口拒绝filter减少范围，未知/空集合失败，业务失败与清理失败分别记录。普通Host整场期限与分组成本须实际测量。链接成功不代Stop，前台Ctrl-C不代PTY结束，模拟Host边界不代真实退出。
+15个proposed-gap保留not-implemented：包括live页面remount、snapshot-only真实新Host恢复、边界后自然/Stop终态、额外Terminal退出/重启、原生崩溃、Stop不响应、完整高输出/resize及真实TUI完成证据。它们是原设计明确的后续范围，不混入当前137项已实现映射，也不自动扩大0.26.1阻塞；固定Node/宿主、真实最低宿主和并发成本待受控验收。发布确定生产竞态和最终完整门禁仍阻塞，不能靠CI命名或延长等待消除。
 
-新增待验范围包括live页面remount、snapshot-only真实新Host恢复、自然/Stop终态经边界保持、Terminal退出与重启、原生崩溃、Stop不响应、高输出完整性/resize和真实TUI完成证据。它们不计入已有覆盖，不因登记自动扩大0.26.1阻塞；已复现恢复撤销订阅生产竞态及PR327最新正式输入完整门禁仍按原计划处理。设计研究计划[smoke-scenario-redesign.md](completed/smoke-scenario-redesign.md)已完成，实施尚未开始，继续既有修复范围，不另建诊断/验证/文档PR。
+后续时机：补齐每个缺口的独立fixture、真实身份/权威完成信号与故障反例后，经目录差异review再纳入必跑。兼容case共Host优化也须先实测隔离/成本，当前每case或因果suite独立matrix，保留原业务等待与不可切的setup→verify。实施与证据继续现有PR335，不另拆文档/验证PR。
 
 ## 2026-10-17：smoke 的 fake Agent 状态断言不能代证真实 TUI 回合完成（待验证）
 

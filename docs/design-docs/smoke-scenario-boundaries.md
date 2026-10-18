@@ -1,23 +1,23 @@
 ---
 title: Smoke 场景与子场景的验证边界重划
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域, 画布交互域, 项目状态域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md]
-updated_at: 2026-10-17
+related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/active/release-gate-implementation.md]
+updated_at: 2026-10-18
 ---
 
 # Smoke 场景与子场景的验证边界重划
 
 ## 问题与范围
 
-用户确认链接交互与停止应分开验证，并要求重新分析退出、重启和高输出响应等场景；随后要求整体门禁重新设计。本次选定按验证目标组织 smoke：一个场景回答一个产品问题，子场景对应同一问题的不同触发条件；有因果关系的动作保留为具名步骤。名称不再沿用历史修复批次。整体执行/产物/失败契约见[CI与发布门禁重设计](release-gate-redesign.md)；当前runner、断言、CI和发布范围均未实施。
+用户确认链接交互与停止应分开验证，并要求重新分析退出、重启和高输出响应等场景；随后要求整体门禁重新设计。本次选定按验证目标组织 smoke：一个场景回答一个产品问题，子场景对应同一问题的不同触发条件；有因果关系的动作保留为具名步骤。名称不再沿用历史修复批次。整体执行/产物/失败契约见[CI与发布门禁重设计](release-gate-redesign.md)；runner、目录与CI已实现初版并进入验证，正式输入和跨平台验收尚未完成。
 
-研究输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`。当前 Linux 源码默认19项、packaged默认8项、focused-only3项，以及 trusted/restricted 的109/38处直接 await 调用均进入[迁移清单](../references/release-gate-flow-audit/smoke-redesign/coverage-map.json)。调用点数量不是测试数量。原01–07的主要语义覆盖另外逐项映射；清单是拆分检查的输入，不代替逐条断言的实施 review。
+研究输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`。设计研究时Linux源码默认19项、packaged默认8项、focused-only3项，以及 trusted/restricted 的109/38处直接 await 调用均进入[迁移清单](../references/release-gate-flow-audit/smoke-redesign/coverage-map.json)。调用点数量不是测试数量。原01–07的主要语义覆盖另外逐项映射；清单是拆分检查的输入，不代替逐条断言的实施 review。
 
-原[六张现状图](../references/release-gate-flow-audit/smoke/README.md)继续说明已有流程。这里描述拟议流程，不能据此宣称新场景已在 CI 运行。六平台原生资产 job 的 build/load 也不构成这些行为的验收。
+原[六张现状图](../references/release-gate-flow-audit/smoke/README.md)继续说明已有流程。这里描述正式方案；本地诊断、Actions和发布验收分别记录，不能据图宣称执行通过。六平台原生资产 job 的 build/load 也不构成这些行为的验收。
 
 ## 现有分组为什么难以定位失败
 
@@ -31,7 +31,7 @@ updated_at: 2026-10-17
 | --- | --- | --- | --- |
 | 仅把06拆成链接与Stop，其余改名 | 改动小 | 01/07及trusted仍混合退出、重启、压力；失败归属仍不清楚 | 不足以满足本次要求 |
 | 每条断言单独启动Host | 隔离直接 | 破坏原执行连续性，重复启动成本大；有因果步骤无法按同一身份验证 | 不采用 |
-| 按目标分场景、按触发条件分子场景，保留有限组合流程 | 可定向运行，身份和失败阶段清晰，兼顾启动成本 | 需要迁移fixture与证据消费者，不能一次删掉旧链 | 已选定，未实施 |
+| 按目标分场景、按触发条件分子场景，保留有限组合流程 | 可定向运行，身份和失败阶段清晰，兼顾启动成本 | 需要迁移fixture与证据消费者，不能一次删掉旧链 | 已选定，验证中 |
 
 ## 正式方案
 
@@ -61,7 +61,7 @@ flowchart TD
 
 ### 2. 原01–07重划为14个验证目标
 
-下表编号只用于阅读，稳定标识是英文ID。表中的“现有”指有可迁移的旧断言，所有新组织方式尚未实现。Agent默认fake CLI，Terminal使用真实shell/PTY。
+下表编号只用于阅读，稳定标识是英文ID。表中的“现有”指有可迁移的旧断言，实现状态见本文末尾，未实现缺口不进入通过清单。Agent默认fake CLI，Terminal使用真实shell/PTY。
 
 | # | 场景 | 子场景与验证逻辑 | 原主要来源 |
 | --- | --- | --- | --- |
@@ -99,7 +99,7 @@ flowchart TD
 | 高输出响应 | 持续输出已确认开始；在压力仍存在时操作Note/Agent/创建节点 | 原压力session保持，新增执行有自己的started | 现有Note选中8秒、Agent响应/节点创建15秒，第二输出流8秒；记录压力阶段和计数，不能在输出已结束后补验响应。尚无吞吐或p95产品承诺 |
 | 压力下Ctrl-C | 独立准备双流前台无限输出，再发DOM输入Ctrl-C | 原Terminal身份保持且live | 两原Terminal在15秒内printf新marker；只中断前台命令。后续Stop结束PTY属于清理，不是Ctrl-C通过条件 |
 
-所有数字是迁移现有测试预算，不是新定义产品SLA。准备、断言、清理分别计时；helper内部重试不续期，末次合法观察可以满足原deadline规则。Host级总期限是外层基础设施保护，须用迁移前后真实耗时校准后落实；本设计不凭空指定更长业务超时。当前普通Host仍无独立整场deadline，这项缺口不能靠外层90分钟job上限解释为已解决。
+所有数字是迁移现有测试预算，不是新定义产品SLA。准备、断言、清理分别计时；helper内部重试不续期，末次合法观察可以满足原deadline规则。Host级总期限是外层基础设施保护，须用迁移前后真实耗时校准后落实；本设计不凭空指定更长业务超时。当前实现按原helper清单冻结Host总期限，准备、业务、cleanup/exit与取证分账；基础设施预算仍待真实Actions校准。
 
 ### 4. 再次启动、resume与不同reload不能混用
 
@@ -129,11 +129,11 @@ flowchart TD
 
 完整case名称与旧调用角色见[可读目录和映射](../references/release-gate-flow-audit/smoke-redesign/README.md)。目录包含152个拟议名称：137个现有覆盖的迁移目的地、15个新增待验；这是覆盖索引，不是152个新Host或已独立实现的测试。kind/provider变体和每个业务helper内部的断言还需在实施时进一步明确。trusted的`verifyTrustedDiagnostics`当前需要Agent、Terminal和准备失败返回的具名证据。迁移时将这些检查放回产生证据的case，跨case汇总只接收已验证且标明case/identity的结果；缺失任何必需证据失败。清空诊断缓存、替换节点或后续新session不能补足缺项。
 
-不保留一个重复运行所有领域的巨型trusted旅程。若保留有限用户旅程，只选择有业务因果的“创建→编辑→保存→重读”或“运行→中断→手动恢复”，明确组合额外验证的契约及其单独fixture。实施迁移完成前旧trusted继续运行，不能先删再补。
+不保留一个重复运行所有领域的巨型trusted旅程。若保留有限用户旅程，只选择有业务因果的“创建→编辑→保存→重读”或“运行→中断→手动恢复”，明确组合额外验证的契约及其单独fixture。旧trusted各helper与后置证据通过实施映射逐项迁移；新目录实际步骤、source/packaged对应输入均须验真，不能只删旧链再按静态目录声称等价。
 
 ### 6. 共享目录与源码/packaged覆盖
 
-统一新增 `scripts/smoke/smoke-catalog.mjs`作为两个runner的声明式目录，字段至少为稳定scenario/case ID、中文目标、suite、环境要求、preActivation准备、fixture类型、具名步骤、各阶段预算、default-source/default-packaged/focused标记和证据要求。`scripts/gates/catalog.mjs`引用它冻结正式计划；两个runner消费同一计划并将具名任务序列化交给suite，suite只接受明确选择的case，不兜底执行trusted的未知case。此处与整体[门禁重设计](release-gate-redesign.md)统一目录路径，不再维护第二份CJS registry；这些程序文件尚未创建。
+统一新增 `scripts/smoke/smoke-catalog.mjs`作为两个runner的声明式目录，字段至少为稳定scenario/case ID、中文目标、suite、环境要求、preActivation准备、fixture类型、具名步骤、各阶段预算、default-source/default-packaged/focused标记和证据要求。`scripts/gates/catalog.mjs`引用它冻结正式计划；两个runner消费同一计划并将具名任务序列化交给suite，suite只接受明确选择的case，不兜底执行trusted的未知case。此处与整体[门禁重设计](release-gate-redesign.md)统一目录路径，不再维护第二份CJS registry；这些程序文件已实现；真实来源/任务集合验证与本地诊断结果见活计划。
 
 目录及所有case依赖必须由stage逻辑一起进入测试Host/packaged测试扩展，避免fixture依赖只在源码工作树存在。源码和packaged应运行相同产品case实现；payload来源是维度。packaged仍是开发Host承载生产包解出的payload，不是原样Marketplace双VSIX安装，测试报告须保留该限制。
 
@@ -177,3 +177,11 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 补充但尚未实施的范围包括：local活动执行的真实页面remount、snapshot-only真正新Host手动恢复、自然结束/Stop后Host边界终态保留、Terminal自然/异常退出后的独立重启、挂起/不响应Stop的升级与失败路径、高输出完整性与真实TUI回合状态。exit17是命令触发非零退出，不等于原生崩溃；后者需独立故障模型，不能以更名获得覆盖。普通live resize独立正例及压力下resize也需明确目标，现有重开/旧代几何检查不得删除。
 
 这些缺口先明确目标和独立证据，再补fixture和预算；本设计不把未实施case计入必跑通过，也不自动扩大本版发布阻塞范围。Host分组是否节省总时间、真实provider完成信号是否稳定和新增压力前提是否可重复，均需后续实际验证。
+
+## 当前实施与验证状态（2026-10-18）
+
+`scripts/smoke/smoke-catalog.mjs`现登记102个独立product-case、13个默认因果suite和3个focused诊断。独立case各自从prepare开始，以实际执行的prepare/action/assert step写Host回执；旧代、多窗口、真实重开等继续保留完整因果步骤和原身份。源码默认115项加3个notifier/locale辅助，packaged默认102项加2notifier辅助；两个Marketplace Host单独归层。152个设计目的地由`scripts/smoke/smoke-implementation-map.json`完整映射：137现有目的地为implemented-unverified，15proposed-gap为not-implemented。数字不是实跑通过数；任何mapping或AST检查都不能签发acceptance。
+
+本地独立fixture、特殊拓扑及Marketplace新Host包装器已有真实诊断和保留的首败→修正→复验证据，详见[实施计划](../exec-plans/active/release-gate-implementation.md)。其输入是当前工作树与旧dist/native，不外推新SHA、六native或原样安装。原产品resize/ready/Stop/保存/reader等待保持，修正只解决明确夹具前提：mounted/fit尺寸、Host原身份传递、短systemd/VSCode socket、Remote SSH官方依赖及环境、已空graph避免重复reset、locale语言包。
+
+fake Agent输入区状态仍只覆盖受控启发式，不证明真实TUI回合完成，也不假设回答位于末行。live remount、真实snapshot-only新Host、原生崩溃/Stop不响应及额外压力范围仍按15项未实施缺口记录。产品旧代恢复撤销订阅竞态未修，不能因重划case或延长期限让该确定故障通过。

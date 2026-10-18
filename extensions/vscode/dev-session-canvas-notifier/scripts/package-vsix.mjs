@@ -12,6 +12,7 @@ import {
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { parseArgs } from 'node:util';
 
 import { resolveCommand } from '../../../../scripts/release/package-vsix.mjs';
 
@@ -27,7 +28,8 @@ if (isMainModule) {
   process.exit(main());
 }
 
-export function main() {
+export function main(args = process.argv.slice(2)) {
+  const { values } = parseArgs({ args, options: { output: { type: 'string' } } });
   const packageJsonPath = path.join(packageRoot, 'package.json');
   const vsceEntry = resolveVsceEntry(repoRoot);
   const gitValidationRoot =
@@ -89,8 +91,10 @@ export function main() {
 
     if (result.status === 0) {
       const vsixFilename = `${packageJson.name}-${packageJson.version}.vsix`;
-      copyFileSync(path.join(stagePackageRoot, vsixFilename), path.join(packageRoot, vsixFilename));
-      console.log(`已生成 ${path.join(packageRoot, vsixFilename)}`);
+      const output = values.output ? path.resolve(values.output) : path.join(packageRoot, vsixFilename);
+      mkdirSync(path.dirname(output), { recursive: true });
+      writeFileSync(output, readFileSync(path.join(stagePackageRoot, vsixFilename)), values.output ? { flag: 'wx' } : undefined);
+      console.log(`已生成 ${output}`);
     }
 
     return result.status === null ? 1 : result.status;

@@ -1,12 +1,12 @@
 ---
 title: CI与发布门禁重设计
 decision_status: 已选定
-validation_status: 未验证
+validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/release-gate-redesign.md]
-updated_at: 2026-10-17
+related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/active/release-gate-implementation.md]
+updated_at: 2026-10-18
 ---
 
 # CI与发布门禁重设计
@@ -15,9 +15,9 @@ updated_at: 2026-10-17
 
 用户要求把[分层审查](release-gate-layering-review.md)和[smoke场景重划](smoke-scenario-boundaries.md)推进为完整设计。本设计选定按验证责任组织job、按不可变输入传递产物、按独立回执判定完成的流程。一个失败应直接说明是输入、构建、产品动作、观察、清理还是交付失败；发布的包必须就是最终输入上验收过的那批文件。
 
-`已选定`表示本次工程设计已经收口，`未验证`表示实际workflow、程序接口及产品验收尚未实现。本文选择工程边界，不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，现有生产恢复竞态和最终正式预合并完整门禁继续按既有要求关闭。
+`已选定`表示工程设计已收口，`验证中`表示workflow与程序接口已进入实现和验证，跨平台及最终发布输入验收仍未完成。本文选择工程边界，不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，现有生产恢复竞态和最终正式预合并完整门禁继续按既有要求关闭。
 
-研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。现有workflow与发布脚本未改。本轮仅写设计、可读流程图和设计核对资料，所有拟新增程序文件在本文明确标注；不会单独创建诊断、验证或文档PR。
+研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。设计研究时未改workflow与发布脚本；2026-10-18起按本文实施，落点及真实验证边界见[活计划](../exec-plans/active/release-gate-implementation.md)。实现、回归、根因与文档继续集中PR335，不另建诊断、验证或文档PR。
 
 ## 正式方案
 
@@ -43,11 +43,11 @@ updated_at: 2026-10-17
 - 打包器、扩展manifest/依赖、产物file-list、资源/listing/README/图片、production构建和发布程序改动再增加全部产物层。新路径无法明确归类时默认功能+产物，不能默认为纯文档。
 - 只有明确列出的、不进入包的文档路径可保持基础范围；任务目录/分类规则自身变更触发功能+产物。发布版本变动或release-contract变动必须进入release-pr，并要求唯一版本、双包/lock/CHANGELOG/契约一致。删除契约或只改版本不能成功降级成普通PR。
 
-分类和任务目录写到拟新增`scripts/gates/catalog.mjs`与`scripts/gates/resolve-plan.mjs`；计划文件保存规则版本/摘要、base/head/inputSHA、模式、版本、任务ID+环境及预算。任务目录变更必须展示对base目录的增删差异并review，不能用“新目录少了任务”自动证明覆盖无损。required check在GitHub配置后才有强制性；实际验证红灯、过时base、取消与缺结果的合并阻断，不把文档写成已配置。
+分类和任务目录写到新增`scripts/gates/catalog.mjs`与`scripts/gates/resolve-plan.mjs`；计划文件保存规则版本/摘要、base/head/inputSHA、模式、版本、任务ID+环境及预算。任务目录变更必须展示对base目录的增删差异并review，不能用“新目录少了任务”自动证明覆盖无损。required check在GitHub配置后才有强制性；实际验证红灯、过时base、取消与缺结果的合并阻断，不把文档写成已配置。
 
 ### 2. 可复用验证workflow的job与依赖
 
-拟新增`.github/workflows/ci-validation.yml`作为普通PR、发布PR和最终tag共用的reusable workflow。原`release-preflight.yml`保留触发/解析/稳定聚合入口。下表是job职责，matrix实例的状态分别收集；数量不必为了保持历史六job而压缩。路径均为拟议实现落点。
+新增`.github/workflows/ci-validation.yml`作为普通PR、发布PR和最终tag共用的reusable workflow。原`release-preflight.yml`保留触发/解析/稳定聚合入口。下表是job职责，matrix实例的状态分别收集；数量不必为了保持历史六job而压缩。路径为当前实现落点。
 
 | job | 直接输入与执行内容 | 输出 | 必需前置 |
 | --- | --- | --- | --- |
@@ -71,7 +71,7 @@ updated_at: 2026-10-17
 
 native matrix在load成功后上传对应archive，再执行操作，最后always上传分开的load/操作结果。操作失败但六个load与archive均合法时，source-build/package-clean可以继续收集独立证据：其job须用明确的always前置guard检查input-contract成功、六个load回执的实际producer/摘要与齐全archive，而不能只看reusable job整体红灯就跳过，也不能无条件always消费。任一load失败/缺失依然not-run，最终release聚合仍被操作失败阻断；普通功能范围只有明确的校准操作失败可记nonblocking，必需load和其他阶段失败不能被忽略。
 
-当前`scripts/build/build.mjs`默认要求完整六资产且清主dist，因此frontend-build需要提取/复用其真实浏览器esbuild配置到拟新增`scripts/build/build-browser-assets.mjs`，输出独立目录；不以mock UI或stock比较构建替代真实前端。提取完成前，可以先保留frontend-build等待source-build，明确较慢，不绕资产准入。regression内有些回归会构建自己的临时bundle/启动进程，保留真实依赖和私有目录；“基础层”不意味着全部纯单元。
+当前`scripts/build/build.mjs`默认要求完整六资产且清主dist，因此frontend-build需要提取/复用其真实浏览器esbuild配置到新增`scripts/build/build-browser-assets.mjs`，输出独立目录；不以mock UI或stock比较构建替代真实前端。提取完成前，可以先保留frontend-build等待source-build，明确较慢，不绕资产准入。regression内有些回归会构建自己的临时bundle/启动进程，保留真实依赖和私有目录；“基础层”不意味着全部纯单元。
 
 source-build和package-clean都消费同run/同SHA的六资产，各在独立checkout构建；development与production构建有不同目的，保留两次。它们不会共写dist。全部消费者checkout计划的完整SHA，browser/VSCode版本固定且与任务环境一致，禁用“已安装就用未知版本”的隐式回退。
 
@@ -81,11 +81,11 @@ source-build和package-clean都消费同run/同SHA的六资产，各在独立che
 
 采纳[smoke场景重划](smoke-scenario-boundaries.md)的按目标case/有限因果组合，链接、拖放、Stop、自然/异常退出、再启动、压力各自准备。reload明确区分页面remount、模拟Host边界、真实旧Host退出/保留；等待输入、回答呈现、真实TUI回合完成分别验收。不会将fake prompt或最末行当作真实provider完成事件。
 
-Host分组是fixture/环境复用方式，不是业务场景目录。建议三个默认源码组：`local-products`（执行/画布/Note/链接等）、`runtime-products`（checkpoint、准入、模式、旧代）、`host-topology`（真实重开、多窗口/root、systemd/SSH）。组内的特殊二阶段、共享窗口及旧代组合仍为不可拆的case步骤。packaged按相同case ID/环境目录选择其完整八入口迁移范围，可拆local/runtime两个Host组。每case自身节点、socket、临时文件和provider配置独立，兼容case可共Host，不能读前一case未声明业务状态。
+Host分组是fixture/环境复用方式，不是业务场景目录。目录保留三个逻辑源码组：`local-products`（执行/画布/Note/链接等）、`runtime-products`（checkpoint、准入、模式、旧代）、`host-topology`（真实重开、多窗口/root、systemd/SSH）。组内的特殊二阶段、共享窗口及旧代组合仍为不可拆的case步骤。packaged按相同case ID/环境目录选择其完整八入口迁移范围，当前为每独立case或因果suite单独matrix/私有Host；未来共Host须有成本及隔离证据。每case自身节点、socket、临时文件和provider配置独立，兼容case可共Host，不能读前一case未声明业务状态。
 
-第一阶段计划仍登记现有源码19默认、packaged8默认、3个source focused诊断入口，adapter逐项运行旧suite并给具名步骤结果。原覆盖映射152个拟议case不是152个Host，也不是已实现用例。迁移逐条核对137现有目的地及helper内断言后才能切新目录/去重；15新增目标独立登记为未验，不悄悄加入已通过清单。source focused不因为诊断成功自动计入默认通过。
+第一阶段曾逐旧suite保留19/8默认与3个focused入口；当前目录已拆出102个独立product-case、13个默认因果suite和3个focused诊断。源码默认115加3辅助，packaged默认102加2notifier辅助；两个Marketplace Host另列。原覆盖映射152个拟议case不是152个Host，也不是已实现用例。迁移逐条核对137现有目的地及helper内断言后才能切新目录/去重；15新增目标独立登记为未验，不悄悄加入已通过清单。source focused不因为诊断成功自动计入默认通过。
 
-拟新增`scripts/smoke/smoke-catalog.mjs`提供目录，两个现有runner与stage统一消费；`scripts/gates/catalog.mjs`引用冻结的smoke任务集合。每次完整计划记录实际case+variant哈希，suite回执从实际进入/完成的case输出，不能只打印计划数量。exact重复、额外variant、空结果、缺必跑case均失败。
+新增`scripts/smoke/smoke-catalog.mjs`提供目录，两个现有runner与stage统一消费；`scripts/gates/catalog.mjs`引用冻结的smoke任务集合。每次完整计划记录实际case+variant哈希，suite回执从实际进入/完成的case输出，不能只打印计划数量。exact重复、额外variant、空结果、缺必跑case均失败。
 
 六目标native操作是独立、有限的真实shell契约，必须调用本次目标asset的spawn/input/output/resize/exit/Stop并确认资源释放；resize用子进程实际几何，退出code/signal与cleanup分别验证。load报告继续保留`productValidated=false`，操作报告是另一个证据。原样安装先要求三个x64系统的双包公开入口、基本I/O/resize/Stop和notification路由；arm64仅六原生操作，不外推arm64安装/TUI/旧OS均已验。扩展最低VSCode`^1.80.0`的运行承诺与Node minimum load分账，最低宿主和真实provider范围列为后续受控验收，不能降宣manifest来让门禁通过。
 
@@ -95,7 +95,7 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 `package-clean`替代当前“clean打包→packaged内部重打→prepare再打”的路径。在隔离的git archive SHA、HOME/config/npm cache与新node_modules下npm ci，然后按正式六资产/profile/admission进行主production构建和notifier production构建，各打包一次。postinstall补丁/打包器file-list/README-ref/本地化资源检查保留。来源目录不含用户dirty文件，native-set在dist之外只读使用；浏览器/宿主缓存可复用已核版本文件，不复用node_modules、dist、runtime socket或旧包。
 
-输出固定为`release-candidate/main.vsix`、`release-candidate/notifier.vsix`、`package-receipt.json`；扩展name/version记录在回执，不依赖mtime或根目录glob猜包。拟新增`scripts/release/build-release-candidate.mjs`调用/提取现有package器，必须确认vsce/npm生命周期不会触发额外构建。clean-checkout入口变为构建服务，两个VSIX路径显式传入消费式runner。现有文件清单回归检查staging规则与生产包实际ZIP双层，不能只看developmentComparison的list就称production包正确。
+输出固定为`release-candidate/main.vsix`、`release-candidate/notifier.vsix`、`package-receipt.json`；扩展name/version记录在回执，不依赖mtime或根目录glob猜包。新增`scripts/release/build-release-candidate.mjs`调用/提取现有package器，必须确认vsce/npm生命周期不会触发额外构建。clean-checkout入口变为构建服务，两个VSIX路径显式传入消费式runner。现有文件清单回归检查staging规则与生产包实际ZIP双层，不能只看developmentComparison的list就称production包正确。
 
 `packaged-host`只复制/解包两个输入包到测试副本，记录删除依赖声明、wrapper、测试命令与测试模式的变更清单；notifier也从输入VSIX stage，禁止偷用源码dist。记录原VSIX摘要和测试副本摘要/变更规则，原包前后摘要必须相同。它证明实际production payload的instrumented集成，不称原样安装。
 
@@ -103,7 +103,7 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 `verify-result`绑定package回执与全部必跑结果，通过后写`acceptance-receipt.json`。PR候选包只供PR证据；最终tag重新在最终SHA建并验自己的双包。发布prepare下载最终tag这一批文件并校验，不再package。所有边界重新计算摘要，传输损坏/路径替换/错版本/ref/profile直接失败。
 
-拟新增`scripts/gates/receipts.mjs`与`scripts/gates/verify-result.mjs`统一格式，至少约束以下字段；设计model中的样本只用于验证判定规则：
+新增`scripts/gates/receipts.mjs`与`scripts/gates/verify-result.mjs`统一格式，至少约束以下字段；设计model中的样本只用于验证判定规则：
 
 | 文件 | 必需字段/约束 |
 | --- | --- |
@@ -129,6 +129,10 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 
 每job在固定`gate-artifacts/<job>/<variant>/`写结果/环境/有限stdout-stderr/阶段及原身份。失败先保存最后有效snapshot、实际页面probe及其新鲜度、process/session/owner/frame/readId、等待predicate/deadline，再清理；敏感环境和凭据不采集。clean构建/smoke的临时目录在退出前把必要现场复制到固定工件根，不只打印/tmp路径。trace/截图、包/原生摘要和case日志always上传，成功保留回执与必要摘要。首次失败与后续取证/cleanup失败均保留。
 
+工件导出是独立、有界的取证动作。正式输出保留任务/Host回执、环境、原身份、实际步骤、probe/快照、截图/trace、生成的工作区与控制输入、SSH配置和sshd日志；原包、源码构建与native archive由各自不可变transfer工件保留。依赖副本、宿主/浏览器缓存、SSH私钥和完整HOME不进入结果工件。每个结果工件带内容清单，记录实际保留路径、长度、摘要及明确排除的目录类别；聚合从实际下载ZIP复算清单，缺失/改动不能通过。日志超2MiB时保留头64KiB及尾部，其原长度和保留区间显式记录；结构化回执、probe、trace或失败输入不能截断。首轮取证容量上限为每工件256MiB、单非日志文件64MiB及10000个文件，超限或取证超时使job失败并保留已收集证据，不能静默丢弃。预算与容量属于待Actions校准的基础设施输入，不扩展产品等待。
+
+本地隔离验证同样先确认执行进程及其清理已settle，再在取证30秒/清理60秒储备内导出必要证据和回收checkout；不对仍活动的checkout并发复制或删除。未settle、取证失败或清理失败保留私有目录位置并使本地结果失败。源工作区和其他任务目录不在此回收范围。
+
 取消/超时缺回执视为非成功。聚合使用always及计划内所有job的实际状态；同名required check若整个workflow取消显示cancelled，不用另一成功skip覆盖。发布workflow使用同版本互斥且不自动取消正在交付的attempt；PR旧输入可取消但不可复用为新SHA通过。
 
 ### 6. 发布workflow仍保留六个外层job
@@ -146,7 +150,7 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 
 requiredTargets保持`github-release-assets`和`open-vsx`，每个目标都含主包与notifier。VS Marketplace并行且允许deferred。先上传GitHub再发布渠道有恢复价值，保持；外部发布不原子，不以重设计承诺全渠道同时成功。最终manifest/notes/GitHub assets是发布后事实，不回写同版本CHANGELOG或仓库契约。
 
-现有`publish-tag-release.mjs`提取共享判定到拟新增`scripts/release/release-completion.mjs`和渠道回执生成；workflow调用此模块，不再内嵌另一套字符串merge。`publish-marketplaces.mjs`只接受已验路径，channels严禁打包。GitHub artifact/Release的回执具名下载，无find/glob/mtime选对象。
+现有`publish-tag-release.mjs`提取共享判定到新增`scripts/release/release-completion.mjs`和渠道回执生成；workflow调用此模块，不再内嵌另一套字符串merge。`publish-marketplaces.mjs`只接受已验路径，channels严禁打包。GitHub artifact/Release的回执具名下载，无find/glob/mtime选对象。
 
 ### 7. 渠道状态、内容身份与恢复
 
@@ -169,9 +173,12 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 重试应区分“构建/业务失败”和“渠道部分完成”：前者新attempt重跑必要前置，最终仍要求一次完整对应输入的回执；后者下载原双包，复验身份，保留已完成渠道，不重复上传已存在版本，不重打包。传输重试有界，提交超时未知先查询。原Release不完整保留现场并拒绝自动覆盖，由明确修复路径处理。删临时tag时复查trigger/final tag均对应releaseSHA，且需要可信required-target完成回执；删除失败记录`cleanup-failed`，既有发布成功事实不被抹去，workflow失败供幂等重试。
 
+
+状态恢复实施采用显式父状态摘要及阶段链：首次 prepare 的 pending 状态是根，finalize 与 tag cleanup 各产生后继。每个状态绑定本轮实际 job/run/attempt；不可变状态快照的文件名核原 bytes 摘要，内容须能从对应 prepared 或 finalize Actions 工件独立核对。恢复选择唯一连通链的末端，canonical 文件可落后于已上传后继；缺父状态、分叉、错身份或无法核 producer 时失败。不以 mtime、历史绿色或 JSON 自报选择状态；原 acceptance 与原双包依然必须独立验真。
+
 ### 8. 程序入口与迁移顺序
 
-拟议命令为`ci:verify -- --mode pr|release-pr|release-tag --plan <path>`与`ci:diagnose -- --case <id> --ref <sha>`。本地正式验证从冻结源码及隔离环境运行同一任务图，输出相同回执；`npm test`继续作为本地全量方便入口，不能有独立的第二套场景目录。`release:preflight`保留纯静态能力，`release:verify`转为正式完整任务图入口，版本参数仍要求契约一致。消费式packaged参数至少为`--main-vsix --notifier-vsix --package-receipt --plan`，不隐式构建；独立便捷“build-and-smoke”可以调用构建再测试，但名称与回执必须区别。
+程序入口为`ci:verify -- --mode pr|release-pr|release-tag --plan <path>`与`ci:diagnose -- --case <id> --ref <sha>`。本地正式验证从冻结源码及隔离环境运行同一任务图，输出相同回执；`npm test`继续作为本地全量方便入口，不能有独立的第二套场景目录。`release:preflight`保留纯静态能力，`release:verify`转为正式完整任务图入口，版本参数仍要求契约一致。消费式packaged参数至少为`--main-vsix --notifier-vsix --package-receipt --plan`，不隐式构建；独立便捷“build-and-smoke”可以调用构建再测试，但名称与回执必须区别。
 
 实现按四个可验阶段推进，继续一个关联修复PR，组合发布材料在临时worktree验证；不另建诊断/文档PR：
 
@@ -180,7 +187,7 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 3. 抽取纯浏览器build，按真实依赖拆job，source/Marketplace Host消费统一development bundle；迁移独立smoke case并逐条核对旧断言，证明单case独立性和清理；完成六原生操作和三x64原样安装的真实验收后升级目录版本。
 4. 固定正式环境及required check，负例验证实际GitHub阻断；对新旧同输入门禁做覆盖等价，去旧串行重复接线；PR327 rebase后最新正式预合并完整验证、最终tag独立完整验证仍必须执行。
 
-切换实际workflow时同步`docs/WORKFLOW.md`和相关细分协作入口，明确“验证阶段构建候选双包”和“验证通过后的对外交付”。本轮不修改用户主工作区现有WORKFLOW改动；未来实施应保留并结合该改动，不用新文档直接覆盖它。旧0.26.0/历史tag入口继续原兼容策略。
+切换实际workflow时同步`docs/WORKFLOW.md`和相关细分协作入口，明确“验证阶段构建候选双包”和“验证通过后的对外交付”。本轮不修改用户主工作区现有WORKFLOW改动；本工作树的实施文档保留并结合既有集中收口规则，不用新文档直接覆盖它。旧0.26.0/历史tag入口继续原兼容策略。
 
 不先删除旧完整门禁再补新报告。两体系短期对照可复用同输入构建资产，但不可拿一套部分绿灯填另一套缺结果。提高缓存/并发前记录job/Host耗时和资源；容量/产品准入保持生产值，不为测试同时启动很多case而改admission。旧代/平台特殊fixture有私有资源且必须覆盖其新增probe依赖。
 
@@ -194,10 +201,18 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 ## 设计流程图
 
-三张图描述本方案，不是当前已运行CI。第一张将独立基础层与资产依赖层分开，第二张说明包与回执交接，第三张展示六外层job与渠道恢复规则。完整job输入/输出和失败规则以本文正式方案为准。
+三张图描述正式方案；实际执行状态须查Actions及逐任务回执，不能由图推定通过。第一张将独立基础层与资产依赖层分开，第二张说明包与回执交接，第三张展示六外层job与渠道恢复规则。完整job输入/输出和失败规则以本文正式方案为准。
 
 | 视图 | 可缩放SVG | PNG |
 | --- | --- | --- |
 | 验证依赖与范围 | [validation-flow.svg](../references/release-gate-redesign/validation-flow.svg) | [PNG](../references/release-gate-redesign/validation-flow.png) |
 | 双包交接与验收 | [package-flow.svg](../references/release-gate-redesign/package-flow.svg) | [PNG](../references/release-gate-redesign/package-flow.png) |
 | 发布六job与恢复 | [publish-flow.svg](../references/release-gate-redesign/publish-flow.svg) | [PNG](../references/release-gate-redesign/publish-flow.png) |
+
+## 实施状态（2026-10-18）
+
+当前实现包括15个reusable job、六发布外层job、保守PR分类、固定输入与阶段回执、共享production浏览器构建、同批双包/消费式packaged/三x64原样安装及原包恢复模块。真实旧覆盖迁移由`scripts/smoke/smoke-implementation-map.json`绑定152个设计目的地，其中137项为implemented-unverified、15项not-implemented；静态AST可达/实际step审查不产生产品验收。旧入口与具体断言的迁移替换理由保留在同一映射，未把未实现缺口记成通过。
+
+已实跑：423前端功能、3固定视觉、Marketplace浏览器；完整登记80项regression同批80通过；source独立case及SSH退出/保留、旧代/多窗口/重开和两个Marketplace Host的本地诊断。诊断用旧dist/旧native资产，只证明夹具与新观察接线，不能代证新提交SHA。当前有界证据正反例已通过，SSH实际导出42文件/461626bytes；SSH依赖包固定官方版本/摘要、显式extensionEnvironment、真实短socket路径、零节点cleanup观察与Marketplace中文locale夹具已修，产品等待和断言含义保持。正式Actions、真正clean双包、packaged同批消费及三原样安装待运行。
+
+`main`保护API返回404 Branch not protected，尚未配置required check，不能声称已有强制合并阻断。生产旧代恢复撤销订阅竞态依然是独立发布阻塞；即使CI改造通过也不由此宣称0.26.1可发布。渠道模块只在本地HTTP/内存受控输入验证过，未进行真实发布/上传重签对照，未知内容继续拒绝完成。

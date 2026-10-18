@@ -118,9 +118,9 @@ test('the actual source smoke entry explicitly enables observation in preparatio
   const main = runner.slice(start, runner.indexOf('\nasync function ', start + 1));
   const calls = [];
   const context = vm.createContext({ path, projectRoot: '/test/project', smokeDebugRoot: '/test/debug',
-    scenarios: [{ name: 'trusted', disableWorkspaceTrust: true }], fakeAgentProviderPath: '/test/agent',
+    scenarios: [{ name: 'execution-start/auto-start', variant: 'execution-start--auto-start', disableWorkspaceTrust: true }], fakeAgentProviderPath: '/test/agent',
     missingAgentProviderPath: '/test/missing', smokeFixturesPath: '/test/bin', console: { log() {} },
-    shouldReRunInsideXvfb: () => false, shouldRunScenario: name => name === 'trusted',
+    shouldReRunInsideXvfb: () => false, shouldRunScenario: name => name === 'execution-start/auto-start',
     prepareRuntime: async options => { calls.push(options); return { debugRoot: options.debugRoot }; },
     prepareMainSmokeHostExtension: async options => options.targetRoot,
     resolveStagedSmokeTestPath: (...parts) => path.join(...parts),

@@ -4,6 +4,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+import { inspectVsix } from '../release/build-release-candidate.mjs';
+import { readJSON, verifyPackageFiles } from '../gates/receipts.mjs';
 
 import {
   resolveCommand,
@@ -16,6 +19,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const mainExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const notifierExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
 const vsceEntry = resolveVsceEntry(repoRoot);
+const { values } = parseArgs({ options: { candidate: { type: 'string' } } });
 
 assert.ok(
   vsceEntry,
@@ -119,6 +123,13 @@ try {
   }
 
   console.log('package-vsix file-list tests passed');
+  if (values.candidate) {
+    const receipt = await readJSON(path.join(values.candidate, 'package-receipt.json'));
+    const plan = await readJSON(process.env.DEV_SESSION_CANVAS_GATE_PLAN);
+    await verifyPackageFiles(receipt, plan, values.candidate);
+    for (const pkg of receipt.packages) await inspectVsix(path.join(values.candidate, pkg.path), pkg.id, pkg.version);
+    console.log('Same candidate production ZIP runtime payload and six targets verified');
+  }
 } finally {
   rmSync(stageRoot, { recursive: true, force: true });
 }
