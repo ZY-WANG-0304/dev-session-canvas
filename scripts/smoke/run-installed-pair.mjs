@@ -23,7 +23,8 @@ import { processIdentity, waitForHostAbsence } from './host-evidence.mjs';
 import { openInstalledNotificationCallback } from './installed-notification-callback.mjs';
 import { observeInstalledPublicExit } from './installed-public-exit.mjs';
 import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered,
-  installedGeometryMatchesResize, prepareInstalledLocalizedStop } from './installed-ui-observation.mjs';
+  installedGeometryMatchesResize, prepareInstalledLocalizedStop,
+  findUniqueInstalledTerminalCreation } from './installed-ui-observation.mjs';
 
 const { values } = parseArgs({ options: { plan: { type: 'string' }, candidate: { type: 'string' }, output: { type: 'string' } } });
 assert(values.plan && values.candidate && values.output);
@@ -154,7 +155,11 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
     }
     return null;
   }, value => value !== null);
-  const nodeID = await frame.locator('[data-node-kind="terminal"]').last().getAttribute('data-node-id'); assert(nodeID);
+  const firstTerminalIDs=await frame.locator('[data-node-kind="terminal"][data-node-id]').evaluateAll(nodes=>
+    nodes.map(node=>node.getAttribute('data-node-id')));
+  facts.terminalCreations=[{phase:'first-public-create-observed',ids:firstTerminalIDs,observedAt:Date.now()}];
+  const nodeID=findUniqueInstalledTerminalCreation(firstTerminalIDs,[]);
+  assert(nodeID,'Fresh installed canvas must contain exactly one publicly created Terminal');
   const node = frame.locator(`[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`);
   const textarea = node.locator('textarea.xterm-helper-textarea'); await textarea.waitFor({ state: 'attached' });
   await wait('Original installed Terminal mounted first output',()=>node.locator('.xterm-rows').innerText(),text=>/\S/u.test(text));
@@ -194,8 +199,14 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   await node.locator('[data-node-action-id=restart]').waitFor();
   Object.assign(facts.terminal,{stopped,shellStopped,publicStopObserved:true});
   await driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[]);
-  const notificationNodeID=await wait('New notification Terminal reaches installed canvas',()=>frame.locator('[data-node-kind="terminal"]').last().getAttribute('data-node-id'),
-    value=>Boolean(value)&&value!==nodeID);
+  const notificationNodeID=await wait('Unique new notification Terminal reaches installed canvas',async()=>{
+    const ids=await frame.locator('[data-node-kind="terminal"][data-node-id]').evaluateAll(nodes=>
+      nodes.map(node=>node.getAttribute('data-node-id')));
+    const previous=facts.terminalCreations.at(-1);
+    if(JSON.stringify(previous.ids)!==JSON.stringify(ids))facts.terminalCreations.push({
+      phase:'notification-public-create-observation',ids,originalID:nodeID,observedAt:Date.now()});
+    return findUniqueInstalledTerminalCreation(ids,[nodeID]);
+  },id=>id!==null);
   const notificationNode=frame.locator(`[data-node-kind="terminal"][data-node-id=${JSON.stringify(notificationNodeID)}]`);
   const notificationInput=notificationNode.locator('textarea.xterm-helper-textarea');
   await wait('Notification Terminal mounted first output',()=>notificationNode.locator('.xterm-rows').innerText(),text=>/\S/u.test(text));
@@ -258,6 +269,13 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   facts.notificationRoute.invalidRequestRejected=true;
   // Locale is an independent installed UI check. Publicly close the scene
   // so restart cannot restore its inner frame before the observer attaches.
+  const closedTerminalIDs=await frame.locator('[data-node-kind="terminal"][data-node-id]').evaluateAll(nodes=>
+    nodes.map(node=>node.getAttribute('data-node-id')));
+  facts.localeClosedTerminalIDs={ids:closedTerminalIDs,observedAt:Date.now(),originalHost};
+  assert(closedTerminalIDs.every(id=>typeof id==='string'&&id.length>0));
+  assert.equal(new Set(closedTerminalIDs).size,closedTerminalIDs.length,'Original installed Terminal identities are duplicated');
+  assert.deepEqual([...closedTerminalIDs].sort(),[nodeID,notificationNodeID].sort(),
+    'Only the two original installed Terminal subjects may remain before locale close');
   await driverCommand('workbench.action.closeAllEditors',[]);
   await wait('Original canvas closed before independent locale restart',()=>frame.isDetached(),value=>value===true);
   let exited;childExit.then(value=>{exited=value;});
@@ -296,7 +314,7 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   },value=>value!==null);
   facts.locales.terminalPreparation=[];
   const {nodeID:localizedNodeID,stop:localizedStop,deadline:localizedActionDeadline}=await prepareInstalledLocalizedStop({
-    frame:localizedFrame,create:limit=>driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[],limit),
+    frame:localizedFrame,closedTerminalIDs,create:limit=>driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[],limit),
     deadline:Math.min(deadline,Date.now()+20000),record:step=>facts.locales.terminalPreparation.push(step) });
   await localizedStop.click({timeout:Math.max(1,localizedActionDeadline-Date.now())});
   assert(Date.now()<=localizedActionDeadline,'Original localized Stop deadline exhausted');

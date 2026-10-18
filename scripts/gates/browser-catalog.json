@@ -158,6 +158,11 @@
       "title": "agent mixed hard-wrapped styled paths respect style-change"
     },
     {
+      "id": "a03daaf9564243b49609-1066236d3b0d5de383c0",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed locale keeps genuine multiple creations rejected after the original Terminal set restores"
+    },
+    {
       "id": "a03daaf9564243b49609-10b9442dfd8ea45ab35b",
       "file": "webview-harness.spec.mjs",
       "title": "minimap wheel honors the dynamic fit view min zoom"
@@ -1601,6 +1606,11 @@
       "id": "a03daaf9564243b49609-c0f74bb8402738aa7151",
       "file": "webview-harness.spec.mjs",
       "title": "installed intensity assertion preserves fixed terminal tail and rejects stock serializer loss"
+    },
+    {
+      "id": "a03daaf9564243b49609-c1ef6eefcf83c0e167e1",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed locale waits for the exact closed Terminal set before one creation in the original deadline"
     },
     {
       "id": "a03daaf9564243b49609-c29a583c829d1d33184f",

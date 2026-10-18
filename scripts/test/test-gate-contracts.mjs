@@ -26,7 +26,7 @@ import { observeInstalledPublicExit, installedPublicExitCommand } from '../smoke
 import { readWindowsProcessIdentity } from '../smoke/windows-process-identity.mjs';
 import { chromium } from 'playwright';
 import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
-  prepareInstalledLocalizedStop } from '../smoke/installed-ui-observation.mjs';
+  prepareInstalledLocalizedStop, findUniqueInstalledTerminalCreation } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
@@ -156,9 +156,10 @@ test('installed public shutdown observes the original application and Host separ
 test('localized Stop preparation binds a unique new subject, navigates publicly and keeps creation, navigation and action in one budget', async t => {
   let now = 100000;
   t.mock.method(Date, 'now', () => now);
-  for (const outcome of ['normal', 'ambiguous', 'hidden', 'wrong-name', 'navigation-failed', 'late', 'late-navigation', 'late-observation', 'late-record']) {
+  for (const outcome of ['normal', 'ambiguous', 'hidden', 'wrong-name', 'navigation-failed', 'creation-failed', 'late',
+    'late-navigation', 'late-observation', 'late-record', 'late-create-request-record', 'late-create-complete-record']) {
     now = 100000;
-    let created = false, navigated = false, doubleClicks = 0, stops = 0;
+    let created = false, creates = 0, navigated = false, doubleClicks = 0, stops = 0;
     const events = [], nodeID = 'locale-original', deadline = now + (['hidden', 'wrong-name'].includes(outcome) ? 140 : outcome === 'late' ? 50 : 1000);
     const stop = { isVisible: async () => {
       if (['hidden', 'wrong-name'].includes(outcome)) now += 80;
@@ -186,20 +187,89 @@ test('localized Stop preparation binds a unique new subject, navigates publicly 
       } };
       assert.equal(selector, `[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`); return node;
     } };
-    const action = () => prepareInstalledLocalizedStop({ frame, deadline, record: step => {
+    const action = () => prepareInstalledLocalizedStop({ frame, deadline, closedTerminalIDs: ['existing'], record: step => {
       events.push(step);
       if (outcome === 'late-record' && step.phase === 'localized-stop-interactive') now = deadline + 1;
+      if (outcome === 'late-create-request-record' && step.phase === 'public-create-requested') now = deadline + 1;
+      if (outcome === 'late-create-complete-record' && step.phase === 'public-create-completed') now = deadline + 1;
     },
-      create: async limit => { assert.equal(limit, deadline); created = true;
+      create: async limit => { assert.equal(limit, deadline); creates++; created = true;
+        if (outcome === 'creation-failed') throw new Error('Original public creation rejected');
         if (outcome === 'late') now = deadline + 1; } });
     if (outcome === 'normal') {
       const result = await action(); assert.equal(result.nodeID, nodeID); assert.equal(result.deadline, deadline);
       assert.equal(stops, 0, 'Preparing a visible localized action must not dispatch Stop');
       await result.stop.click({ timeout: result.deadline - Date.now() }); assert.equal(stops, 1);
-      assert.deepEqual(events.map(step => step.phase), ['original-node-bound', 'localized-stop-interactive']);
+      assert.deepEqual(events.filter(step => ['original-node-bound', 'localized-stop-interactive'].includes(step.phase))
+        .map(step => step.phase), ['original-node-bound', 'localized-stop-interactive']);
     } else { await assert.rejects(action); assert.equal(stops, 0); }
     assert(doubleClicks <= 1, 'A rejected navigation cannot retry');
+    assert.equal(creates, outcome === 'late-create-request-record' ? 0 : 1,
+      'Public creation may be dispatched once only before the original deadline');
     if (['ambiguous', 'late'].includes(outcome)) assert.equal(doubleClicks, 0);
+  }
+});
+test('installed locale creation requires exact closed subjects and records invalid observations before rejecting', async t => {
+  assert.equal(findUniqueInstalledTerminalCreation([], []), null);
+  assert.equal(findUniqueInstalledTerminalCreation(['first'], []), 'first');
+  assert.equal(findUniqueInstalledTerminalCreation(['first'], ['first']), null);
+  assert.equal(findUniqueInstalledTerminalCreation(['notification', 'first'], ['first']), 'notification');
+  assert.throws(() => findUniqueInstalledTerminalCreation(['first', 'unexpected'], []), /multiple ambiguous/);
+  assert.throws(() => findUniqueInstalledTerminalCreation(['first', 'notification', 'unexpected'], ['first']), /multiple ambiguous/);
+  assert.throws(() => findUniqueInstalledTerminalCreation(['notification'], ['first']), /lost original/);
+  assert.throws(() => findUniqueInstalledTerminalCreation(['first', 'first'], []), /duplicated/);
+  assert.throws(() => findUniqueInstalledTerminalCreation([null], []), /invalid/);
+  let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  for (const outcome of ['delayed', 'partial', 'unknown', 'duplicate', 'invalid', 'missing', 'lost-after-create',
+    'ambiguous', 'late-baseline', 'late-baseline-record', 'expired', 'missing-input', 'duplicate-input']) {
+    now = 100000;
+    const originalIDs = ['old-2', 'old-3'], nodeID = 'original-new', events = [];
+    const deadline = now + (outcome === 'expired' ? -1 : outcome === 'missing' ? 80 : 1000);
+    let reads = 0, creates = 0, doubleClicks = 0, navigated = false;
+    let lastIDs;
+    const stop = { isVisible: async () => navigated, isEnabled: async () => navigated };
+    const node = { count: async () => 1, getAttribute: async () => navigated ? 'true' : 'false',
+      getByRole: () => stop, locator: () => ({ dblclick: async options => {
+        assert.equal(options.timeout, deadline - now); doubleClicks++; navigated = true;
+      } }) };
+    const frame = { locator: selector => {
+      if (selector === '[data-node-kind="terminal"][data-node-id]') return { evaluateAll: async () => {
+        reads++; now += 40;
+        if (outcome === 'late-baseline') now = deadline + 1;
+        const ids = creates ? outcome === 'lost-after-create' ? [originalIDs[0], nodeID]
+          : [...originalIDs, nodeID, ...(outcome === 'ambiguous' ? ['unrelated-new'] : [])]
+          : outcome === 'missing' ? [] : outcome === 'unknown' ? [...originalIDs, 'unknown-old']
+          : outcome === 'duplicate' ? [...originalIDs, originalIDs[0]]
+          : outcome === 'invalid' ? [null, originalIDs[1]]
+          : reads <= 2 ? outcome === 'partial' ? [originalIDs[0]] : [] : originalIDs;
+        lastIDs = ids; return ids;
+      } };
+      if (selector === '.canvas-shell') return { getAttribute: async () => navigated ? 'false' : 'true' };
+      assert.equal(selector, `[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`); return node;
+    } };
+    const action = () => prepareInstalledLocalizedStop({ frame, deadline,
+      closedTerminalIDs: outcome === 'missing-input' ? undefined : outcome === 'duplicate-input'
+        ? [originalIDs[0], originalIDs[0]] : originalIDs,
+      create: async limit => { assert.equal(limit, deadline); assert.deepEqual(lastIDs, originalIDs); creates++; },
+      record: sample => {
+        events.push(sample);
+        if (outcome === 'late-baseline-record' && sample.phase === 'restored-baseline-ready') now = deadline + 1;
+      } });
+    if (['delayed', 'partial'].includes(outcome)) {
+      const result = await action(); assert.equal(result.nodeID, nodeID); assert.equal(result.deadline, deadline);
+      assert.equal(creates, 1); assert.equal(doubleClicks, 1);
+      assert.deepEqual(events.find(sample => sample.phase === 'restored-baseline-ready').ids, originalIDs);
+      assert.deepEqual(events.filter(sample => sample.phase === 'restored-baseline-observation').map(sample => sample.ids),
+        [outcome === 'partial' ? [originalIDs[0]] : [], originalIDs]);
+    } else {
+      await assert.rejects(action); assert.equal(doubleClicks, 0);
+      assert.equal(creates, ['lost-after-create', 'ambiguous'].includes(outcome) ? 1 : 0);
+      if (['unknown', 'duplicate', 'invalid', 'ambiguous', 'lost-after-create', 'late-baseline'].includes(outcome))
+        assert.deepEqual(events.at(-1).ids, lastIDs, 'The rejected identity sample must remain available');
+      if (['expired', 'missing-input', 'duplicate-input'].includes(outcome)) assert.equal(reads, 0);
+    }
+    assert.deepEqual(originalIDs, ['old-2', 'old-3'], 'Observation must not refresh or mutate the closed baseline');
   }
 });
 test('local projection observation rejects late or mismatched samples without resetting its original deadline', async t => {

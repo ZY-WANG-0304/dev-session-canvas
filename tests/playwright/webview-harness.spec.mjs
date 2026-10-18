@@ -8831,6 +8831,7 @@ test('installed localized Stop preparation publicly focuses the original overvie
     position: { x: 7200, y: 9200 } };
   const evidence = [], deadline = Date.now() + 20000;
   const result = await prepareInstalledLocalizedStop({ frame: page, deadline,
+    closedTerminalIDs: state.nodes.filter(node => node.kind === 'terminal').map(node => node.id),
     create: async limit => {
       expect(limit).toBe(deadline);
       await bootstrap(page, { ...state, nodes: [...state.nodes, original] });
@@ -8838,8 +8839,9 @@ test('installed localized Stop preparation publicly focuses the original overvie
     }, record: step => evidence.push(step) });
   expect(result.nodeID).toBe(originalID);
   expect(result.deadline).toBe(deadline);
-  expect(evidence.map(step => step.phase)).toEqual(['original-node-bound', 'localized-stop-interactive']);
-  expect(evidence[0].overview).toBe('true');
+  expect(evidence.filter(step => ['original-node-bound', 'localized-stop-interactive'].includes(step.phase))
+    .map(step => step.phase)).toEqual(['original-node-bound', 'localized-stop-interactive']);
+  expect(evidence.find(step => step.phase === 'original-node-bound').overview).toBe('true');
   await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
   await expect(result.stop).toBeVisible();
   await expect(result.stop).toBeEnabled();
@@ -8849,6 +8851,78 @@ test('installed localized Stop preparation publicly focuses the original overvie
   await expect.poll(readStops).toEqual([
     expect.objectContaining({ payload: expect.objectContaining({ nodeId: originalID }) })
   ]);
+});
+
+test('installed locale waits for the exact closed Terminal set before one creation in the original deadline', async ({ page }) => {
+  await openHarness(page);
+  const state = createMultiLiveExecutionNodeState('terminal', 2);
+  for (const node of state.nodes) {
+    node.status = 'stopped';
+    node.metadata.terminal.liveSession = false;
+    node.metadata.terminal.lifecycle = 'stopped';
+  }
+  const closedTerminalIDs = state.nodes.map(node => node.id);
+  const originalID = 'installed-locale-after-restore';
+  const original = { ...createLiveExecutionNodeState('terminal').nodes[0], id: originalID };
+  const ids = () => page.locator('[data-node-kind="terminal"][data-node-id]')
+    .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id')));
+  await expect(page.locator('.canvas-shell')).toHaveCount(1);
+  expect(await ids()).toEqual([]);
+  const evidence = [], deadline = Date.now() + 20000;
+  let creates = 0;
+  const result = await prepareInstalledLocalizedStop({ frame: page, closedTerminalIDs, deadline,
+    record: async step => {
+      evidence.push(step);
+      if (step.phase === 'restored-baseline-observation' && step.ids.length === 0) {
+        expect(creates).toBe(0);
+        await bootstrap(page, state);
+      }
+    }, create: async limit => {
+      expect(limit).toBe(deadline);
+      expect(await ids()).toEqual(closedTerminalIDs);
+      creates++;
+      await updateHostState(page, { ...state, nodes: [...state.nodes, original] });
+    } });
+  expect(creates).toBe(1);
+  expect(result.nodeID).toBe(originalID);
+  expect(result.deadline).toBe(deadline);
+  expect(evidence.find(step => step.phase === 'restored-baseline-observation').ids).toEqual([]);
+  expect(evidence.find(step => step.phase === 'restored-baseline-ready').ids).toEqual(closedTerminalIDs);
+  expect(evidence.find(step => step.phase === 'original-node-bound').existing).toEqual(closedTerminalIDs);
+  expect(await ids()).toEqual([...closedTerminalIDs, originalID]);
+  await expect(result.stop).toBeVisible();
+  expect(await readPostedMessagesByType(page, 'webview/stopExecutionSession')).toHaveLength(0);
+  await result.stop.click({ timeout: deadline - Date.now() });
+  await expect.poll(() => readPostedMessagesByType(page, 'webview/stopExecutionSession')).toEqual([
+    expect.objectContaining({ payload: expect.objectContaining({ nodeId: originalID }) })
+  ]);
+});
+
+test('installed locale keeps genuine multiple creations rejected after the original Terminal set restores', async ({ page }) => {
+  await openHarness(page);
+  const state = createMultiLiveExecutionNodeState('terminal', 2);
+  const closedTerminalIDs = state.nodes.map(node => node.id);
+  const extraNodes = ['installed-locale-new-one', 'installed-locale-new-two'].map((id, index) => ({
+    ...createLiveExecutionNodeState('terminal').nodes[0], id, position: { x: 120 + (index + 2) * 620, y: 140 }
+  }));
+  const evidence = [], deadline = Date.now() + 20000;
+  let creates = 0;
+  await expect(prepareInstalledLocalizedStop({ frame: page, closedTerminalIDs, deadline,
+    record: async step => {
+      evidence.push(step);
+      if (step.phase === 'restored-baseline-observation' && step.ids.length === 0) {
+        expect(creates).toBe(0);
+        await bootstrap(page, state);
+      }
+    }, create: async limit => {
+      expect(limit).toBe(deadline); creates++;
+      await updateHostState(page, { ...state, nodes: [...state.nodes, ...extraNodes] });
+    } })).rejects.toThrow('Public creation produced multiple ambiguous Terminal subjects');
+  expect(creates).toBe(1);
+  expect(evidence.at(-1).phase).toBe('post-create-observation');
+  expect(evidence.at(-1).ids).toEqual([...closedTerminalIDs, ...extraNodes.map(node => node.id)]);
+  expect(evidence.some(step => ['original-node-bound', 'localized-stop-interactive'].includes(step.phase))).toBe(false);
+  expect(await readPostedMessagesByType(page, 'webview/stopExecutionSession')).toHaveLength(0);
 });
 
 test('minimap wheel honors the dynamic fit view min zoom', async ({ page }) => {

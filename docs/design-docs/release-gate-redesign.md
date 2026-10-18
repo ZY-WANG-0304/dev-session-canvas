@@ -105,6 +105,10 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 `installed-pair`在空extensionsDir用原VSIX安装；driver作为单独扩展/外部自动化，使用公开命令/UI并读取外部可见证据，被测包无测试main、manifest改写或smoke模式。安装前后原包摘要相同，记录扩展ID/版本、依赖、activation、打开画布、Terminal响应/几何/Stop、主与notifier路由、回跳和locale。操作系统通知可用平台适配的测试接收者证明路由，系统桌面实际呈现另标manual/observational，不能以本地双包安装代证Marketplace自动下载companion。
 
+中文 locale 重开后，新 Terminal 的身份基线必须来自上一场景关闭前实际观察并冻结的 Terminal ID 集合。`.canvas-shell` 只证明页面外壳存在；`main.tsx` 的 `hostState` 初始为 null，收到 bootstrap/stateUpdated 后才渲染旧节点。因此不得把重开后首次可能为空的 DOM 集合当作完整基线，也不得以若干次相同采样或固定 sleep 认定恢复完成。`run-installed-pair.mjs` 在英文场景的原节点 Stop 后、公开关闭前读取并记录全集，核包含两项原场景节点；`prepareInstalledLocalizedStop` 在原20秒绝对期限内只读等待该精确集合，再发一次公开创建、只接受一个新增 ID，并在创建后继续核原集合未丢失。未知额外/重复 ID、旧节点未恢复、多个新增节点、超期及原动作不可用均失败，不取 `.last()`、重试创建或刷新基线。基线未就绪和新增歧义的原采样须在断言前保留，一次公开创建的请求/完成时间分别记账。同原 production bundle 的受控测试已复现：外壳存在时基线为空，一次创建后的首个 bootstrap 渲染两旧一新，旧夹具立即误报多新增。新真实前端回归等原精确集合后一次创建通过，同时真实两新增仍失败；这证明夹具存在该窗口，第十轮 Windows 原报告缺创建前 ID 样本，不能把受控样本冒充原 CI 时序。
+
+同一原样安装入口的英文首次创建和通知场景也使用 `findUniqueInstalledTerminalCreation` 核精确身份差集：私有空画布首个创建只能得到一个 Terminal，通知创建保留原 ID 且恰好新增一个，中文重开前集合必须正好是这两个已验证节点。读到多节点不取最后一项，也不将多创建混入恢复基线；所有原采样在拒绝前登记。此项补齐CI身份验收缺口，没有证据声称产品曾在英文场景重复创建。
+
 独立driver先验证原样安装/activation并完成控制握手，外部观察器连接固定Host的CDP后，才由公开命令创建画布/Terminal。实际Linux诊断证明晚连接可漏掉已经创建的内层webview frame；连接后创建的单变量对照读到真实正文及PTY子进程尺寸。准备顺序不改变被测包、CSP或产品等待。resize使用实际公开角把手并发送完整指针动作，不使用不存在的`se`标识；读取当前frame视口与把手位置选取画布内的有限增长路径。原bottom-right固定向外拖动在已fit的狭窄画布中越界，仅pointerdown进入产品页面，pointerup缺失；top-left画布内对照收齐事件，完整公开流程诊断中的真实原子进程由64×20变105×34。正式检查保留实际UI变化与原PTY子进程几何，不派内部消息或以观察器几何代证PTY；en/zh-cn重开均从自己的公开准备动作开始。
 
 第五轮实际macOS入口已成功安装原双包，但`--user-data-dir`位于长证据路径，VSCode主IPC在激活前报超过103字节及`listen EINVAL`。`prepareRuntime`按Unix平台实际socket限制检查runtime、user-data和TMPDIR的完整控制路径；优先私有系统临时目录，仍超限时选择短私有`/tmp`路径，再超限直接在准备阶段失败。原样安装显式将user-data放在私有runtime内；Unix TMPDIR也放入已核短runtime，避免内置agenthost再生成超长socket。settings与Host日志先导出到证据目录，确认原Host/进程退出后再回收短目录。双窗口有意共享的runtime身份不改，不能用公共可写目录、改bus环境或禁止真实IPC规避失败。
@@ -268,6 +272,12 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 | 发布六job与恢复 | [publish-flow.svg](../references/release-gate-redesign/publish-flow.svg) | [PNG](../references/release-gate-redesign/publish-flow.png) |
 
 ## 实施状态（2026-10-18）
+
+第十轮 [39124063678](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124063678) 的 head0d02a8b0、真预合并b511d9bf精确main/head parents已核。247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准）；唯一业务首败是Windows中文创建前身份基线歧义，取证/cleanup通过，两个聚合入口正确失败。原aggregate artifact12136700189/producer117671239737/ZIP9e91e19b与原candidate12134839128/producer117666644922/ZIPc992e167及规范包回执5707f95a均独立验真，不签发acceptance。
+
+同head与未改PR3278313fc72的最新真实组合 [39124249017](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124249017) 已247 jobs全部成功、330 required/actual/passed。输入65b53ad2的精确parents为main6e708c6b与组合1ced1789，双PR ancestry已核。原aggregate12136247599/producer117673887800/ZIPa6c27486、原acceptance摘要037d8cbb与完整任务/输入/原来源已独立核；原candidate12135812518/producer117667098480/ZIP8afa6e39和规范包回执b63e5081、主66addaf7/notifieraedfc41c原bytes均独立验真。首次本地candidate单range60秒超期保留，原五分钟内较小非重叠range验真不追認前次成功；未执行该轮全task本地再下载/再聚合。
+
+本轮精确locale恢复基线修正已通过115完整门禁/发布恢复合同、431production功能和3视觉，retry0、baseline不变、冻结目录434全部匹配；原432的ID/title/条目均保留，仅新增恢复前提与真多新增拒绝两个真实前端回归。同原bundle先红，新相关3/3绿；原第十轮双包Linux原样安装完整公开流程、原Host退出与cleanup通过，acceptance=false。推送后新head/最新PR327组合完整验收仍须各自重跑，历史绿灯不豁免两项确定产品竞态。
 
 第九轮 [39119709105](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119709105) 的 PR335 head 为1a4c5ff8，真正预合并为6f802d43；API核对精确parents为main6e708c6b与该head。247 jobs为243成功/4失败，原aggregate记录330 actual、324 required、293 required passed、299 total passed，31项被拒中27项属于失败regression producer、4项属于失败webview-function producer。真正首败只有中文Stop的二次时钟合同和local output覆盖快照未完成时的正文计数；兄弟task因producer红灯被拒不能另列为产品首败。118 source、104 packaged、六native操作、两个Marketplace Host和三x64原样安装同批通过，errors/notRun空，整轮无acceptance。
 

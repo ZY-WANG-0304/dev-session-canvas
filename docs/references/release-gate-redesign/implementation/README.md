@@ -1,12 +1,20 @@
 # CI 改造的实施与验证输入
 
-最新状态（2026-10-18）：第九轮PR335 [39119709105](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119709105) 终态失败，真正预合并6f802d43/head1a4c5ff8及精确main/head parents已核。247 jobs为243成功/4失败，330 actual、324 required、293 required passed、299 total passed；原aggregate独立绑定artifact12134557487、producer117658318149和ZIPebd1c796。31被拒来自两个失败producer的27个regression/4个浏览器task，真正首败是中文Stop合同二次时钟和覆盖快照pending时计数空缓冲。118 source、104 packaged、六native操作、两个Marketplace Host及三x64原样安装同批通过，errors/notRun空，无acceptance。
+最新状态（2026-10-18）：第十轮PR335 [39124063678](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124063678) 在真预合并b511d9bf/head0d02a8b0结束失败，247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准），errors/notRun空。唯一业务首败为Windows中文新Terminal身份绑定歧义。原aggregate12136700189/producer117671239737/ZIP9e91e19b及同批candidate12134839128/ZIPc992e167独立核；其余118 source/104 packaged、六native、2 Marketplace Host、Linux/macOS安装同批通过，无acceptance。
 
-同head与未改PR3278313fc72的真实临时组合 [39119845747](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119845747) 已247 jobs全成功、330 required/actual/passed。输入c2ef2a8c精确parents为main6e708c6b和组合e1cfb59f，双PR ancestry已核。原aggregate artifact12135230836/ZIP80741221和验收摘要7578d4c9已独立核实际producer，固定原head验证器核完整acceptance通过；同批双包producer/ZIP/包回执也独立下载验真。该批结果不追认第九轮PR失败，也不代证当前两处尚未提交的观察修正。
+同head与未改PR3278313fc72的最新组合 [39124249017](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124249017) 已247 jobs全成功、330 required/actual/passed。真实输入65b53ad2精确parents为main6e708c6b和组合1ced1789，双PR ancestry已核；原aggregate12136247599/producer117673887800/ZIPa6c27486和原acceptance摘要037d8cbb独立验真。原candidate12135812518/ZIP8afa6e39及包回执b63e5081、主66addaf7/notifieraedfc41c原bytes与验收一致。第一次候选单range60秒超期保留，原五分钟内较小非重叠range最终验真；该轮全task本地再下载/再聚合未执行，原Actions验收和本地字节验真分别记账。
+
+新locale观察在英文公开关闭前冻结实际Terminal全集，中文原20秒内只读核精确恢复后才一次创建，仍拒未知/重复/旧节点丢失/真多新增/超期和不可见Stop。原Windows报告没有保存创建前基线；同一原production bundle受控bootstrap已证明旧夹具可把恢复的两旧一新误算为多新增，不能把该控制样本冒充历史CI现场。旧受控红样本与新恢复/拒绝/公开Stop3/3、115完整合同、431功能/3视觉（434全部ID匹配、原432条目保持、retry0、baseline不变、进程已退役）均已收。原第十轮双包Linux原样安装全公开流程及Host退出/cleanup通过，包hash不变、acceptance=false。
+
+本轮代码修正后的新head与最新PR327组合仍须提交后完整运行；产品旧代恢复撤销订阅及生产mode-switch回调边界未修，不由组合绿灯解除0.26.1阻塞。第一次控制红验证漏传reporter路径导致额外报告错误、用当前434策略校验历史432计划的两次拒绝均保留；已改用原0d02a8b0验证器，未放宽policyDigest。全部原输入/hash/局限见[local-results.json](local-results.json)。
+
+此前第九轮（2026-10-18）：第九轮PR335 [39119709105](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119709105) 终态失败，真正预合并6f802d43/head1a4c5ff8及精确main/head parents已核。247 jobs为243成功/4失败，330 actual、324 required、293 required passed、299 total passed；原aggregate独立绑定artifact12134557487、producer117658318149和ZIPebd1c796。31被拒来自两个失败producer的27个regression/4个浏览器task，真正首败是中文Stop合同二次时钟和覆盖快照pending时计数空缓冲。118 source、104 packaged、六native操作、两个Marketplace Host及三x64原样安装同批通过，errors/notRun空，无acceptance。
+
+同head与未改PR3278313fc72的真实临时组合 [39119845747](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119845747) 已247 jobs全成功、330 required/actual/passed。输入c2ef2a8c精确parents为main6e708c6b和组合e1cfb59f，双PR ancestry已核。原aggregate artifact12135230836/ZIP80741221和验收摘要7578d4c9已独立核实际producer，固定原head验证器核完整acceptance通过；同批双包producer/ZIP/包回执也独立下载验真。该批结果不追认第九轮PR失败，也不代证随后0d02a8b0的观察修正。
 
 当前两处修正只改变CI观察。完整门禁/发布/恢复合同114/114、0失败/0跳过；登记430→432原430完整保留，仅新增Agent/Terminal真实parser暂停/释放反例。正确原任务预算下429production功能/3视觉全部通过、retry0、baseline不变，原进程组退役已核。当前production webview.js与第九轮原bundle字节SHA相同；旧即时严格计数受控先红，新完成观察及原严格一次/两次计数4/4绿。原40秒贯穿整个输出/快照/重复正文链，只读轮询原session/pending，不以正文次数驱动等待。
 
-原三平台安装工件逐个独立核来源/ZIP/内容清单，productTestMode=false；真实I/O/resize、原进程Stop、原token公开确认/居中/selection保持/用户ack、en/zh及应用/Host正常退出和cleanup均通过。原第八轮ready/panel-focus、CIM具体阻塞机制和macOS原EPERM仍保留未定因；旧代恢复订阅撤销和生产mode-switch回调边界继续阻塞发布。新增修正提交后的PR335及最新PR327组合完整Actions尚待验收，不改版本/合并/tag/渠道。
+原三平台安装工件逐个独立核来源/ZIP/内容清单，productTestMode=false；真实I/O/resize、原进程Stop、原token公开确认/居中/selection保持/用户ack、en/zh及应用/Host正常退出和cleanup均通过。原第八轮ready/panel-focus、CIM具体阻塞机制和macOS原EPERM仍保留未定因；旧代恢复订阅撤销和生产mode-switch回调边界继续阻塞发布。本轮新locale修正提交后的PR335及最新PR327组合完整Actions尚待验收，不改版本/合并/tag/渠道。
 
 本轮验证曾因grep锚定错误出现No tests found，因传错外层期限取消第一功能批，第一视觉批也不计作冻结预算验证；这些原记录均保留。取原aggregate首次用错artifact名而明确拒绝，随后核真实名称；组合原candidate串行下载超期，原五分钟内非重叠range读取独立验真，不追认前次下载成功。旧430计划用原head验证器，当前432的policyDigest拒绝不被放宽。原Actions完整结果、原文件/日志SHA、准确counts和取证局限见[local-results.json](local-results.json)。
 

@@ -4,6 +4,10 @@
 
 ## 2026-10-18：CI与发布门禁重设计（实现验证中，正式输入与跨平台待验）
 
+最新第十轮39124063678终态323/324 required通过、330 actual/329 total passed（含六校准），247 jobs为244成功/3失败，仅Windows中文节点身份绑定业务首败。原报告缺创建前ID，不补造历史基线；同production bundle受控一次创建/迟到bootstrap先红，当前关闭前精确全集恢复观察、真多新增拒绝及原概览Stop3/3通过。115合同、434目录的431功能/3视觉及原第十轮双包Linux完整公开诊断通过，原20秒/包摘要/一次动作不变。新head三平台与完整验收待提交后重跑。
+
+最新未改PR327组合39124249017已330/330、247 jobs全通过；原aggregate/acceptance与同批双包实际producer/ZIP/hash分别独立核，不追认第十轮失败。该组合全task本地再下载/再聚合未执行，原candidate首个60秒传输失败保留。两项生产竞态仍未修，固定环境/合并保护和15新增缺口继续各自记录，不能靠当前绿灯放行0.26.1。
+
 [release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[活计划](active/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器有本地通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真实Actions第三轮39095480885/head924cae96/input612a891c：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片与source-build同批通过。隔离双包各build一次/checkout清理成功，后置文件清单错读外层dist失败；聚合另拒Windows反斜杠回执。现修candidate原包dist私有消费与producer路径序列化，保真实staging/ZIP双层和严格路径；原失败包仅诊断，无正式transfer，packaged/三安装仍not-run。新提交完整验收继续，不能把映射或独立补验视为通过。
 
 第五轮39101493143及0.26.1组合39101774719已终态：前者330 actual/324 required/318 required passed，六校准项包含于324 total passed；后者330全必跑328通过，source118/packaged104全通过，仅macOS长IPC和Windowscached geometry失败，均无acceptance。当前原包焦点tab红绿、稳定hit-target/完整pointer、短路径设置与日志、安全退役、同fd fresh geometry及有界transport恢复已落实；105合同、429浏览器目录的426功能/3视觉、当前production文件视图诊断通过。123 suite原期限逐项不变；最新三平台原样安装与新组合仍需实跑，旧资产诊断不能补验收。

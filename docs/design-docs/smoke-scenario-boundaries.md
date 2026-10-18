@@ -180,6 +180,8 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 
 ## 当前实施与验证状态（2026-10-18）
 
+第十轮39124063678以head0d02a8b0/预合并b511d9bf完成：247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed（含六校准）。唯一业务首败是Windows中文新Terminal身份歧义，aggregate/稳定入口按预期失败。原报告无创建前基线，不能反推精确ID样本；同原production bundle已受控复现外壳先于旧节点恢复的误报窗口。现安装夹具在英文公开关闭前冻结实际Terminal全集，中文原20秒内先核精确恢复，再发一次创建/公开导航/Stop；旧身份丢失、未知/重复及真多新增继续失败，断言前保留采样。原432条目完整保留，新增两项真实前端恢复/拒绝回归；完整当前输入Actions与最新PR327组合仍须重跑。
+
 第九轮39119709105的118 source、104 packaged、六native操作、两个Marketplace Host及三x64原样安装同批通过，整轮仍因时钟合同和覆盖快照计数观察失败，无acceptance。同head与未改PR327的真实临时组合39119845747则330 required/actual/passed、247 jobs全成功，原aggregate来源与完整acceptance已独立核；两批分别记账，不把偶发绿灯当作历史根因已修或产品竞态豁免。
 
 前端local output去重原两用例保留严格一次/两次计数，但须在原session的投影写入完成后读取缓冲。原trace证明DOM瞬时可见后，覆盖快照仍pending并重建为空；按完成状态只读轮询，不以正文次数驱动等待。首输出、DOM、快照完成和两次相同正文输出共用原40秒绝对期限，60秒整用例上限不变；真实parser暂停/释放反例拒提前完成、未释放、错session和迟到结果。登记430→432保原430，新production功能429/视觉3及114合同通过、retry0、基线不变。新修正输入完整Actions仍待验；真实TUI完成信号、15个新增缺口、两项产品竞态均继续单独登记。

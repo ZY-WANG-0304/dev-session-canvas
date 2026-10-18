@@ -2,7 +2,26 @@ import assert from 'node:assert/strict';
 
 const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
-export async function prepareInstalledLocalizedStop({ frame, create, deadline, record = () => {} }) {
+export function findUniqueInstalledTerminalCreation(ids, originalIDs) {
+  for (const identities of [ids, originalIDs]) {
+    assert(Array.isArray(identities) && identities.every(id => typeof id === 'string' && id.length > 0),
+      'Installed Terminal identities are invalid');
+    assert.equal(new Set(identities).size, identities.length, 'Installed Terminal identities are duplicated');
+  }
+  assert(originalIDs.every(id => ids.includes(id)), 'Public creation lost original Terminal subjects');
+  const added = ids.filter(id => !originalIDs.includes(id));
+  assert(added.length <= 1, 'Public creation produced multiple ambiguous Terminal subjects');
+  return added[0] ?? null;
+}
+
+export async function prepareInstalledLocalizedStop({ frame, closedTerminalIDs, create, deadline, record = () => {} }) {
+  assert(Array.isArray(closedTerminalIDs) && closedTerminalIDs.length > 0,
+    'Installed locale requires the Terminal identities observed before public close');
+  assert(closedTerminalIDs.every(id => typeof id === 'string' && id.length > 0),
+    'Original closed Terminal identities are invalid');
+  assert.equal(new Set(closedTerminalIDs).size, closedTerminalIDs.length,
+    'Original closed Terminal identities are duplicated');
+  const originalIDs = [...closedTerminalIDs].sort();
   const remaining = () => {
     const value = deadline - Date.now();
     assert(Number.isFinite(value) && value > 0, 'Original localized Terminal preparation deadline exhausted');
@@ -10,6 +29,20 @@ export async function prepareInstalledLocalizedStop({ frame, create, deadline, r
   };
   const readNodeIDs = () => frame.locator('[data-node-kind="terminal"][data-node-id]').evaluateAll(nodes =>
     nodes.map(node => node.getAttribute('data-node-id')));
+  const observations = new Map();
+  const observeNodeIDs = async phase => {
+    remaining();
+    const ids = await readNodeIDs();
+    const sample = JSON.stringify(ids);
+    if (observations.get(phase) !== sample) {
+      observations.set(phase, sample);
+      await record({ phase, ids, originalIDs, deadline, observedAt: Date.now() });
+    }
+    remaining();
+    assert(ids.every(id => typeof id === 'string' && id.length > 0), 'Installed Terminal identities are invalid');
+    assert.equal(new Set(ids).size, ids.length, 'Installed Terminal identities are duplicated');
+    return ids;
+  };
   const wait = async (label, read, predicate) => {
     let value;
     while (true) {
@@ -18,16 +51,25 @@ export async function prepareInstalledLocalizedStop({ frame, create, deadline, r
       await new Promise(resolve => setTimeout(resolve, Math.min(100, remaining())));
     }
   };
+  // The shell renders before bootstrap has restored its nodes. Use the exact
+  // subjects observed before the original public close, not an empty first
+  // sample or a time-based guess that rendering has settled.
+  const existing = await wait('Original installed Terminal identities restored',
+    () => observeNodeIDs('restored-baseline-observation'), ids => {
+      assert(ids.every(id => originalIDs.includes(id)), 'Installed locale restored unknown Terminal subjects');
+      return ids.length === originalIDs.length;
+    });
+  await record({ phase: 'restored-baseline-ready', ids: existing, originalIDs, deadline });
   remaining();
-  const existing = await readNodeIDs();
-  assert.equal(new Set(existing).size, existing.length, 'Installed Terminal identities are duplicated');
+  await record({ phase: 'public-create-requested', originalIDs, deadline, requestedAt: Date.now() });
+  remaining();
   await create(deadline);
-  const nodeID = await wait('Unique newly created installed Terminal', readNodeIDs, ids => {
-    assert.equal(new Set(ids).size, ids.length, 'Installed Terminal identities are duplicated');
-    const added = ids.filter(id => !existing.includes(id));
-    assert(added.length <= 1, 'Public creation produced multiple ambiguous Terminal subjects');
-    return added.length === 1;
-  }).then(ids => ids.find(id => !existing.includes(id)));
+  remaining();
+  await record({ phase: 'public-create-completed', originalIDs, deadline, completedAt: Date.now() });
+  remaining();
+  const nodeID = await wait('Unique newly created installed Terminal',
+    async () => findUniqueInstalledTerminalCreation(await observeNodeIDs('post-create-observation'), originalIDs),
+    id => id !== null);
   assert(typeof nodeID === 'string' && nodeID, 'Original localized Terminal identity is missing');
   const node = frame.locator(`[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`);
   const shell = frame.locator('.canvas-shell');

@@ -10,10 +10,14 @@
 
 ## 进度
 
+- [x] (2026-10-18 12:34Z) 第十轮39124063678的Windows中文新节点绑定歧义已核原artifact12135452639/ZIPea701873和producer117666865032；原报告缺创建前ID，不补造历史样本。同原production bundle控制bootstrap已先红，新精确恢复前提/真多新增拒绝/原概览公开Stop3/3通过。关闭前冻结全集、一次创建请求/完成取证和原20秒已接线；当前完整115合同、431功能/3视觉全过，原432完整保留；原第十轮双包Linux公开全流程/Host退出/cleanup通过，acceptance=false。
+- [x] (2026-10-18) 第十轮PR335终态247 jobs为244成功/3失败，330 actual、324 required、323 required passed、329 total passed，仅Windows业务失败，errors/notRun空，无acceptance。原aggregate12136700189/ZIP9e91e19b与candidate12134839128/ZIPc992e167均独立核producer/原bytes；未改PR327组合39124249017已247 jobs全成功/330全必跑通过，原acceptance12136247599/ZIPa6c27486及原双包12135812518/ZIP8afa6e39独立验真。两批各自记账，不用组合绿灯追认原失败或解除两生产竞态。
+- [x] (2026-10-18 12:41Z) 最后身份审查移除英文首次/通知创建的.last()，共用实际ID差集验证唯一新增并在中文重开前核精确两原节点；最终115合同同批通过（154180.584ms）、原production相关3/3及原第十轮双包Linux完整公开流程再次通过。当前全部创建路径都保一次调用、严格身份/公开动作/原期限。
+- [x] (2026-10-18) 两处时钟/投影观察修正已提交并推PR335 head0d02a8b0；第十轮39124063678输入b511d9bf及最新未改PR327组合39124249017输入65b53ad2均核精确双parents和330任务目录。两轮已终态并核原aggregate/acceptance，不将原第九轮绿灯作为当前head验收。
 - [x] (2026-10-18) 第九轮39119709105的regression shard-2首败已核原job117652709902日志：中文Stop新合同比较两次真实时钟导致毫秒边界误报。受控时钟验证原剩余预算及超期拒绝，同步修正Windows身份合同；完整门禁/发布/恢复合同114/114通过、0失败/0跳过。实际5秒/20秒预算、唯一身份与一次导航/动作限制保持。
 - [x] (2026-10-18) 第九轮三x64原样安装真实Actions通过，原工件逐个独立核producer/ZIP/hash；原PTY几何/Stop、两locale、通知原token、公开Quit/closeWindow、应用及Host退出和cleanup齐全。webview原首败已核pending空缓冲；同原production bundle控制parser先红后绿，原两用例及新反例4/4通过。登记430→432原430不变；正确冻结任务预算的429功能/3视觉全通过、retry0、baseline不变、进程组已退役。
 - [x] (2026-10-18) 第九轮原aggregate artifact12134557487已独立核producer/ZIP：330 actual、324 required、293 required passed、299 total passed，31被拒含两个失败producer的兄弟task；247 jobs为243成功/4失败，无acceptance。未改PR327的组合39119845747已247 jobs全成功/330全必跑通过，精确parents/双PR ancestry及原aggregate/acceptance均独立核；原head固定验证器使用原430目录，不放宽policyDigest。
-- [ ] 本轮两处观察修正提交并推PR335，新head正式完整CI和最新PR335+未改PR327真实组合重新验收；两项生产竞态仍未修，不从临时绿灯解除发布阻塞。
+- [ ] 本轮locale精确身份修正提交并推PR335，新head正式完整CI和最新PR335+未改PR327真实组合重新验收；两项生产竞态仍未修，不从临时绿灯解除发布阻塞。
 - [x] (2026-10-18 09:33Z) 第八轮39113768051和PR335+未改PR327组合39113960317已收正式终态，各330任务。精确预合并parents及原aggregate/candidate producer/ZIP/hash已核；分别321/324 required和327/330通过，247 jobs分别241成功/6失败、242成功/5失败，errors/notRun空，均无acceptance。独立全量本地task下载均在原300000ms失败，部分证据保留。
 - [x] (2026-10-18) 三个平台观察修正已实现：Windows直接Process/SafeHandle原身份；中文唯一新增节点公开双击退出概览；macOS公开Quit分别核应用/Host。在原5秒/20秒/30秒内保全部动作及断言，当前113合同全通过，四workflow actionlint exit0；429→430仅新增一回归，427production功能/3视觉全通过、retry0、baseline不变。原生产bundle概览回归与原第八轮双包Linux完整公开安装诊断通过，acceptance=false。
 - [x] (2026-10-18) 原测试动作和product bundle完全不改，仅加CDP只读网络/Runtime观察，file/views和real-reopen两个Host诊断均通过，原文件hash/Host退出/目录退役核对。保原CI首败：source新45秒ready与原10秒panel焦点根因尚未确认，不用偶发通过解除。
@@ -56,6 +60,7 @@
 
 ## 意外与发现
 
+第十轮Windows中文场景原失败为Public creation produced multiple ambiguous Terminal subjects。截图显示两个已关闭旧Terminal及一个活动新Terminal，原facts.locales.terminalPreparation为空；不能反推当时existing精确内容或声称多发公开创建。源码与同原production bundle的控制bootstrap先红，确认外壳出现时空基线会把恢复的两旧一新误算为多新增。正式修正基线取英文关闭前实际全集，不以空DOM稳定、sleep、最后一个节点或增加预算规避歧义。真实前端3/3和原第十轮双包Linux公开全流程已过；新head三平台完整验收仍待提交后重跑。
 第九轮regression shard-2在新增中文Stop合同的测试桩内失败，原stack为test-gate-contracts.mjs:157和:181。调用方先计算deadline - Date.now()，桩随后再调用Date.now()，差值可能已减一毫秒；原assert把正常传入的预算误判为增加预算。原生产驱动未因这个合同失败执行中文Stop。用受控时钟验证计算点与完成点，保留原失败日志及真实平台验收边界。
 
 第九轮webview-function原trace在431462ms的probe观察原terminal-next-local-session，terminalProjectionPending=true、cols/rows96×28但actual fit64×22，28行均空，快照队列仅记录started。这发生在DOM marker断言瞬时成立之后；旧测试立即将进行中的快照缓冲区用于一次计数而失败。原trace和生产bundle均独立绑定GitHub producer/ZIP/hash；补完成条件须以同bundle真实parser控制验证，不把旧原失败写成通过。
@@ -97,6 +102,14 @@ packaged原失败trace的production bundle行/列指向d3-drag nodrag(event.view
 URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×20，旧 helper 却以 92×28 Start；snapshot restore 临时 resize 为 92×28，随后 deferred fit 恢复 64×20。鼠标已进入正确单元，URL provider 与 hover 均实际执行，但第二次 resize 触发 xterm linkLeave，取消尚未显示的 tooltip。修正只在测试夹具：用原 10 秒 probe 等待已 mounted 且 projection 完成的实际 fit 几何，再以该几何 Start。tooltip 文字、清 hover、浏览器路由和 OSC8 断言及原等待全部保留，未改产品行为。`/dev/shm/dsc-ci-url-inspection-7/dom.json` 中的 buffer-resize 调用栈保留取证；复验 17 秒通过。
 
 ## 决策记录
+
+决策：安装locale在原20秒内先核关闭前冻结全集恢复，再发一次公开创建；未知/重复/丢失原ID及真多新增继续拒绝，记录改变的原采样和请求/完成时间。
+理由：外壳与数据渲染是不同事件，稳定空DOM不能证明空画布已ready。同原production bundle已受控复现一次创建被误判多新增；新恢复及拒绝反例3/3、115合同和完整431功能/3视觉通过，原双包Linux公开诊断保持摘要与完整后置结果。历史Windows未采基线不由受控样本替代，新正式平台结果仍须完整实跑。
+日期/作者：2026-10-18 / Codex。
+
+决策：英文首次、通知创建和中文创建共用唯一ID差集验证，冻结重开集合前要求恰好两个原场景节点。
+理由：英文.last()允许额外节点被忽略，若把这批全集无条件传入中文基线会继续漏报。严格增加身份验收和拒绝前采样，不声称产品英文重复创建已发生；原包公开流程需再次验证，不改变产品动作或期限。
+日期/作者：2026-10-18 / Codex。
 
 决策：local output覆盖快照去重case在原40秒内共用绝对期限，保可见DOM断言并等待原session投影完成后读取缓冲；计数仍严格为一次及两次。
 理由：输出DOM、xterm缓冲与异步恢复完成是不同事实。按真实session/pending条件观察可拒绝未完成/错session/迟到，而固定帧数或增加等待不能证明完成；同一实际CI生产包暂停parser的旧计数稳定先红，新观察及原计数4/4绿，正确任务预算的完整429功能/3视觉也通过。
@@ -172,6 +185,8 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 ## 结果与复盘
 
+第十轮PR335仅Windows中文身份绑定失败，330 actual/323 required passed（324 required），247 jobs为244成功/3失败；两聚合入口按原规则拒绝。最新PR327真实组合330/330、247 jobs全部通过，原aggregate/acceptance及同批包bytes已独立核；本轮精确恢复基线修正保原20秒、一次公开创建/导航/Stop并已有115合同、434浏览器和原双包Linux全流程通过。修正尚须推送后完成新两批正式输入，产品两竞态未修，发布不放行。
+
 第九轮PR335原输入在两项观察契约失败，三平台原样安装/全部source与packaged均同批通过，正式aggregate严格拒绝31项（含失败producer的兄弟task），不签发acceptance。同head与未改PR327的临时真预合并已330/330和247 jobs全通过，原acceptance与实际producer/ZIP独立验真；该结果不覆盖原失败或本轮新修正。当前114合同和432浏览器集合完整通过，仍须提交后以新head重新验收。旧代订阅撤销与生产mode-switch回调竞态均有独立确定证据且未修，不能由一次全绿解除0.26.1阻塞。
 
 第八轮与组合已终态失败，分别321/324和327/330 required通过，均没有acceptance。三个已证实平台观察前提修正和本地113合同、427production功能/3视觉通过；原双包Linux完整公开诊断通过。原source real-reopen45秒未ready及组合panel10秒无焦点仍未定因，当前不改动作的只读CDP诊断通过不覆盖原CI。新跨平台输入与两项生产竞态均保持待验/阻塞。
@@ -227,6 +242,8 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 使用现有 Node、esbuild、JSZip、Playwright、@vscode/test-electron 和 GitHub Actions；无需新服务。`gate-plan.json` 定义任务和 producer 期望，`package-receipt.json` 定义固定双包，逐任务 JSON 由执行器写出，`verify-result` 仅在身份和所有必需阶段通过时写 `acceptance-receipt.json`。实际 GitHub provenance 由 API/artifact 元数据采集，不能接受未经核实的 JSON 自报。
 
 修订记录：2026-10-17 创建实施计划，明确从正式设计实施并保留旧覆盖及未验证边界。
+
+修订记录：2026-10-18 12:34Z收第十轮323/324失败与PR327组合330/330终态、原aggregate/acceptance/candidate身份及原bytes；受控原包先红后绿后接精确关闭前全集恢复、一创建和失败采样，补115合同/434浏览器/原包Linux诊断，不冒充历史未采基线或解除产品阻塞。
 
 修订记录：2026-10-18 09:33Z登记第八轮与0.26.1组合原计划/三个安装和原生首败，先选定正确平台/公开交互/进程观察边界再实施；source新ready失败保留原45秒，完整终态与新输入验证待完成。
 

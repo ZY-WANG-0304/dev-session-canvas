@@ -225,56 +225,57 @@
       "scope": "Additional original-failure summary, complete acceptance negatives and calibration follow-up"
     },
     "currentBrowser": {
-      "functionalPassed": 429,
+      "functionalPassed": 431,
       "visualPassed": 3,
       "failed": 0,
       "retry": 0,
       "baselineChanged": false,
       "production": true,
-      "registered": 432,
-      "previousRegisteredRetained": 430,
+      "registered": 434,
+      "previousRegisteredRetained": 432,
       "addedRegressionCases": 2,
-      "functionalReceipt": "/dev/shm/dsc-ci-browser-functional-432-2/playwright-execution.json",
-      "visualReceipt": "/dev/shm/dsc-ci-browser-visual-432-2/playwright-execution.json",
-      "buildReceipt": "/dev/shm/dsc-ci-projection-current-browser-build-1/browser-build.json",
       "acceptance": false,
       "frozenTaskBudgetsMs": {
         "functional": 3600000,
         "visual": 600000
       },
-      "sameOriginalCIProductionWebviewSHA256": "b065908c6e09ed31ff2c8241efb75d825ed42db224a5b60f819bbbe49be40558",
       "exactCatalogue": true,
+      "sameOriginalCIProductionWebviewSHA256": "b065908c6e09ed31ff2c8241efb75d825ed42db224a5b60f819bbbe49be40558",
       "evidence": {
         "functional": {
           "input.json": {
-            "path": "/dev/shm/dsc-ci-browser-functional-432-2/input.json",
-            "sha256": "ecc49aff809d2e97e6e87742cb2fd2f9029be6319f57e3bc1f0de6251ba8d561"
+            "path": "/dev/shm/dsc-ci-browser-functional-434-1/input.json",
+            "sha256": "0f0989cdd458af70c259d86334afc6a3546799e5a7e9752342e7afa955b3e274"
           },
           "process.json": {
-            "path": "/dev/shm/dsc-ci-browser-functional-432-2/process.json",
-            "sha256": "e01b6617cb50c86d061614e55276c1020d0b720ed1770e38b1603b9f9cf882e0"
+            "path": "/dev/shm/dsc-ci-browser-functional-434-1/process.json",
+            "sha256": "8196418f6b88602a0ecad0f6c8b30e30fd53e07520f2906a342714aca993c358"
           },
           "playwright-execution.json": {
-            "path": "/dev/shm/dsc-ci-browser-functional-432-2/playwright-execution.json",
-            "sha256": "9d47bfb41f4c74c6a88c479355730bf25f29e05950bf86e41b7352530b7c37dc"
+            "path": "/dev/shm/dsc-ci-browser-functional-434-1/playwright-execution.json",
+            "sha256": "1d9a8dfd4c7b438b03c7d4fdc17a483186663a29bf3bb859691e075a3e4fc0bc"
           }
         },
         "visual": {
           "input.json": {
-            "path": "/dev/shm/dsc-ci-browser-visual-432-2/input.json",
-            "sha256": "8cdbd699d120f1db07b85d33bec2b53c8ed5d8e10abd97c6dafeb8f9fe83fd14"
+            "path": "/dev/shm/dsc-ci-browser-visual-434-1/input.json",
+            "sha256": "687c51aa4e493e17ffe76995b19c60dddb068203804c15995b012c7b893a5d51"
           },
           "process.json": {
-            "path": "/dev/shm/dsc-ci-browser-visual-432-2/process.json",
-            "sha256": "844967eb66031f8926c35e5dc6a766bab737ea8b1832eea4cb29eac36d23a554"
+            "path": "/dev/shm/dsc-ci-browser-visual-434-1/process.json",
+            "sha256": "4bffaac258e9deeb825f324e818ae14d3ff2cffced9d3d573b9a0795c4aac28f"
           },
           "playwright-execution.json": {
-            "path": "/dev/shm/dsc-ci-browser-visual-432-2/playwright-execution.json",
-            "sha256": "3aefccd5baf01afe60c01dba58d769edca0e89e118a29169ab6a9caa2845490a"
+            "path": "/dev/shm/dsc-ci-browser-visual-434-1/playwright-execution.json",
+            "sha256": "5de3196a27dcae25d5a35db8f875d561c5ab43a849f91326973094ac49aec45a"
           }
         }
       },
-      "caveat": "Unchanged production bundle from current build is byte-identical to original ninth-round CI bundle; original frozen functional/visual task budgets and original process-group absence verified; not new-head Actions acceptance"
+      "catalogueDiff": {
+        "path": "/dev/shm/dsc-ci-installed-baseline-catalog-diff-1.json",
+        "sha256": "5c89b149e079fa289f3a7bf3e5e0934442b78fd798de54030cd26e6ad852f239"
+      },
+      "caveat": "Unchanged production bundle; full 431 functional/3 visual executed before final shared identity helper extraction, then all 3 affected browser cases and complete 115 contracts plus original-pair public Linux flow repeated on final code; new formal full Actions still required"
     },
     "fileCloseFocus": {
       "acceptance": false,
@@ -396,14 +397,14 @@
       "caveat": "Production Host methods, controlled external store/delete/state callback; no real PTY/Electron or other platforms"
     },
     "finalContracts": {
-      "passed": 114,
+      "passed": 115,
       "failed": 0,
       "skipped": 0,
       "cancelled": 0,
-      "log": "/dev/shm/dsc-ci-projection-gate-full-contracts-1.log",
-      "logSHA256": "f990fbfbb2843141d1b6c38a476a05e7bf7715e42f57e88cd987ac62d47bd837",
-      "durationMs": 162175.86724,
-      "scope": "One complete batch of gate, release completion and delivery contracts after controlled-clock and original-session projection observation corrections",
+      "log": "/dev/shm/dsc-ci-installed-baseline-full-contracts-3.log",
+      "logSHA256": "c70b229eb01494b5971d0116cae078cba398d50775086723d944b4a83d248526",
+      "durationMs": 154180.58421,
+      "scope": "Latest complete gate/release completion/delivery contracts including all installed creation identities; no .last() subject selection",
       "acceptance": false
     },
     "budgetEntrySynchronization": {
@@ -688,12 +689,418 @@
         },
         "reason": "Original candidate sequential download did not complete within original deadline; independent non-overlapping range read verified actual bytes separately, no original attempt success"
       }
-    ]
+    ],
+    "previousLocaleFinalContracts": {
+      "passed": 114,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "log": "/dev/shm/dsc-ci-projection-gate-full-contracts-1.log",
+      "logSHA256": "f990fbfbb2843141d1b6c38a476a05e7bf7715e42f57e88cd987ac62d47bd837",
+      "durationMs": 162175.86724,
+      "scope": "One complete batch of gate, release completion and delivery contracts after controlled-clock and original-session projection observation corrections",
+      "acceptance": false
+    },
+    "previousLocaleBrowser": {
+      "functionalPassed": 429,
+      "visualPassed": 3,
+      "failed": 0,
+      "retry": 0,
+      "baselineChanged": false,
+      "production": true,
+      "registered": 432,
+      "previousRegisteredRetained": 430,
+      "addedRegressionCases": 2,
+      "functionalReceipt": "/dev/shm/dsc-ci-browser-functional-432-2/playwright-execution.json",
+      "visualReceipt": "/dev/shm/dsc-ci-browser-visual-432-2/playwright-execution.json",
+      "buildReceipt": "/dev/shm/dsc-ci-projection-current-browser-build-1/browser-build.json",
+      "acceptance": false,
+      "frozenTaskBudgetsMs": {
+        "functional": 3600000,
+        "visual": 600000
+      },
+      "sameOriginalCIProductionWebviewSHA256": "b065908c6e09ed31ff2c8241efb75d825ed42db224a5b60f819bbbe49be40558",
+      "exactCatalogue": true,
+      "evidence": {
+        "functional": {
+          "input.json": {
+            "path": "/dev/shm/dsc-ci-browser-functional-432-2/input.json",
+            "sha256": "ecc49aff809d2e97e6e87742cb2fd2f9029be6319f57e3bc1f0de6251ba8d561"
+          },
+          "process.json": {
+            "path": "/dev/shm/dsc-ci-browser-functional-432-2/process.json",
+            "sha256": "e01b6617cb50c86d061614e55276c1020d0b720ed1770e38b1603b9f9cf882e0"
+          },
+          "playwright-execution.json": {
+            "path": "/dev/shm/dsc-ci-browser-functional-432-2/playwright-execution.json",
+            "sha256": "9d47bfb41f4c74c6a88c479355730bf25f29e05950bf86e41b7352530b7c37dc"
+          }
+        },
+        "visual": {
+          "input.json": {
+            "path": "/dev/shm/dsc-ci-browser-visual-432-2/input.json",
+            "sha256": "8cdbd699d120f1db07b85d33bec2b53c8ed5d8e10abd97c6dafeb8f9fe83fd14"
+          },
+          "process.json": {
+            "path": "/dev/shm/dsc-ci-browser-visual-432-2/process.json",
+            "sha256": "844967eb66031f8926c35e5dc6a766bab737ea8b1832eea4cb29eac36d23a554"
+          },
+          "playwright-execution.json": {
+            "path": "/dev/shm/dsc-ci-browser-visual-432-2/playwright-execution.json",
+            "sha256": "3aefccd5baf01afe60c01dba58d769edca0e89e118a29169ab6a9caa2845490a"
+          }
+        }
+      },
+      "caveat": "Unchanged production bundle from current build is byte-identical to original ninth-round CI bundle; original frozen functional/visual task budgets and original process-group absence verified; not new-head Actions acceptance"
+    },
+    "installedLocaleExactBaseline": {
+      "scope": "CI observer correction, current helper on original production bundle and tenth-round pair; not new-head formal acceptance",
+      "acceptance": false,
+      "controlledOriginalRed": {
+        "log": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-controlled-red-2.log",
+          "sha256": "b92b4be01e12f0de506f759667ba2d7e2bf218a9e3e2b9df20f2d482493437a3"
+        },
+        "report": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-controlled-red-2/playwright-execution.json",
+          "sha256": "225901324a1d900122c95400c5c03e2902ee42d68b337a7d7abc5fbf05717133"
+        },
+        "actualInput": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-controlled-red-2/failure-artifacts/controlled-original-instal-ff6d9-s-multiple-public-creations/controlled-evidence.json",
+          "sha256": "543d6755bbbc0742235453350dcb4f77e2cfe71901aab53ebf2160691b9580e6"
+        },
+        "observed": {
+          "production": true,
+          "acceptance": false,
+          "originalClosedIDs": [
+            "terminal-original-2",
+            "terminal-original-3"
+          ],
+          "baseline": [],
+          "creates": 1,
+          "bundleSHA256": "b065908c6e09ed31ff2c8241efb75d825ed42db224a5b60f819bbbe49be40558",
+          "deadline": 1792325409010,
+          "afterSingleCreation": [
+            "terminal-original-2",
+            "terminal-original-3",
+            "terminal-original-4"
+          ],
+          "failure": "Public creation produced multiple ambiguous Terminal subjects"
+        }
+      },
+      "greenOriginalBundle": {
+        "passed": 3,
+        "failed": 0,
+        "retry": 0,
+        "receipt": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-green-3/playwright-execution.json",
+          "sha256": "fc8cc4770eb7f82f82f80486cb1c455811c8a7def308896a97c28a0fba89626c"
+        }
+      },
+      "contracts": {
+        "passed": 2,
+        "log": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-contracts-2.log",
+          "sha256": "d0091b621bf2de8de760368965d824add03712c1179b7aa5936ebd8e8939120d"
+        }
+      },
+      "originalPairLinux": {
+        "status": "passed",
+        "productTestMode": false,
+        "cleanup": "passed",
+        "hostExit": "passed",
+        "inputSHA": "b511d9bf2ee0a02b2a4a248c35086d7b47082226",
+        "packageReceiptDigest": "5707f95ae28b308e7380dfa6498e0c316e207077c0dd135736a7ebc742fbbdc3",
+        "report": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-linux-2/installed-pair.json",
+          "sha256": "03c170399287480dc5cee0958e34e00652fd6a786167f7bb472f5efcfb783eb2"
+        },
+        "input": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-linux-2/input.json",
+          "sha256": "f0c9c844c3adb5e10bb0fba05f14bcbb846f7f8761dec91b2207d3771f672dcb"
+        },
+        "process": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-linux-2/process.json",
+          "sha256": "7f01bf4da3574cd19e0738e6495f13153bd6c79949084d7db4599258d571297b"
+        },
+        "creations": [
+          {
+            "phase": "first-public-create-observed",
+            "ids": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a"
+            ],
+            "observedAt": 1792327116223
+          },
+          {
+            "phase": "notification-public-create-observation",
+            "ids": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "originalID": "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+            "observedAt": 1792327118586
+          }
+        ],
+        "closedSubjects": {
+          "ids": [
+            "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+            "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+          ],
+          "observedAt": 1792327120956,
+          "originalHost": {
+            "pid": 3577574,
+            "startTicks": "295099495",
+            "state": "S"
+          }
+        },
+        "preparation": [
+          {
+            "phase": "restored-baseline-observation",
+            "ids": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "originalIDs": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "deadline": 1792327147318,
+            "observedAt": 1792327127650
+          },
+          {
+            "phase": "restored-baseline-ready",
+            "ids": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "originalIDs": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "deadline": 1792327147318
+          },
+          {
+            "phase": "public-create-requested",
+            "originalIDs": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "deadline": 1792327147318,
+            "requestedAt": 1792327127650
+          },
+          {
+            "phase": "public-create-completed",
+            "originalIDs": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "deadline": 1792327147318,
+            "completedAt": 1792327127752
+          },
+          {
+            "phase": "post-create-observation",
+            "ids": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "originalIDs": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "deadline": 1792327147318,
+            "observedAt": 1792327127806
+          },
+          {
+            "phase": "post-create-observation",
+            "ids": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376",
+              "terminal-4-be93dbdf-7c77-4741-8846-453e041abfde"
+            ],
+            "originalIDs": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "deadline": 1792327147318,
+            "observedAt": 1792327127937
+          },
+          {
+            "phase": "original-node-bound",
+            "nodeID": "terminal-4-be93dbdf-7c77-4741-8846-453e041abfde",
+            "existing": [
+              "terminal-2-a3db40aa-d51b-414d-a50b-aab7f30c899a",
+              "terminal-3-27104aee-31be-49ee-955b-984f95fd1376"
+            ],
+            "overview": "false",
+            "deadline": 1792327147318
+          },
+          {
+            "phase": "localized-stop-interactive",
+            "nodeID": "terminal-4-be93dbdf-7c77-4741-8846-453e041abfde",
+            "overview": "false",
+            "name": "停止",
+            "deadline": 1792327147318
+          }
+        ]
+      },
+      "historicalWindowsBaseline": "not-captured; controlled empty baseline is not a fabricated original CI sample",
+      "preservedFailures": [
+        {
+          "path": "/dev/shm/dsc-ci-installed-baseline-controlled-red-1.log",
+          "sha256": "9c647e1c9e7a442819c4ab371c7e380238300797db3bcef6236d686a8bee660f"
+        },
+        {
+          "path": "/dev/shm/dsc-ci-actions-39124063678-original-aggregate-1.log",
+          "sha256": "0cf5cf8ebb98b5f6a9f1167f0444be165e5f1c9489dd59a60689419b3337220c"
+        },
+        {
+          "path": "/dev/shm/dsc-ci-actions-39124063678-original-candidate-1.log",
+          "sha256": "9f483ee121fbb0f9893b662eba047e47450361a4c6a226934acee12c36275c18"
+        },
+        {
+          "path": "/dev/shm/dsc-ci-actions-39124249017-original-candidate-1.log",
+          "sha256": "406791ef0ebedfbfe685591dde7bf71e6b0ab18574b0eec68bb5f892ef2255e2"
+        }
+      ],
+      "latestWorkflowSyntax": {
+        "path": "/dev/shm/dsc-ci-installed-baseline-actionlint-1.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "preFinalIdentityGreen": {
+        "passed": 3,
+        "failed": 0,
+        "retry": 0,
+        "receipt": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-green-2/playwright-execution.json",
+          "sha256": "c7a920c1e41e0685ac587ed20b284f2a9c6eeaf6b937d6745b4405ddb0ef92dd"
+        }
+      },
+      "preFinalIdentityLinux": {
+        "status": "passed",
+        "productTestMode": false,
+        "cleanup": "passed",
+        "hostExit": "passed",
+        "inputSHA": "b511d9bf2ee0a02b2a4a248c35086d7b47082226",
+        "packageReceiptDigest": "5707f95ae28b308e7380dfa6498e0c316e207077c0dd135736a7ebc742fbbdc3",
+        "report": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-linux-1/installed-pair.json",
+          "sha256": "85a224e48bb0a862fb48c39aa4036e7ecf84f58aecab35f99c921cc86a8ae91c"
+        },
+        "input": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-linux-1/input.json",
+          "sha256": "306ccd426bcda613596f839c9c5d792b6b114c9d8f6691a8618c302ad41e88a1"
+        },
+        "process": {
+          "path": "/dev/shm/dsc-ci-installed-baseline-original-linux-1/process.json",
+          "sha256": "615af095c4cf179a29d5acc29920ff701629e518052e23cb574ba9db7b0232a9"
+        },
+        "closedSubjects": {
+          "ids": [
+            "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+            "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+          ],
+          "observedAt": 1792326355419,
+          "originalHost": {
+            "pid": 3338564,
+            "startTicks": "295022809",
+            "state": "S"
+          }
+        },
+        "preparation": [
+          {
+            "phase": "restored-baseline-observation",
+            "ids": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "originalIDs": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "deadline": 1792326383428,
+            "observedAt": 1792326363971
+          },
+          {
+            "phase": "restored-baseline-ready",
+            "ids": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "originalIDs": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "deadline": 1792326383428
+          },
+          {
+            "phase": "public-create-requested",
+            "originalIDs": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "deadline": 1792326383428,
+            "requestedAt": 1792326363972
+          },
+          {
+            "phase": "public-create-completed",
+            "originalIDs": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "deadline": 1792326383428,
+            "completedAt": 1792326364075
+          },
+          {
+            "phase": "post-create-observation",
+            "ids": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5",
+              "terminal-4-11cf86b2-cf54-4d40-bf9e-efc22a9d9773"
+            ],
+            "originalIDs": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "deadline": 1792326383428,
+            "observedAt": 1792326364153
+          },
+          {
+            "phase": "original-node-bound",
+            "nodeID": "terminal-4-11cf86b2-cf54-4d40-bf9e-efc22a9d9773",
+            "existing": [
+              "terminal-2-5f5ed3ab-c78b-437d-8e78-f06f3b49ffa2",
+              "terminal-3-a1dce9ab-4c61-44d5-8de6-d0deacd075b5"
+            ],
+            "overview": "false",
+            "deadline": 1792326383428
+          },
+          {
+            "phase": "localized-stop-interactive",
+            "nodeID": "terminal-4-11cf86b2-cf54-4d40-bf9e-efc22a9d9773",
+            "overview": "false",
+            "name": "停止",
+            "deadline": 1792326383428
+          }
+        ]
+      }
+    },
+    "preFinalIdentityContracts": {
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "log": "/dev/shm/dsc-ci-installed-baseline-full-contracts-3.log",
+      "logSHA256": "c70b229eb01494b5971d0116cae078cba398d50775086723d944b4a83d248526",
+      "durationMs": 154180.58421,
+      "scope": "Latest complete gate/release completion/delivery contracts including all installed creation identities; no .last() subject selection",
+      "acceptance": false
+    }
   },
   "notYetVerified": [
-    "new corrected PR335 head complete formal Actions on newly frozen input",
-    "latest corrected PR335 + unchanged PR327 exact pre-merge full release-pr",
-    "independent all-task local reaggregation; original aggregate/acceptance and package byte checks are separately complete"
+    "new exact locale baseline PR335 head complete formal Actions on newly frozen input",
+    "latest exact locale baseline PR335 + unchanged PR327 real pre-merge full release-pr",
+    "two independently confirmed product race fixes remain outside current CI-observer implementation",
+    "historical all-task local reaggregation missing; latest aggregate/acceptance and candidate bytes verified separately"
   ],
   "releaseBlocker": "Legacy restore subscription revocation race and production Runtime mode-switch callback boundary remain confirmed and unfixed; original intermittent ready/panel-focus causes are unresolved; one accepted temporary combination cannot waive confirmed product failures or validate corrected new head",
   "requiredProtection": {
@@ -731,7 +1138,7 @@
     },
     {
       "file": "scripts/gates/browser-catalog.json",
-      "sha256": "77eb13cddf31cd501a77d1cc28e72827f26083fba462110c9d5a891fea39b8de"
+      "sha256": "a3ef82222472a95d24f8d614c7a6f0f4379f9fecba584c0dd69f0703f1ca5e76"
     },
     {
       "file": "scripts/gates/build-smoke-budget.mjs",
@@ -795,7 +1202,7 @@
     },
     {
       "file": "scripts/smoke/installed-ui-observation.mjs",
-      "sha256": "e9efb9c533b82709aad93bcca7875cd9d49136f44668545fa846f6b6cd033199"
+      "sha256": "acdbdabb72a679e2520857a1d427db81be090430418fb069a548ef3c6abd59cb"
     },
     {
       "file": "scripts/smoke/native-terminal-observer.mjs",
@@ -803,7 +1210,7 @@
     },
     {
       "file": "scripts/smoke/run-installed-pair.mjs",
-      "sha256": "a043903eb4c11758ad518ddee36ae3ed2d6882d90dd11abe8fc7cff84e93d156"
+      "sha256": "97e559f2893de0e626242bb3714b2a2b9e20b248bfda376910745409a1c9ae48"
     },
     {
       "file": "scripts/smoke/run-native-operation.mjs",
@@ -823,7 +1230,7 @@
     },
     {
       "file": "scripts/test/test-gate-contracts.mjs",
-      "sha256": "e67bdd1a73159cfc73fb5169c8ee4d6f9fd80c10b1aab8f817387e2274189e20"
+      "sha256": "ab589998a9cad164abd148516a90bc93d493a1d3215ce75b78ec193f868de39d"
     },
     {
       "file": "scripts/test/test-linux-execution-candidate-assets.mjs",
@@ -839,7 +1246,7 @@
     },
     {
       "file": "tests/playwright/webview-harness.spec.mjs",
-      "sha256": "288f83f725f7d62e3465590c46dbcd23fa075b60d3e6c5770def8850aa04fd96"
+      "sha256": "520f8c5f7af12b4233d5f694ac2d2a6294534d66cbae885d452c21d0e4ed7ce3"
     },
     {
       "file": "tests/vscode-smoke/extension-tests.cjs",
@@ -2679,6 +3086,299 @@
       "pr327Head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
       "combinedHeadSHA": "e1cfb59f7a4f2dd2ef64454781ef2e9a203e4c90",
       "releaseCaveat": "Temporary combination accepted for this exact input only; confirmed Legacy restore and production Runtime mode-switch races remain unfixed release blockers"
+    },
+    {
+      "runID": "39124063678",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124063678",
+      "attempt": 1,
+      "mode": "pr",
+      "version": "0.26.0",
+      "headSHA": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+      "inputSHA": "b511d9bf2ee0a02b2a4a248c35086d7b47082226",
+      "pr335Head": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+      "parentsVerified": true,
+      "parentsAPIEvidence": "/dev/shm/dsc-ci-actions-39124063678-premerge-parents-1.json",
+      "parentsAPIEvidenceSHA256": "4a6e3771827b25c00ab4e7fc60e6c808b8fa3f25f07cd46befc108480b8932c4",
+      "status": "completed",
+      "conclusion": "failure",
+      "acceptance": false,
+      "scope": "Original Actions aggregate/actual jobs/acceptance and original candidate separately checked; not independent local all-task reaggregation",
+      "plan": {
+        "artifactID": 12135810484,
+        "archiveSHA256": "be042bcdf6a4f529a7e3d527c398bad120ccfb55c6b892c3f230cc92988063c4",
+        "planDigest": "4351650f0c14d87a3372f5151f9923fbc3ca4aa1f6f33986fbfe75e1629d4ecb",
+        "inputSHA": "b511d9bf2ee0a02b2a4a248c35086d7b47082226",
+        "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "headSHA": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+        "run": {
+          "id": "39124063678",
+          "attempt": 1,
+          "headSHA": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c"
+        },
+        "scope": "bootstrap downloaded plan; full producer provenance remains to be independently collected"
+      },
+      "counts": {
+        "required": 324,
+        "actual": 330,
+        "passed": 329,
+        "requiredPassed": 323,
+        "failed": 1
+      },
+      "jobs": {
+        "total": 247,
+        "success": 244,
+        "failure": 3
+      },
+      "failures": [
+        {
+          "key": "installed-pair/win32-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":3284,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"child-close; owning task observes additional resources\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        }
+      ],
+      "calibration": [],
+      "notRun": [],
+      "errors": [],
+      "firstFailure": {
+        "key": "installed-pair/win32-x64/installed-pair",
+        "reason": "Task result is failed",
+        "failures": [
+          {
+            "stage": "action",
+            "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":3284,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"child-close; owning task observes additional resources\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+          },
+          {
+            "stage": "host-exit",
+            "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+          }
+        ]
+      },
+      "failedJobs": [
+        {
+          "id": 117666865032,
+          "name": "Validate immutable input / Gate installed-pair (win32-x64)",
+          "conclusion": "failure"
+        },
+        {
+          "id": 117671239737,
+          "name": "Validate immutable input / Gate verify-result (default)",
+          "conclusion": "failure"
+        },
+        {
+          "id": 117672530953,
+          "name": "Verify release contract",
+          "conclusion": "failure"
+        }
+      ],
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39124063678-download-1",
+        "originalResult": "/dev/shm/dsc-ci-actions-39124063678-download-1/gate-acceptance-39124063678-1/gate-acceptance-39124063678-1/gate-final/gate-result.json",
+        "originalResultSHA256": "bc0fcc5d7440515beb0b917102deca5d9af2cb061a6297b3ba3b385ac9ecc8bc",
+        "originalAggregateProvenance": "/dev/shm/dsc-ci-actions-39124063678-download-1/gate-acceptance-39124063678-1/gate-acceptance-39124063678-1/gate-provenance.json",
+        "aggregateArtifactBinding": {
+          "id": 12136700189,
+          "name": "gate-acceptance-39124063678-1",
+          "expired": false,
+          "runID": "39124063678",
+          "attempt": 1,
+          "headSHA": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+          "jobID": 117671239737,
+          "archiveHash": "9e91e19bdaa363d4323c3ceaa9decf5c5387db1e4320286bdfd81e84910b6ab6",
+          "receiptDigests": []
+        },
+        "jobs": {
+          "path": "/dev/shm/dsc-ci-actions-39124063678-jobs-final-1.json",
+          "sha256": "6071df638a6ff42c1d8881c665fc7dcb521faee6bfc6ad7698264668a8d6f180"
+        },
+        "packageByteVerification": {
+          "path": "/dev/shm/dsc-ci-actions-39124063678-download-1/independent-package-byte-verification.json",
+          "sha256": "914d8b6d21be7fe7312053df5ac61efb4329f7375bbeaf7db82ecb5b586b6231"
+        }
+      },
+      "candidateTransfer": {
+        "id": 12134839128,
+        "name": "gate-transfer-candidate-39124063678-1",
+        "expired": false,
+        "runID": "39124063678",
+        "attempt": 1,
+        "headSHA": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+        "jobID": 117666644922,
+        "archiveHash": "c992e16784ac8a0f17c8b7990b838e7e0ee2100e0ae116f558e58d33be2d3a45",
+        "receiptDigests": [
+          "5707f95ae28b308e7380dfa6498e0c316e207077c0dd135736a7ebc742fbbdc3"
+        ]
+      },
+      "packages": [
+        {
+          "id": "devsessioncanvas.dev-session-canvas",
+          "version": "0.26.0",
+          "path": "main.vsix",
+          "size": 5999742,
+          "sha256": "8eae6e23e39d2a7478e13ff667c03ef8ea6221587979da6cc0d531ca3b14ada6",
+          "payloadDigest": "dea8362e0472bbc4e891cc3d674e1c8b1e710fb5ad7d14c9f5968be2a39d9590"
+        },
+        {
+          "id": "devsessioncanvas.dev-session-canvas-notifier",
+          "version": "0.26.0",
+          "path": "notifier.vsix",
+          "size": 160173,
+          "sha256": "93c0082bf82415f04f5cd55073f969bd86ca7825c9b45add1947ee9aaec3bf3c",
+          "payloadDigest": "ed0c255872a322d10ff78bed6b39f307e7ff20a9df1f55cc7458217817cbc103"
+        }
+      ],
+      "packageReceiptDigest": "5707f95ae28b308e7380dfa6498e0c316e207077c0dd135736a7ebc742fbbdc3",
+      "originalInstalledFailure": {
+        "artifactBinding": {
+          "id": 12135452639,
+          "name": "gate-installed-pair-win32-x64-39124063678-1",
+          "expired": false,
+          "runID": "39124063678",
+          "attempt": 1,
+          "headSHA": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+          "jobID": 117666865032,
+          "archiveHash": "ea70187331d2ebc8097c697e9dd26f7609cab1c4c1ad3fbb4af7fb65705c93f7",
+          "receiptDigests": [
+            "2a6acfcdd668f67a3d40c0a9821e195162a64e4affd22c21d752028104397ff7"
+          ],
+          "evidenceDigest": "9e9a55e466e9f5afde0f8aefa451d299c39c51ee793bee7f142d197c1a3c4aff"
+        },
+        "report": {
+          "path": "/dev/shm/dsc-ci-actions-39124063678-download-1/gate-installed-pair-win32-x64-39124063678-1/gate-installed-pair-win32-x64-39124063678-1/installed-pair/win32-x64/installed/installed-pair.json",
+          "sha256": "caa1c195e58d88f1942098cfb8536695909b060258fd06b70b6cfad996dcf362"
+        },
+        "productTestMode": false,
+        "cleanup": "passed",
+        "hostExit": "not-run",
+        "failure": "Public creation produced multiple ambiguous Terminal subjects",
+        "preCreationBaselineCaptured": false,
+        "terminalPreparation": [],
+        "interpretation": "Controlled original bundle reproduces the early empty baseline window, but the actual historical existing IDs were not recorded"
+      }
+    },
+    {
+      "runID": "39124249017",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39124249017",
+      "attempt": 1,
+      "mode": "release-pr",
+      "version": "0.26.1",
+      "headSHA": "1ced17898f771a5f4bb4243cf9a2d65663841c17",
+      "inputSHA": "65b53ad218ac388e7b8dbb91b340afcacbbbd1b9",
+      "pr335Head": "0d02a8b031ef9418f28fe72865e3fc02a2502e0c",
+      "parentsVerified": true,
+      "parentsAPIEvidence": "/dev/shm/dsc-ci-actions-39124249017-premerge-parents-1.json",
+      "parentsAPIEvidenceSHA256": "dbbaaa2f1d9ae605b5ddc2cd4f7c769b4d548186150b227db930ab6e613b1b34",
+      "status": "completed",
+      "conclusion": "success",
+      "acceptance": true,
+      "scope": "Original Actions aggregate/actual jobs/acceptance and original candidate separately checked; not independent local all-task reaggregation",
+      "plan": {
+        "artifactID": 12135860613,
+        "archiveSHA256": "9506126116e2b4076db270ab62ed09607fba557f4fb58680e4eadbc9ff3e8a85",
+        "planDigest": "78cbb9d3b3da7709e58ae7cbf256c4ed194b7bfc41410263dc8d5c004f87d0e7",
+        "inputSHA": "65b53ad218ac388e7b8dbb91b340afcacbbbd1b9",
+        "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "headSHA": "1ced17898f771a5f4bb4243cf9a2d65663841c17",
+        "run": {
+          "id": "39124249017",
+          "attempt": 1,
+          "headSHA": "65b53ad218ac388e7b8dbb91b340afcacbbbd1b9"
+        },
+        "scope": "bootstrap downloaded plan; full producer provenance remains to be independently collected"
+      },
+      "counts": {
+        "required": 330,
+        "actual": 330,
+        "passed": 330,
+        "requiredPassed": 330,
+        "failed": 0
+      },
+      "jobs": {
+        "total": 247,
+        "success": 247
+      },
+      "failures": [],
+      "calibration": [],
+      "notRun": [],
+      "errors": [],
+      "firstFailure": null,
+      "failedJobs": [],
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39124249017-download-1",
+        "originalResult": "/dev/shm/dsc-ci-actions-39124249017-download-1/gate-acceptance-39124249017-1/gate-acceptance-39124249017-1/gate-final/gate-result.json",
+        "originalResultSHA256": "5f01853a08bb1747be05107eee0285d45680aaaeb067a6995a8b1502f9f8f5f6",
+        "originalAggregateProvenance": "/dev/shm/dsc-ci-actions-39124249017-download-1/gate-acceptance-39124249017-1/gate-acceptance-39124249017-1/gate-provenance.json",
+        "aggregateArtifactBinding": {
+          "id": 12136247599,
+          "name": "gate-acceptance-39124249017-1",
+          "expired": false,
+          "runID": "39124249017",
+          "attempt": 1,
+          "headSHA": "65b53ad218ac388e7b8dbb91b340afcacbbbd1b9",
+          "jobID": 117673887800,
+          "archiveHash": "a6c2748649106c9b7c8ca4aab8e6a6f2f76c7f7a296685fc7ea21ea8550e9c86",
+          "receiptDigests": [
+            "037d8cbbd5aa1be1d28397682e562716c279bc570e97901a9de02b1208bfb901"
+          ]
+        },
+        "jobs": {
+          "path": "/dev/shm/dsc-ci-actions-39124249017-jobs-12.json",
+          "sha256": "bdd3938d5e22116acf5792b47d72a87e55ef88366e9fce9ef014208d90968301"
+        },
+        "packageByteVerification": {
+          "path": "/dev/shm/dsc-ci-actions-39124249017-download-1/independent-package-byte-verification.json",
+          "sha256": "0bf41fa23169af32890a154d41e19231f2d15bdeed052520b0c7f4d84315db6f"
+        },
+        "checkedAcceptance": {
+          "path": "/dev/shm/dsc-ci-actions-39124249017-download-1/checked-acceptance.json",
+          "sha256": "07f5828a1eecdf12c37549e9a753117ea85ff19e701b43cbfb9e1df048c1b53a"
+        },
+        "originalAcceptanceDigest": "037d8cbbd5aa1be1d28397682e562716c279bc570e97901a9de02b1208bfb901",
+        "independentAllTaskReaggregation": "not-performed"
+      },
+      "candidateTransfer": {
+        "id": 12135812518,
+        "name": "gate-transfer-candidate-39124249017-1",
+        "expired": false,
+        "runID": "39124249017",
+        "attempt": 1,
+        "headSHA": "65b53ad218ac388e7b8dbb91b340afcacbbbd1b9",
+        "jobID": 117667098480,
+        "archiveHash": "8afa6e396b49e28dc24a67e1248d7ca73a5257d21949ac34a5a05ee857740bae",
+        "receiptDigests": [
+          "b63e508198d89b2c754f1e5fc83fc8aa9710a54f16a46965905ec7e3faa46442"
+        ]
+      },
+      "packages": [
+        {
+          "id": "devsessioncanvas.dev-session-canvas",
+          "version": "0.26.1",
+          "path": "main.vsix",
+          "size": 6000884,
+          "sha256": "66addaf7f9a72a02977f4000f237128f6b5a10d346f61e5ec26af5d38320d7be",
+          "payloadDigest": "9a18bdfb98834e1b369250fbe8bedd255a745cd88823074a20fe989cb3d9c034"
+        },
+        {
+          "id": "devsessioncanvas.dev-session-canvas-notifier",
+          "version": "0.26.1",
+          "path": "notifier.vsix",
+          "size": 160412,
+          "sha256": "aedfc41ccc326a231e897a806d1b82b8f2d2ce41cc7aeada4f4b7c17b4c1c5d5",
+          "payloadDigest": "8bfdfbd7be4d87f97c208d003f4661adf6558046c55fe67e9251618c51f3a2c0"
+        }
+      ],
+      "packageReceiptDigest": "b63e508198d89b2c754f1e5fc83fc8aa9710a54f16a46965905ec7e3faa46442",
+      "pr327Head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+      "combinedHeadSHA": "1ced17898f771a5f4bb4243cf9a2d65663841c17",
+      "releaseCaveat": "This combination does not accept the new locale correction or waive two independently confirmed production blockers"
     }
   ]
 }
