@@ -167,6 +167,10 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 
 业务预算按每条原等待与case继承，不整体延长。计划冻结budgetGroup及毫秒数，一个动作的多helper共享绝对deadline，重试/末次观察不重置它。现有8/10/15/20/30秒的产品等待与特殊组合原期限逐项映射；无法抽出有界预算的case在迁移完成前不能进入新正式目录。
 
+deadline 的合同测试使用受控时钟，分别验证调用时传入的原剩余预算和观察完成后的超期拒绝。不能把调用前计算的 timeout 与测试桩稍后重新读取的真实时钟直接比较：第九轮39119709105的中文 Stop 合同在这两个读时钟点之间跨过毫秒边界而误报。修正测试的时间模型，保持动作/观察的超期反例及一次调用限制；不增加实际驱动的预算、不对业务失败重试。Windows 身份合同的同类断言一并用受控时间验证。
+
+前端输出去重的计数必须在原 session 的投影写入完成后读取。第九轮同输入原 trace 中，local output 的 DOM 曾出现 marker，但随后覆盖快照重建缓冲区；即时 probe 的 `terminalProjectionPending=true`、原 session 已绑定、缓冲区为空。DOM 暂时可见不能证明覆盖快照已应用，也不能把尚在重建的空缓冲区当成丢失正文。该 case 在原40秒内共用绝对期限，先验证可见正文，再只读等待原 session 的 `terminalProjectionPending=false`，最后保留一次/两次完整正文的原严格计数。用同一 production bundle 的真实 xterm parser 暂停/释放验证观察不能提前完成，未释放与迟到结果仍失败；不修改产品投影、baseline 或 payload，不以固定 sleep 代替完成条件。
+
 预算清单同时冻结真实helper源码摘要；源码改动后先显式执行 `scripts/gates/build-smoke-budget.mjs`，审查每个场景的期限、等待表达式、倍数和有限循环，再提交清单。正式入口和本地门禁合同都核对当前源码，不在CI内自动重生成以跳过审查。第七轮39112933251在计划解析正确拒绝遗漏更新的 `extension-tests.cjs` 摘要，后续业务任务未执行；本次重新生成的123场景与旧版全部期限和取值相同，仅源码摘要和证据行号变化。完整新输入仍需另次运行，不能追认被拒绝的原轮。
 
 基础设施默认上限选npm ci10分钟、单次浏览器/VSCode获取5分钟、Host启动/测试驱动握手3分钟、Host退出30秒、私有资源cleanup60秒、失败取证30秒。它们是拟议的首轮工程预算，须真实CI校准，不写成产品SLA。普通Host整场上限由计划计算为启动预算+所有case不重叠budgetGroup之和+cleanup/退出/取证储备；job timeout覆盖其所有Host计划总上限再加5分钟收口，不能只写一个90分钟大上限。保留原asset20分钟、渠道45分钟/finalize20分钟外层保险，拆层后有观测数据再调整。
@@ -265,7 +269,15 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 ## 实施状态（2026-10-18）
 
-最新完整输入为第八轮 [39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051) 与未改 PR327 的组合 [39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317)，均已终态失败。PR335 head03930c18 的真正预合并e4331d26精确parents为main6e708c6b与该head，247 jobs为241成功/6失败；330 actual、324 required、321 required passed，326 total passed包含5个校准操作。组合真正预合并4dd88eaa精确parents为main6e708c6b与组合6109a027，PR33503930c18和PR3278313fc72 ancestry均已核；247 jobs为242成功/5失败，330项全部required、327通过。两轮各source117/118、packaged104/104、Linux原样安装通过，errors/notRun为空，均无acceptance；required首败分别为real-reopen或file/views，加macOS及Windows安装。PR335另有win32-x64校准操作身份观察失败，不能把326 total passed误写为required通过。
+第九轮 [39119709105](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119709105) 的 PR335 head 为1a4c5ff8，真正预合并为6f802d43；API核对精确parents为main6e708c6b与该head。247 jobs为243成功/4失败，原aggregate记录330 actual、324 required、293 required passed、299 total passed，31项被拒中27项属于失败regression producer、4项属于失败webview-function producer。真正首败只有中文Stop的二次时钟合同和local output覆盖快照未完成时的正文计数；兄弟task因producer红灯被拒不能另列为产品首败。118 source、104 packaged、六native操作、两个Marketplace Host和三x64原样安装同批通过，errors/notRun空，整轮无acceptance。
+
+同head与未改PR3278313fc72的临时组合 [39119845747](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119845747) 已247 jobs全成功、330 required/actual/passed。真实输入c2ef2a8c的精确parents为main6e708c6b和组合e1cfb59f，双PR ancestry已核；原aggregate artifact12135230836/ZIP80741221及acceptance摘要7578d4c9独立绑定真实producer，固定原head验证器核完整原验收回执通过。这个结果只属于该临时输入：不能追认上一轮成功、代证本轮尚未提交的修正，或解除已确定复现的两项生产竞态。
+
+本轮只修观察契约。受控时钟与原session投影完成观察的完整门禁/发布/恢复合同114/114通过、0失败/0跳过。浏览器登记430→432，原430条目及ID/title完整保留，只增Agent/Terminal真实parser暂停/释放反例；同production输入429功能和3视觉全部通过、retry0、baseline不变，原功能3600000ms/视觉600000ms任务预算及进程组退役核对通过。production webview.js与第九轮原bundle字节SHA相同；旧即时计数在同bundle受控暂停下先红，新观察及原计数4/4绿。原40秒业务期限覆盖首输出、快照完成和两次同正文输出，只读pending观察不以正文数量作为通过条件。新增修正后的正式PR输入及最新发布组合仍须完整执行。
+
+三x64安装原工件已逐个独立核producer、ZIP和内容清单；原真实I/O/resize、原进程Stop、通知原token公开确认/居中/selection保持/用户ack、独立中英文、应用与Host退出及cleanup全部通过，productTestMode=false。macOS公开Quit和Windows唯一新增节点的概览导航已有真实平台结果。历史CIM阻塞机制、macOS原EPERM及第八轮ready/panel-focus间歇首败仍未定因，当前通过不抹去原失败。完整原输入、摘要、取消/下载失败尝试和取证局限见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。
+
+第八轮 [39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051) 与未改 PR327 的组合 [39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317) 均已终态失败。PR335 head03930c18 的真正预合并e4331d26精确parents为main6e708c6b与该head，247 jobs为241成功/6失败；330 actual、324 required、321 required passed，326 total passed包含5个校准操作。组合真正预合并4dd88eaa精确parents为main6e708c6b与组合6109a027，PR33503930c18和PR3278313fc72 ancestry均已核；247 jobs为242成功/5失败，330项全部required、327通过。两轮各source117/118、packaged104/104、Linux原样安装通过，errors/notRun为空，均无acceptance；required首败分别为real-reopen或file/views，加macOS及Windows安装。PR335另有win32-x64校准操作身份观察失败，不能把326 total passed误写为required通过。
 
 原工件已独立核实际producer、上传ID与ZIP摘要，原双包各有同批回执；第八轮candidate artifact12131187990/ZIP1e0e1498、规范回执1b86af7b，组合candidate12131977938/ZIPb8089216、规范回执b19f6505。两次本地全量逐task下载均在原300000ms终止，部分原现场保留，独立全量再聚合未完成；Actions正式aggregate的完整330任务结果与此分别登记，不加时或拼接追认。完整摘要和原地址见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。
 

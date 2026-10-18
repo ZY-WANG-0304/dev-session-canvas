@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 import { transform } from 'esbuild';
 import terminalResize from '../vscode-smoke/terminal-resize.cjs';
 import { prepareInstalledLocalizedStop } from '../../scripts/smoke/installed-ui-observation.mjs';
+import { withinDeadline } from '../../scripts/gates/deadline.mjs';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -16476,6 +16477,7 @@ for (const executionKind of ['agent', 'terminal']) {
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
     await waitForExecutionTerminalReady(page, nodeId);
+    const projectionDeadline = Date.now() + 40_000;
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
@@ -16496,8 +16498,9 @@ for (const executionKind of ['agent', 'terminal']) {
       serializedTerminalState: coveringState
     });
     const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
-    await expect(terminalRows).toContainText(marker, { timeout: 40_000 });
-    let visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    await expect(terminalRows).toContainText(marker, { timeout: projectionDeadline - Date.now() });
+    let visibleText = (await waitForLocalTerminalProjection(page, nodeId, nextSessionId, projectionDeadline))
+      .terminalVisibleLines.join('\n');
     expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
 
     await dispatchExecutionOutput(page, {
@@ -16518,10 +16521,57 @@ for (const executionKind of ['agent', 'terminal']) {
       outputSequence: 3,
       persisted: true
     });
-    await settleWebview(page, 8);
-
-    visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    visibleText = (await waitForLocalTerminalProjection(page, nodeId, nextSessionId, projectionDeadline))
+      .terminalVisibleLines.join('\n');
     expect((visibleText.match(new RegExp(repeatedMarker, 'gu')) ?? [])).toHaveLength(2);
+  });
+
+  test(`${executionKind} local sequence probe waits for the original projection and rejects a stale session or expired deadline`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`, executionSessionId = `${executionKind}-controlled-local`;
+    const marker = 'ORIGINAL-LOCAL-PROJECTION-ONCE';
+    const coveringState = await createSerializedTerminalStateFromOutput(`${marker}\r\n`);
+    coveringState.outputSequence = 1;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, { nodeId, kind: executionKind, chunk: `${marker}\r\n`,
+      executionSessionId, outputStartSequence: 1, outputSequence: 1, persisted: true });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText(marker);
+
+    await holdXtermParser(page);
+    let observation, released = false;
+    try {
+      await dispatchExecutionSnapshot(page, { nodeId, kind: executionKind, output: '',
+        executionSessionId, outputSequence: 1, serializedTerminalState: coveringState });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      const pending = await readProbeNode(page, nodeId, 0);
+      expect(pending.terminalExecutionSessionId).toBe(executionSessionId);
+      expect(pending.terminalProjectionPending).toBe(true);
+      expect(pending.terminalVisibleLines.join('\n')).not.toContain(marker);
+      await expect(waitForLocalTerminalProjection(page, nodeId, executionSessionId, Date.now() + 150))
+        .rejects.toThrow(/Original local terminal projection.*deadline exhausted/);
+
+      await clearPostedMessages(page);
+      let completed = false;
+      const deadline = Date.now() + 5000;
+      observation = waitForLocalTerminalProjection(page, nodeId, executionSessionId, deadline);
+      void observation.then(() => { completed = true; }, () => { completed = true; });
+      await waitForPostedMessagesByTypeMatch(page, 'webview/testProbeResult', messages => messages.length >= 2);
+      expect(completed).toBe(false, 'A pending original parser must not satisfy the projection observation');
+      await page.evaluate(() => window.__slowSnapshotWrite.release()); released = true;
+      const applied = await observation;
+      expect(applied.terminalExecutionSessionId).toBe(executionSessionId);
+      expect(applied.terminalProjectionPending).toBe(false);
+      expect((applied.terminalVisibleLines.join('\n').match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
+      expect(Date.now()).toBeLessThanOrEqual(deadline);
+      await expect(waitForLocalTerminalProjection(page, nodeId, `${executionSessionId}-stale`, Date.now() + 150))
+        .rejects.toThrow(/Original local terminal projection.*deadline exhausted/);
+      await expect(waitForLocalTerminalProjection(page, nodeId, executionSessionId, Date.now() - 1))
+        .rejects.toThrow(/Original local terminal projection.*deadline exhausted/);
+    } finally {
+      if (!released) await page.evaluate(() => window.__slowSnapshotWrite.release());
+      await observation?.catch(() => {});
+    }
   });
 
   test(`${executionKind} preserves identical text emitted by two distinct authority revisions`, async ({ page }) => {
@@ -18251,6 +18301,20 @@ async function requestWebviewProbe(page, delayMs = 0) {
 async function readProbeNode(page, nodeId, delayMs = 0) {
   const snapshot = await requestWebviewProbe(page, delayMs);
   return snapshot.nodes.find((node) => node.nodeId === nodeId) ?? null;
+}
+
+async function waitForLocalTerminalProjection(page, nodeId, executionSessionId, deadline) {
+  return withinDeadline('Original local terminal projection', deadline, async signal => {
+    while (!signal.aborted && Date.now() < deadline) {
+      const node = await readProbeNode(page, nodeId, 0);
+      if (signal.aborted || Date.now() > deadline) break;
+      if (node?.terminalExecutionSessionId === executionSessionId && node.terminalProjectionPending === false) {
+        return node;
+      }
+      await new Promise(resolve => setTimeout(resolve, Math.min(20, Math.max(1, deadline - Date.now()))));
+    }
+    throw new Error('Original local terminal projection deadline exhausted');
+  });
 }
 
 async function readProbeEdge(page, edgeId, delayMs = 0) {

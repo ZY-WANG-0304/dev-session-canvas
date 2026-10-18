@@ -1,8 +1,20 @@
 # CI 改造的实施与验证输入
 
+最新状态（2026-10-18）：第九轮PR335 [39119709105](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119709105) 终态失败，真正预合并6f802d43/head1a4c5ff8及精确main/head parents已核。247 jobs为243成功/4失败，330 actual、324 required、293 required passed、299 total passed；原aggregate独立绑定artifact12134557487、producer117658318149和ZIPebd1c796。31被拒来自两个失败producer的27个regression/4个浏览器task，真正首败是中文Stop合同二次时钟和覆盖快照pending时计数空缓冲。118 source、104 packaged、六native操作、两个Marketplace Host及三x64原样安装同批通过，errors/notRun空，无acceptance。
+
+同head与未改PR3278313fc72的真实临时组合 [39119845747](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39119845747) 已247 jobs全成功、330 required/actual/passed。输入c2ef2a8c精确parents为main6e708c6b和组合e1cfb59f，双PR ancestry已核。原aggregate artifact12135230836/ZIP80741221和验收摘要7578d4c9已独立核实际producer，固定原head验证器核完整acceptance通过；同批双包producer/ZIP/包回执也独立下载验真。该批结果不追认第九轮PR失败，也不代证当前两处尚未提交的观察修正。
+
+当前两处修正只改变CI观察。完整门禁/发布/恢复合同114/114、0失败/0跳过；登记430→432原430完整保留，仅新增Agent/Terminal真实parser暂停/释放反例。正确原任务预算下429production功能/3视觉全部通过、retry0、baseline不变，原进程组退役已核。当前production webview.js与第九轮原bundle字节SHA相同；旧即时严格计数受控先红，新完成观察及原严格一次/两次计数4/4绿。原40秒贯穿整个输出/快照/重复正文链，只读轮询原session/pending，不以正文次数驱动等待。
+
+原三平台安装工件逐个独立核来源/ZIP/内容清单，productTestMode=false；真实I/O/resize、原进程Stop、原token公开确认/居中/selection保持/用户ack、en/zh及应用/Host正常退出和cleanup均通过。原第八轮ready/panel-focus、CIM具体阻塞机制和macOS原EPERM仍保留未定因；旧代恢复订阅撤销和生产mode-switch回调边界继续阻塞发布。新增修正提交后的PR335及最新PR327组合完整Actions尚待验收，不改版本/合并/tag/渠道。
+
+本轮验证曾因grep锚定错误出现No tests found，因传错外层期限取消第一功能批，第一视觉批也不计作冻结预算验证；这些原记录均保留。取原aggregate首次用错artifact名而明确拒绝，随后核真实名称；组合原candidate串行下载超期，原五分钟内非重叠range读取独立验真，不追认前次下载成功。旧430计划用原head验证器，当前432的policyDigest拒绝不被放宽。原Actions完整结果、原文件/日志SHA、准确counts和取证局限见[local-results.json](local-results.json)。
+
+组合39119845747的全部逐task本地下载仍在原300000ms终止，部分原现场保留，独立本地全量再聚合未完成。其Actions正式aggregate的330项验收、原aggregate/acceptance来源校验和同批双包字节验真分别已完成；这些证据不能写成全部task本地再下载成功。
+
 此目录属于参考证据，不取代正式设计和逐任务验收。正式决策在[release-gate-redesign.md](../../../design-docs/release-gate-redesign.md)，推进状态在[实施计划](../../../exec-plans/active/release-gate-implementation.md)。实现和证据继续随 PR335，发布 PR327 保留。
 
-最新状态（2026-10-18）：第八轮[39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051)在真正预合并e4331d26/head03930c18终态失败，精确parents已API核为main6e708c6b与该head；247 jobs为241成功/6失败，330 actual、324 required、321 required passed，326 total passed含5个校准操作。未改PR327的组合[39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317)在真正预合并4dd88eaa/组合6109a027终态失败，精确main/组合parents和双PR ancestry已核，247 jobs为242成功/5失败，330全部required、327通过。两批source117/118、packaged104/104、Linux原样安装通过；required失败各为一个source与两平台安装，PR335另有Windows身份校准失败，errors/notRun空，均无acceptance。
+此前第八轮（2026-10-18）：[39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051)在真正预合并e4331d26/head03930c18终态失败，精确parents已API核为main6e708c6b与该head；247 jobs为241成功/6失败，330 actual、324 required、321 required passed，326 total passed含5个校准操作。未改PR327的组合[39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317)在真正预合并4dd88eaa/组合6109a027终态失败，精确main/组合parents和双PR ancestry已核，247 jobs为242成功/5失败，330全部required、327通过。两批source117/118、packaged104/104、Linux原样安装通过；required失败各为一个source与两平台安装，PR335另有Windows身份校准失败，errors/notRun空，均无acceptance。
 
 两个原aggregate artifact12132143479/ZIPa5594668、12132134790/ZIP8ae1fa06和原candidate12131187990/ZIP1e0e1498、12131977938/ZIPb8089216已独立绑定actual producer/上传ID/原摘要。规范包回执分别1b86af7b和b19f6505，原主/notifierVSIX摘要见JSON。两次本地全量task原下载均在300000ms失败，现场在各download-1/all-original、日志full-readonly-1.log；没有完整本地再聚合，不能加时追认。正式Actions aggregate的330任务结果与本地下载分别记录。
 

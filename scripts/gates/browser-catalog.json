@@ -1463,6 +1463,11 @@
       "title": "minimal path-only file nodes fit the label without reserving an empty trailing grid column"
     },
     {
+      "id": "a03daaf9564243b49609-ac6b50e0d7fc93be72a6",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent local sequence probe waits for the original projection and rejects a stale session or expired deadline"
+    },
+    {
       "id": "a03daaf9564243b49609-ad26bc2cf25405cb7dfe",
       "file": "webview-harness.spec.mjs",
       "title": "double-clicking markdown-like fenced code maps raw code characters"
@@ -1706,6 +1711,11 @@
       "id": "a03daaf9564243b49609-cc7e78a1b87251e68398",
       "file": "webview-harness.spec.mjs",
       "title": "unrelated host errors do not cancel pending manual node centering"
+    },
+    {
+      "id": "a03daaf9564243b49609-ccfdfb6c1885c5ff615a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal local sequence probe waits for the original projection and rejects a stale session or expired deadline"
     },
     {
       "id": "a03daaf9564243b49609-cd55c3819bf8a1aabf90",

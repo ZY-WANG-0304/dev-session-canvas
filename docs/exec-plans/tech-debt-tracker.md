@@ -927,6 +927,10 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 
 ## 分层CI真实验收与覆盖边界（2026-10-18）
 
+最新第九轮39119709105已有118 source/104 packaged、六native操作、两个Marketplace Host与三x64原样安装同批通过，但中文Stop二次时钟合同和覆盖快照pending计数仍使原整轮失败，严格拒绝31task（含失败producer连带项），293/324 required，无acceptance。两处CI观察修正已有同原生产bundle的受控先红后绿、114合同及429功能/3视觉通过；430→432保全部旧条目，原预算/正文严格计数/进程组退役保持。新修正提交后的正式输入仍须验收。
+
+同head与未改PR327的真实临时组合39119845747已330/330、247 jobs全成功；原aggregate/acceptance实际producer、ZIP及精确双parents独立核验，结果仅属于该输入。两项独立已确认产品竞态（旧代恢复迟到撤销当前订阅；生产mode-switch删除期间仍接纳callback并缓存失败）未修，持续阻塞0.26.1；不能靠偶发绿色、增加等待或删断言关闭。历史real-reopen45秒未ready、panel10秒缺焦点、CIM服务阻塞机制和macOS原EPERM继续未定因，当前实跑通过不当作永久修复。
+
 PR335已实现固定输入/实际Actions来源、15验证job、六发布job、一次clean双包、消费式packaged和三x64原样安装；第四轮39097246318的六native操作、118source Host、2 Marketplace Host及原双包通过，packaged103/104。完整330回执已核，原Windows路径问题消失；7个失败job含regression源码字符串、官方macOS入口、安装CDP观察和合成MouseEvent缺view，整轮无acceptance。当前对应fixture修正的Linux原包完整公开流程、两个原包先红后绿浏览器回归及93合同通过；新head104packaged、三安装、全量聚合与PR327最新真实组合仍待验，不能拼接历史通过。
 
 main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正式设置需实际负例验证。152设计目的地中15新增范围仍明确not-implemented，真实TUI完成信号尚未选定，其余最低宿主、arm64安装、真实systemd/桌面呈现/Marketplace自动依赖和渠道重签边界不外推。生产旧代恢复撤销订阅竞态已复现未修，仍是0.26.1阻塞；CI迁移不能删除原身份/Stop/保存/reader/退役断言或用新等待抹去故障。活计划release-gate-implementation.md、正式设计release-gate-redesign.md、原竞态legacy-supervisor-stop-timeout-investigation.md分别可追溯。

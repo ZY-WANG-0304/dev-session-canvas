@@ -76,20 +76,24 @@ function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
   refresh();return {plan,receipts,provenance,packageReceipt,refresh};
 }
 const rejects=f=>{const result=aggregateResults(f);assert.equal(result.result.status,'failed');assert.equal(result.acceptance,null);return result;};
-test('Windows identity uses one direct process observation and rejects unknown, wrong PID, empty and late responses', async () => {
+test('Windows identity uses one direct process observation and rejects unknown, wrong PID, empty and late responses', async t => {
   const pid = 8123, startTime = '2026-10-18T09:00:00.1234567Z';
+  let now = 100000;
+  t.mock.method(Date, 'now', () => now);
   for (const outcome of ['present', 'absent', 'unknown', 'wrong-pid', 'empty', 'late', 'permission', 'inconsistent', 'missing-time']) {
-    const calls = [], deadline = Date.now() + (outcome === 'late' ? 50 : 1000);
+    now = 100000;
+    const calls = [], deadline = now + (outcome === 'late' ? 50 : 1000);
     const permission = Object.assign(new Error('access denied'), { code: 'EACCES' });
     const execute = async (file, args, options) => {
       calls.push({ file, args, options });
       assert.equal(file, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
       assert(args.includes('-File') && args.at(-1) === String(pid));
       assert(args.some(value => value.endsWith('windows-process-identity.ps1')));
-      assert(options.timeout > 0 && options.timeout <= Math.min(5000, deadline - Date.now()));
+      assert.equal(options.timeout, Math.min(5000, deadline - now));
+      now++; // Scheduling may advance time after the caller computed its budget.
       if (outcome === 'permission') throw permission;
       if (outcome === 'empty') return { stdout: '', stderr: '' };
-      if (outcome === 'late') await new Promise(resolve => setTimeout(resolve, 70));
+      if (outcome === 'late') now = deadline + 1;
       return { stdout: JSON.stringify({ schemaVersion: 1, pid: outcome === 'wrong-pid' ? pid + 1 : pid,
         status: outcome === 'absent' || outcome === 'inconsistent' ? 'absent' : outcome === 'unknown' ? 'unknown' : 'present',
         ...(outcome !== 'absent' && outcome !== 'missing-time' ? { startTime } : {}) }), stderr: '' };
@@ -149,15 +153,25 @@ test('installed public shutdown observes the original application and Host separ
     }
   }
 });
-test('localized Stop preparation binds a unique new subject, navigates publicly and keeps creation, navigation and action in one budget', async () => {
-  for (const outcome of ['normal', 'ambiguous', 'hidden', 'wrong-name', 'navigation-failed', 'late']) {
+test('localized Stop preparation binds a unique new subject, navigates publicly and keeps creation, navigation and action in one budget', async t => {
+  let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  for (const outcome of ['normal', 'ambiguous', 'hidden', 'wrong-name', 'navigation-failed', 'late', 'late-navigation', 'late-observation', 'late-record']) {
+    now = 100000;
     let created = false, navigated = false, doubleClicks = 0, stops = 0;
-    const events = [], nodeID = 'locale-original', deadline = Date.now() + (['hidden', 'wrong-name'].includes(outcome) ? 140 : outcome === 'late' ? 50 : 1000);
-    const stop = { isVisible: async () => navigated && outcome !== 'hidden' && outcome !== 'wrong-name',
-      isEnabled: async () => navigated, click: async options => { assert(navigated); assert(options.timeout <= deadline - Date.now()); stops++; } };
+    const events = [], nodeID = 'locale-original', deadline = now + (['hidden', 'wrong-name'].includes(outcome) ? 140 : outcome === 'late' ? 50 : 1000);
+    const stop = { isVisible: async () => {
+      if (['hidden', 'wrong-name'].includes(outcome)) now += 80;
+      if (outcome === 'late-observation') now = deadline + 1;
+      return navigated && outcome !== 'hidden' && outcome !== 'wrong-name';
+    }, isEnabled: async () => navigated, click: async options => {
+      assert(navigated); assert.equal(options.timeout, deadline - now); now++; stops++;
+    } };
     const chrome = { dblclick: async options => {
-      doubleClicks++; assert.deepEqual(options.position, { x: 4, y: 4 }); assert(options.timeout <= deadline - Date.now());
+      doubleClicks++; assert.deepEqual(options.position, { x: 4, y: 4 }); assert.equal(options.timeout, deadline - now);
+      now++;
       if (outcome === 'navigation-failed') throw new Error('Original titlebar click rejected');
+      if (outcome === 'late-navigation') now = deadline + 1;
       navigated = true;
     } };
     const node = { count: async () => 1, getAttribute: async name => {
@@ -172,9 +186,12 @@ test('localized Stop preparation binds a unique new subject, navigates publicly 
       } };
       assert.equal(selector, `[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`); return node;
     } };
-    const action = () => prepareInstalledLocalizedStop({ frame, deadline, record: step => events.push(step),
+    const action = () => prepareInstalledLocalizedStop({ frame, deadline, record: step => {
+      events.push(step);
+      if (outcome === 'late-record' && step.phase === 'localized-stop-interactive') now = deadline + 1;
+    },
       create: async limit => { assert.equal(limit, deadline); created = true;
-        if (outcome === 'late') await new Promise(resolve => setTimeout(resolve, 70)); } });
+        if (outcome === 'late') now = deadline + 1; } });
     if (outcome === 'normal') {
       const result = await action(); assert.equal(result.nodeID, nodeID); assert.equal(result.deadline, deadline);
       assert.equal(stops, 0, 'Preparing a visible localized action must not dispatch Stop');
@@ -183,6 +200,31 @@ test('localized Stop preparation binds a unique new subject, navigates publicly 
     } else { await assert.rejects(action); assert.equal(stops, 0); }
     assert(doubleClicks <= 1, 'A rejected navigation cannot retry');
     if (['ambiguous', 'late'].includes(outcome)) assert.equal(doubleClicks, 0);
+  }
+});
+test('local projection observation rejects late or mismatched samples without resetting its original deadline', async t => {
+  const source = await fs.readFile('tests/playwright/webview-harness.spec.mjs', 'utf8');
+  const start = source.indexOf('async function waitForLocalTerminalProjection(');
+  const end = source.indexOf('\nasync function readProbeEdge(', start);
+  assert(start >= 0 && end > start);
+  let now = 100000;
+  t.mock.method(Date, 'now', () => now);
+  for (const outcome of ['normal', 'late', 'wrong-session', 'pending', 'expired']) {
+    now = 100000;
+    const deadline = now + (outcome === 'expired' ? -1 : 1000);
+    let reads = 0;
+    const observe = vm.runInNewContext(`${source.slice(start, end)}\nwaitForLocalTerminalProjection`, {
+      Date, setTimeout, withinDeadline, readProbeNode: async (_page, nodeId, delay) => {
+        assert.equal(nodeId, 'original-node'); assert.equal(delay, 0); reads++;
+        if (outcome !== 'normal') now = deadline + 1;
+        return { terminalExecutionSessionId: outcome === 'wrong-session' ? 'unrelated' : 'original-session',
+          terminalProjectionPending: outcome === 'pending' };
+      }
+    });
+    const action = () => observe({}, 'original-node', 'original-session', deadline);
+    if (outcome === 'normal') assert.equal((await action()).terminalExecutionSessionId, 'original-session');
+    else await assert.rejects(action, /Original local terminal projection.*deadline exhausted/u);
+    assert.equal(reads, outcome === 'expired' ? 0 : 1, 'An exhausted observation cannot request another sample');
   }
 });
 test('frozen smoke budgets match the current sources and reject an unreviewed helper change', async t => {

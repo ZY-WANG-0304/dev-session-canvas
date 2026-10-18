@@ -180,6 +180,10 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 
 ## 当前实施与验证状态（2026-10-18）
 
+第九轮39119709105的118 source、104 packaged、六native操作、两个Marketplace Host及三x64原样安装同批通过，整轮仍因时钟合同和覆盖快照计数观察失败，无acceptance。同head与未改PR327的真实临时组合39119845747则330 required/actual/passed、247 jobs全成功，原aggregate来源与完整acceptance已独立核；两批分别记账，不把偶发绿灯当作历史根因已修或产品竞态豁免。
+
+前端local output去重原两用例保留严格一次/两次计数，但须在原session的投影写入完成后读取缓冲。原trace证明DOM瞬时可见后，覆盖快照仍pending并重建为空；按完成状态只读轮询，不以正文次数驱动等待。首输出、DOM、快照完成和两次相同正文输出共用原40秒绝对期限，60秒整用例上限不变；真实parser暂停/释放反例拒提前完成、未释放、错session和迟到结果。登记430→432保原430，新production功能429/视觉3及114合同通过、retry0、基线不变。新修正输入完整Actions仍待验；真实TUI完成信号、15个新增缺口、两项产品竞态均继续单独登记。
+
 第八轮PR335与PR327组合分别321/324和327/330 required通过，均失败且无acceptance。source两批各117/118，首败分别是real-reopen新页面原45秒未ready和file/views原10秒缺文档focus；当前外部只读CDP诊断同原测试动作通过不能追认历史。安装层中文Stop按固定新增节点的公开标题栏双击满足概览退出/精确名称可见可用，随后只点击一次；原生产bundle回归及427功能/3视觉通过，原429登记未删。macOS locale隔离用公开Quit，原应用和原Host退出分别在原30秒核对。两项生产竞态、三平台新输入及完整source/packaged来源验收仍须独立收口。
 
 `scripts/smoke/smoke-catalog.mjs`现登记102个独立product-case、13个默认因果suite和3个focused诊断。独立case各自从prepare开始，以实际执行的prepare/action/assert step写Host回执；旧代、多窗口、真实重开等继续保留完整因果步骤和原身份。源码默认115项加3个notifier/locale辅助，packaged默认102项加2notifier辅助；两个Marketplace Host单独归层。152个设计目的地由`scripts/smoke/smoke-implementation-map.json`完整映射：137现有目的地为implemented-unverified，15proposed-gap为not-implemented。数字不是实跑通过数；任何mapping或AST检查都不能签发acceptance。
