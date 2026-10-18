@@ -112,3 +112,5 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 修订记录：2026-10-18 收齐 30 项独立诊断，登记 URL 失败的真实 resize/hover 因果证据及夹具修正后的独立复验；旧资产和当前工作树诊断仍不能替代新提交正式验收。
 
 修订记录：2026-10-18 接续80regression同批、SSH两态/两个Marketplace Host及真实工件容量证据；同步102/13/3实际目录与137/15映射边界，补有界证据和local checkout settlement守卫，保留未验正式输入与产品阻塞。
+
+2026-10-18 实际Actions首批run39093713215：head455a494f，真正预合并354e6129（main6e708c6b+PR head）。输入、production前端构建/视觉及Linux/macOS四native构建和有限操作通过。regression缺少sidebar-session-history浏览器预装，部分结果上传因task文件名含冒号被GitHub NTFS通用规则拒绝；已补显式锁定浏览器依赖及可逆唯一文件名编码，taskID和业务断言不变。Windows x64 native-load通过，finite I/O首个正文观察在15秒失败，原cleanup settled；首版回执漏raw输出，当前先补有限实际输出/批次/原身份取证，根因待实际样本，不降低原断言或延长产品等待。首批失败保留，不计完整验收。

@@ -36,7 +36,7 @@ export async function runNativeOperation({ assets, output }) {
   const actionDeadline = () => Math.min(workDeadline, Date.now() + 15000);
   let actionCompletedAt, cleanupStartedAt, cleanupCompletedAt;
   let owner, original, cleanup = { kind: 'not-run' }, executionApiCalled = false;
-  const cases = [], failures = [];
+  const cases = [], failures = [], observations = [];
   try {
   assert.equal(path.basename(assets), target, 'Operate the asset built on this actual target');
   const extensionRoot = path.join(directory, 'provider'); const dist = path.join(extensionRoot, 'dist');
@@ -74,15 +74,20 @@ export async function runNativeOperation({ assets, output }) {
   };
   const start = async name => {
     const record = owner.reserve(name); let outputText = '', processResult;
+    const observationEvidence = { name, identity: null, output: '', batches: 0, processResult: null };
+    observations.push(observationEvidence);
     const shell = process.platform === 'win32' ? path.join(process.env.SystemRoot, 'System32/cmd.exe') : '/bin/sh';
     let revision=0;
     const startedDeadline = actionDeadline();
     const observation = record.start({ file: shell, args: process.platform === 'win32' ? ['/d', '/q'] : ['-i'],
       cwd: directory, env: Object.fromEntries(Object.entries(process.env).filter(([,value])=>typeof value==='string')),
       cols: 80, rows: 24, stopStrategy: 'hangup' }, {
-      consume: async batches => { for (const batch of batches) outputText += batch.text; },
+      consume: async batches => { for (const batch of batches) {
+        outputText += batch.text; observationEvidence.batches++;
+        observationEvidence.output = outputText.slice(-65536);
+      } },
       flushFinal: async () => ++revision,
-      processResult: result => { processResult = result; }
+      processResult: result => { processResult = result; observationEvidence.processResult = result; }
     });
     let startedResult, startFailure;
     observation.first.then(value => { startedResult = value; }, error => { startFailure = error; });
@@ -90,6 +95,7 @@ export async function runNativeOperation({ assets, output }) {
       value => value !== undefined, startedDeadline);
     assert.equal(result.kind, 'started');
     const identity = await processIdentity(result.pid); assert(identity, 'Started PTY process must be independently observed');
+    observationEvidence.identity = identity;
     return { record, identity, text: () => outputText, result: () => processResult };
   };
     const io = await start('io-resize-exit');
@@ -162,7 +168,7 @@ export async function runNativeOperation({ assets, output }) {
     executionApiCalled, scope: 'finite-native-provider-operation', status: original ? 'failed' : 'passed',
     startedAt, actionCompletedAt: actionCompletedAt ?? null, cleanupStartedAt, cleanupCompletedAt,
     completedAt: new Date().toISOString(), deadline: workDeadline, cleanupDeadline,
-    cases, cleanup, failures, failure: original?.message ?? null };
+    cases, observations, cleanup, failures, failure: original?.message ?? null };
   await writeJSON(path.join(directory, 'native-operation.json'), receipt);
   if (original) throw original;
   return receipt;

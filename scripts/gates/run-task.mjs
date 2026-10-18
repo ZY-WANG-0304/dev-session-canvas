@@ -15,7 +15,12 @@ export function assertCheckout(plan, root = process.cwd()) {
   assert.deepEqual(untracked,[],'Formal tasks cannot use uncommitted source');
 }
 export function resultPath(output, task) {
-  return path.join(output, task.job, task.variant, `${task.id.replaceAll('/', '--')}.task.json`);
+  return path.join(output, task.job, task.variant, `${taskFileName(task.id)}.task.json`);
+}
+export function taskFileName(id) {
+  // Task IDs remain exact in receipts; filenames must also be valid when an
+  // artifact is downloaded on NTFS. Encoding is reversible and collision-free.
+  return encodeURIComponent(id).replace(/[!'()*]/gu, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 export async function executeTask({ plan, task, output, command, env = process.env, consumed = [],
   prepare = async () => {}, action, assertResult, cleanup, signal, deadline, embeddedCleanup = false }) {

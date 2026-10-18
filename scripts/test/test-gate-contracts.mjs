@@ -9,7 +9,7 @@ import vm from 'node:vm';
 import { buildPlan, validateFrozenPlan, classifyChanges, assertFormalEnvironment, planJobs } from '../gates/resolve-plan.mjs';
 import { aggregateResults } from '../gates/verify-result.mjs';
 import { newTaskReceipt, objectDigest, verifyPackageFiles, validateTaskReceipt, readJSON } from '../gates/receipts.mjs';
-import { executeTask } from '../gates/run-task.mjs';
+import { executeTask, resultPath } from '../gates/run-task.mjs';
 import { runProcess,processGroupExists } from '../gates/process.mjs';
 import JSZip from 'jszip';
 import {collectGitHubProvenance,inspectArtifactArchive} from '../gates/github-provenance.mjs';
@@ -59,6 +59,15 @@ function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
   refresh();return {plan,receipts,provenance,packageReceipt,refresh};
 }
 const rejects=f=>{const result=aggregateResults(f);assert.equal(result.result.status,'failed');assert.equal(result.acceptance,null);return result;};
+test('artifact filenames preserve exact task IDs with portable, distinct names', () => {
+  const ids = ['test:agent-cli-selection', 'smoke/execution-stop/agent', 'test%3Aagent-cli-selection', 'test/agent-cli-selection'];
+  const names = ids.map(id => path.basename(resultPath('/unused', { job: 'regression', variant: 'shard-3', id })));
+  assert.equal(new Set(names).size, ids.length);
+  for (let i = 0; i < names.length; i++) {
+    assert(!/[":<>|?*\\/]/u.test(names[i]), 'Artifact members must work on Windows');
+    assert.equal(decodeURIComponent(names[i].slice(0, -'.task.json'.length)), ids[i]);
+  }
+});
 test('bounded evidence retains exact structured failure inputs and log sections without copying cache or SSH keys', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-evidence-contract-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

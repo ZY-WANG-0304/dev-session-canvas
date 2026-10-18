@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import JSZip from 'jszip';
 import { assertFormalEnvironment, resolvePlan, validateFrozenPlan } from './resolve-plan.mjs';
-import { assertCheckout, markNotRun } from './run-task.mjs';
+import { assertCheckout, markNotRun, taskFileName } from './run-task.mjs';
 import { runProcess } from './process.mjs';
 import { digest, objectDigest, readJSON, validateTaskReceipt, verifyPackageFiles, writeJSON } from './receipts.mjs';
 import { environmentPolicy, infrastructureBudgets, installedTargets, jobDependencies, nativeTargets, taskKey } from './catalog.mjs';
@@ -121,7 +121,7 @@ async function localEvidence(plan, receipts, stages, resultsRoot, output) {
     const selected = receipts.filter(receipt => receipt.job === stage.job && receipt.variant === stage.variant);
     if (!selected.length) continue;
     const zip = new JSZip();
-    for (const receipt of selected) zip.file(`${receipt.taskID.replaceAll('/', '--')}.task.json`, JSON.stringify(receipt));
+    for (const receipt of selected) zip.file(`${taskFileName(receipt.taskID)}.task.json`, JSON.stringify(receipt));
     const bytes = await zip.generateAsync({ type: 'nodebuffer' });
     const name = `local-${stage.job}-${stage.variant}.zip`;
     await fs.writeFile(path.join(output, name), bytes, { flag: 'wx' });
@@ -247,7 +247,7 @@ export async function runLocalCLI(args = process.argv.slice(2)) {
         catch (error) { nativeFailure = error.message; }
       }
       if (stage.job === 'native-assets' && nativeFailure) unavailable = nativeFailure;
-      if (!unavailable && ['webview-function', 'webview-visual', 'marketplace-browser'].includes(stage.job)) {
+      if (!unavailable && ['regression', 'webview-function', 'webview-visual', 'marketplace-browser'].includes(stage.job)) {
         if (!browserPreparation) {
           browserPreparation = observeSettlement(await runProcess(process.execPath, ['node_modules/playwright/cli.js', 'install', 'chromium'], {
             cwd: checkout, env, deadline: Date.now() + infrastructureBudgets.download, logPath: path.join(output, 'browser-install.log') }));

@@ -180,6 +180,9 @@ jobs:
     - name: Install locked dependencies
       run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
+    - name: Install declared regression browser dependency
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
     - name: Execute planned stage
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job regression --variant "${{ matrix.variant }}" --output gate-results
     - name: Collect bounded stage evidence
