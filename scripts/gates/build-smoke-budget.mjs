@@ -158,6 +158,8 @@ function inspectSuite(file, scenario, entry = 'run', times = 1, allowSynchronous
         total+=add(n,'host-activation-reserve',20000,multiplier,{reason:'Host handshake; not a product wait'});
       else if(name==='vscode.commands.executeCommand')total+=add(n,'command-infrastructure-reserve',5000,multiplier,
         {command:n.arguments[0]?.getText(m.ast),reason:'A command returning no timeout is bounded by the original outer case deadline'});
+      else if(name==='vscode.window.tabGroups.close')total+=add(n,'command-infrastructure-reserve',5000,multiplier,
+        {command:'public target-tab close',reason:'Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget'});
       // Traverse callbacks too: interception helpers execute their caller's body.
       for(const arg of n.arguments)total+=visit(arg,multiplier,chain,bindings);
       return total;

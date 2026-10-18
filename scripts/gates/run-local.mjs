@@ -77,12 +77,30 @@ export function freezeLocalInput(checkout, { mode, ref, base, head, originMain }
   }
   assert.equal(ref, head, 'Specify a real PR head or its matching pre-merge result');
   assert.equal(base, originMain, 'Regenerate local PR input from the latest fetched origin/main');
-  const tree = git(['merge-tree', '--write-tree', base, head]).split('\n')[0];
-  return execFileSync('git', ['commit-tree', tree, '-p', base, '-p', head], {
+  // Git 2.34 (still present on supported local systems) has no write-tree
+  // merge-tree mode. Use the actual index merge in this private clone instead;
+  // conflicts must fail before any candidate commit can be created.
+  git(['checkout', '--detach', base]);
+  try {
+    execFileSync('git', ['-c', 'user.name=Local CI', '-c', 'user.email=local-ci@invalid',
+      'merge', '--no-ff', '--no-commit', '--no-stat', head], {
+      cwd: checkout, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000
+    });
+  } catch (error) {
+    const conflicts = git(['diff', '--name-only', '--diff-filter=U']);
+    if (conflicts) throw new Error(`Local pre-merge input has unresolved conflicts: ${conflicts}`, { cause: error });
+    throw error;
+  }
+  const tree = git(['write-tree']);
+  const input = execFileSync('git', ['commit-tree', tree, '-p', base, '-p', head], {
     cwd: checkout, encoding: 'utf8', input: '本地 CI 预合并输入\n',
     env: { ...process.env, GIT_AUTHOR_NAME: 'Local CI', GIT_COMMITTER_NAME: 'Local CI',
       GIT_AUTHOR_EMAIL: 'local-ci@invalid', GIT_COMMITTER_EMAIL: 'local-ci@invalid' }
   }).trim();
+  git(['reset', '--hard', input]);
+  assert.equal(git(['show', '-s', '--format=%P', input]), `${base} ${head}`,
+    'Local merge input must retain both declared parents');
+  return input;
 }
 
 export function unavailableDependency(stage, receipts) {

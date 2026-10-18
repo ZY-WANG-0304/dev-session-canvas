@@ -107,6 +107,22 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 独立driver先验证原样安装/activation并完成控制握手，外部观察器连接固定Host的CDP后，才由公开命令创建画布/Terminal。实际Linux诊断证明晚连接可漏掉已经创建的内层webview frame；连接后创建的单变量对照读到真实正文及PTY子进程尺寸。准备顺序不改变被测包、CSP或产品等待。resize使用实际公开角把手并发送完整指针动作，不使用不存在的`se`标识；读取当前frame视口与把手位置选取画布内的有限增长路径。原bottom-right固定向外拖动在已fit的狭窄画布中越界，仅pointerdown进入产品页面，pointerup缺失；top-left画布内对照收齐事件，完整公开流程诊断中的真实原子进程由64×20变105×34。正式检查保留实际UI变化与原PTY子进程几何，不派内部消息或以观察器几何代证PTY；en/zh-cn重开均从自己的公开准备动作开始。
 
+第五轮实际macOS入口已成功安装原双包，但`--user-data-dir`位于长证据路径，VSCode主IPC在激活前报超过103字节及`listen EINVAL`。`prepareRuntime`按Unix平台实际socket限制检查runtime、user-data和TMPDIR的完整控制路径；优先私有系统临时目录，仍超限时选择短私有`/tmp`路径，再超限直接在准备阶段失败。原样安装显式将user-data放在私有runtime内；Unix TMPDIR也放入已核短runtime，避免内置agenthost再生成超长socket。settings与Host日志先导出到证据目录，确认原Host/进程退出后再回收短目录。双窗口有意共享的runtime身份不改，不能用公共可写目录、改bus环境或禁止真实IPC规避失败。
+
+第五轮Windows公开resize后Node `process.stdout.columns/rows`仍为初始70×22。固定Node源码证明这些属性和`getWindowSize()`读取缓存，尚不能从缓存推定ConPTY几何。选定原子进程在公开Terminal输入收到唯一`geometry:<nonce>`后，以公开`tty.WriteStream(1)`构造器从同一原fd查询当前OS尺寸，同时记录缓存尺寸、原PID/PPID、nonce与采样时间。driver只发送请求，不传目标尺寸；前后原PID与请求身份必须匹配，真实几何未改变仍失败。不会靠SIGWINCH、provider ACK、新进程重挂或观察器自行resize代证。先用真实PTY且不发送SIGWINCH的回归证明缓存未变时仍能读到内核变化；Windows最终判断须由实际runner验证。
+
+固定VSCode冷下载的版本列表请求位于锁定库archive重试之外，第五轮两源码case在metadata连接`ETIMEDOUT/ENETUNREACH`时未启动Host。下载准备只对结构化、已识别的传输错误有限重试（最多三次、同版本与cache），全部消耗原五分钟基础设施绝对deadline，逐次失败保留。不重试非法版本、错误归档或校验/解压/本地权限错误；不回退stable或其他缓存版本，不重跑产品case来抹去产品失败。固定产品版本仍在下载后独立复算，产品动作等待不增加。
+
+文件视图的测试清理必须按原目标身份关闭文件。第五轮在首文件成功后的清理点记录editor generation5被dispose、generation8重建；公开VSCode1.142.0及原production双包的受控焦点对照证明，旧`closeVisibleEditor`在`showTextDocument`与`workbench.action.closeActiveEditor`之间收到画布refocus时实际关闭原画布，保留目标文件。选定按原URI和原ViewColumn解析唯一`TabInputText`，调用公开`vscode.window.tabGroups.close(originalTab,true)`并要求确认成功；不依赖当前active editor，不关闭或重建画布。split创建/复用、原mounted页面及reader结算断言保留；受控对照只确认关闭竞态，不把第五轮后续点击的其他未知因素写成已排除。
+
+原包外部DOM取证还证明窄editor frame宽313时shared文件按钮中心x402在视口外，旧合成click仍能派发成功。这是确定的输入前提缺口，不以产品打开成功追认为真实用户能点击。选定只在测试probe增加文件按钮的实际矩形、disabled和中心命中观察；文件点击前通过现有节点focus入口把目标放入当前画布，并在原10秒动作预算中确认目标可见且中心命中。合成文件输入补齐同一primary pointer的down/up和鼠标事件，点击时再次核实际hit test，拒视口外、被遮挡或disabled按钮。正式file打开、split和reader验收仍由原Host断言承担，probe仅证明测试前提，不生成产品通过结论。
+
+当前production的真实Host首跑证明focus命令返回不表示页面已经完成缩放：probe采样后按钮矩形从x493/y243变为x432/y216，点击时仍不可命中，检查按预期失败。准备必须观察页面有焦点、原目标可命中及连续矩形采样稳定，再在同一原期限内发送一次点击；不能重试已经失败的点击或移除hit test。外部DOM取证显示focus后新目标已居中且可命中，但多选集合仍可保留之前的节点；selection不能代证动画完成，也不是点击目标的前提，不在文件打开case中附加selection约束。短路径迁移后，写入用户设置的夹具显式接收原user-data路径，不再从artifacts位置猜测；多次重开的日志按原session目录保留，最终导出不能用最后一次日志覆盖setup证据。
+
+原样安装resize的新UI box观测、唯一geometry请求和原子进程当前OS尺寸检查共享动作开始时冻结的原20秒期限。观测增加不能在前一步等待结束后重置20秒。短路径settings和日志须导出到原证据根；跨窗口共用runtime不会使两个独立profile互相覆盖，跨阶段真实重开也不得因退役短目录而失去原状态。
+
+source/packaged/Marketplace正式Host把每个私有路径登记到同nonce的Host证据目录。设置在prepare时导出、每次Host退出后再次导出设置和日志；只有外层任务已独立核完全部预期Host退出及fixture清理，才按登记的原路径回收runtime和外移profile。登记必须核nonce、原scene范围及按同系统临时根重新计算的路径，禁止删除任意输入目录；真实重开与双窗口共用目录只在完整因果suite结束后回收。清理失败保持producer红灯，不能先删除证据目录或活动Host的状态。
+
 通知夹具的 receiver 是外部操作系统后端替身，不改主/notifier包。实际输入记录证明原Node CLI收到`notify`并发出OSC9、真实节点attention=true；独立driver只读观察证明Linux的VSCode登录shell解析覆盖了launch PATH，receiver目录丢失。installed启动显式`--force-disable-user-env`，保留冻结的私有receiver环境；不在产品activate后改process.env，不改变system桥接配置，也不把fallback工作台消息当系统路由通过。driver只记录所需receiver路径是否生效，不导出完整环境。新Terminal先等待真实mounted终端出现可见首批输出，再输入，准备和实际动作仍在原等待期限内；前置握手、正文、原子进程/几何/Stop等已观察事实逐阶段保留，后续失败不抹掉它们。
 
 系统通知回跳遵守`canvas-node-notifications.md`：回调只居中目标、保持原selection和attention，不自动输入/focus或确认。接收前用原Stop节点建立不同selection，通过公开fit-all把目标移离视口中心；点击receiver或打开其原protocol URI后核真实目标在视口中心、selection未变且attention仍为true。最后由用户UI左键点击目标，才要求attention=false。真实桌面呈现继续标observational；不得改产品令回跳自动确认来适配错误旧断言，也不得仅以attention仍true代证回调执行。
@@ -152,6 +168,8 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 聚合失败摘要优先指出实际失败task及其原阶段证据，再指出来源/结构错误和未运行项。第四轮regression分片中的native-assets回归失败使整个producer红灯，其他已成功执行的task也不能满足正式验收，但不得把这些连带拒绝的typecheck写成根因。`firstFailure`表示冻结目录顺序下优先选出的原task失败，不声称是不同并行job的墙钟最早失败；producer红灯仍使整批失败，不放宽来源、上传或取消检查。
 
 本地隔离验证同样先确认执行进程及其清理已settle，再在取证30秒/清理60秒储备内导出必要证据和回收checkout；不对仍活动的checkout并发复制或删除。未settle、取证失败或清理失败保留私有目录位置并使本地结果失败。源工作区和其他任务目录不在此回收范围。
+
+本地预合并在私有clone从冻结base执行真实`git merge --no-ff --no-commit`，由实际index生成tree并核merge commit的两个parents；不依赖Git2.34.1尚未支持的`merge-tree --write-tree`。合并冲突在创建任何候选commit前失败，记录冲突路径；原head/target refs不移动，不选择ours/theirs代替用户源代码。正常合并须实查base与head两侧独有内容，已有预合并只在parents精确匹配时复用。
 
 取消/超时缺回执视为非成功。聚合使用always及计划内所有job的实际状态；同名required check若整个workflow取消显示cancelled，不用另一成功skip覆盖。发布workflow使用同版本互斥且不自动取消正在交付的attempt；PR旧输入可取消但不可复用为新SHA通过。
 
@@ -242,5 +260,11 @@ candidate模式现消费该轮原包dist并运行真实production stager/vsce ls
 第四轮[39097246318](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39097246318)在真正预合并aa969012/headcdf40738完成，parents核为main6e708c6b及该head。247 jobs为240成功/7失败，六load/六有限操作、118源码Host、2 Marketplace Host、423功能/3视觉、source-build及package-clean同批通过；双包各build一次且正式candidate artifact12125466855已上传。packaged103/104通过，余项为文件视图点击；regression一分片固定源码字符串、三安装的官方入口/CDP观察失败。全量330task回执和来源实际收齐，Windows原回执无需修改即验真，errors/notRun为空；299task满足聚合、31被拒包含失败分片producer连带拒绝，整体失败/无acceptance。上一轮修复已生效，但不能据部分通过签发完整验收。
 
 当前native stager行为、macOS同包入口、安装的CDP/resize/receiver/回跳/locale前提和合成MouseEvent缺view均有明确证据与回归。Linux第四轮原双包完整公开流程诊断exit0、两个Host公开退出0，原shell/子进程Stop后absence；通知真实居中/selection保留/attention不自动清除、用户点击ack、中英文实际交互通过。原包前后SHA一致，acceptance=false。合成点击minimal/card在原包均先红，修后两个行为回归绿且后续真实drag正常；原426浏览器注册未删改，新目录428项，完整production425功能与3视觉通过，实际执行集合匹配冻结目录，baseline不变。93门禁/发布恢复合同、typecheck、native-assets完整链、vscode-runner环境、四workflow actionlint/结构合同已过；新增首败摘要及严格验收/校准25项针对复验通过，完整425功能与3视觉也通过，执行集合精确匹配冻结目录；正式104packaged/三安装及PR327组合仍须新head实跑。
+
+第五轮[39101493143](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39101493143)在真实预合并7375f4a1/head2c4a16af结束：247 jobs为239成功/8失败，330 actual、324 required、318 required passed，324 total passed包含6校准操作，不称required全通过。六native、三regression分片、425功能/3视觉、两个Marketplace Host及Linux原样安装同批通过；source115/118与packaged103/104，三固定宿主metadata网络失败、源码文件清理、macOS长IPC和Windowscached geometry失败。errors/notRun为空，严格聚合不签发acceptance。
+
+PR3352c4a16af+PR3278313fc72临时0.26.1组合[39101774719](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39101774719)在真实预合并a450a724结束，parents独立核为main6e708c6b及组合head56d54377。247 jobs为243成功/4失败，330全部required/328通过，仅macOS和Windows原样安装失败；source118/packaged104、六native、基础及候选同批通过。该轮和第五轮独立保留，不用互补结果签发验收。
+
+当前关联修正：私有短runtime/user-data/TMPDIR及安全登记退役；settings路径显式传给原夹具，日志按每次重开session保留；原子进程由唯一公开输入nonce触发fresh同fd的OS几何查询；下载只在同原五分钟期限最多三次已识别transport恢复，拒semantic重试；本地Git2.34使用真实index merge核精确parents/拒冲突。原包文件tab焦点受控先红后绿；新fileEntries probe、稳定命中准备和完整primary pointer保持原file/split/mounted/reader断言。当前production完整文件视图Host诊断通过，原Host退出及短目录退役通过，仍是旧native诊断acceptance=false。最终105门禁/发布恢复合同、typecheck、vscode环境、四workflow actionlint/结构合同通过；真实浏览器428→429仅增一项，原428完整保留，production426功能和3视觉全通过/基线不变。123 suite timeout逐项与上一head相同，installed新观测共用原20秒。新head正式跨平台/完整来源与更新后的0.26.1组合仍须运行。
 
 `main`保护API返回404 Branch not protected，尚未配置required check，不能声称已有强制合并阻断。生产旧代恢复撤销订阅竞态依然是独立发布阻塞；即使CI改造通过也不由此宣称0.26.1可发布。渠道模块只在本地HTTP/内存受控输入验证过，未进行真实发布/上传重签对照，未知内容继续拒绝完成。

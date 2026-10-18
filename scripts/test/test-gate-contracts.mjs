@@ -6,6 +6,7 @@ import os from 'node:os';
 import http from 'node:http';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import vm from 'node:vm';
 import { buildPlan, validateFrozenPlan, classifyChanges, assertFormalEnvironment, planJobs } from '../gates/resolve-plan.mjs';
 import { aggregateResults } from '../gates/verify-result.mjs';
@@ -19,7 +20,7 @@ import {validateAcceptance} from '../gates/check-acceptance.mjs';
 import {digest} from '../gates/receipts.mjs';
 import {verifyInstrumentation} from '../smoke/package-instrumentation.mjs';
 import {readNotificationInvocation} from '../smoke/notification-receiver.mjs';
-import { selectInstalledResizeGesture, installedNodeIsCentered } from '../smoke/installed-ui-observation.mjs';
+import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
@@ -31,7 +32,11 @@ import { inspectVsix, retireCandidateCheckout } from '../release/build-release-c
 import { extractVsixDist } from '../release/vsix-file-list.mjs';
 import { ensureExtensionFixtureInputs, verifyExtensionFixture, validateExtensionFixtureInput } from '../smoke/extension-fixture-inputs.mjs';
 import { assertEvidencePath, collectEvidence, evidenceLimits, verifyEvidenceManifest } from '../gates/evidence.mjs';
-import { preserveAndRetireLocalCheckout } from '../gates/run-local.mjs';
+import { freezeLocalInput, preserveAndRetireLocalCheckout } from '../gates/run-local.mjs';
+import { downloadFixedVSCode, isTransientDownloadError } from '../smoke/download-vscode.mjs';
+import { prepareRuntime, retireFormalSmokeRuntimes, snapshotVSCodeLogs } from '../smoke/vscode-smoke-runner.mjs';
+import { processIdentity } from '../smoke/host-evidence.mjs';
+import { once } from 'node:events';
 const { readRuntimeSessions, runtimeIsRetired, verifyOriginalLocalRetirement }=createRequire(import.meta.url)('../../tests/vscode-smoke/gate-runtime-state.cjs');
 const sha='a'.repeat(40), base='b'.repeat(40), hash='c'.repeat(64);
 function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
@@ -64,6 +69,291 @@ function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
   refresh();return {plan,receipts,provenance,packageReceipt,refresh};
 }
 const rejects=f=>{const result=aggregateResults(f);assert.equal(result.result.status,'failed');assert.equal(result.acceptance,null);return result;};
+test('file click preparation waits for focus and stable geometry within one deadline and never retries a rejected click', async () => {
+  const source = await fs.readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
+  const start = source.indexOf('async function performWebviewDomAction(');
+  const end = source.indexOf('\nasync function performSidebarNodeListAction(', start);
+  assert(start >= 0 && end > start);
+  const commands = { openCanvasInEditor: 'editor', openCanvasInPanel: 'panel', focusNode: 'focus',
+    testPerformWebviewDomAction: 'click' };
+  for (const mode of ['stable', 'unfocused', 'moving', 'rejected', 'late-surface']) {
+    let probes = 0, clicks = 0, focuses = 0;
+    const began = Date.now(), budget = mode === 'stable' || mode === 'rejected' ? 700 : 80;
+    const failure = new Error('Click hit target changed');
+    const vscode = { commands: { executeCommand: async (command, ...args) => {
+      if (command === 'editor' && mode === 'late-surface') await new Promise(resolve => setTimeout(resolve, 110));
+      if (command === 'focus') focuses++;
+      if (command === 'click') {
+        clicks++;
+        assert(probes >= 4, 'The first transient visible observation cannot authorize a click');
+        assert(Date.now() - began < budget && args[2] < budget, 'Preparation and click must share the original budget');
+        if (mode === 'rejected') throw failure;
+        return 'actual-click';
+      }
+    } } };
+    const run = vm.runInNewContext(`${source.slice(start, end)}\nperformWebviewDomAction`, { assert, vscode,
+      COMMAND_IDS: commands, Date, setTimeout, clearTimeout,
+      sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+      captureWebviewProbe: async () => { probes++; return { hasDocumentFocus: mode !== 'unfocused', nodes: [{
+        nodeId: 'original', selected: false,
+        fileEntries: [{ filePath: '/original.txt', clickable: true, width: 80, height: 24,
+          x: mode === 'moving' || probes < 4 ? probes * 10 : 40, y: 20 }]
+      }] }; } });
+    const action = { kind: 'clickFileEntry', nodeId: 'original', filePath: '/original.txt' };
+    if (mode === 'stable') assert.equal(await run(action, 'editor', budget), 'actual-click');
+    else if (mode === 'rejected') await assert.rejects(() => run(action, 'editor', budget), error => error === failure);
+    else await assert.rejects(() => run(action, 'editor', budget), /original budget/u);
+    await new Promise(resolve => setTimeout(resolve, 120));
+    assert.equal(clicks, ['stable', 'rejected'].includes(mode) ? 1 : 0, 'Failed preparation cannot dispatch a late click');
+    if (mode === 'late-surface') assert.equal(focuses, 0);
+  }
+});
+test('relocated settings and every original reopen log remain in evidence before short directories retire', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-relocated-evidence-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const userDataDir = path.join(root, 'short-profile'), artifactDir = path.join(root, 'long-evidence', 'artifacts');
+  await fs.mkdir(path.join(userDataDir, 'User'), { recursive: true });
+  const settingsPath = path.join(userDataDir, 'User', 'settings.json');
+  await fs.writeFile(settingsPath, JSON.stringify({ original: true }));
+  const source = await fs.readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
+  const start = source.indexOf('function resolveSmokeUserSettingsPath(');
+  const end = source.indexOf('\nasync function forceSmokeSettingsConfigurationRefresh(', start);
+  const run = vm.runInNewContext(`${source.slice(start, end)}\nwriteSmokeUserSettings`, { assert, fs, path, artifactDir,
+    process: { env: { DEV_SESSION_CANVAS_SMOKE_USER_DATA_DIR: userDataDir } },
+    forceSmokeSettingsConfigurationRefresh: async () => {} });
+  await run({ updated: true });
+  assert.deepEqual(JSON.parse(await fs.readFile(settingsPath, 'utf8')), { original: true, updated: true });
+  await assert.rejects(() => fs.stat(path.join(path.dirname(artifactDir), 'user-data')), { code: 'ENOENT' });
+  for (const session of ['setup', 'verify']) {
+    await fs.mkdir(path.join(userDataDir, 'logs', session), { recursive: true });
+    await fs.writeFile(path.join(userDataDir, 'logs', session, 'host.log'), `${session} original Host\n`);
+    await snapshotVSCodeLogs(userDataDir, artifactDir);
+  }
+  for (const session of ['setup', 'verify']) assert.equal(
+    await fs.readFile(path.join(artifactDir, 'vscode-logs', session, 'host.log'), 'utf8'), `${session} original Host\n`);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(artifactDir, 'user-settings.json'), 'utf8')),
+    { original: true, updated: true });
+});
+test('file cleanup closes the original target tab when asynchronous canvas focus wins the race', async () => {
+  const source = await fs.readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
+  const start = source.indexOf('async function closeVisibleEditor(');
+  const end = source.indexOf('\nfunction describeExpectedExecutionLinkModifier(', start);
+  assert(start >= 0 && end > start, 'Actual file-close fixture must be exercised');
+  class TabInputText { constructor(uri) { this.uri = uri; } }
+  for (const refocus of [false, true]) {
+    const uri = { fsPath: '/private/original.txt', toString: () => 'file:///private/original.txt' };
+    const target = { input: new TabInputText(uri), group: { viewColumn: 2 } };
+    const canvas = { input: { viewType: 'devSessionCanvas.canvasEditor' }, group: { viewColumn: 1 } };
+    const tabs = [canvas, target], closed = [];
+    let active = canvas;
+    const vscode = { TabInputText, window: {
+      visibleTextEditors: [{ document: { uri }, viewColumn: 2 }],
+      tabGroups: { all: [{ tabs: [canvas], viewColumn: 1 }, { tabs: [target], viewColumn: 2 }],
+        close: async (tab, preserveFocus) => { assert.equal(preserveFocus, true); closed.push(tab); return true; } },
+      showTextDocument: async () => { active = target; }
+    }, commands: { executeCommand: async command => {
+      assert.equal(command, 'workbench.action.closeActiveEditor');
+      // The public close command observes the workbench's focus after the
+      // pending product refocus, rather than the helper's earlier target.
+      if (refocus) active = canvas;
+      closed.push(active);
+    } } };
+    const run = vm.runInNewContext(`${source.slice(start, end)}\ncloseVisibleEditor`, { assert, vscode });
+    await run(uri.fsPath);
+    assert.deepEqual(closed, [target], `Only the original file may close; canvas refocus=${refocus}`);
+    assert(tabs.includes(canvas));
+  }
+});
+test('file cleanup rejects an unconfirmed or missing original tab without closing an unrelated editor', async () => {
+  const source = await fs.readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
+  const start = source.indexOf('async function closeVisibleEditor(');
+  const end = source.indexOf('\nfunction describeExpectedExecutionLinkModifier(', start);
+  class TabInputText { constructor(uri) { this.uri = uri; } }
+  const uri = { fsPath: '/private/original.txt', toString: () => 'file:///private/original.txt' };
+  const target = { input: new TabInputText(uri), group: { viewColumn: 2 } };
+  let closes = 0;
+  const vscode = { TabInputText, window: { visibleTextEditors: [{ document: { uri }, viewColumn: 2 }],
+    tabGroups: { all: [{ tabs: [target], viewColumn: 2 }], close: async () => { closes++; return false; } } },
+    commands: { executeCommand: () => assert.fail('An unrelated active editor must never be closed') } };
+  const run = vm.runInNewContext(`${source.slice(start, end)}\ncloseVisibleEditor`, { assert, vscode });
+  await assert.rejects(() => run(uri.fsPath), /confirm.*clos|clos.*confirm/iu);
+  assert.equal(closes, 1);
+  vscode.window.tabGroups.all[0].tabs = [];
+  await assert.rejects(() => run(uri.fsPath), /original.*tab/iu);
+  assert.equal(closes, 1);
+  vscode.window.visibleTextEditors = [];
+  await run(uri.fsPath);
+  assert.equal(closes, 1);
+});
+test('formal short runtime exports evidence before retiring only the original completed Host profiles', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-runtime-retirement-'));
+  const directory = path.join(root, 'hosts'), fixtureRoot = path.join(root, 'deep'.repeat(40), 'scene');
+  const previous = Object.fromEntries(['DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS', 'DEV_SESSION_CANVAS_GATE_RUN_NONCE']
+    .map(key => [key, process.env[key]]));
+  const nonce = `retirement-${process.pid}`;
+  process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS = directory;
+  process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE = nonce;
+  const runtimes = [];
+  let child;
+  t.after(async () => {
+    child?.kill();
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    for (const runtime of runtimes) {
+      await fs.rm(runtime.runtimeDir, { recursive: true, force: true });
+      await fs.rm(runtime.userDataDir, { recursive: true, force: true });
+    }
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  for (const role of ['owner', 'attacher']) runtimes.push(await prepareRuntime({
+    debugRoot: path.join(fixtureRoot, role), runtimeDirName: `dsc-shared-retirement-${process.pid}`,
+    userSettings: { role } }));
+  assert.equal(runtimes[0].runtimeDir, runtimes[1].runtimeDir);
+  assert.notEqual(runtimes[0].userDataDir, runtimes[1].userDataDir);
+  for (const runtime of runtimes) {
+    await fs.mkdir(path.join(runtime.userDataDir, 'logs', 'actual-host'), { recursive: true });
+    await fs.writeFile(path.join(runtime.userDataDir, 'logs', 'actual-host', 'host.log'), 'Original Host log\n');
+  }
+  child = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { stdio: 'ignore' });
+  await once(child, 'spawn');
+  const host = { ...await processIdentity(child.pid), platform: process.platform }; assert(host.startTicks || host.startTime);
+  const contract = { caseID: 'private-runtime-contract', vscode: '1.142.0',
+    subjects: [{ testFile: 'private-runtime-tests.cjs', sha256: hash, roles: ['main'] }] };
+  const receipt = { schemaVersion: 1, nonce, caseID: contract.caseID, host,
+    testFile: 'private-runtime-tests.cjs', subjectHash: hash, role: 'main', cleanup: 'passed',
+    environment: { platform: process.platform, vscode: contract.vscode }, cleanupDeadline: Date.now() + 30000,
+    cleanupStartedAt: new Date().toISOString(), cleanupCompletedAt: new Date().toISOString() };
+  await fs.writeFile(path.join(directory, 'original.host.json'), JSON.stringify(receipt));
+  await assert.rejects(() => retireFormalSmokeRuntimes(directory, nonce, { contract, fixtureRoot,
+    deadline: Date.now() + 20 }), /Host.*(exit|present)|Original.*deadline/iu);
+  assert((await fs.stat(runtimes[0].runtimeDir)).isDirectory(), 'A retained original Host forbids directory retirement');
+  const closed = once(child, 'close'); child.kill(); await closed; child = null;
+  const registration = (await fs.readdir(directory)).find(name => name.startsWith('smoke-runtime-'));
+  const registrationFile = path.join(directory, registration);
+  const original = JSON.parse(await fs.readFile(registrationFile, 'utf8'));
+  await fs.writeFile(registrationFile, JSON.stringify({ ...original, paths: { ...original.paths, runtimeDir: root } }));
+  await assert.rejects(() => retireFormalSmokeRuntimes(directory, nonce, { contract, fixtureRoot,
+    deadline: Date.now() + 1000 }), /original private resolution/u);
+  assert((await fs.stat(runtimes[0].runtimeDir)).isDirectory(), 'Changed registered paths cannot delete a directory');
+  await fs.writeFile(registrationFile, JSON.stringify(original));
+  const retired = await retireFormalSmokeRuntimes(directory, nonce, { contract, fixtureRoot, deadline: Date.now() + 3000 });
+  assert.equal(retired.status, 'passed'); assert.equal(retired.retired.length, 3);
+  for (const runtime of runtimes) {
+    await assert.rejects(() => fs.stat(runtime.runtimeDir), { code: 'ENOENT' });
+    await assert.rejects(() => fs.stat(runtime.userDataDir), { code: 'ENOENT' });
+    assert.equal(await fs.readFile(path.join(runtime.artifactsDir, 'vscode-logs', 'actual-host', 'host.log'), 'utf8'), 'Original Host log\n');
+    const settings = JSON.parse(await fs.readFile(path.join(runtime.artifactsDir, 'user-settings.json'), 'utf8'));
+    assert(['owner', 'attacher'].includes(settings.role));
+  }
+});
+test('fixed host metadata recovery retries only bounded transport errors and preserves first failure evidence', async () => {
+  let clock = 100, requests = 0;
+  const evidence = [], inputs = [];
+  const transport = new AggregateError(['ETIMEDOUT', 'ENETUNREACH'].map(code => Object.assign(new Error('connect failed'), { code })),
+    'all addresses failed');
+  const executable = await downloadFixedVSCode({ version: '1.142.0', cachePath: '/private/fixed-cache', deadline: 2000,
+    record: result => evidence.push(structuredClone(result)) }, { now: () => clock, sleep: ms => { clock += ms; },
+    download: async input => { inputs.push(input); if (++requests === 1) throw transport; return '/private/1.142.0/code'; } });
+  assert.equal(executable, '/private/1.142.0/code'); assert.equal(requests, 2);
+  assert(inputs.every(input => input.version === '1.142.0' && input.cachePath === '/private/fixed-cache'));
+  assert.deepEqual(evidence.map(item => item.status), ['running', 'retrying', 'running', 'passed']);
+  assert.equal(evidence.at(-1).deadline, 2000);
+  assert.equal(evidence.at(-1).attempts[0].status, 'failed');
+  assert.deepEqual(evidence.at(-1).attempts[0].error.causes.map(item => item.code), ['ETIMEDOUT', 'ENETUNREACH']);
+  for (const invalid of ['stable', 'insiders', '1.142', '1.142.0-insider'])
+    await assert.rejects(() => downloadFixedVSCode({ version: invalid, cachePath: '/cache', deadline: 2000 },
+      { now: () => 100, download: () => { throw Error('Unexpected call'); } }), /fixed release version/u);
+});
+test('fixed host download refuses semantic errors and cannot extend its deadline or retry indefinitely', async () => {
+  for (const error of [new Error('Invalid version 1.142.0'), new Error('Checksum mismatch'),
+    Object.assign(new Error('permission denied'), { code: 'EACCES' }),
+    new AggregateError([Object.assign(new Error('connection failed'), { code: 'ETIMEDOUT' }), new Error('invalid archive')])]) {
+    let requests = 0;
+    await assert.rejects(() => downloadFixedVSCode({ version: '1.142.0', cachePath: '/cache', deadline: 2000 },
+      { now: () => 100, download: async () => { requests++; throw error; } }), failure => failure === error);
+    assert.equal(requests, 1);
+    assert.equal(isTransientDownloadError(error), false);
+  }
+  let clock = 100, requests = 0;
+  const timeout = Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' });
+  await assert.rejects(() => downloadFixedVSCode({ version: '1.142.0', cachePath: '/cache', deadline: 2000 },
+    { now: () => clock, sleep: ms => { clock += ms; }, download: async () => { requests++; throw timeout; } }),
+  failure => failure === timeout);
+  assert.equal(requests, 3);
+  requests = 0; clock = 100;
+  await assert.rejects(() => downloadFixedVSCode({ version: '1.142.0', cachePath: '/cache', deadline: 150 },
+    { now: () => clock, sleep: () => assert.fail('Insufficient budget must not retry'),
+      download: async () => { requests++; clock = 149; throw timeout; } }), failure => failure === timeout);
+  assert.equal(requests, 1);
+  const evidence = [];
+  await assert.rejects(() => downloadFixedVSCode({ version: '1.142.0', cachePath: '/cache', deadline: 150,
+    record: item => evidence.push(structuredClone(item)) },
+  { now: () => clock, download: async () => { clock = 151; return '/late/code'; } }), /deadline exhausted/u);
+  assert.equal(evidence.at(-1).status, 'failed');
+  assert(evidence.at(-1).attempts.every(item => item.status !== 'passed'));
+  const checksum = new Error('Checksum mismatch');
+  requests = 0;
+  await assert.rejects(() => downloadFixedVSCode({ version: '1.142.0', cachePath: '/cache', deadline: 2000 },
+    { now: () => 100, download: async ({ reporter }) => {
+      requests++;
+      reporter.report({ stage: 'retrying', attempt: 1, totalAttempts: 3, error: checksum });
+      assert.fail('The pinned library must not continue its unconditional internal retry');
+    } }), failure => failure === checksum);
+  assert.equal(requests, 1);
+});
+test('installed resize requires a fresh request from the original child and rejects cached or unrelated evidence', () => {
+  const before = { pid: 40, ppid: 30, cols: 70, rows: 22 };
+  const request = { nonce: 'a'.repeat(32), requestedAt: 100 };
+  const after = { ...before, cols: 103, rows: 34, nonce: request.nonce, observedAt: 101,
+    method: 'original-stdout-fresh-tty-handle', cached: { cols: 70, rows: 22 } };
+  assert(installedGeometryMatchesResize(before, after, request));
+  for (const change of [{ cols: 70, rows: 22 }, { pid: 41 }, { ppid: 31 }, { nonce: 'b'.repeat(32) },
+    { observedAt: 99 }, { method: 'provider-ack' }, { cols: 0 }, { rows: 2.4 }])
+    assert.equal(installedGeometryMatchesResize(before, { ...after, ...change }, request), false);
+});
+test('installed geometry subject observes real kernel resize without a SIGWINCH cache refresh',
+  { skip: process.platform === 'win32' }, async t => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-original-geometry-contract-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    const program = `import os,pty,fcntl,termios,struct,subprocess,json,sys,time,select
+master,slave=pty.openpty()
+fcntl.ioctl(master,termios.TIOCSWINSZ,struct.pack('HHHH',22,70,0,0))
+output=os.path.join(sys.argv[3],'geometry.json')
+# No controlling terminal or foreground process group: ioctl changes the real
+# terminal but does not cause Node's SIGWINCH handler to refresh stdout caches.
+child=subprocess.Popen([sys.argv[1],sys.argv[2],output],stdin=slave,stdout=slave,stderr=slave)
+def read(predicate):
+ deadline=time.monotonic()+5
+ while time.monotonic()<deadline:
+  if select.select([master],[],[],0.01)[0]: os.read(master,65536)
+  try:
+   with open(output) as stream: value=json.load(stream)
+   if predicate(value): return value
+  except FileNotFoundError: pass
+ raise AssertionError('Original PTY observation did not complete')
+try:
+ before=read(lambda x:x.get('nonce')=='startup')
+ assert (before['cols'],before['rows'])==(70,22),before
+ fcntl.ioctl(master,termios.TIOCSWINSZ,struct.pack('HHHH',34,103,0,0))
+ nonce='d'*32
+ os.write(master,('geometry:'+nonce+'\\n').encode())
+ after=read(lambda x:x.get('nonce')==nonce)
+ assert after['pid']==before['pid']==child.pid and after['ppid']==before['ppid'],after
+ assert (after['cols'],after['rows'])==(103,34),after
+ assert after['cached']=={'cols':70,'rows':22},after
+ print(json.dumps({'before':before,'after':after,'sigwinchSent':False}))
+finally:
+ child.terminate()
+ try: child.wait(timeout=2)
+ except subprocess.TimeoutExpired: child.kill();child.wait(timeout=2)
+ os.close(master);os.close(slave)
+`;
+    const result = await runProcess('python3', ['-c', program, process.execPath,
+      path.resolve('scripts/smoke/installed-geometry-subject.cjs'), root],
+    { deadline: Date.now() + 15000, quiet: true, logPath: path.join(root, 'real-pty.log') });
+    assert.equal(result.status, 'passed', await fs.readFile(path.join(root, 'real-pty.log'), 'utf8'));
+  });
 test('production ZIP inspection keeps localization and source/debug exclusions independently of staging', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-production-list-contract-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -186,6 +476,53 @@ test('evidence cannot silently truncate structured failures, follow redirected i
     await assert.rejects(() => verifyEvidenceManifest(output), /Evidence collection failed/u);
     assert((await fs.stat(source)).isDirectory(), 'Collection failure must leave original inputs intact');
   }
+});
+async function localMergeFixture(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-local-merge-contract-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+  git('init'); git('config', 'user.name', 'Local fixture'); git('config', 'user.email', 'fixture@invalid');
+  await fs.writeFile(path.join(root, 'original.txt'), 'original\n');
+  git('add', '.'); git('commit', '-m', 'original');
+  const ancestor = git('rev-parse', 'HEAD');
+  git('checkout', '-b', 'fixture-head');
+  await fs.writeFile(path.join(root, 'head.txt'), 'head-only\n');
+  git('add', '.'); git('commit', '-m', 'head');
+  const head = git('rev-parse', 'HEAD');
+  git('checkout', '-b', 'fixture-base', ancestor);
+  await fs.writeFile(path.join(root, 'base.txt'), 'base-only\n');
+  git('add', '.'); git('commit', '-m', 'base');
+  return { root, git, ancestor, head, base: git('rev-parse', 'HEAD') };
+}
+test('local PR input performs a real merge with exact parents and both source changes', async t => {
+  const { root, git, head, base } = await localMergeFixture(t);
+  const input = freezeLocalInput(root, { mode: 'release-pr', ref: head, base, head, originMain: base });
+  assert.equal(git('show', '-s', '--format=%P', input), `${base} ${head}`);
+  assert.equal(git('show', `${input}:head.txt`), 'head-only');
+  assert.equal(git('show', `${input}:base.txt`), 'base-only');
+  assert.equal(git('show', `${input}:original.txt`), 'original');
+  assert.equal(git('rev-parse', 'origin/main'), base, 'Generating a merge must not move the target to the PR head');
+  assert.equal(git('status', '--porcelain'), '', 'The private merge must settle before task checkout');
+  assert.equal(freezeLocalInput(root, { mode: 'release-pr', ref: input, base, head, originMain: base }), input);
+  assert.throws(() => freezeLocalInput(root, { mode: 'release-pr', ref: input, base: head, head: base, originMain: base }),
+    /different parents/u);
+});
+test('local PR merge conflict fails without fabricating a merge commit or changing original refs', async t => {
+  const { root, git, ancestor } = await localMergeFixture(t);
+  git('checkout', '-b', 'conflict-head', ancestor);
+  await fs.writeFile(path.join(root, 'original.txt'), 'head-conflict\n');
+  git('add', '.'); git('commit', '-m', 'head-conflict'); const head = git('rev-parse', 'HEAD');
+  git('checkout', '-b', 'conflict-base', ancestor);
+  await fs.writeFile(path.join(root, 'original.txt'), 'base-conflict\n');
+  git('add', '.'); git('commit', '-m', 'base-conflict'); const base = git('rev-parse', 'HEAD');
+  assert.throws(() => freezeLocalInput(root, { mode: 'pr', ref: head, base, head, originMain: base }),
+    /unresolved conflicts: original\.txt/u);
+  assert.equal(git('rev-parse', 'conflict-head'), head);
+  assert.equal(git('rev-parse', 'conflict-base'), base);
+  assert.equal(git('rev-parse', 'origin/main'), base);
+  assert.equal(git('rev-parse', 'HEAD'), base);
+  assert.equal(git('diff', '--name-only', '--diff-filter=U'), 'original.txt',
+    'A real conflict must remain available for failure evidence');
 });
 test('local checkout retirement refuses active work and preserves a settled failure before deleting its private scope', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-local-retirement-'));

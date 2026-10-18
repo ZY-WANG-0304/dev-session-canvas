@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { runProcess,retireProcessGroup } from '../gates/process.mjs';
 import { environmentPolicy, infrastructureBudgets } from '../gates/catalog.mjs';
+import { withinDeadline } from '../gates/deadline.mjs';
 
 const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
 const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
@@ -64,7 +65,8 @@ export async function runVSCodeScenario(options) {
 
 export async function launchPreparedVSCodeScenario(options) {
   const runtime = options.runtime;
-  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot));
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot,
+    { evidenceDir: runtime.artifactsDir }));
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
     folderUri: options.folderUri,
@@ -91,12 +93,15 @@ export async function launchPreparedVSCodeScenario(options) {
     throw error;
   }
 
+  await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
+
   return runtime;
 }
 
 export async function spawnPreparedVSCodeScenario(options) {
   const runtime = options.runtime;
-  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot));
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot,
+    { evidenceDir: runtime.artifactsDir }));
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
     folderUri: options.folderUri,
@@ -118,7 +123,9 @@ export async function spawnPreparedVSCodeScenario(options) {
   });
   return {
     ...handle,
-    completed: handle.completed.catch(async (error) => {
+    completed: handle.completed.then(async value => {
+      await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir); return value;
+    }).catch(async (error) => {
       await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
       console.error(`Smoke test artifacts saved to ${runtime.artifactsDir}`);
       throw error;
@@ -135,21 +142,50 @@ export function resolveVSCodeSmokeDebugRoot(projectRoot) {
   return path.join(projectRoot, '.debug', 'vscode-smoke');
 }
 
-export async function prepareRuntime(options) {
+export function resolveSmokeRuntimePaths(options, { platform = process.platform, temporaryRoot = os.tmpdir(),
+  fallbackRoot = '/tmp', runtimeNonce = process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE } = {}) {
   const debugRoot = options.debugRoot;
   const requestedRuntimeName = options.runtimeDirName ?? 'dsc-vscode-smoke-runtime';
-  const runtimeNonce = process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE;
-  const longSocket = path.join(os.tmpdir(), requestedRuntimeName, 'state', 'dsc', 'rh', '0'.repeat(24), 's.sock');
+  const limit = platform === 'darwin' ? 103 : 107;
+  const unix = platform !== 'win32';
+  const runtimeSocket = directory => path.join(directory, 'state', 'dsc', 'rh', '0'.repeat(24), 's.sock');
+  const mainSocket = directory => path.join(directory, '1.14-main.sock');
+  const agentSocket = directory => path.join(directory, `vscode-ah-${'a'.repeat(12)}`, `${'b'.repeat(22)}.sock`);
+  const fits = file => Buffer.byteLength(file) <= limit;
+  const longSocket = runtimeSocket(path.join(temporaryRoot, requestedRuntimeName));
   // Case IDs can be long. Keep the real systemd and VS Code IPC observations
   // within the OS socket limit, and isolate concurrent formal run/attempts.
   // Shared-window setup passes the same name and nonce to both participants.
-  const runtimeName = runtimeNonce || Buffer.byteLength(longSocket) > 107
-    ? `dsc-${createHash('sha256').update(`${requestedRuntimeName}\0${runtimeNonce ?? ''}`).digest('hex').slice(0, 16)}`
+  const hashedName = `dsc-${createHash('sha256').update(`${requestedRuntimeName}\0${runtimeNonce ?? ''}`).digest('hex').slice(0, 16)}`;
+  let runtimeName = runtimeNonce || !fits(longSocket)
+    ? hashedName
     : requestedRuntimeName;
-  const runtimeDir = path.join(os.tmpdir(), runtimeName);
+  const resolve = root => {
+    const runtimeDir = path.join(root, runtimeName);
+    let userDataDir = path.join(options.userDataInRuntimeDir ? runtimeDir : debugRoot, 'user-data');
+    if (unix && !fits(mainSocket(userDataDir))) {
+      // Distinct window fixtures can intentionally share the runtime while
+      // still requiring separate user-data and extension Host identities.
+      const windowID = createHash('sha256').update(`${path.resolve(debugRoot)}\0${runtimeNonce ?? requestedRuntimeName}`)
+        .digest('hex').slice(0, 12);
+      userDataDir = path.join(root, `dsc-ud-${windowID}`);
+    }
+    const tmpDir = path.join(unix ? runtimeDir : debugRoot, 'tmp');
+    return { runtimeDir, userDataDir, tmpDir };
+  };
+  let paths = resolve(temporaryRoot);
+  const valid = paths => [runtimeSocket(paths.runtimeDir), mainSocket(paths.userDataDir), agentSocket(paths.tmpDir)].every(fits);
+  if (unix && !valid(paths)) { runtimeName = hashedName; paths = resolve(temporaryRoot); }
+  if (unix && !valid(paths)) paths = resolve(fallbackRoot);
+  assert(!unix || valid(paths), `Private ${platform} smoke socket paths exceed the ${limit}-byte OS socket budget`);
+  return paths;
+}
+
+export async function prepareRuntime(options) {
+  const debugRoot = options.debugRoot;
+  const { runtimeDir, userDataDir, tmpDir } = resolveSmokeRuntimePaths(options);
   // With no XDG_RUNTIME_DIR, VSCode puts its Unix IPC socket under user-data.
   // Keep that path short for the real missing-bus fixture without changing its bus environment.
-  const userDataDir = path.join(options.userDataInRuntimeDir ? runtimeDir : debugRoot, 'user-data');
   const extensionsDir = path.join(debugRoot, 'extensions');
   const homeDir = path.join(debugRoot, 'home');
   const configDir = path.join(debugRoot, 'config');
@@ -157,13 +193,13 @@ export async function prepareRuntime(options) {
   const appDataDir = path.join(debugRoot, 'appdata');
   const localAppDataDir = path.join(debugRoot, 'local-appdata');
   const stateDir = path.join(runtimeDir, 'state');
-  const tmpDir = path.join(debugRoot, 'tmp');
   const artifactsDir = path.join(debugRoot, 'artifacts');
 
   await fs.rm(debugRoot, { recursive: true, force: true });
   await fs.rm(runtimeDir, { recursive: true, force: true });
+  await fs.rm(userDataDir, { recursive: true, force: true });
   await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
-  await fs.mkdir(userDataDir, { recursive: true });
+  await fs.mkdir(userDataDir, { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(userDataDir, 'User'), { recursive: true });
   await fs.mkdir(extensionsDir, { recursive: true });
   await fs.mkdir(homeDir, { recursive: true });
@@ -178,6 +214,20 @@ export async function prepareRuntime(options) {
 
   if (options.userSettings) {
     await writeUserSettings(userDataDir, options.userSettings);
+  }
+
+  await snapshotSmokeUserSettings(userDataDir, artifactsDir);
+  if (process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS) {
+    const nonce = process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE;
+    assert(nonce, 'A formal runtime must retain its original run identity');
+    const registration = { schemaVersion: 1, nonce, platform: process.platform, temporaryRoot: os.tmpdir(),
+      options: { debugRoot: path.resolve(debugRoot), runtimeDirName: options.runtimeDirName,
+        userDataInRuntimeDir: options.userDataInRuntimeDir === true },
+      paths: { runtimeDir, userDataDir, tmpDir }, artifactsDir: path.resolve(artifactsDir) };
+    const key = createHash('sha256').update(registration.options.debugRoot).digest('hex').slice(0, 16);
+    const directory = process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS;
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, `smoke-runtime-${key}.json`), `${JSON.stringify(registration, null, 2)}\n`, { flag: 'wx' });
   }
 
   return {
@@ -204,9 +254,10 @@ export async function prepareRuntime(options) {
       TEMP: tmpDir,
       MESA_SHADER_CACHE_DIR: path.join(cacheDir, 'mesa'),
       DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR: artifactsDir,
+      DEV_SESSION_CANVAS_SMOKE_USER_DATA_DIR: userDataDir,
       ...(process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS?{
         DEV_SESSION_CANVAS_GATE_STORAGE_ROOT:options.gateStorageRoot??debugRoot,
-        DEV_SESSION_CANVAS_GATE_STORAGE_ROOTS:JSON.stringify([options.gateStorageRoot??debugRoot,runtimeDir])}:{}),
+        DEV_SESSION_CANVAS_GATE_STORAGE_ROOTS:JSON.stringify([options.gateStorageRoot??debugRoot,runtimeDir,userDataDir])}:{}),
       ...(options.extensionTestsEnv ?? {})
     }
   };
@@ -382,25 +433,83 @@ export async function writeUserSettings(userDataDir, userSettings) {
 }
 
 export async function snapshotVSCodeLogs(userDataDir, artifactsDir) {
+  await snapshotSmokeUserSettings(userDataDir, artifactsDir);
   const logsRoot = path.join(userDataDir, 'logs');
-  const entries = await fs.readdir(logsRoot, { withFileTypes: true }).catch(() => []);
-  const latestDir = entries
+  const entries = await fs.readdir(logsRoot, { withFileTypes: true }).catch(error => {
+    if (error.code === 'ENOENT') return []; throw error;
+  });
+  const sessions = entries
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .sort()
-    .pop();
-
-  if (!latestDir) {
-    return;
+    .sort();
+  for (const session of sessions) {
+    const sourceDir = path.join(logsRoot, session);
+    const targetDir = path.join(artifactsDir, 'vscode-logs', session);
+    await fs.mkdir(path.dirname(targetDir), { recursive: true });
+    await fs.cp(sourceDir, targetDir, { recursive: true });
   }
-
-  const sourceDir = path.join(logsRoot, latestDir);
-  const targetDir = path.join(artifactsDir, 'vscode-logs');
-  await fs.rm(targetDir, { recursive: true, force: true });
-  await fs.cp(sourceDir, targetDir, { recursive: true });
 }
 
-export async function ensureVSCodeExecutable(projectRoot) {
+async function snapshotSmokeUserSettings(userDataDir, artifactsDir) {
+  const settings = await fs.readFile(path.join(userDataDir, 'User', 'settings.json')).catch(error => {
+    if (error.code === 'ENOENT') return null; throw error;
+  });
+  if (settings !== null) {
+    await fs.mkdir(artifactsDir, { recursive: true });
+    await fs.writeFile(path.join(artifactsDir, 'user-settings.json'), settings);
+  }
+}
+
+export async function retireFormalSmokeRuntimes(directory, nonce, { contract, fixtureRoot, deadline }) {
+  const { collectHostEvidence } = await import('./host-evidence.mjs');
+  // Keep real reopen state until every original Host and fixture has finished.
+  const hosts = await collectHostEvidence(directory, nonce, { contract, requireActions: false, deadline });
+  const records = [];
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile() && /^smoke-runtime-[a-f0-9]{16}\.json$/u.test(entry.name))
+      records.push(JSON.parse(await fs.readFile(path.join(directory, entry.name), 'utf8')));
+  }
+  assert(records.length, 'Formal Host runtime paths were never registered');
+  const root = path.resolve(fixtureRoot);
+  // Validate the complete set before deleting any member. A changed nonce,
+  // profile or temporary root cannot authorize retirement of another fixture.
+  for (const record of records) {
+    assert.equal(record.schemaVersion, 1); assert.equal(record.nonce, nonce);
+    assert.equal(record.platform, process.platform); assert.equal(record.temporaryRoot, os.tmpdir());
+    assert(record.options.debugRoot === root || record.options.debugRoot.startsWith(`${root}${path.sep}`),
+      'Registered runtime is outside the original fixture scene');
+    assert.equal(record.artifactsDir, path.join(record.options.debugRoot, 'artifacts'));
+    assert.deepEqual(record.paths, resolveSmokeRuntimePaths(record.options, { runtimeNonce: nonce }),
+      'Registered runtime paths differ from the original private resolution');
+  }
+  const result = { schemaVersion: 1, nonce, hosts: hosts.results.length, exits: hosts.exits,
+    status: 'running', retired: [], failures: [] };
+  try {
+    await withinDeadline('Original private smoke directory retirement', deadline, async signal => {
+      for (const record of records) {
+        signal.throwIfAborted(); await snapshotVSCodeLogs(record.paths.userDataDir, record.artifactsDir);
+      }
+      const paths = new Set();
+      for (const record of records) {
+        paths.add(record.paths.runtimeDir);
+        const profile = record.paths.userDataDir;
+        if (!profile.startsWith(`${root}${path.sep}`) && !profile.startsWith(`${record.paths.runtimeDir}${path.sep}`)) paths.add(profile);
+      }
+      for (const directory of paths) {
+        signal.throwIfAborted(); await fs.rm(directory, { recursive: true, force: true }); result.retired.push(directory);
+      }
+    });
+    result.status = 'passed';
+  } catch (error) {
+    result.status = 'failed'; result.failures.push({ reason: error.message }); throw error;
+  } finally {
+    result.completedAt = new Date().toISOString();
+    await fs.writeFile(path.join(directory, 'smoke-runtime-retirement.json'), `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
+  }
+  return result;
+}
+
+export async function ensureVSCodeExecutable(projectRoot, { evidenceDir = resolveVSCodeSmokeDebugRoot(projectRoot) } = {}) {
   if (process.env.DEV_SESSION_CANVAS_GATE_PLAN || process.env.DEV_SESSION_CANVAS_VSCODE_VERSION) {
     const version = process.env.DEV_SESSION_CANVAS_VSCODE_VERSION || environmentPolicy.vscode;
     if (version !== environmentPolicy.vscode && process.env.DEV_SESSION_CANVAS_GATE_PLAN) {
@@ -408,11 +517,14 @@ export async function ensureVSCodeExecutable(projectRoot) {
     }
     const cache=resolveVSCodeTestCachePath(projectRoot);await fs.mkdir(cache,{recursive:true});
     const output=path.join(cache,`download-${process.pid}-${Date.now()}.txt`);
+    const deadline=Math.min(Date.now()+infrastructureBudgets.download,
+      Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE)||Infinity);
+    await fs.mkdir(evidenceDir,{recursive:true});
+    const evidence=path.join(evidenceDir,`host-download-${process.pid}-${Date.now()}.json`);
     let downloaded;
     try {
       const observed=await runProcess(process.execPath,[fileURLToPath(new URL('./download-vscode.mjs',import.meta.url)),
-        '--version',version,'--cache',cache,'--output',output],{deadline:Math.min(Date.now()+infrastructureBudgets.download,
-          Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE)||Infinity),
+        '--version',version,'--cache',cache,'--output',output,'--deadline',String(deadline),'--evidence',evidence],{deadline,
         logPath:output.replace('.txt','.log')});
       if(observed.status!=='passed')throw new Error(`Fixed VS Code download failed: ${JSON.stringify(observed)}`);
       downloaded=(await fs.readFile(output,'utf8')).trim();

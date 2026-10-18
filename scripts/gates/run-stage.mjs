@@ -11,6 +11,7 @@ import { npmCommand, nodeCommand, runProcess } from './process.mjs';
 import { treeHashes, buildReleaseCandidate } from '../release/build-release-candidate.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
 import { smokeHostContract } from '../smoke/smoke-catalog.mjs';
+import { retireFormalSmokeRuntimes } from '../smoke/vscode-smoke-runner.mjs';
 import { assembleExecutionDistributionAssets } from '../build/assemble-execution-distribution-assets.mjs';
 import { validateReleasePreflight } from '../release/release-preflight.mjs';
 import { fileURLToPath } from 'node:url';
@@ -213,7 +214,11 @@ for (const task of tasks) {
     let observed;
     config = { env, command: nodeCommand(args),
       assertResult: async (_result,_receipt,phase,deadline) => {
-        if(phase==='host-exit')return collectHostEvidence(hostEvidenceRoot,nonce,{contract,requireActions:false,deadline});
+        if(phase==='host-exit') {
+          const retirement = await retireFormalSmokeRuntimes(hostEvidenceRoot, nonce,
+            { contract, fixtureRoot: env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT, deadline });
+          return retirement;
+        }
         observed ??= await collectHostEvidence(hostEvidenceRoot,nonce,{contract,observeExit:false});return observed;
       },
       cleanup: async () => { const cleanupEvidence = await collectHostEvidence(hostEvidenceRoot, nonce, { contract,requireActions: false,observeExit:false });

@@ -20,7 +20,8 @@ import { buildVSCodeArgs, buildVSCodeChildEnv, ensureVSCodeExecutable, prepareRu
   shouldReRunInsideXvfb, runInsideXvfb, snapshotVSCodeLogs } from './vscode-smoke-runner.mjs';
 import { installCandidateVsix } from './installed-execution-candidate.mjs';
 import { processIdentity, waitForHostAbsence } from './host-evidence.mjs';
-import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered } from './installed-ui-observation.mjs';
+import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered,
+  installedGeometryMatchesResize } from './installed-ui-observation.mjs';
 
 const { values } = parseArgs({ options: { plan: { type: 'string' }, candidate: { type: 'string' }, output: { type: 'string' } } });
 assert(values.plan && values.candidate && values.output);
@@ -59,6 +60,7 @@ await withinDeadline('Installed public actions', deadline, async signal => {
   try {
 receiver=await prepareNotificationReceiver(path.join(output,'notification-receiver'),Math.min(deadline,Date.now()+60000));
 runtime = await prepareRuntime({ debugRoot: path.join(output, 'runtime'), runtimeDirName: `dsc-pair-${nonce}`,
+  userDataInRuntimeDir: true,
   userSettings: { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none',
     'extensions.autoCheckUpdates': false, 'extensions.autoUpdate': false,
     'devSessionCanvas.notifications.attentionSignalBridge':'system',
@@ -66,8 +68,9 @@ runtime = await prepareRuntime({ debugRoot: path.join(output, 'runtime'), runtim
     'devSessionCanvas.runtimePersistence.enabled': false, 'devSessionCanvas.terminal.shell': 'default',
     'devSessionCanvas.terminal.shellPath': process.platform === 'win32'
       ? path.join(process.env.SystemRoot, 'System32/cmd.exe') : '/bin/sh' } });
+facts.runtime = { runtimeDir: runtime.runtimeDir, userDataDir: runtime.userDataDir, tmpDir: runtime.tmpDir };
 process.env.DEV_SESSION_CANVAS_VSCODE_VERSION = environmentPolicy.vscode;
-const executable = await ensureVSCodeExecutable(process.cwd());
+const executable = await ensureVSCodeExecutable(process.cwd(), { evidenceDir: runtime.artifactsDir });
 const expected = [];
 // Install the original companion first so activation never depends on a
 // Marketplace download of another version while accepting this private pair.
@@ -161,20 +164,27 @@ driverCommand = async (command, args) => {
   facts.terminal={nodeID,marker,outputObserved:true};
   const geometryFile = path.join(output, 'child-geometry.json');
   const subject = path.join(output, 'geometry-subject.cjs');
-  await fs.writeFile(subject, `const fs=require('node:fs');const readline=require('node:readline');
-const target=${JSON.stringify(geometryFile)};const publish=()=>{const tmp=target+"."+process.pid+".pending";fs.writeFileSync(tmp,JSON.stringify({pid:process.pid,
-  ppid:process.ppid,cols:process.stdout.columns,rows:process.stdout.rows}));fs.renameSync(tmp,target);};publish();process.stdout.on('resize',publish);
-readline.createInterface({input:process.stdin}).on('line',line=>{if(line==='geometry')publish();});\n`);
-  await type(`"${process.execPath}" "${subject}"`);
-  const before = await wait('PTY child geometry', () => readJSON(geometryFile), value => value.cols > 0 && value.rows > 0);
+  await fs.copyFile(fileURLToPath(new URL('./installed-geometry-subject.cjs', import.meta.url)), subject);
+  await type(`"${process.execPath}" "${subject}" "${geometryFile}"`);
+  const before = await wait('PTY child geometry', () => readJSON(geometryFile), value =>
+    value.nonce === 'startup' && value.cols > 0 && value.rows > 0);
   const subjectIdentity = await processIdentity(before.pid); assert(subjectIdentity);
   const shellIdentity=await processIdentity(before.ppid);assert(shellIdentity,'Original Terminal shell identity is unavailable');
   Object.assign(facts.terminal,{before,subjectIdentity,shellIdentity});
   await node.locator('.window-chrome').click();
+  facts.terminal.nodeBefore = await node.boundingBox();
+  const resizeDeadline = Math.min(deadline, Date.now() + 20000);
+  facts.terminal.resizeDeadline = resizeDeadline;
   const gesture=await resizeInstalledNode(frame,node);
   facts.terminal.gesture=gesture;
+  facts.terminal.nodeAfter = await wait('Original installed node dimensions change after public resize', () => node.boundingBox(), box =>
+    box && (Math.abs(box.width - facts.terminal.nodeBefore.width) > 1 || Math.abs(box.height - facts.terminal.nodeBefore.height) > 1), resizeDeadline);
+  const geometryNonce = randomUUID().replaceAll('-', '');
+  const requestedAt = Date.now();
+  facts.terminal.geometryRequest = { nonce: geometryNonce, requestedAt };
+  await type(`geometry:${geometryNonce}`);
   const after = await wait('Installed product resize changes real child geometry', () => readJSON(geometryFile), value =>
-    value.pid === before.pid && value.cols > 0 && value.rows > 0 && (value.cols !== before.cols || value.rows !== before.rows));
+    installedGeometryMatchesResize(before, value, facts.terminal.geometryRequest), resizeDeadline);
   facts.terminal.after=after;
   await node.getByRole('button', { name: 'Stop', exact: true }).click();
   const stopped=await waitForHostAbsence(subjectIdentity,Math.min(deadline,Date.now()+30000));
@@ -322,6 +332,12 @@ finally {
       await verifyPackageFiles(packageReceipt, plan, candidate);
       await writes;
       await log?.close();
+      if (runtime) {
+        await fs.rm(runtime.runtimeDir, { recursive: true, force: true });
+        if (!runtime.userDataDir.startsWith(`${runtime.runtimeDir}${path.sep}`)
+          && !runtime.userDataDir.startsWith(`${runtime.debugRoot}${path.sep}`))
+          await fs.rm(runtime.userDataDir, { recursive: true, force: true });
+      }
     });
   } catch (error) { cleanup = 'failed'; failure ??= error; failureList.push({ stage: 'cleanup', reason: error.message }); }
   const driverHash = driverRoot ? await fileDigest(path.join(driverRoot, 'driver.cjs')).catch(() => null) : null;

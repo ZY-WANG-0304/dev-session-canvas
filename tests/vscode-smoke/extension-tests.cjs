@@ -12468,6 +12468,39 @@ async function ensureFilesFeatureEnabledForSmoke(surface = 'panel') {
 }
 
 async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5000) {
+  if (action.kind === 'clickFileEntry') {
+    const deadline = Date.now() + timeoutMs;
+    let timer;
+    try {
+      return await Promise.race([Promise.resolve().then(async () => {
+        await vscode.commands.executeCommand(surface === 'editor' ? COMMAND_IDS.openCanvasInEditor : COMMAND_IDS.openCanvasInPanel);
+        assert.ok(Date.now() < deadline, 'File click surface preparation exceeded its original budget.');
+        await vscode.commands.executeCommand(COMMAND_IDS.focusNode, action.nodeId);
+        let previous, stableSince, observation;
+        while (Date.now() < deadline) {
+          const probe = await captureWebviewProbe(surface, Math.max(1, deadline - Date.now()));
+          const node = probe.nodes.find(node => node.nodeId === action.nodeId);
+          observation = node?.fileEntries?.find(file => file.filePath === action.filePath);
+          const ready = probe.hasDocumentFocus && observation?.clickable;
+          const stable = ready && previous && ['x', 'y', 'width', 'height']
+            .every(key => Math.abs(observation[key] - previous[key]) <= 0.25);
+          if (stable) {
+            stableSince ??= Date.now();
+            if (Date.now() - stableSince >= 100 && Date.now() < deadline) {
+              return vscode.commands.executeCommand(COMMAND_IDS.testPerformWebviewDomAction,
+                action, surface, Math.max(1, deadline - Date.now()));
+            }
+          } else stableSince = undefined;
+          previous = ready ? observation : undefined;
+          await sleep(Math.max(1, Math.min(50, deadline - Date.now())));
+        }
+        assert.fail(`File click preparation exceeded its original budget or target is unstable: ${JSON.stringify(observation ?? null)}`);
+      }), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('File click preparation/action exceeded its original budget.')),
+          Math.max(1, deadline - Date.now()));
+      })]);
+    } finally { clearTimeout(timer); }
+  }
   return vscode.commands.executeCommand(
     COMMAND_IDS.testPerformWebviewDomAction,
     action,
@@ -12775,7 +12808,9 @@ function resolveSmokeUserSettingsPath() {
     throw new Error('缺少 DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR，无法直接写入 smoke settings.json。');
   }
 
-  return path.join(path.dirname(artifactDir), 'user-data', 'User', 'settings.json');
+  const userDataDir = process.env.DEV_SESSION_CANVAS_SMOKE_USER_DATA_DIR;
+  assert.ok(userDataDir && path.isAbsolute(userDataDir), 'Missing original smoke user-data path.');
+  return path.join(userDataDir, 'User', 'settings.json');
 }
 
 async function writeSmokeUserSettings(updates) {
@@ -13571,12 +13606,17 @@ async function closeVisibleEditor(targetPath) {
     return;
   }
 
-  await vscode.window.showTextDocument(visibleEditor.document, {
-    preview: false,
-    preserveFocus: false,
-    viewColumn: visibleEditor.viewColumn
-  });
-  await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  // Opening a file beside Canvas can still be restoring Canvas focus. Close
+  // the original URI/group tab directly; an active-editor command can race
+  // that restoration and close the Canvas instead of this fixture's file.
+  const originalTabs = vscode.window.tabGroups.all
+    .filter((group) => group.viewColumn === visibleEditor.viewColumn)
+    .flatMap((group) => group.tabs)
+    .filter((tab) => tab.input instanceof vscode.TabInputText &&
+      tab.input.uri.toString() === visibleEditor.document.uri.toString());
+  assert.strictEqual(originalTabs.length, 1, 'Expected one original file tab in its visible editor group.');
+  const closed = await vscode.window.tabGroups.close(originalTabs[0], true);
+  assert.strictEqual(closed, true, 'Expected VS Code to confirm closing the original file tab.');
 }
 
 function describeExpectedExecutionLinkModifier() {

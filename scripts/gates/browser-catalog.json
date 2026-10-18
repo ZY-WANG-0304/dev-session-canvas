@@ -1093,6 +1093,11 @@
       "title": "pane gallery overflowing thumbnail rails keep first and last roots reachable"
     },
     {
+      "id": "a03daaf9564243b49609-87ab475bb3de0bbdc9e9",
+      "file": "webview-harness.spec.mjs",
+      "title": "smoke file clicks reject invisible disabled and obstructed targets and emit one complete primary pointer click"
+    },
+    {
       "id": "a03daaf9564243b49609-88476bd0547ea392ad1a",
       "file": "webview-harness.spec.mjs",
       "title": "pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops"

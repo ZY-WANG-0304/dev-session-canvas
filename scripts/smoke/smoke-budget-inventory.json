@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceHashes": {
-    "tests/vscode-smoke/extension-tests.cjs": "0c6ee13e2b8d5b58d13381c3f0a12f1ad8f0b5824c51d98ee888b2c9531d1549",
+    "tests/vscode-smoke/extension-tests.cjs": "58b6effd58d20f9f9adc54bd76c6cf687ba30be1f534fb9a8bcd960ee63e71f6",
     "tests/vscode-smoke/real-reopen-tests.cjs": "30b655583f8affa7d4af48ecc82dc4747640a3a2eb155508ce9a34805a6176fb",
     "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "7bfa53d9714beacc83ead94e2bd594e782317051059ab251fe30d7b6ecfba28e",
     "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "abf93735a6bcc1ce666df1ee8e9c00e89a88880b4bb37dc1a83b77d9d66dad5d",
@@ -259,7 +259,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -304,7 +304,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -566,7 +566,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -611,7 +611,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -687,7 +687,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -764,7 +764,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -991,7 +991,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1034,7 +1034,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1240,7 +1240,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1317,7 +1317,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1349,7 +1349,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1555,7 +1555,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1621,7 +1621,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1655,7 +1655,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1871,7 +1871,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1914,7 +1914,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -1948,7 +1948,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2164,7 +2164,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2219,7 +2219,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2425,7 +2425,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2480,7 +2480,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2514,7 +2514,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2719,7 +2719,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -2796,7 +2796,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3034,7 +3034,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3111,7 +3111,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3349,7 +3349,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3404,7 +3404,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3449,7 +3449,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3677,7 +3677,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3732,7 +3732,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -3949,7 +3949,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4004,7 +4004,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4049,7 +4049,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4278,7 +4278,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4333,7 +4333,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4378,7 +4378,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4607,7 +4607,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4664,7 +4664,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4729,7 +4729,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4752,7 +4752,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -4785,7 +4785,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5022,7 +5022,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5056,7 +5056,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5079,7 +5079,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5136,7 +5136,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5170,7 +5170,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5375,7 +5375,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5430,7 +5430,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5475,7 +5475,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5543,7 +5543,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5566,7 +5566,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5772,7 +5772,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5827,7 +5827,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5872,7 +5872,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -5895,7 +5895,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6101,7 +6101,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6156,7 +6156,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6201,7 +6201,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6258,7 +6258,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6281,7 +6281,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6487,7 +6487,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6544,7 +6544,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6578,7 +6578,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6623,7 +6623,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6668,7 +6668,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6734,7 +6734,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6937,7 +6937,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -6970,7 +6970,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7015,7 +7015,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7049,7 +7049,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7254,7 +7254,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7311,7 +7311,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7396,7 +7396,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7463,7 +7463,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7820,7 +7820,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7877,7 +7877,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -7962,7 +7962,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -8029,7 +8029,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -8386,7 +8386,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -8443,7 +8443,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -8528,7 +8528,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -8595,7 +8595,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9084,7 +9084,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9141,7 +9141,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9226,7 +9226,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9293,7 +9293,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9661,7 +9661,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9718,7 +9718,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9803,7 +9803,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -9870,7 +9870,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -10352,7 +10352,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -10409,7 +10409,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -10494,7 +10494,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -10561,7 +10561,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -10963,7 +10963,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11020,7 +11020,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11105,7 +11105,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11172,7 +11172,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11486,7 +11486,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11531,7 +11531,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11599,7 +11599,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11656,7 +11656,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11721,7 +11721,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11744,7 +11744,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11767,7 +11767,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11778,7 +11778,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11789,7 +11789,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11800,7 +11800,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11846,7 +11846,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -11857,7 +11857,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12062,7 +12062,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12107,7 +12107,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12175,7 +12175,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12232,7 +12232,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12288,7 +12288,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12395,7 +12395,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12452,7 +12452,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12508,7 +12508,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12531,7 +12531,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12633,7 +12633,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12690,7 +12690,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12930,7 +12930,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -12975,7 +12975,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13767,7 +13767,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13789,7 +13789,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13908,7 +13908,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13919,7 +13919,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13930,7 +13930,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13941,7 +13941,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -13952,7 +13952,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -14133,7 +14133,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -14177,7 +14177,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -16337,7 +16337,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12626,
+              "line": 12659,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -16349,7 +16349,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12668,
+              "line": 12701,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 12,
@@ -16361,7 +16361,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12669,
+              "line": 12702,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 768,
@@ -16396,7 +16396,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -16441,7 +16441,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -18128,7 +18128,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -18296,7 +18296,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -18341,7 +18341,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -18409,7 +18409,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -19060,7 +19060,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13376,
+              "line": 13411,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -19072,7 +19072,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13381,
+              "line": 13416,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -19084,7 +19084,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13386,
+              "line": 13421,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -19096,7 +19096,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13392,
+              "line": 13427,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -19108,7 +19108,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13398,
+              "line": 13433,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -19120,7 +19120,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13411,
+              "line": 13446,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -19906,7 +19906,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20120,7 +20120,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20345,7 +20345,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20602,7 +20602,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20656,7 +20656,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20667,7 +20667,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20678,7 +20678,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20883,7 +20883,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20928,7 +20928,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -20996,7 +20996,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21053,7 +21053,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21109,7 +21109,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21456,7 +21456,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21501,7 +21501,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21569,7 +21569,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21626,7 +21626,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21682,7 +21682,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21747,7 +21747,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21758,7 +21758,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21769,7 +21769,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -21996,7 +21996,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22041,7 +22041,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22109,7 +22109,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22166,7 +22166,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22222,7 +22222,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22492,7 +22492,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22537,7 +22537,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22605,7 +22605,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22662,7 +22662,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22735,7 +22735,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22790,7 +22790,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -22812,7 +22812,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23017,7 +23017,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23062,7 +23062,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23130,7 +23130,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23187,7 +23187,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23243,7 +23243,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23568,7 +23568,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23613,7 +23613,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23681,7 +23681,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23738,7 +23738,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -23794,7 +23794,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24064,7 +24064,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24109,7 +24109,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24177,7 +24177,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24234,7 +24234,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24290,7 +24290,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24734,7 +24734,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24779,7 +24779,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24847,7 +24847,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24904,7 +24904,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -24960,7 +24960,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25236,7 +25236,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25474,7 +25474,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25519,7 +25519,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25610,7 +25610,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25621,7 +25621,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25632,7 +25632,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25848,7 +25848,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -25893,7 +25893,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26497,7 +26497,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26551,7 +26551,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26639,7 +26639,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26844,7 +26844,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26898,7 +26898,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26939,7 +26939,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -26972,18 +26972,18 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13579,
+              "line": 13618,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
               "detail": {
-                "command": "'workbench.action.closeActiveEditor'",
-                "reason": "A command returning no timeout is bounded by the original outer case deadline"
+                "command": "public target-tab close",
+                "reason": "Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget"
               }
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27186,7 +27186,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27197,7 +27197,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27273,7 +27273,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27284,7 +27284,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27383,7 +27383,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27394,7 +27394,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27416,7 +27416,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27471,7 +27471,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27504,7 +27504,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27526,7 +27526,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27633,7 +27633,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27655,7 +27655,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27754,7 +27754,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27776,7 +27776,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27798,7 +27798,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -27831,7 +27831,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28086,7 +28086,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -28108,7 +28108,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12786,
+              "line": 12821,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28142,7 +28142,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12786,
+              "line": 12821,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28176,7 +28176,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12786,
+              "line": 12821,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28210,7 +28210,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12786,
+              "line": 12821,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28244,7 +28244,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12786,
+              "line": 12821,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28267,7 +28267,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12786,
+              "line": 12821,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28473,7 +28473,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28530,7 +28530,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28575,7 +28575,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28618,7 +28618,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28675,7 +28675,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28728,7 +28728,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28740,7 +28740,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28763,7 +28763,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -28785,7 +28785,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12948,
+              "line": 12983,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -28807,7 +28807,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -28818,7 +28818,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28874,7 +28874,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12948,
+              "line": 12983,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -28896,7 +28896,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -28941,7 +28941,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -28952,7 +28952,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28964,7 +28964,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -28987,7 +28987,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29009,7 +29009,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29054,7 +29054,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29066,7 +29066,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29089,7 +29089,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29111,7 +29111,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29155,7 +29155,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29177,7 +29177,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12948,
+              "line": 12983,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29199,7 +29199,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29221,7 +29221,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29298,7 +29298,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29342,7 +29342,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29364,7 +29364,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29409,7 +29409,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29454,7 +29454,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29465,7 +29465,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29477,7 +29477,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29500,7 +29500,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29522,7 +29522,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12948,
+              "line": 12983,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29736,7 +29736,7 @@
           "evidence": [
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29781,7 +29781,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29803,7 +29803,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12895,
+              "line": 12930,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29814,7 +29814,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29826,7 +29826,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -29849,7 +29849,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -29905,7 +29905,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -29994,7 +29994,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30006,7 +30006,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30029,7 +30029,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -30040,7 +30040,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30063,7 +30063,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30108,7 +30108,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30120,7 +30120,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30143,7 +30143,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -30165,7 +30165,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30208,7 +30208,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12895,
+              "line": 12930,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -30230,7 +30230,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30242,7 +30242,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30265,7 +30265,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -30276,7 +30276,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30319,7 +30319,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30331,7 +30331,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -30354,7 +30354,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -30376,7 +30376,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30453,7 +30453,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30507,7 +30507,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30595,7 +30595,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30660,7 +30660,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30714,7 +30714,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12895,
+              "line": 12930,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -30803,7 +30803,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30914,7 +30914,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -30980,7 +30980,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31013,7 +31013,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12895,
+              "line": 12930,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -31024,7 +31024,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -31036,7 +31036,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12837,
+              "line": 12872,
               "kind": "loop-bound",
               "timeoutMs": 0,
               "multiplier": 1,
@@ -31059,7 +31059,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12863,
+              "line": 12898,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -31081,7 +31081,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12762,
+              "line": 12795,
               "kind": "original-wait",
               "timeoutMs": 20000,
               "multiplier": 1,
@@ -31297,7 +31297,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31354,7 +31354,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31442,7 +31442,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31495,7 +31495,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31540,7 +31540,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31593,7 +31593,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31820,7 +31820,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31877,7 +31877,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31950,7 +31950,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -31973,7 +31973,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32274,7 +32274,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32331,7 +32331,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32404,7 +32404,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32427,7 +32427,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32739,7 +32739,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32784,7 +32784,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32852,7 +32852,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -32909,7 +32909,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33249,7 +33249,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33294,7 +33294,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33362,7 +33362,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33419,7 +33419,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33475,7 +33475,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33874,7 +33874,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33931,7 +33931,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -33997,7 +33997,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34042,7 +34042,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34075,7 +34075,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34161,7 +34161,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34206,7 +34206,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34292,7 +34292,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34326,7 +34326,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34555,7 +34555,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34600,7 +34600,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34668,7 +34668,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34725,7 +34725,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34813,7 +34813,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34870,7 +34870,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34904,7 +34904,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34927,7 +34927,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34961,7 +34961,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -34972,7 +34972,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -35375,7 +35375,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -35398,7 +35398,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -35444,7 +35444,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -35487,7 +35487,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -35543,7 +35543,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -35600,7 +35600,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36025,7 +36025,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36078,7 +36078,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36133,7 +36133,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36284,7 +36284,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36340,7 +36340,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36776,7 +36776,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36829,7 +36829,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -36851,7 +36851,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -37049,7 +37049,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -37439,7 +37439,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -37484,7 +37484,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38290,7 +38290,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38335,7 +38335,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38392,7 +38392,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38480,7 +38480,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38514,7 +38514,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38536,7 +38536,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38569,7 +38569,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -38949,7 +38949,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39006,7 +39006,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39040,7 +39040,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39063,7 +39063,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39131,7 +39131,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39188,7 +39188,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39477,7 +39477,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39488,7 +39488,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39556,7 +39556,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12511,
+              "line": 12544,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39855,7 +39855,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -39899,7 +39899,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40104,7 +40104,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40149,7 +40149,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40217,7 +40217,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40274,7 +40274,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40330,7 +40330,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40538,7 +40538,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40582,7 +40582,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40626,7 +40626,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40681,7 +40681,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40919,7 +40919,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -40964,7 +40964,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41032,7 +41032,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41089,7 +41089,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41145,7 +41145,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41353,7 +41353,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41397,7 +41397,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41441,7 +41441,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41452,7 +41452,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41463,7 +41463,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41811,7 +41811,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41833,7 +41833,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41855,7 +41855,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41877,7 +41877,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41899,7 +41899,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41987,7 +41987,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -41998,7 +41998,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42072,13 +42072,13 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13579,
+              "line": 13618,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
               "detail": {
-                "command": "'workbench.action.closeActiveEditor'",
-                "reason": "A command returning no timeout is bounded by the original outer case deadline"
+                "command": "public target-tab close",
+                "reason": "Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget"
               }
             },
             {
@@ -42146,29 +42146,29 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13579,
+              "line": 13618,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
               "detail": {
-                "command": "'workbench.action.closeActiveEditor'",
-                "reason": "A command returning no timeout is bounded by the original outer case deadline"
+                "command": "public target-tab close",
+                "reason": "Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget"
               }
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13579,
+              "line": 13618,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
               "detail": {
-                "command": "'workbench.action.closeActiveEditor'",
-                "reason": "A command returning no timeout is bounded by the original outer case deadline"
+                "command": "public target-tab close",
+                "reason": "Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget"
               }
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12992,
+              "line": 13027,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42179,7 +42179,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12996,
+              "line": 13031,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42212,7 +42212,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12992,
+              "line": 13027,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42223,7 +42223,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12996,
+              "line": 13031,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42264,7 +42264,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42286,7 +42286,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42308,7 +42308,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42363,13 +42363,13 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13579,
+              "line": 13618,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
               "detail": {
-                "command": "'workbench.action.closeActiveEditor'",
-                "reason": "A command returning no timeout is bounded by the original outer case deadline"
+                "command": "public target-tab close",
+                "reason": "Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget"
               }
             },
             {
@@ -42437,13 +42437,13 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 13579,
+              "line": 13618,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
               "detail": {
-                "command": "'workbench.action.closeActiveEditor'",
-                "reason": "A command returning no timeout is bounded by the original outer case deadline"
+                "command": "public target-tab close",
+                "reason": "Keeps the original active-editor-close infrastructure reserve; focus preparation shares the original click budget"
               }
             },
             {
@@ -42470,7 +42470,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42492,7 +42492,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42525,7 +42525,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12992,
+              "line": 13027,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42536,7 +42536,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12996,
+              "line": 13031,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42613,7 +42613,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12992,
+              "line": 13027,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42624,7 +42624,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12996,
+              "line": 13031,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42943,7 +42943,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -42976,7 +42976,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -43311,7 +43311,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 8,
@@ -43650,7 +43650,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 8,
@@ -43961,7 +43961,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -44304,7 +44304,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -44595,7 +44595,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 1,
@@ -44673,7 +44673,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 12496,
+              "line": 12529,
               "kind": "command-infrastructure-reserve",
               "timeoutMs": 5000,
               "multiplier": 8,
@@ -45374,7 +45374,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -45397,7 +45397,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -45420,7 +45420,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -45558,7 +45558,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -45580,7 +45580,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -45694,7 +45694,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 2,
@@ -45763,7 +45763,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -45820,7 +45820,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46015,7 +46015,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46038,7 +46038,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46061,7 +46061,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46117,7 +46117,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46174,7 +46174,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46208,7 +46208,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46242,7 +46242,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46265,7 +46265,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46406,7 +46406,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46462,7 +46462,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46496,7 +46496,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46518,7 +46518,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46564,7 +46564,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46877,7 +46877,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46888,7 +46888,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -46899,7 +46899,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47042,7 +47042,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47053,7 +47053,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47064,7 +47064,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47075,7 +47075,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47193,7 +47193,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47204,7 +47204,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47322,7 +47322,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12511,
+          "line": 12544,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47333,7 +47333,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12511,
+          "line": 12544,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47517,7 +47517,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12511,
+          "line": 12544,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47528,7 +47528,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12511,
+          "line": 12544,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -47572,7 +47572,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12511,
+          "line": 12544,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48055,7 +48055,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48066,7 +48066,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48110,7 +48110,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48121,7 +48121,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48251,7 +48251,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48318,7 +48318,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48375,7 +48375,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48553,7 +48553,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 2,
@@ -48712,7 +48712,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48769,7 +48769,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -48998,7 +48998,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12511,
+          "line": 12544,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -49043,7 +49043,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -49540,7 +49540,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -49593,7 +49593,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -49615,7 +49615,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -49813,7 +49813,7 @@
         },
         {
           "file": "tests/vscode-smoke/extension-tests.cjs",
-          "line": 12496,
+          "line": 12529,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,

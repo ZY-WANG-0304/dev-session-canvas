@@ -574,7 +574,7 @@ async function runRemoteSSHRealReopenScenario(hostScenario) {
   });
 
   try {
-    const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot);
+    const vscodeExecutablePath = await ensureVSCodeExecutable(projectRoot, { evidenceDir: runtime.artifactsDir });
     const extensionInputs = await ensureExtensionFixtureInputs(environmentPolicy.remoteSSH,
       path.join(path.dirname(path.dirname(vscodeExecutablePath)), 'remote-ssh-inputs'),
       Math.min(Date.now() + infrastructureBudgets.download, Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE) || Infinity));

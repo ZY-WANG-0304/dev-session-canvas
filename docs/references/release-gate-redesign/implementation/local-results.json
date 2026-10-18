@@ -190,11 +190,12 @@
       "realMacOSInstall": "not-yet-verified"
     },
     "currentGateContracts": {
-      "passed": 93,
+      "passed": 105,
       "failed": 0,
       "skipped": 0,
-      "log": "/dev/shm/dsc-ci-current-gate-contracts-1.log",
-      "caveat": "Full batch predates additional first-failure summary contract; 25 targeted follow-up contracts passed"
+      "log": "/dev/shm/dsc-ci-full-gate-contracts-final-105-1.log",
+      "durationMs": 153932.376583,
+      "caveat": "Stable current code and browser catalogue full batch; not cross-platform Actions acceptance"
     },
     "currentRegression": {
       "typecheck": "passed",
@@ -208,7 +209,11 @@
         "/dev/shm/dsc-ci-current-vscode-env-1.log",
         "/dev/shm/dsc-ci-current-actionlint-1.log",
         "/dev/shm/dsc-ci-current-workflow-contract-1.log",
-        "/dev/shm/dsc-ci-current-publish-workflow-contract-1.log"
+        "/dev/shm/dsc-ci-current-publish-workflow-contract-1.log",
+        "/dev/shm/dsc-ci-final-typecheck-4.log",
+        "/dev/shm/dsc-ci-vscode-env-final-1.log",
+        "/dev/shm/dsc-ci-actionlint-final-2.log",
+        "/dev/shm/dsc-ci-workflow-contract-final-1.log"
       ]
     },
     "firstFailureSummary": {
@@ -220,18 +225,101 @@
       "scope": "Additional original-failure summary, complete acceptance negatives and calibration follow-up"
     },
     "currentBrowser": {
-      "functionalPassed": 425,
+      "functionalPassed": 426,
       "visualPassed": 3,
       "failed": 0,
       "retry": 0,
       "baselineChanged": false,
       "production": true,
-      "registered": 428,
-      "previousRegisteredRetained": 426,
-      "addedRegressionCases": 2,
-      "functionalReceipt": "/dev/shm/dsc-ci-current-browser-functional-1/playwright-execution.json",
-      "visualReceipt": "/dev/shm/dsc-ci-current-browser-visual-1/playwright-execution.json",
-      "caveat": "Current source private production browser build; does not replace new-head Actions or packaged Host acceptance"
+      "registered": 429,
+      "previousRegisteredRetained": 428,
+      "addedRegressionCases": 1,
+      "functionalReceipt": "/dev/shm/dsc-ci-browser-functional-429-1/playwright-execution.json",
+      "visualReceipt": "/dev/shm/dsc-ci-browser-visual-429-1/playwright-execution.json",
+      "buildReceipt": "/dev/shm/dsc-ci-file-click-browser-after-1/browser-build.json",
+      "caveat": "Current-source private production browser build; current working-source Host full file view also passed but used previous native assets"
+    },
+    "fileCloseFocus": {
+      "acceptance": false,
+      "before": "/dev/shm/dsc-ci-file-close-focus-before-2/public-tabs.json",
+      "after": "/dev/shm/dsc-ci-file-close-focus-after-1/public-tabs.json",
+      "beforeStatus": "failed",
+      "afterStatus": "passed",
+      "originalCandidateRun": "39101493143",
+      "originalPackagesUnchanged": true,
+      "caveat": "before-1 failed on proposed API enumeration and is not product evidence; controlled original public tab focus race proved before-2 failure"
+    },
+    "fileClickHitTarget": {
+      "acceptance": false,
+      "before": "/dev/shm/dsc-ci-file-click-hit-before-1.log",
+      "beforeStatus": "failed",
+      "after": "/dev/shm/dsc-ci-file-click-hit-after-2.log",
+      "afterStatus": "passed",
+      "focusViewportInspection": "/dev/shm/dsc-ci-file-focus-viewport-inspection-1/viewport-trace.jsonl",
+      "contracts": "/dev/shm/dsc-ci-full-gate-contracts-final-105-1.log",
+      "requirements": [
+        "original focused page",
+        "original file centre is visible and hit",
+        "stable actual rectangle",
+        "one complete primary pointer click",
+        "single original 10-second deadline"
+      ],
+      "selectionIsNotClickPrecondition": true,
+      "productOpenAndDragUnchanged": true,
+      "historicalFailedHostDiagnostics": [
+        "/dev/shm/dsc-ci-current-file-view-host-1/result.json",
+        "/dev/shm/dsc-ci-current-file-view-host-2/result.json"
+      ]
+    },
+    "currentProductionFileView": {
+      "acceptance": false,
+      "status": "passed",
+      "caseID": "execution-file-activity/views",
+      "input": "/dev/shm/dsc-ci-current-file-view-host-3/input.json",
+      "receipt": "/dev/shm/dsc-ci-current-file-view-host-3/result.json",
+      "production": true,
+      "previousNativeAssets": true,
+      "splitMountedReaderAssertionsRetained": true,
+      "retirement": {
+        "schemaVersion": 1,
+        "nonce": "319db685-350d-4616-bb7f-a08152b80b40",
+        "hosts": 1,
+        "exits": [
+          {
+            "expected": {
+              "pid": 2086383,
+              "startTicks": "293252225",
+              "platform": "linux"
+            },
+            "actual": null,
+            "result": "original-absent"
+          }
+        ],
+        "status": "passed",
+        "retired": [
+          "/dev/shm/dsc-e450181148391437"
+        ],
+        "failures": [],
+        "completedAt": "2026-10-18T07:30:52.796Z"
+      },
+      "caveat": "Working-source production build plus previous native assets; cannot replace current-head source/packaged Actions acceptance"
+    },
+    "suiteBudgets": {
+      "suiteCount": 123,
+      "changedTimeouts": [],
+      "fileViewMs": 1083000,
+      "originalInstalledResizeDeadlineMs": 20000,
+      "inventory": "scripts/smoke/smoke-budget-inventory.json"
+    },
+    "fixedHostDownload": {
+      "version": "1.142.0",
+      "cacheReporterResult": "passed",
+      "cacheEvidence": "/dev/shm/dsc-ci-download-cache-reporter-1.json",
+      "boundedRecoveryContracts": "/dev/shm/dsc-ci-full-gate-contracts-final-105-1.log",
+      "maxAttempts": 3,
+      "originalInfrastructureDeadlineMs": 300000,
+      "coldTransportRecovery": "not-verified",
+      "semanticRetry": false
     }
   },
   "notYetVerified": [
@@ -267,12 +355,20 @@
       "sha256": "d82bfec66d0eb2b51d6e51c17215feecb52220c98f10aceba874019e3296c278"
     },
     {
+      "file": "extensions/vscode/dev-session-canvas/src/common/protocol.ts",
+      "sha256": "a4aa30e6e0e5b103f764df9832143cbadd80ae58c9aed5b782ffa8ef1a8ce01a"
+    },
+    {
       "file": "extensions/vscode/dev-session-canvas/src/webview/main.tsx",
-      "sha256": "63d6fe51fed89eeb419cefef9a1195760ac11e36fc50d8bb4be7d0f48aeb1673"
+      "sha256": "52ee329644d52bd40a0453262f47e8fa230516936c4667ffb77ff0b53396ec2f"
     },
     {
       "file": "scripts/gates/browser-catalog.json",
-      "sha256": "bcc7423220ab0de5af29c397bc3ea49aac7da7c812802ea00c90b79f112c544c"
+      "sha256": "e34314638e41ea999753af4884536bb07ea09fab06890485776345cac72b42ab"
+    },
+    {
+      "file": "scripts/gates/build-smoke-budget.mjs",
+      "sha256": "ba8e451f5a6bca41c88edeb9de608598ed2cf1c2f41905316f91f2ff4d848049"
     },
     {
       "file": "scripts/gates/catalog.mjs",
@@ -285,6 +381,14 @@
     {
       "file": "scripts/gates/resolve-plan.mjs",
       "sha256": "56d81a72832890692885d56c05815a33bfae153a73d77c2bbcfb4dcee8d4dfba"
+    },
+    {
+      "file": "scripts/gates/run-local.mjs",
+      "sha256": "482182817ee2e2eb012343ef2248335ef228109ab5f5e3b783cce1f63393761c"
+    },
+    {
+      "file": "scripts/gates/run-stage.mjs",
+      "sha256": "e35e33ba481464c1f2e8d9191b845daacb375055075e5c776d3f838e44f81996"
     },
     {
       "file": "scripts/gates/run-task.mjs",
@@ -311,12 +415,20 @@
       "sha256": "130041caaec363d56a1480586900e68f517dfa7961942d6d91e345a6553c297c"
     },
     {
+      "file": "scripts/smoke/download-vscode.mjs",
+      "sha256": "7334d7b0b711dd729bc2d5aee8e221118bd19897bc29bc8d6af25aec160f1053"
+    },
+    {
+      "file": "scripts/smoke/installed-geometry-subject.cjs",
+      "sha256": "709f92442d65c8d797797ab684c2724faecdc0089eb42418e9bbf9f05dc00949"
+    },
+    {
       "file": "scripts/smoke/installed-pair-driver.cjs",
       "sha256": "3bf9d44419679c3ec2aa249fb99e2447a38bf68b4bf6660d88b95d4745cdac68"
     },
     {
       "file": "scripts/smoke/installed-ui-observation.mjs",
-      "sha256": "2456ed1dfa957b14da7a3a780d92e2599d8b8dc1e1fb6b0fad6db43fab7fb1ee"
+      "sha256": "1a10657d795876f0ab25aa27e00584eeb6c66f57b3ad0d7dccb568b8c0d12b03"
     },
     {
       "file": "scripts/smoke/native-terminal-observer.mjs",
@@ -324,7 +436,7 @@
     },
     {
       "file": "scripts/smoke/run-installed-pair.mjs",
-      "sha256": "a3460d3fbbf1e49590a551f62eecec79e16e264e9df897e2fbdf71d4843eef5c"
+      "sha256": "2190042e3eff972c00847fc5b53d902fa2af282adbbfeb9361193fc34bfbff23"
     },
     {
       "file": "scripts/smoke/run-native-operation.mjs",
@@ -340,11 +452,11 @@
     },
     {
       "file": "scripts/smoke/vscode-smoke-runner.mjs",
-      "sha256": "c1f75e0a8600672867d74de68fa4e128f431c19d31f5b05a89f8117ca36d3985"
+      "sha256": "66033df6e1ef897f4597ea6a4eafcfc64b69e733bc1760b55596a67fb9bbabb2"
     },
     {
       "file": "scripts/test/test-gate-contracts.mjs",
-      "sha256": "81dab8e429ee798a2321ed17eaa78cc5858bee37ede241e606ab32f407f97130"
+      "sha256": "1a2054f28bcb25805c08a64d7f7dda637d6c85266db38fc4a4dceaa4372d2d35"
     },
     {
       "file": "scripts/test/test-linux-execution-candidate-assets.mjs",
@@ -356,11 +468,15 @@
     },
     {
       "file": "scripts/test/test-vscode-smoke-runner-env.mjs",
-      "sha256": "e293dd58f757d0d6aacd7149013b4c2b3b3900da562a9a53687b3a3f427efcb3"
+      "sha256": "0d3b6c7700f90e732eb68951cc55894af0424e46972bdf15692e408bb758775f"
     },
     {
       "file": "tests/playwright/webview-harness.spec.mjs",
-      "sha256": "a71e63fd9f3a9929134c233e152ba9ad987f43fc2aad397688c627356a53b56e"
+      "sha256": "98385cba84a7668dffad97f0586a928ca77345ade9d27f24c64c1555baea589e"
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "sha256": "58b6effd58d20f9f9adc54bd76c6cf687ba30be1f534fb9a8bcd960ee63e71f6"
     }
   ],
   "actions": [
@@ -585,6 +701,273 @@
         "root": "/dev/shm/dsc-ci-actions-39097246318-download-1",
         "packagedFailureArtifactID": 12125795979,
         "packagedFailureArchiveSHA256": "8faa52c2a14e19762cc01694551c4cf0058e4f11d008a3663299eb6fedc3d37f"
+      }
+    },
+    {
+      "runID": "39101493143",
+      "attempt": 1,
+      "mode": "pr",
+      "version": "0.26.0",
+      "headSHA": "2c4a16afd684b2a1caef36a133929c61b12545d6",
+      "inputSHA": "7375f4a1597778486186abe7edfd08f239f317dc",
+      "parentsVerified": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "2c4a16afd684b2a1caef36a133929c61b12545d6"
+      ],
+      "conclusion": "failure",
+      "acceptance": false,
+      "completedJobs": 247,
+      "successfulJobs": 239,
+      "failedJobs": 8,
+      "sourceHostJobsPassed": 115,
+      "packagedHostJobsPassed": 103,
+      "marketplaceHostJobsPassed": 2,
+      "nativeLoadsPassed": 6,
+      "nativeOperationsPassed": 6,
+      "webviewFunctionalPassed": 425,
+      "webviewVisualPassed": 3,
+      "aggregation": {
+        "required": 324,
+        "actual": 330,
+        "passed": 324,
+        "passedRequired": 318,
+        "failed": 6,
+        "errors": [],
+        "notRun": [],
+        "status": "failed",
+        "caveat": "Six ordinary-PR calibration operations are included in passed but not required; passed count must not be presented as all required passed"
+      },
+      "failures": [
+        {
+          "key": "source-host/output-pressure--flood-fairness/smoke/output-pressure/flood-fairness",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":2974,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":true,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Host never reported driver completion"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Host never reported driver completion"
+            }
+          ]
+        },
+        {
+          "key": "source-host/execution-file-activity--views/smoke/execution-file-activity/views",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":2835,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Final Host did not confirm fixture cleanup"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Final Host did not confirm fixture cleanup"
+            }
+          ]
+        },
+        {
+          "key": "source-host/session-history--branch-rejection/smoke/session-history/branch-rejection",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":3695,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":true,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Host never reported driver completion"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Host never reported driver completion"
+            }
+          ]
+        },
+        {
+          "key": "packaged-host/canvas-nodes--dom-delete/smoke/canvas-nodes/dom-delete",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":2786,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":true,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Host never reported driver completion"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Host never reported driver completion"
+            }
+          ]
+        },
+        {
+          "key": "installed-pair/darwin-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":11873,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        },
+        {
+          "key": "installed-pair/win32-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":5396,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"child-close; owning task observes additional resources\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        }
+      ],
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39101493143-download-1",
+        "result": "/dev/shm/dsc-ci-actions-39101493143-download-1/aggregate/gate-final/gate-result.json",
+        "provenance": "/dev/shm/dsc-ci-actions-39101493143-download-1/aggregate/gate-provenance.json"
+      },
+      "candidateTransfer": {
+        "id": 12126489199,
+        "name": "gate-transfer-candidate-39101493143-1",
+        "expired": false,
+        "runID": "39101493143",
+        "attempt": 1,
+        "headSHA": "2c4a16afd684b2a1caef36a133929c61b12545d6",
+        "jobID": 117599542208,
+        "archiveHash": "990c3e7fa5670dade185f085fedfdc1e1f831c5c687b1bcb71cf1f2ffe874690",
+        "receiptDigests": [
+          "f789de317ead2c647777a2c49fac2d478cf853c03dc6e34c77a3e62472d7de27"
+        ]
+      },
+      "candidateBuild": {
+        "mainBuildCount": 1,
+        "notifierBuildCount": 1,
+        "producerStatus": "passed",
+        "packages": [
+          {
+            "id": "devsessioncanvas.dev-session-canvas",
+            "version": "0.26.0",
+            "path": "main.vsix",
+            "size": 5999389,
+            "sha256": "283f0741d08094282c73bdc0252cdfb9c3b2ad78a2cec2a2a12b785cdea72ea9",
+            "payloadDigest": "e967514e4a59f01f71de13a1e68d805046adc50d4c1ac5d584a01d93ac4df07e"
+          },
+          {
+            "id": "devsessioncanvas.dev-session-canvas-notifier",
+            "version": "0.26.0",
+            "path": "notifier.vsix",
+            "size": 160173,
+            "sha256": "7c4b1efe3d0c7b2b48da82dd575bd81f4cd2a4ccd6df0913d7f2bdb9ffc6b45c",
+            "payloadDigest": "7918a6dd20970183ee7e6b147bf4255d897d2fe640419b333789178693f5c025"
+          }
+        ],
+        "packageReceiptDigest": "d5305c8e4f14e20458eca388cf0cb82fb586fc144355d1d204113623f2e21e64"
+      }
+    },
+    {
+      "runID": "39101774719",
+      "attempt": 1,
+      "mode": "release-pr",
+      "version": "0.26.1",
+      "headSHA": "a450a72451b8f2e2042a11174b4af5da76f080be",
+      "inputSHA": "a450a72451b8f2e2042a11174b4af5da76f080be",
+      "parentsVerified": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "56d54377678b0f411d8391f2d1785fb0392c4bde"
+      ],
+      "conclusion": "failure",
+      "acceptance": false,
+      "completedJobs": 247,
+      "successfulJobs": 243,
+      "failedJobs": 4,
+      "sourceHostJobsPassed": 118,
+      "packagedHostJobsPassed": 104,
+      "marketplaceHostJobsPassed": 2,
+      "nativeLoadsPassed": 6,
+      "nativeOperationsPassed": 6,
+      "webviewFunctionalPassed": 425,
+      "webviewVisualPassed": 3,
+      "aggregation": {
+        "required": 330,
+        "actual": 330,
+        "passed": 328,
+        "passedRequired": 328,
+        "failed": 2,
+        "errors": [],
+        "notRun": [],
+        "status": "failed",
+        "caveat": "Six ordinary-PR calibration operations are included in passed but not required; passed count must not be presented as all required passed"
+      },
+      "failures": [
+        {
+          "key": "installed-pair/darwin-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":31416,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        },
+        {
+          "key": "installed-pair/win32-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":1772,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"child-close; owning task observes additional resources\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        }
+      ],
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39101774719-download-1",
+        "result": "/dev/shm/dsc-ci-actions-39101774719-download-1/aggregate/gate-final/gate-result.json",
+        "provenance": "/dev/shm/dsc-ci-actions-39101774719-download-1/aggregate/gate-provenance.json"
+      },
+      "candidateTransfer": {
+        "id": 12127406457,
+        "name": "gate-transfer-candidate-39101774719-1",
+        "expired": false,
+        "runID": "39101774719",
+        "attempt": 1,
+        "headSHA": "a450a72451b8f2e2042a11174b4af5da76f080be",
+        "jobID": 117600407624,
+        "archiveHash": "bc08dcbd663cc91b2fca5c24670586aa56dd12740fa36099090afc41af4a3790",
+        "receiptDigests": [
+          "6b4e6859924285d91de45b3cce7322964553a7673881f9fc9732ce9ea091cbae"
+        ]
+      },
+      "combinedInputs": {
+        "pr335": "2c4a16afd684b2a1caef36a133929c61b12545d6",
+        "pr327": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+        "combinedHead": "56d54377678b0f411d8391f2d1785fb0392c4bde"
       }
     }
   ]

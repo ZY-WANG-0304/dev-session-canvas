@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 
 const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
+export function installedGeometryMatchesResize(before, after, { nonce, requestedAt }) {
+  return after?.method === 'original-stdout-fresh-tty-handle' && after.pid === before.pid && after.ppid === before.ppid
+    && after.nonce === nonce && Number.isFinite(after.observedAt) && after.observedAt >= requestedAt
+    && Number.isSafeInteger(after.cols) && after.cols > 0 && Number.isSafeInteger(after.rows) && after.rows > 0
+    && (after.cols !== before.cols || after.rows !== before.rows);
+}
+
 export function selectInstalledResizeGesture(canvas, handles) {
   assert(canvas && ['x', 'y', 'width', 'height'].every(key => Number.isFinite(canvas[key]))
     && canvas.width > 0 && canvas.height > 0, 'Installed canvas bounds are unavailable');

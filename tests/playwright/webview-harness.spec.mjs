@@ -2337,6 +2337,62 @@ for (const fileNodeDisplayStyle of ['minimal', 'card']) {
   });
 }
 
+test('smoke file clicks reject invisible disabled and obstructed targets and emit one complete primary pointer click', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createFileNodeState(), createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
+  const button = nodeById(page, 'file-src-main').locator('.file-node-action');
+  await expect(button).toBeVisible();
+  const action = { kind: 'clickFileEntry', nodeId: 'file-src-main', filePath: '/workspace/src/main.ts' };
+  for (const invalid of ['offscreen', 'disabled', 'obstructed']) {
+    await button.evaluate((target, kind) => {
+      window.__ciOriginalFileStyle = target.getAttribute('style');
+      if (kind === 'offscreen') target.style.transform = 'translateX(10000px)';
+      if (kind === 'disabled') target.disabled = true;
+      if (kind === 'obstructed') {
+        const box = target.getBoundingClientRect(), overlay = document.createElement('div');
+        overlay.id = 'ci-file-hit-obstruction';
+        Object.assign(overlay.style, { position: 'fixed', left: `${box.x}px`, top: `${box.y}px`,
+          width: `${box.width}px`, height: `${box.height}px`, zIndex: '2147483647' });
+        document.body.append(overlay);
+      }
+    }, invalid);
+    await clearPostedMessages(page);
+    const requestId = `invalid-file-click-${invalid}`;
+    await page.evaluate(({ requestId, action }) => window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/testDomAction', payload: { requestId, action } }), { requestId, action });
+    await expect.poll(() => page.evaluate(requestId => window.__devSessionCanvasHarness.getPostedMessages()
+      .find(message => message.type === 'webview/testDomActionResult' && message.payload.requestId === requestId)?.payload.ok, requestId)).toBe(false);
+    expect(await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages()
+      .filter(message => message.type === 'webview/openCanvasFile'))).toEqual([]);
+    await button.evaluate(target => {
+      if (window.__ciOriginalFileStyle === null) target.removeAttribute('style');
+      else target.setAttribute('style', window.__ciOriginalFileStyle);
+      target.disabled = false; document.getElementById('ci-file-hit-obstruction')?.remove();
+    });
+  }
+  await button.evaluate(target => {
+    window.__ciFileClickEvents = [];
+    // Observe at window capture before d3's real window mouseup listener
+    // legitimately stops propagation to the file button.
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) window.addEventListener(type,
+      event => { if (event.target === target || target.contains(event.target)) window.__ciFileClickEvents.push({
+        type, view: event.view === window, pointerId: event.pointerId, isPrimary: event.isPrimary,
+        pointerType: event.pointerType, button: event.button, buttons: event.buttons }); }, true);
+  });
+  await clearPostedMessages(page);
+  await performTestDomAction(page, action);
+  const events = await page.evaluate(() => window.__ciFileClickEvents);
+  expect(events.map(event => event.type)).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+  expect(events.every(event => event.view && event.button === 0)).toBe(true);
+  expect(events.map(event => event.buttons)).toEqual([1, 1, 0, 0, 0]);
+  expect(events[0].pointerId).toBe(events[2].pointerId);
+  expect(events[0].isPrimary && events[2].isPrimary).toBe(true);
+  expect(events[0].pointerType).toBe('mouse');
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({ nodeId: 'file-src-main', filePath: '/workspace/src/main.ts' });
+  expect(pageDiagnosticsByPage.get(page).pageErrors).toEqual([]);
+});
+
 test('card file nodes do not fall back to owner counts when no secondary path label exists', async ({ page }) => {
   const state = createFileNodeState();
   state.nodes = state.nodes.map((node) =>

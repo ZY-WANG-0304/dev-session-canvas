@@ -6,6 +6,8 @@
 
 [release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[活计划](active/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器有本地通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真实Actions第三轮39095480885/head924cae96/input612a891c：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片与source-build同批通过。隔离双包各build一次/checkout清理成功，后置文件清单错读外层dist失败；聚合另拒Windows反斜杠回执。现修candidate原包dist私有消费与producer路径序列化，保真实staging/ZIP双层和严格路径；原失败包仅诊断，无正式transfer，packaged/三安装仍not-run。新提交完整验收继续，不能把映射或独立补验视为通过。
 
+第五轮39101493143及0.26.1组合39101774719已终态：前者330 actual/324 required/318 required passed，六校准项包含于324 total passed；后者330全必跑328通过，source118/packaged104全通过，仅macOS长IPC和Windowscached geometry失败，均无acceptance。当前原包焦点tab红绿、稳定hit-target/完整pointer、短路径设置与日志、安全退役、同fd fresh geometry及有界transport恢复已落实；105合同、429浏览器目录的426功能/3视觉、当前production文件视图诊断通过。123 suite原期限逐项不变；最新三平台原样安装与新组合仍需实跑，旧资产诊断不能补验收。
+
 六平台有限操作与三x64原样安装须实际runner验证，Node/VSCode/Chromium及基础设施预算须校准；最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 
 关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。

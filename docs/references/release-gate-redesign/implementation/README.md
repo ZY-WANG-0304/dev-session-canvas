@@ -20,3 +20,11 @@
 packaged文件视图失败的原生产bundle指向d3-drag处理合成mousedown时event.view=null。minimal/card两个真实浏览器回归在原包均复现同一pageError；修后私有production build2/2通过，连续文件打开及后续公开drag正常。原Host可见文件/split group/mounted断言保持，新head仍须实跑。实际Playwright注册426→428只新增这两项，其余426完全保留；3固定视觉通过/基线不变，完整425功能与3视觉回归通过，实际执行集合精确匹配冻结目录。
 
 当前typecheck、native-assets完整链、vscode-runner环境、四workflow actionlint及结构合同通过。93门禁/发布恢复合同同批通过后，新增首败摘要/目录变更的25项针对复验通过；摘要优先指出原失败task，但成功兄弟task仍不能从失败producer获得acceptance。最新完整Actions、新批次104packaged/三安装及PR327真实组合继续待验；生产恢复撤销订阅竞态未修，0.26.1未放行。
+
+第五轮[39101493143](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39101493143)真实预合并7375f4a1/head2c4a16af已结束失败：247 jobs为239成功/8失败；330 actual、324 required、318 required passed，324 total passed包括六校准操作。source115/118、packaged103/104，六native、三regression分片、425功能/3视觉、Marketplace Host2与Linux原样安装通过。失败为三固定宿主metadata下载网络、源码文件视图、macOS长IPC与Windowscached geometry，errors/notRun为空，无acceptance。
+
+PR3352c4a16af+PR3278313fc72临时0.26.1组合[39101774719](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39101774719)真实预合并a450a724/组合head56d54377已结束失败。parents核为main6e708c6b及56d54377；247 jobs为243成功/4失败，330全必跑328通过，source118/packaged104、六native和全部基础通过，仅macOS与Windows原样安装仍失败。两轮独立记账，不能互补验收。
+
+本轮原包受控tab焦点切换先红后绿，目标file按URI/ViewColumn唯一公开Tab关闭，原画布保留。新fileEntries probe实际拒视口外/禁用/遮挡输入，补全一次primary pointer。当前production Host两次失败分别证明瞬间probe后动画变化及不合理selection前提；外部DOM trace记录目标已居中/可命中而旧selection保留，改用同原10秒中的焦点/稳定矩形/实际命中后完整文件视图通过。证据`/dev/shm/dsc-ci-current-file-view-host-3/result.json`同时核原Host退出/原执行reader清理/短目录退役；这是当前源码production+旧native诊断，acceptance=false。先失败的两个目录及原包before-2均保留，before-1的proposed API枚举失败不作产品证据。
+
+当前最终105门禁/发布恢复合同同批105通过/0失败/0跳过，typecheck、vscode环境、四workflow actionlint和结构合同通过。真实浏览器428→429只新增命中前提回归，原428完整保留，production426功能/3视觉全通过/基线不变。123 suite预算与上一head逐项相等，文件视图1083000ms；installed新UI/nonce/同fd几何观察共用原20秒。短路径settings显式传原user-data地址，setup/verify日志逐session保留并在原Host退役后安全清理；下载reporter固定缓存路径通过，冷网络恢复尚未实测。最新正式跨平台与更新PR327组合仍待新head执行，生产旧代订阅竞态持续阻塞0.26.1。

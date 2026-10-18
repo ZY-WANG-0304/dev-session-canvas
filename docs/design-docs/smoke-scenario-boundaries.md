@@ -188,3 +188,5 @@ fake Agent输入区状态仍只覆盖受控启发式，不证明真实TUI回合�
 
 
 第四轮39097246318保留正式输入aa969012/headcdf40738及全量330task来源，六native操作、118源码Host、2 Marketplace Host和packaged103/104同批通过；失败包文件视图存在合成MouseEvent.view=null，三个原样安装仍失败。对应fixture修正已做Linux原双包公开全流程及minimal/card原包先红后绿回归，acceptance=false。新head全部source/packaged/三安装和PR327组合仍待验，不能将运行量、静态137项映射或诊断拼成完整通过；原15个新增目标继续不进入虚假成功清单。
+
+第五轮39101493143实际source115/118、packaged103/104失败，PR327临时组合39101774719则source118/packaged104同批通过，原样安装macOS/Windows两项仍失败；两个批次均无acceptance。当前文件输入按原URI/group关闭、真实中心命中和动画稳定准备/完整primary pointer修正，保原产品等待、split/mounted和reader断言；当前源码production+旧native的完整文件视图诊断通过，不代证新head正式packaged。真实浏览器428→429保原428，426功能/3视觉及105合同同批通过；123 suite预算逐项未变。实际来源与未验边界见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。

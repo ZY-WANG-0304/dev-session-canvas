@@ -16,6 +16,7 @@ import {
   resolveVSCodeSmokeDebugRoot,
   spawnPreparedVSCodeScenario
 } from '../smoke/vscode-smoke-runner.mjs';
+import { resolveSmokeRuntimePaths } from '../smoke/vscode-smoke-runner.mjs';
 import { buildRemoteHostEnvironment } from '../smoke/vscode-remote-ssh-fixture.mjs';
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
@@ -176,10 +177,32 @@ try {
     assert.strictEqual(runtime.environment.USERPROFILE, path.join(debugRoot, 'home'));
     assert.strictEqual(runtime.environment.APPDATA, path.join(debugRoot, 'appdata'));
     assert.strictEqual(runtime.environment.LOCALAPPDATA, path.join(debugRoot, 'local-appdata'));
-    assert.strictEqual(runtime.environment.TMP, path.join(debugRoot, 'tmp'));
-    assert.strictEqual(runtime.environment.TEMP, path.join(debugRoot, 'tmp'));
+    const expectedTmp = process.platform === 'win32' ? path.join(debugRoot, 'tmp') : path.join(runtime.runtimeDir, 'tmp');
+    assert.strictEqual(runtime.environment.TMP, expectedTmp);
+    assert.strictEqual(runtime.environment.TEMP, expectedTmp);
   } finally {
     await fs.rm(debugRoot, { recursive: true, force: true });
+  }
+
+  // macOS's system TMPDIR itself may exceed the Unix socket budget. Exercise
+  // actual full suffixes, not only the short case-name/hash prefix.
+  for (const platform of ['darwin', 'linux']) {
+    const paths = resolveSmokeRuntimePaths({ debugRoot: `/evidence/${'deep/'.repeat(35)}`,
+      runtimeDirName: 'installed-pair', userDataInRuntimeDir: true },
+    { platform, temporaryRoot: `/private/${'long/'.repeat(30)}`, runtimeNonce: 'original-run' });
+    const limit = platform === 'darwin' ? 103 : 107;
+    assert(paths.runtimeDir.startsWith('/tmp/dsc-'));
+    for (const socket of [path.join(paths.userDataDir, '1.14-main.sock'),
+      path.join(paths.tmpDir, 'vscode-ah-', 'a'.repeat(12), 'b'.repeat(22) + '.sock'),
+      path.join(paths.runtimeDir, 'state', 'dsc', 'rh', '0'.repeat(24), 's.sock')])
+      assert(Buffer.byteLength(socket) <= limit, `${platform} fixture socket must fit the actual OS budget: ${socket}`);
+    assert.throws(() => resolveSmokeRuntimePaths({ debugRoot: '/evidence', runtimeDirName: 'installed-pair',
+      userDataInRuntimeDir: true }, { platform, temporaryRoot: '/long'.repeat(40), fallbackRoot: '/long'.repeat(40) }),
+    /socket.*(limit|budget)/iu, 'No runnable socket path must fail before the Host starts');
+    const prefixOnly = resolveSmokeRuntimePaths({ debugRoot: '/evidence',
+      runtimeDirName: 'dsc-file-inspect-' + 'a'.repeat(36) }, { platform, temporaryRoot: '/tmp', runtimeNonce: '' });
+    assert(Buffer.byteLength(path.join(prefixOnly.tmpDir, `vscode-ah-${'a'.repeat(12)}`, `${'b'.repeat(22)}.sock`)) <= limit,
+      'A runtime name that fits the product socket may still need hashing for the full host agent socket');
   }
 
   const longRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-long-userdata-'));
@@ -194,6 +217,22 @@ try {
     assert.ok(Buffer.byteLength(path.join(shortRuntime.userDataDir, '1.14-main.sock')) <= 107);
     assert.deepStrictEqual(JSON.parse(await fs.readFile(path.join(shortRuntime.userDataDir, 'User', 'settings.json'), 'utf8')),
       { 'security.workspace.trust.enabled': false }, 'Runtime cleanup must precede relocated user-data creation');
+    const owner = await prepareRuntime({ debugRoot: path.join(nestedDebugRoot, 'owner'),
+      runtimeDirName: `dsc-shared-${process.pid}`, userSettings: { role: 'owner' } });
+    const attacher = await prepareRuntime({ debugRoot: path.join(nestedDebugRoot, 'attacher'),
+      runtimeDirName: `dsc-shared-${process.pid}`, userSettings: { role: 'attacher' } });
+    try {
+      assert.equal(owner.runtimeDir, attacher.runtimeDir);
+      assert.notEqual(owner.userDataDir, attacher.userDataDir);
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(owner.userDataDir, 'User', 'settings.json'), 'utf8')),
+        { role: 'owner' }, 'Second shared-window preparation must preserve the original private profile');
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(attacher.userDataDir, 'User', 'settings.json'), 'utf8')),
+        { role: 'attacher' });
+    } finally {
+      await fs.rm(owner.runtimeDir, { recursive: true, force: true });
+      await fs.rm(owner.userDataDir, { recursive: true, force: true });
+      await fs.rm(attacher.userDataDir, { recursive: true, force: true });
+    }
     const fullEnv = buildVSCodeChildEnv({ ...shortRuntime.environment, DBUS_SESSION_BUS_ADDRESS: '', XDG_RUNTIME_DIR: '' });
     assert.strictEqual(fullEnv.DBUS_SESSION_BUS_ADDRESS, '');
     assert.strictEqual(fullEnv.XDG_RUNTIME_DIR, '');
