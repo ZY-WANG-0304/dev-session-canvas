@@ -10,6 +10,9 @@
 
 ## 进度
 
+- [x] (2026-10-18) 第三轮39095480885在真实预合并612a891c/head924cae96完成：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片及source-build同批通过；隔离双包一次构建/checkout退役通过，后置文件清单错误依赖外层dist而失败，packaged/三安装未运行。聚合另拒Windows原回执反斜杠；整轮失败/无acceptance。
+- [x] (2026-10-18) 选定同批原包dist私有提取+真实production stager/vsce ls+原ZIP双层检查，外层两dist均不存在的源码夹具诊断通过；原包hash不变/无新build。Windows证据路径在producer序列化，原历史回执不重写；原路径拒绝及原hash对照通过。最终gate62完整批次与release29独立批次通过；四workflow actionlint及结构合同通过。
+
 - [x] (2026-10-17) 核对正式设计、工作流及工作区；实施工作树起点3fbae6a9、远端main6e708c6b；用户主工作区dirty WORKFLOW保持不动。
 - [x] (2026-10-18) 实现唯一任务目录、冻结计划、逐task回执、严格聚合及实际GitHub job/ZIP/artifact绑定；普通PR基础必跑，保守追加全部功能/产物，发布两阶段完整范围。
 - [x] (2026-10-18) 新增15个reusable job和六发布外层job；共享production浏览器构建、同批clean双包、消费式packaged、三x64公开驱动及原包恢复/父状态链接线完成。四workflow actionlint和配置契约通过；实际Actions已运行两轮，完整验收尚未通过。
@@ -45,6 +48,14 @@
 URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×20，旧 helper 却以 92×28 Start；snapshot restore 临时 resize 为 92×28，随后 deferred fit 恢复 64×20。鼠标已进入正确单元，URL provider 与 hover 均实际执行，但第二次 resize 触发 xterm linkLeave，取消尚未显示的 tooltip。修正只在测试夹具：用原 10 秒 probe 等待已 mounted 且 projection 完成的实际 fit 几何，再以该几何 Start。tooltip 文字、清 hover、浏览器路由和 OSC8 断言及原等待全部保留，未改产品行为。`/dev/shm/dsc-ci-url-inspection-7/dom.json` 中的 buffer-resize 调用栈保留取证；复验 17 秒通过。
 
 ## 决策记录
+
+决策：候选文件清单测试从已验原双VSIX提取私有dist，真实stager增加显式dist输入；保留staging/vsce ls与生产ZIP两层检查，并复算原包摘要。
+理由：第三轮39095480885的隔离production双包与清理均成功，后续测试读取设计上不存在的外层dist而ENOENT。额外build、借development产物或跳过原staging检查都会违背同批包和验证责任。真实预合并612a891c的parents已通过API核为main6e708c6b及head924cae96；失败producer包只能诊断。
+日期/作者：2026-10-18 / Codex。
+
+决策：任务证据引用在producer写入时使用`/`序列化，系统文件访问保留native路径；下载后不改回执，验证端继续拒反斜杠/越界。
+理由：第三轮Windows实际task引用反斜杠而manifest使用`/`，全量聚合因此失败；两个原引用规范化后均对应原清单source hash。历史失效回执不追认，修正后的新producer仍需真实完整运行。
+日期/作者：2026-10-18 / Codex。
 
 决策：先增严格入口和回执，再接线消费者；第一阶段旧suite作迁移适配器，保留19/8/3入口的完整覆盖输入。当前已按独立fixture迁移至102独立case/13因果suite/3focused，原assertionReview与22 routes映射保持可查。
 理由：新场景目的地尚未全部独立验证，不能为了拆 job 删除隐含断言或把计划清单当执行证据。
@@ -125,3 +136,5 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 2026-10-18 实际Actions首批run39093713215：head455a494f，真正预合并354e6129（main6e708c6b+PR head）。输入、production前端构建/视觉及Linux/macOS四native构建和有限操作通过。regression缺少sidebar-session-history浏览器预装，部分结果上传因task文件名含冒号被GitHub NTFS通用规则拒绝；已补显式锁定浏览器依赖及可逆唯一文件名编码，taskID和业务断言不变。Windows x64 native-load通过，finite I/O首个正文观察在15秒失败，原cleanup settled；首版回执漏raw输出，当前先补有限实际输出/批次/原身份取证，根因待实际样本，不降低原断言或延长产品等待。首批失败保留，不计完整验收。
 
 修订记录：2026-10-18 接续两轮实际Actions，固定第二轮预合并040883c8/head4c3fa9bf，记录三regression分片/六load与四native操作通过及完整失败。HTTP原字节collector核首轮六实际producer，ConPTY终端语义观察和production CSS数值修复保留原动作/超时/反例；gate59与release29分开通过，后续clean/packaged/installed未触达仍须实跑。
+
+修订记录：2026-10-18 接续第三轮完整终态及原双包hash，核612a891c精确parents；登记外层dist依赖和Windows路径序列化两项CI错误及修复，保留原失败producer/not-run/无acceptance事实。当前package无外层dist诊断、最终gate62与另批release29已核，下一提交正式同批验收仍须完整运行。

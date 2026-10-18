@@ -1,135 +1,70 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { inspectVsix } from '../release/build-release-candidate.mjs';
+import { inspectVsix, treeHashes } from '../release/build-release-candidate.mjs';
 import { readJSON, verifyPackageFiles } from '../gates/receipts.mjs';
-
-import {
-  resolveCommand,
-  resolveVsceEntry,
-  stageMainPackageFiles
-} from '../release/package-vsix.mjs';
+import { assertRuntimeFileList, extractVsixDist } from '../release/vsix-file-list.mjs';
+import { resolveCommand, resolveVsceEntry, stageMainPackageFiles } from '../release/package-vsix.mjs';
 import { stagePackageFiles as stageNotifierPackageFiles } from '../../extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const mainExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas');
-const notifierExtensionRoot = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas-notifier');
-const vsceEntry = resolveVsceEntry(repoRoot);
 const { values } = parseArgs({ options: { candidate: { type: 'string' } } });
-
-assert.ok(
-  vsceEntry,
-  'Local @vscode/vsce executable was not found. Run npm install in the repository root first.'
-);
-
-const packageJson = JSON.parse(
-  readFileSync(path.join(mainExtensionRoot, 'package.json'), 'utf8')
-);
-const stageRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-main-vsix-list-'));
+const vsceEntry = resolveVsceEntry(repoRoot);
+assert(vsceEntry, 'Local @vscode/vsce executable was not found. Run npm install in the repository root first.');
+const command = resolveCommand(vsceEntry, ['ls']);
+const privateRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-vsix-file-list-'));
 
 try {
-  stageMainPackageFiles(stageRoot, packageJson, 'README.marketplace.md', { developmentComparison: true });
-
-  const command = resolveCommand(vsceEntry, ['ls']);
-  const result = spawnSync(command.file, command.args, {
-    cwd: stageRoot,
-    encoding: 'utf8',
-    maxBuffer: 20 * 1024 * 1024,
-    windowsVerbatimArguments: command.windowsVerbatimArguments
-  });
-
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-
-  const packagedFiles = result.stdout
-    .split(/\r?\n/u)
-    .map((line) => line.trim().replace(/\\/g, '/'))
-    .filter(Boolean);
-
-  for (const expectedFile of [
-    'package.nls.json',
-    'package.nls.zh-cn.json',
-    'l10n/bundle.l10n.zh-cn.json'
-  ]) {
-    assert.ok(
-      packagedFiles.includes(expectedFile),
-      `Expected VSIX file list to include localization resource ${expectedFile}.`
-    );
-  }
-
-  const forbiddenPrefixes = [
-    'apps/',
-    'packages/',
-    'src/',
-    'docs/',
-    '../',
-    '../../../',
-    'node_modules/node-pty/binding.gyp',
-    'node_modules/node-pty/src/',
-    'node_modules/node-pty/scripts/',
-    'node_modules/node-pty/typings/',
-    'node_modules/node-pty/third_party/',
-    'node_modules/node-pty/prebuilds/win32-x64/conpty.pdb',
-    'node_modules/node-pty/prebuilds/win32-x64/conpty_console_list.pdb',
-    'node_modules/node-pty/prebuilds/win32-arm64/conpty.pdb',
-    'node_modules/node-pty/prebuilds/win32-arm64/conpty_console_list.pdb',
-    'node_modules/node-pty/node_modules/node-addon-api/'
-  ];
-  const forbiddenFiles = packagedFiles.filter((file) =>
-    forbiddenPrefixes.some((prefix) => file.startsWith(prefix))
-  );
-
-  assert.deepEqual(
-    forbiddenFiles,
-    [],
-    `VSIX file list contains non-runtime source directories:\n${forbiddenFiles.join('\n')}`
-  );
-
-  const notifierPackageJson = JSON.parse(
-    readFileSync(path.join(notifierExtensionRoot, 'package.json'), 'utf8')
-  );
-  const notifierStageRoot = mkdtempSync(path.join(os.tmpdir(), 'dsc-notifier-vsix-list-'));
-  try {
-    stageNotifierPackageFiles(notifierStageRoot, notifierPackageJson, 'README.marketplace.md');
-    const notifierResult = spawnSync(command.file, command.args, {
-      cwd: notifierStageRoot,
-      encoding: 'utf8',
-      maxBuffer: 20 * 1024 * 1024,
-      windowsVerbatimArguments: command.windowsVerbatimArguments
-    });
-
-    assert.equal(notifierResult.status, 0, notifierResult.stderr || notifierResult.stdout);
-
-    const notifierPackagedFiles = notifierResult.stdout
-      .split(/\r?\n/u)
-      .map((line) => line.trim().replace(/\\/g, '/'))
-      .filter(Boolean);
-
-    for (const expectedFile of [
-      'package.nls.json',
-      'package.nls.zh-cn.json',
-      'l10n/bundle.l10n.zh-cn.json'
-    ]) {
-      assert.ok(
-        notifierPackagedFiles.includes(expectedFile),
-        `Expected notifier VSIX file list to include localization resource ${expectedFile}.`
-      );
-    }
-  } finally {
-    rmSync(notifierStageRoot, { recursive: true, force: true });
-  }
-
-  console.log('package-vsix file-list tests passed');
+  let receipt, plan;
   if (values.candidate) {
-    const receipt = await readJSON(path.join(values.candidate, 'package-receipt.json'));
-    const plan = await readJSON(process.env.DEV_SESSION_CANVAS_GATE_PLAN);
+    receipt = await readJSON(path.join(values.candidate, 'package-receipt.json'));
+    plan = await readJSON(process.env.DEV_SESSION_CANVAS_GATE_PLAN);
     await verifyPackageFiles(receipt, plan, values.candidate);
-    for (const pkg of receipt.packages) await inspectVsix(path.join(values.candidate, pkg.path), pkg.id, pkg.version);
-    console.log('Same candidate production ZIP runtime payload and six targets verified');
+  }
+  for (const [label, name, stage] of [
+    ['main', 'dev-session-canvas', stageMainPackageFiles],
+    ['notifier', 'dev-session-canvas-notifier', stageNotifierPackageFiles]
+  ]) {
+    const extensionRoot = path.join(repoRoot, 'extensions', 'vscode', name);
+    const packageJson = JSON.parse(readFileSync(path.join(extensionRoot, 'package.json'), 'utf8'));
+    let dist = path.join(extensionRoot, 'dist'), inspected;
+    if (receipt) {
+      const pkg = receipt.packages.find(pkg => pkg.id === `devsessioncanvas.${name}`);
+      const file = path.join(values.candidate, pkg.path);
+      inspected = await inspectVsix(file, pkg.id, pkg.version);
+      assert.equal(inspected.payloadDigest, pkg.payloadDigest, 'Production ZIP content differs from the package receipt');
+      dist = path.join(privateRoot, `${label}-dist`);
+      await extractVsixDist(file, dist);
+      assert.deepEqual(await treeHashes(dist), receipt.buildHashes[label], 'Candidate dist differs from its one production build');
+    }
+    const stageRoot = path.join(privateRoot, `${label}-stage`);
+    mkdirSync(stageRoot);
+    stage(stageRoot, packageJson, 'README.marketplace.md', { dist, developmentComparison: !receipt });
+    const result = spawnSync(command.file, command.args, { cwd: stageRoot, encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024, windowsVerbatimArguments: command.windowsVerbatimArguments });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const files = result.stdout.split(/\r?\n/u).map(line => line.trim().replace(/\\/g, '/')).filter(Boolean);
+    assertRuntimeFileList(files, { production: Boolean(receipt) });
+    if (inspected) {
+      const stagedFiles = await treeHashes(stageRoot);
+      for (const relative of ['package.nls.json', 'package.nls.zh-cn.json', 'l10n/bundle.l10n.zh-cn.json']) {
+        const actual = inspected.extensionFiles.find(file => file.path === relative);
+        const expected = stagedFiles.find(file => file.path === relative);
+        assert(actual && expected, `Localization file is missing from ${label} staging: ${relative}`);
+        assert.equal(actual.sha256, expected.sha256, `Production localization changed during ${label} staging: ${relative}`);
+      }
+    }
+    console.log(`${label}: real staging rules and vsce file list passed${receipt ? ' with the original production VSIX dist' : ''}`);
+  }
+  if (receipt) {
+    await verifyPackageFiles(receipt, plan, values.candidate);
+    console.log('Original candidate bytes, production ZIP runtime payload and six targets verified');
   }
 } finally {
-  rmSync(stageRoot, { recursive: true, force: true });
+  rmSync(privateRoot, { recursive: true, force: true });
 }

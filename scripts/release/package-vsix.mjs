@@ -417,8 +417,10 @@ function assertMainPackageInputsExist() {
   }
 }
 
-export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath, { developmentComparison = false } = {}) {
-  if (!developmentComparison) assertProductionExecutionPackage(path.join(mainExtensionRoot, 'dist'));
+export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath, {
+  developmentComparison = false, dist = path.join(mainExtensionRoot, 'dist')
+} = {}) {
+  if (!developmentComparison) assertProductionExecutionPackage(dist);
   const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
   delete stagedPackageJson.scripts;
   stagedPackageJson.dependencies = packageJson.dependencies?.['node-pty']
@@ -448,7 +450,7 @@ export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath,
     path.join(mainExtensionRoot, '.vscodeignore'),
     path.join(stagePackageRoot, '.vscodeignore')
   );
-  cpSync(path.join(mainExtensionRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
+  cpSync(dist, path.join(stagePackageRoot, 'dist'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'l10n'), path.join(stagePackageRoot, 'l10n'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'resources'), path.join(stagePackageRoot, 'resources'), { recursive: true });

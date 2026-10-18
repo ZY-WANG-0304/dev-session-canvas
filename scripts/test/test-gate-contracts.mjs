@@ -10,7 +10,7 @@ import vm from 'node:vm';
 import { buildPlan, validateFrozenPlan, classifyChanges, assertFormalEnvironment, planJobs } from '../gates/resolve-plan.mjs';
 import { aggregateResults } from '../gates/verify-result.mjs';
 import { newTaskReceipt, objectDigest, verifyPackageFiles, validateTaskReceipt, readJSON } from '../gates/receipts.mjs';
-import { executeTask, resultPath } from '../gates/run-task.mjs';
+import { executeTask, resultPath, taskEvidencePath } from '../gates/run-task.mjs';
 import { runProcess,processGroupExists } from '../gates/process.mjs';
 import JSZip from 'jszip';
 import {collectGitHubProvenance,inspectArtifactArchive} from '../gates/github-provenance.mjs';
@@ -26,9 +26,10 @@ import { withinDeadline } from '../gates/deadline.mjs';
 import { runNativeOperation, retireNativeResources } from '../smoke/run-native-operation.mjs';
 import { NativeTerminalObserver } from '../smoke/native-terminal-observer.mjs';
 import { readSmokeImplementationMap, validateSmokeImplementationMap, verifySmokeImplementationSources } from '../gates/smoke-implementation.mjs';
-import { retireCandidateCheckout } from '../release/build-release-candidate.mjs';
+import { inspectVsix, retireCandidateCheckout } from '../release/build-release-candidate.mjs';
+import { extractVsixDist } from '../release/vsix-file-list.mjs';
 import { ensureExtensionFixtureInputs, verifyExtensionFixture, validateExtensionFixtureInput } from '../smoke/extension-fixture-inputs.mjs';
-import { collectEvidence, evidenceLimits, verifyEvidenceManifest } from '../gates/evidence.mjs';
+import { assertEvidencePath, collectEvidence, evidenceLimits, verifyEvidenceManifest } from '../gates/evidence.mjs';
 import { preserveAndRetireLocalCheckout } from '../gates/run-local.mjs';
 const { readRuntimeSessions, runtimeIsRetired, verifyOriginalLocalRetirement }=createRequire(import.meta.url)('../../tests/vscode-smoke/gate-runtime-state.cjs');
 const sha='a'.repeat(40), base='b'.repeat(40), hash='c'.repeat(64);
@@ -62,6 +63,54 @@ function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
   refresh();return {plan,receipts,provenance,packageReceipt,refresh};
 }
 const rejects=f=>{const result=aggregateResults(f);assert.equal(result.result.status,'failed');assert.equal(result.acceptance,null);return result;};
+test('production ZIP inspection keeps localization and source/debug exclusions independently of staging', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-production-list-contract-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'notifier.vsix');
+  const zip = new JSZip();
+  zip.file('extension/package.json', JSON.stringify({ publisher: 'devsessioncanvas', name: 'dev-session-canvas-notifier',
+    version: '0.26.1', main: './dist/extension.js' }));
+  for (const relative of ['dist/extension.js', 'images/icon.png', 'images/activitybar.svg', 'package.nls.json',
+    'package.nls.zh-cn.json', 'l10n/bundle.l10n.zh-cn.json', 'readme.md', 'changelog.md'])
+    zip.file(`extension/${relative}`, 'original runtime payload');
+  const write = () => zip.generateAsync({ type: 'nodebuffer', platform: 'UNIX' }).then(bytes => fs.writeFile(file, bytes));
+  const inspect = () => inspectVsix(file, 'devsessioncanvas.dev-session-canvas-notifier', '0.26.1');
+  await write(); assert((await inspect()).extensionFiles.some(entry => entry.path === 'dist/extension.js'));
+  for (const forbidden of ['src/hidden.js', 'docs/internal.md', 'apps/source.js', 'packages/source.js',
+    'node_modules/node-pty/scripts/build.js', 'node_modules/node-pty/node_modules/node-addon-api/index.js',
+    'dist/extension.js.map', 'dist/native/debug.pdb']) {
+    zip.file(`extension/${forbidden}`, 'must not ship'); await write();
+    await assert.rejects(inspect, /non-runtime sources|debug payload/u); zip.remove(`extension/${forbidden}`);
+  }
+  zip.remove('extension/package.nls.zh-cn.json'); await write();
+  await assert.rejects(inspect, /missing package.nls.zh-cn.json/u);
+});
+test('candidate dist extraction preserves original bytes and executable metadata and rejects ZIP path sanitization', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-candidate-dist-contract-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'main.vsix'), dist = path.join(root, 'dist');
+  const zip = new JSZip();
+  const helper = Buffer.from([0, 255, 2, 253]);
+  zip.file('extension/dist/extension.js', 'original production bundle');
+  zip.file('extension/dist/native/spawn-helper', helper, { unixPermissions: 0o100755 });
+  const original = await zip.generateAsync({ type: 'nodebuffer', platform: 'UNIX' }); await fs.writeFile(file, original);
+  await extractVsixDist(file, dist);
+  assert.equal(await fs.readFile(path.join(dist, 'extension.js'), 'utf8'), 'original production bundle');
+  assert.deepEqual(await fs.readFile(path.join(dist, 'native/spawn-helper')), helper);
+  if (process.platform !== 'win32') assert.equal((await fs.stat(path.join(dist, 'native/spawn-helper'))).mode & 0o777, 0o755);
+  assert.deepEqual(await fs.readFile(file), original);
+  await assert.rejects(() => extractVsixDist(file, dist), /private empty destination/u);
+  for (const [index, unsafe] of ['extension/dist/../../outside.txt', 'extension/dist/C:redirect',
+    'extension/dist/..\\outside.txt'].entries()) {
+    const bad = new JSZip(); bad.file('extension/dist/extension.js', 'runtime'); bad.file(unsafe, 'outside must remain absent');
+    await fs.writeFile(file, await bad.generateAsync({ type: 'nodebuffer', platform: 'UNIX' }));
+    await assert.rejects(() => extractVsixDist(file, path.join(root, `unsafe-${index}`)), /Unsafe VSIX path/u);
+  }
+  const symlink = new JSZip(); symlink.file('extension/dist/link', '../outside.txt', { unixPermissions: 0o120777 });
+  await fs.writeFile(file, await symlink.generateAsync({ type: 'nodebuffer', platform: 'UNIX' }));
+  await assert.rejects(() => extractVsixDist(file, path.join(root, 'redirected')), /symbolic links/u);
+  assert.equal(await fs.stat(path.join(root, 'outside.txt')).catch(() => null), null);
+});
 test('artifact filenames preserve exact task IDs with portable, distinct names', () => {
   const ids = ['test:agent-cli-selection', 'smoke/execution-stop/agent', 'test%3Aagent-cli-selection', 'test/agent-cli-selection'];
   const names = ids.map(id => path.basename(resultPath('/unused', { job: 'regression', variant: 'shard-3', id })));
@@ -70,6 +119,17 @@ test('artifact filenames preserve exact task IDs with portable, distinct names',
     assert(!/[":<>|?*\\/]/u.test(names[i]), 'Artifact members must work on Windows');
     assert.equal(decodeURIComponent(names[i].slice(0, -'.task.json'.length)), ids[i]);
   }
+});
+test('task evidence paths are serialized portably by the producer while unsafe receipt paths still fail', () => {
+  for (const pathAPI of [path.posix, path.win32]) {
+    const root = pathAPI.resolve('gate-results');
+    const file = pathAPI.join(root, 'native-assets', 'win32-arm64', 'native-operation.log');
+    const relative = taskEvidencePath(root, file, pathAPI);
+    assert.equal(relative, 'native-assets/win32-arm64/native-operation.log');
+    assertEvidencePath(relative);
+  }
+  for (const unsafe of ['native-assets\\win32-arm64\\native-operation.log', '../outside.log', '/absolute.log'])
+    assert.throws(() => assertEvidencePath(unsafe), /Unsafe evidence path/u);
 });
 test('bounded evidence retains exact structured failure inputs and log sections without copying cache or SSH keys', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-evidence-contract-'));

@@ -22,6 +22,9 @@ export function taskFileName(id) {
   // artifact is downloaded on NTFS. Encoding is reversible and collision-free.
   return encodeURIComponent(id).replace(/[!'()*]/gu, character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 }
+export function taskEvidencePath(output, file, pathAPI = path) {
+  return pathAPI.relative(output, file).split(pathAPI.sep).join('/');
+}
 export async function executeTask({ plan, task, output, command, env = process.env, consumed = [],
   prepare = async () => {}, action, assertResult, cleanup, signal, deadline, embeddedCleanup = false }) {
   const receipt = newTaskReceipt(plan, task, env);
@@ -97,7 +100,7 @@ export async function executeTask({ plan, task, output, command, env = process.e
           DEV_SESSION_CANVAS_GATE_EXIT_DEADLINE:String(hostProcessDeadline) },
           deadline:actionDeadline,logPath,signal:actionSignal });
         result = observed;
-        receipt.evidence.push({ path: path.relative(output, logPath), sha256: await fileDigest(logPath) });
+        receipt.evidence.push({ path: taskEvidencePath(output, logPath), sha256: await fileDigest(logPath) });
         assert.equal(observed.status, 'passed', `Process ${observed.status}: ${JSON.stringify(observed)}`);
         return observed;
       });

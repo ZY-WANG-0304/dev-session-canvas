@@ -97,6 +97,8 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 输出固定为`release-candidate/main.vsix`、`release-candidate/notifier.vsix`、`package-receipt.json`；扩展name/version记录在回执，不依赖mtime或根目录glob猜包。新增`scripts/release/build-release-candidate.mjs`调用/提取现有package器，必须确认vsce/npm生命周期不会触发额外构建。clean-checkout入口变为构建服务，两个VSIX路径显式传入消费式runner。现有文件清单回归检查staging规则与生产包实际ZIP双层，不能只看developmentComparison的list就称production包正确。
 
+第三轮实际Actions已证明隔离双包构建及checkout清理成功，随后文件清单回归错误地依赖外层checkout的dist。选定修正为：候选模式先核同批包回执与原VSIX摘要，再把原包dist解到测试私有目录并核构建文件摘要；真实主/notifier stager通过显式dist输入运行原staging规则和`vsce ls`，主包仍使用production准入。生产ZIP独立检查必需资源、禁止源码/debug目录及六native目标，检查后复算原包摘要。默认本地stager路径不变；不在外层补build，不借source-build输出，也不在candidate模式跳过staging断言。失败producer的原包仅供诊断，不能因单项复验通过补发正式transfer或拼接验收。
+
 `packaged-host`只复制/解包两个输入包到测试副本，记录删除依赖声明、wrapper、测试命令与测试模式的变更清单；notifier也从输入VSIX stage，禁止偷用源码dist。记录原VSIX摘要和测试副本摘要/变更规则，原包前后摘要必须相同。它证明实际production payload的instrumented集成，不称原样安装。
 
 `installed-pair`在空extensionsDir用原VSIX安装；driver作为单独扩展/外部自动化，使用公开命令/UI并读取外部可见证据，被测包无测试main、manifest改写或smoke模式。安装前后原包摘要相同，记录扩展ID/版本、依赖、activation、打开画布、Terminal响应/几何/Stop、主与notifier路由、回跳和locale。操作系统通知可用平台适配的测试接收者证明路由，系统桌面实际呈现另标manual/observational，不能以本地双包安装代证Marketplace自动下载companion。
@@ -130,6 +132,8 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 每job在固定`gate-artifacts/<job>/<variant>/`写结果/环境/有限stdout-stderr/阶段及原身份。失败先保存最后有效snapshot、实际页面probe及其新鲜度、process/session/owner/frame/readId、等待predicate/deadline，再清理；敏感环境和凭据不采集。clean构建/smoke的临时目录在退出前把必要现场复制到固定工件根，不只打印/tmp路径。trace/截图、包/原生摘要和case日志always上传，成功保留回执与必要摘要。首次失败与后续取证/cleanup失败均保留。
 
 工件导出是独立、有界的取证动作。正式输出保留任务/Host回执、环境、原身份、实际步骤、probe/快照、截图/trace、生成的工作区与控制输入、SSH配置和sshd日志；原包、源码构建与native archive由各自不可变transfer工件保留。依赖副本、宿主/浏览器缓存、SSH私钥和完整HOME不进入结果工件。每个结果工件带内容清单，记录实际保留路径、长度、摘要及明确排除的目录类别；聚合从实际下载ZIP复算清单，缺失/改动不能通过。日志超2MiB时保留头64KiB及尾部，其原长度和保留区间显式记录；结构化回执、probe、trace或失败输入不能截断。首轮取证容量上限为每工件256MiB、单非日志文件64MiB及10000个文件，超限或取证超时使job失败并保留已收集证据，不能静默丢弃。预算与容量属于待Actions校准的基础设施输入，不扩展产品等待。
+
+任务回执与工件清单中的相对路径统一在producer写入时序列化为`/`，Windows本地文件访问仍使用系统路径。第三轮真实Windows回执使用反斜杠而清单使用`/`，聚合按原不安全路径规则正确拒绝；修正producer，不在下载后重写原回执或放宽验证端路径规则。历史Windows工件只可做明确标注的序列化对照，不能借修正后的内存对象追认原轮验收。
 
 本地隔离验证同样先确认执行进程及其清理已settle，再在取证30秒/清理60秒储备内导出必要证据和回收checkout；不对仍活动的checkout并发复制或删除。未settle、取证失败或清理失败保留私有目录位置并使本地结果失败。源工作区和其他任务目录不在此回收范围。
 
@@ -215,6 +219,8 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 已实跑：本地423前端功能、3固定视觉、Marketplace浏览器；完整登记80项regression同批80通过；source独立case及SSH退出/保留、旧代/多窗口/重开和两个Marketplace Host的本地诊断。诊断用旧dist/旧native资产，只证明夹具与新观察接线，不能代证新提交SHA。当前有界证据正反例已通过，SSH实际导出42文件/461626bytes；SSH依赖包固定官方版本/摘要、显式extensionEnvironment、真实短socket路径、零节点cleanup观察与Marketplace中文locale夹具已修，产品等待和断言含义保持。
 
-真实Actions首轮39093713215（预合并354e6129/head455a494f）取消，第二轮39094300198（预合并040883c8/head4c3fa9bf）失败；各轮独立记账。第二轮三个regression分片、输入、production浏览器构建/视觉、Marketplace浏览器和Linux/macOS四native操作通过，六native-load均通过；Windows两架构OSC正文漏判、gh原日志保护及production CSS变量文本拼写错误已有原始证据和针对修复。前端数值变量按完整Number转换精确比较0.82，不把production改回development或改截图基线。真正clean双包、packaged同批消费及三原样安装未触达，完整来源聚合与PR327最终输入仍待验。
+真实Actions首轮39093713215（预合并354e6129/head455a494f）取消，第二轮39094300198（预合并040883c8/head4c3fa9bf）失败；各轮独立记账。第三轮39095480885以真实预合并612a891c/head924cae96运行，parents独立核为最新main6e708c6b与该head。同轮三regression分片、输入、production浏览器构建、423功能/3视觉、Marketplace浏览器、六load及六原生有限操作、source-build、118源码Host和两个Marketplace Host均通过。原production双包各构建一次且隔离checkout退役通过，后续文件清单测试错读外层dist使package-clean失败；无正式candidate transfer，104packaged和三原样安装not-run。聚合另按原路径规则拒绝Windows回执反斜杠证据引用；稳定检查失败，未签发acceptance。
+
+candidate模式现消费该轮原包dist并运行真实production stager/vsce ls及原ZIP检查，在外层两dist均不存在的私有源码夹具诊断通过；原包摘要不变，没有新增构建。篡改/源码debug混入/缺本地化/不安全ZIP路径和helper权限反例通过。Windows证据引用改在producer序列化为`/`，原历史工件不重写不追认；真实原回执反斜杠经诊断转换可对应清单原hash。第三轮通过只属于其固定输入；这些修正仍需下一轮同批clean、packaged、三安装及全量来源聚合验收，PR327最终输入和已确认生产恢复竞态保持未闭环。
 
 `main`保护API返回404 Branch not protected，尚未配置required check，不能声称已有强制合并阻断。生产旧代恢复撤销订阅竞态依然是独立发布阻塞；即使CI改造通过也不由此宣称0.26.1可发布。渠道模块只在本地HTTP/内存受控输入验证过，未进行真实发布/上传重签对照，未知内容继续拒绝完成。

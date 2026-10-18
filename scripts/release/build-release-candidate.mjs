@@ -11,6 +11,7 @@ import { digest, fileDigest, objectDigest, producerFor, readJSON, verifyPackageF
 import { npmCommand, runProcess } from '../gates/process.mjs';
 import { assertCheckout } from '../gates/run-task.mjs';
 import { withinDeadline } from '../gates/deadline.mjs';
+import { assertRuntimeFileList, assertSafeVsixEntry } from './vsix-file-list.mjs';
 
 export async function retireCandidateCheckout(work, original, deadline) {
   assert(!original?.unsettled, 'Candidate action has not settled; concurrent checkout cleanup refused');
@@ -53,13 +54,14 @@ export async function inspectVsix(file, expectedID, version, { production = true
   const payload = [];
   const extensionFiles=[];
   for (const [name, entry] of Object.entries(zip.files)) {
+    assertSafeVsixEntry(entry);
     if (entry.dir) continue;
-    assert(!name.includes('\\') && !name.split('/').includes('..') && !name.startsWith('/'), 'Unsafe VSIX path');
     if (production) assert(!/\.(?:map|pdb)$/.test(name), `Production VSIX contains debug payload: ${name}`);
     const sha256=digest(await entry.async('nodebuffer'));
     payload.push({ path: name, sha256 });
     if(name.startsWith('extension/'))extensionFiles.push({path:name.slice('extension/'.length),sha256});
   }
+  assertRuntimeFileList(extensionFiles.map(entry => entry.path), { production });
   if (!expectedID.endsWith('-notifier')) {
     const selection = JSON.parse(await zip.file('extension/dist/execution-candidate-selection.json').async('string'));
     assert.equal(selection.profile, 'platform');

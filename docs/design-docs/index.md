@@ -123,7 +123,7 @@
 | `docs/design-docs/runtime-root-ownership.md` | F-03/R1 新建归属与原绑定保护有限交付完成；P1至P3、R1-01至R1-08具名证据收口，历史失败与未归因边界保留；默认 false 附着由私有画布规则替代 | VSCode 集成域、执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 已验证 | `docs/product-specs/canvas-multi-root-workspace-support.md`、`docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/runtime-root-ownership-design.md`、`docs/exec-plans/completed/runtime-root-ownership.md` | 2026-10-11 |
 | `docs/design-docs/smoke-scenario-boundaries.md` | 按验证目标实现102独立case/13因果suite/3focused，共用source/packaged目录；137现有映射及15未实施缺口分别验真，真实输入验收中 | VSCode 集成域、执行编排域、画布交互域、项目状态域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/release-gate-implementation.md` | 2026-10-18 |
 | `docs/design-docs/release-gate-layering-review.md` | smoke之外的门禁分层与产物证据审查：普通PR接线、长串测试、原生加载/操作、测试包与发布包、原样安装、视觉环境及渠道完成；8项纯逻辑控制，重划建议未实施 | VSCode 集成域、执行编排域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 比较中 | 未验证 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/release-gate-layering-review.md` | 2026-10-17 |
-| `docs/design-docs/release-gate-redesign.md` | 分层CI与发布门禁实现：15验证job、六发布job、固定计划/真实来源、有界证据、同批双包及原包恢复；两轮Actions实跑已定位采集/观察卡点，跨平台/最终输入验收中 | VSCode 集成域、执行编排域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/release-gate-implementation.md` | 2026-10-18 |
+| `docs/design-docs/release-gate-redesign.md` | 分层CI与发布门禁实现：15验证job、六发布job、固定计划/真实来源、有界证据、同批双包及原包恢复；三轮Actions实跑：六原生操作及118源码Host通过，双包清单/Windows证据路径修复后完整输入验收中 | VSCode 集成域、执行编排域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/release-gate-implementation.md` | 2026-10-18 |
 
 ## 维护约定
 

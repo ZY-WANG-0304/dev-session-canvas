@@ -124,7 +124,9 @@ function assertPackageInputsExist() {
   }
 }
 
-export function stagePackageFiles(stagePackageRoot, packageJson, readmePath) {
+export function stagePackageFiles(stagePackageRoot, packageJson, readmePath, {
+  dist = path.join(packageRoot, 'dist')
+} = {}) {
   const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
   delete stagedPackageJson.scripts;
 
@@ -144,7 +146,7 @@ export function stagePackageFiles(stagePackageRoot, packageJson, readmePath) {
   copyFileSync(path.join(packageRoot, 'package.nls.json'), path.join(stagePackageRoot, 'package.nls.json'));
   copyFileSync(path.join(packageRoot, 'package.nls.zh-cn.json'), path.join(stagePackageRoot, 'package.nls.zh-cn.json'));
   cpSync(path.join(packageRoot, 'l10n'), path.join(stagePackageRoot, 'l10n'), { recursive: true });
-  cpSync(path.join(packageRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
+  cpSync(dist, path.join(stagePackageRoot, 'dist'), { recursive: true });
   cpSync(path.join(packageRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
 }
 

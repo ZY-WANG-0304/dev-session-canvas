@@ -50,16 +50,16 @@
       "input": "working source with previous dist/native; diagnostic only"
     },
     "latestGateContracts": {
-      "passed": 59,
+      "passed": 62,
       "failed": 0,
       "skipped": 0,
-      "logFile": "/dev/shm/dsc-ci-gate-contract-implementation-7.log"
+      "logFile": "/dev/shm/dsc-ci-gate-contract-implementation-9.log"
     },
     "latestReleaseContracts": {
       "passed": 29,
       "failed": 0,
       "skipped": 0,
-      "logFile": "/dev/shm/dsc-ci-release-http-contract-1.log"
+      "logFile": "/dev/shm/dsc-ci-release-package-inspection-contract-1.log"
     },
     "productionCSS": {
       "before": "failed: .82 != 0.82 string comparison",
@@ -73,11 +73,29 @@
       "native": "Linux x64 old asset diagnostic passed",
       "productDeadlineChanged": false,
       "diagnosticReceipt": "/dev/shm/dsc-ci-native-observer-linux-diagnostic-1/native-operation.json"
+    },
+    "packageFileList": {
+      "result": "passed",
+      "scope": "diagnostic consumption of original packages from failed producer, no release acceptance",
+      "outerMainDistPresent": false,
+      "outerNotifierDistPresent": false,
+      "extraBuilds": 0,
+      "logFile": "/dev/shm/dsc-ci-file-list-no-outer-dist-diagnostic-1.log",
+      "productionZipAndStagingBothChecked": true,
+      "originalBytesChanged": false,
+      "contractsPassed": 2,
+      "contractLog": "/dev/shm/dsc-ci-package-input-contract-1.log"
+    },
+    "windowsEvidencePath": {
+      "result": "producer POSIX serialization contract passed; original historical verification remains failed",
+      "contractsPassed": 1,
+      "contractLog": "/dev/shm/dsc-ci-evidence-path-contract-1.log",
+      "diagnostic": "/dev/shm/dsc-ci-windows-evidence-path-diagnostic-39095480885.json",
+      "receiptRewritten": false
     }
   },
   "notYetVerified": [
-    "same-commit six native providers",
-    "fresh clean production pair",
+    "candidate package-clean stage including independent file-list on the next commit",
     "packaged consumers of that exact pair",
     "three x64 original pair installs",
     "actual Actions complete provenance aggregation",
@@ -140,6 +158,34 @@
     {
       "file": "tests/playwright/webview-harness.spec.mjs",
       "sha256": "e24543c4696ad821510f2d15d00dc076c8fafdf8a0426cf2b9971be5cb1266ec"
+    },
+    {
+      "file": "scripts/release/package-vsix.mjs",
+      "sha256": "5ffc1a1a64f6fa6ae79fe071f299fdd5a51242fc5d1f63db4b37927db5f22300"
+    },
+    {
+      "file": "extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs",
+      "sha256": "d82bfec66d0eb2b51d6e51c17215feecb52220c98f10aceba874019e3296c278"
+    },
+    {
+      "file": "scripts/release/build-release-candidate.mjs",
+      "sha256": "1956c8b38aa9a9a1b3c9741ac41062399d36b52b3dc80b900698d58ec4143483"
+    },
+    {
+      "file": "scripts/release/vsix-file-list.mjs",
+      "sha256": "130041caaec363d56a1480586900e68f517dfa7961942d6d91e345a6553c297c"
+    },
+    {
+      "file": "scripts/test/test-package-vsix-file-list.mjs",
+      "sha256": "06f2d1100baf2926f33a27a4fb4c9c6be45aede8fa77123801b8f1590da7339d"
+    },
+    {
+      "file": "scripts/gates/run-task.mjs",
+      "sha256": "599725b0d0e50bc6e24acf6af363d930296944dde2130f37a0de428894c3acc3"
+    },
+    {
+      "file": "scripts/test/test-gate-contracts.mjs",
+      "sha256": "bc6d4ebcef27300543959f411468fc68b7af908996917fb764f3c538ed3376fb"
     }
   ],
   "actions": [
@@ -197,6 +243,82 @@
         }
       ],
       "downstream": "source-host, marketplace-host, packaged-host and installed-pair not run"
+    },
+    {
+      "runID": "39095480885",
+      "attempt": 1,
+      "headSHA": "924cae9690446cb3a96ff149d4196581877de386",
+      "inputSHA": "612a891c09318bc7f81631cd0a7c43aab0833630",
+      "parentsVerified": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "924cae9690446cb3a96ff149d4196581877de386"
+      ],
+      "conclusion": "failure",
+      "acceptance": false,
+      "sourceHostJobsPassed": 118,
+      "marketplaceHostJobsPassed": 2,
+      "nativeLoadsPassed": 6,
+      "nativeOperationsPassed": 6,
+      "webviewFunctionalPassed": 423,
+      "passedJobs": [
+        "input-contract",
+        "regression/shard-1",
+        "regression/shard-2",
+        "regression/shard-3",
+        "frontend-build",
+        "webview-function",
+        "webview-visual",
+        "marketplace-browser",
+        "source-build"
+      ],
+      "candidateBuild": {
+        "mainBuildCount": 1,
+        "notifierBuildCount": 1,
+        "checkoutCleanup": "passed",
+        "producerStatus": "failed",
+        "officialCandidateTransferUploaded": false,
+        "diagnosticEvidenceArtifactID": 12124438854,
+        "packages": [
+          {
+            "id": "devsessioncanvas.dev-session-canvas",
+            "version": "0.26.0",
+            "size": 5999313,
+            "sha256": "e16b172e913f0f2b27e9ebe493720a30e7db4b49c8c499119866c5b81fd895d1",
+            "payloadDigest": "f99b6739fabec76651020832ec042fabd168877aa70015bbec52392b853bd46d"
+          },
+          {
+            "id": "devsessioncanvas.dev-session-canvas-notifier",
+            "version": "0.26.0",
+            "size": 160174,
+            "sha256": "19f8b19760ce8b2935ecef66898f7e3ff794edd763a06e7005abfe47b1ef01cd",
+            "payloadDigest": "4edb6816d1b163dfb22027d28cd239310c4aa7ab5a2c7091405e41f212bcc1ad"
+          }
+        ]
+      },
+      "failures": [
+        {
+          "job": "package-clean",
+          "detail": "Original isolated build and checkout cleanup passed; independent staging file-list test incorrectly required absent outer dist (ENOENT)"
+        },
+        {
+          "job": "verify-result",
+          "detail": "Windows actual task receipts contain backslash evidence paths while manifest uses slash; unsafe-path verification rejected unchanged receipts"
+        },
+        {
+          "job": "Verify release contract",
+          "detail": "Independent complete acceptance absent; stable check remains failed"
+        }
+      ],
+      "notRun": [
+        "packaged-host/104",
+        "installed-pair/3"
+      ],
+      "evidence": {
+        "jobs": "/dev/shm/dsc-ci-actions-39095480885-jobs-10.json",
+        "artifacts": "/dev/shm/dsc-ci-actions-39095480885-artifacts-3.json",
+        "packageLog": "/dev/shm/dsc-ci-actions-39095480885-package-clean.log",
+        "aggregateLog": "/dev/shm/dsc-ci-actions-39095480885-aggregate.log"
+      }
     }
   ]
 }
