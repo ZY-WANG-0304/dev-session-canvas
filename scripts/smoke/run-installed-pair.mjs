@@ -20,6 +20,7 @@ import { buildVSCodeArgs, buildVSCodeChildEnv, ensureVSCodeExecutable, prepareRu
   shouldReRunInsideXvfb, runInsideXvfb, snapshotVSCodeLogs } from './vscode-smoke-runner.mjs';
 import { installCandidateVsix } from './installed-execution-candidate.mjs';
 import { processIdentity, waitForHostAbsence } from './host-evidence.mjs';
+import { openInstalledNotificationCallback } from './installed-notification-callback.mjs';
 import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered,
   installedGeometryMatchesResize } from './installed-ui-observation.mjs';
 
@@ -126,10 +127,10 @@ wait = async (label, read, predicate, requestedDeadline = Date.now() + 20000) =>
   }
   throw new Error(`${label} timed out: ${JSON.stringify(value)}`);
 };
-driverCommand = async (command, args) => {
+driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) => {
   const id = randomUUID(); await fs.rm(responsePath, { force: true });
   await writeJSON(requestPath, { id, command, args });
-  const response = await wait('Public driver response', () => readJSON(responsePath), response => response.id === id);
+  const response = await wait('Public driver response', () => readJSON(responsePath), response => response.id === id, requestedDeadline);
   assert(!response.error, response.error); return response.status==='close-requested'?response:response.result;
 };
   const driver = await wait('Installed subject activation', () => readJSON(driverReceipt), value => value.subjects?.length === 2,
@@ -228,9 +229,17 @@ driverCommand = async (command, args) => {
       && Math.hypot(value.centerDistance.x,value.centerDistance.y)>40);
   assert.deepEqual(beforeCallback.selected,selected.selected);
   facts.notificationRoute.beforeCallback=beforeCallback;
+  const callbackDeadline = Math.min(deadline, Date.now() + 20000);
+  facts.notificationRoute.callbackDeadline = callbackDeadline;
   await fs.writeFile(receiver.release,'activate\n');
-  if(invocation.callback!=='direct-action') await driverCommand('vscode.open',[invocation.callback]);
-  const afterCallback=await wait('Notifier callback centers original node',()=>observeInstalledCanvas(frame,notificationNodeID),installedNodeIsCentered);
+  if(invocation.callback!=='direct-action') {
+    facts.notificationRoute.callbackConfirmation = [];
+    await openInstalledNotificationCallback({ page: frame.page(), callback: invocation.callback, deadline: callbackDeadline,
+      describe: (callback, limit) => driverCommand('driver/describeUri', [callback], limit),
+      open: (callback, limit) => driverCommand('vscode.open', [callback], limit),
+      record: evidence => { facts.notificationRoute.callbackConfirmation.push({ ...evidence, observedAt: Date.now() }); } });
+  }
+  const afterCallback=await wait('Notifier callback centers original node',()=>observeInstalledCanvas(frame,notificationNodeID),installedNodeIsCentered,callbackDeadline);
   assert.deepEqual(afterCallback.selected,beforeCallback.selected,'Notification callback must preserve the user selection');
   assert.equal(afterCallback.attention,'true','Notification callback must keep attention until the user clicks the target');
   assert.notEqual(afterCallback.activeElement.nodeID,notificationNodeID,'Notification callback must not focus target input');
@@ -316,30 +325,52 @@ finally {
     });
   } catch (error) { failure ??= error; failureList.push({ stage: 'evidence', reason: error.message }); }
   let cleanup = 'passed';
+  let cleanupPhase = 'check-action-settlement';
+  facts.cleanup = { steps: [], childPID: child?.pid ?? null };
+  const cleanupStep = async (phase, operation) => {
+    cleanupPhase = phase;
+    const step = { phase, startedAt: Date.now(), status: 'running' };
+    facts.cleanup.steps.push(step);
+    try {
+      const result = await operation();
+      step.status = 'passed'; step.completedAt = Date.now();
+      if (result !== undefined) step.result = result;
+      return result;
+    } catch (error) {
+      step.status = 'failed'; step.completedAt = Date.now(); step.reason = error.message;
+      throw error;
+    }
+  };
   try {
     assert(!unsettled, 'Installed actions did not settle; concurrent cleanup refused');
     await bounded('Installed private resource cleanup', cleanupDeadline, async () => {
-      if (browser) await browser.close();
+      if (browser) await cleanupStep('disconnect-cdp', () => browser.close());
       if (child?.pid) {
         // This is cleanup after the business result. Killing a stuck subject
         // cannot satisfy the earlier public-close/original-Host assertion.
-        const retired = await retireProcessGroup(child.pid, {
-          graceMs: Math.max(1, Math.min(5000, cleanupDeadline - Date.now())), killMs: 3000 });
-        assert.equal(retired.status, 'passed');
+        await cleanupStep('retire-original-process-group', async () => {
+          const retired = await retireProcessGroup(child.pid, {
+            graceMs: Math.max(1, Math.min(5000, cleanupDeadline - Date.now())), killMs: 3000 });
+          assert.equal(retired.status, 'passed');
+          return retired;
+        });
       }
-      for (const host of originalHosts) await waitForHostAbsence(host, cleanupDeadline);
-      if (child) await childExit;
-      await verifyPackageFiles(packageReceipt, plan, candidate);
-      await writes;
-      await log?.close();
+      for (const host of originalHosts) await cleanupStep(`observe-original-host-${host.pid}`, () => waitForHostAbsence(host, cleanupDeadline));
+      if (child) await cleanupStep('observe-child-close', () => childExit);
+      await cleanupStep('verify-original-package-bytes', async () => { await verifyPackageFiles(packageReceipt, plan, candidate); });
+      await cleanupStep('flush-original-host-log', async () => { await writes; await log?.close(); });
       if (runtime) {
-        await fs.rm(runtime.runtimeDir, { recursive: true, force: true });
+        await cleanupStep('retire-private-runtime', () => fs.rm(runtime.runtimeDir, { recursive: true, force: true }));
         if (!runtime.userDataDir.startsWith(`${runtime.runtimeDir}${path.sep}`)
           && !runtime.userDataDir.startsWith(`${runtime.debugRoot}${path.sep}`))
-          await fs.rm(runtime.userDataDir, { recursive: true, force: true });
+          await cleanupStep('retire-private-user-data', () => fs.rm(runtime.userDataDir, { recursive: true, force: true }));
       }
     });
-  } catch (error) { cleanup = 'failed'; failure ??= error; failureList.push({ stage: 'cleanup', reason: error.message }); }
+  } catch (error) {
+    cleanup = 'failed'; failure ??= error;
+    failureList.push({ stage: 'cleanup', phase: cleanupPhase, reason: error.message, code: error.code ?? null,
+      syscall: error.syscall ?? null, processGroup: error.processGroup ?? null, stack: error.stack ?? null });
+  }
   const driverHash = driverRoot ? await fileDigest(path.join(driverRoot, 'driver.cjs')).catch(() => null) : null;
   await writeJSON(path.join(output, 'installed-pair.json'), { schemaVersion: 1,
     inputSHA: plan.inputSHA, packageReceiptDigest: objectDigest(packageReceipt),

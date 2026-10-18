@@ -36,9 +36,24 @@
 - [x] (2026-10-18) PR3352c4a16af+PR3278313fc72临时组合以真实预合并a450a724运行39101774719后失败，parents精确为main6e708c6b及组合head56d54377。247 jobs为243成功/4失败，330项全部required/328 passed，仅macOS与Windows原样安装失败；118 source/104 packaged和全部基础层/六native同批通过，无acceptance，不追认其他轮次。
 - [x] (2026-10-18) 第五轮原包受控焦点竞态先红后绿：按原URI/ViewColumn的唯一公开Tab关闭，保画布及split断言；真实输入补中心命中/禁用/遮挡及完整primary pointer。当前production完整文件视图诊断通过并核原Host退出/目录退役；输入是当前工作树+旧native，acceptance=false。
 - [x] (2026-10-18) 当前最终105合同同批105 passed/0 failed/0 skipped；typecheck、vscode环境、四workflow actionlint/结构合同通过。真实注册428→429原428完全保留，production426功能/3视觉通过，baseline不变；123 suite timeout逐项与上一head相同，文件视图1083000ms，installed几何仍共用原20秒。
-- [ ] 推当前实现到PR335，运行新head完整Actions与更新后的PR327真实预合并组合；三平台短路径/当前OS几何须真实runner验收。未修产品旧代恢复撤销订阅竞态保持0.26.1阻塞。
+- [x] (2026-10-18 07:49Z) 当前实现47bd74e6已fetch/rebase后推PR335，第六轮39108395021的真实预合并a62e5d7e已核精确parents。当前head与未改PR3278313fc72真实组合c9d5ed48，静态0.26.1 preflight通过；最新main6e708c6b与组合head生成精确双parent输入e65e06ff，临时完整run39108780795启动。两计划均330tasks，普通PR324required、release-pr330required。
+- [x] (2026-10-18 08:24Z) 第六轮39108395021终态247 jobs：241成功/6失败，330 actual、324 required、326 total passed（其中六校准操作），320 required passed；四业务失败为source runtime-mode/reload-clear、source file/views、macOS与Windows installed。其余两个失败是严格aggregate/稳定检查；Linux安装、104packaged、六native和全部基础通过。原aggregate artifact12130017065已绑定真实producer/hash下载，errors/notRun为空，无acceptance。
+- [x] (2026-10-18 08:24Z) 当前0.26.1组合39108780795终态247 jobs：243成功/4失败、330全部required/328通过，source118/packaged104、六native与全部基础通过，仅macOS/Windows原URI确认交互失败。原aggregate artifact12130497656和两安装工件已独立绑定producer/原ZIP/hash；未签发acceptance，不将两轮结果互补。
+- [x] (2026-10-18) Windows/macOS真实原resize与Stop通过；真实VSCode确认对照证明需公开URI命令和确认框并行，使用宿主公开Uri.toString的完整title核原token，复选框不记忆。受控不存在token诊断的确认/派发/Host退出通过，acceptance=false；原通知token与三平台正式链仍须新head验收。
+- [x] (2026-10-18) source file/views原probe证明panel文档缺focus；当前production+旧native对照只补公开panel focus，完整file/views与原Host退役通过。原10秒准备、稳定矩形/实际命中/一次primary pointer和file/split/reader断言保持。
+- [x] (2026-10-18) 原生产方法四条路径确定性复现mode-switch删除期间新callback拒绝及缓存失败，正式产品责任已记录；不改产品、不对smoke加sleep/retry，不全局扩大drain。macOS原kill EPERM无syscall/对象/栈，新增清理阶段和原group/signal取证及两个失败反例，保严格EPERM失败与原期限。
+- [x] (2026-10-18) 最终门禁/发布/渠道恢复合同同批108 passed/0 failed/0 skipped，158845ms；四workflow actionlint、语法/diff检查通过。原第六轮candidate artifact12128899187完整原bytes下载并核GitHub ZIP hash d509e627及包回执2e749efb；原6MiB串行传输60秒失败保留，改为原同五分钟内有限不重试的非重叠range读取，最终摘要/ZIP严格核验保持。仅本地取证transport调整，生产collector没有变更。
+- [ ] 新head完整CI及最新PR335/PR327组合正式验收；全量原逐task来源下载需收齐。runtime-mode生产边界与旧代恢复撤销订阅竞态均未修，发布阻塞不能由本轮偶发绿灯解除。
 
 ## 意外与发现
+
+最新组合39108780795和第六轮39108395021已终态，分别328/330与320/324 required通过，aggregate和稳定入口按预期拒绝。原source mode-switch在三delete期间接纳此前发出的空输出batch并启动保存，84ms内拒绝；生产deactivation也先mode cleanup再关event admission。shared/non-shared ×模拟reload/真实生产deactivation方法受控对照全复现同拒绝，并在callback归零后仍复用失败。该产品问题不通过测试等待修复；根因/脚本/hash集中原实施目录，正式边界写入runtime-shared-root-canvas-sync.md。旧独立Host逻辑脚本直接运行先因未提供appliedStartupConfiguration失败，未计为通过，不从该过时夹具外推产品结果。
+
+原两平台URI确认是实际VSCode DOM `.rendered-markdown [title]`，并无URI aria-label；title采用公开Uri.toString的编码（query等号与与号已编码）。最初假定aria-label的诊断失败保持，改用独立driver的只读describeUri后原Host确认/派发/退出通过；原token产品回跳仍待新head正式运行。文件panel focus对照通过，不把居中或selection代证文档focus。macOS附加清理原报告只有kill EPERM，当前补阶段/stack/code/syscall/原group与signal，受控反例保首败及停止进一步信号；未认定原权限原因已修。
+
+第六轮原Windows工件12129119465和macOS工件12129488250独立核actual producer、原ZIP hash和内容清单。Windows同PID几何70×22→132×42、macOS64×20→97×31，原Stop和receiver已通过；新超时在run-installed-pair.mjs:232的vscode.open，原两截图是Notifier原URI授权框。固定宿主源码确认命令等待用户输入才完成，外部driver不得先await命令再处理UI。本轮先记录正式修正为并行真实Open交互，完整callback匹配、复选框不记忆、共原20秒。macOS附加kill EPERM保持独立未定因清理失败，不以补交互追认原轮成功。
+
+第五轮参考JSON把回执原文件字节SHA误名为packageReceiptDigest。本轮从原文件复算规范化objectDigest为f789de317ead2c647777a2c49fac2d478cf853c03dc6e34c77a3e62472d7de27，原文件字节d5305c8e保留为packageReceiptRawFileSHA256；正式原collector中的规范化摘要始终正确。这是记录字段修正，不能重写原正式回执或追認原轮acceptance。旧0.26.1组合330tasks全部required，移除误继承普通PR六校准项的说明。
 
 续查本地入口发现Git2.34.1不支持`git merge-tree --write-tree`，实际私有Git fixture正常合并先红；不是产品代码故障。选定私有clone/index真实merge，冲突不得创建候选commit或挪动原refs，错误记录冲突路径。两个真实Git回归分别核两侧内容和精确parents、真实冲突及原refs不变；精选三项和完整门禁/渠道/恢复合同96/96实际通过，完整日志为`/dev/shm/dsc-ci-local-premerge-full-contracts-1.log`，0failed/0skipped，144313ms。
 
@@ -67,6 +82,14 @@ packaged原失败trace的production bundle行/列指向d3-drag nodrag(event.view
 URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×20，旧 helper 却以 92×28 Start；snapshot restore 临时 resize 为 92×28，随后 deferred fit 恢复 64×20。鼠标已进入正确单元，URL provider 与 hover 均实际执行，但第二次 resize 触发 xterm linkLeave，取消尚未显示的 tooltip。修正只在测试夹具：用原 10 秒 probe 等待已 mounted 且 projection 完成的实际 fit 几何，再以该几何 Start。tooltip 文字、清 hover、浏览器路由和 OSC8 断言及原等待全部保留，未改产品行为。`/dev/shm/dsc-ci-url-inspection-7/dom.json` 中的 buffer-resize 调用栈保留取证；复验 17 秒通过。
 
 ## 决策记录
+
+决策：公开通知URI确认与vscode.open并行，核宿主公开Uri序列化的完整title/原token和默认不记忆选项；panel文件点击显式执行公开view focus，全部共用原20秒/10秒。清理增加真实阶段、syscall/栈及原group/signal，权限错误仍失败。
+理由：两个原平台截图和实际VSCode DOM证明缺少用户确认；source原probe证明panel矩形稳定但document无focus。真实受控对照补前提后通过，产品功能、原包、原断言与等待不变。EPERM原现场不足，只补必要取证不能追认已解决。
+日期/作者：2026-10-18 / Codex。
+
+决策：保留runtime-mode/reload-clear原业务时序与预算，生产mode-switch回调边界列为未修阻塞；CI改造不扩大全局drain或增加静默/重试。
+理由：原生产deactivation与模拟reload共用mode cleanup，四受控路径在delete之后接纳callback均拒绝，回调归零仍缓存失败。首轮wait不是准入封闭保证，不能归为仅夹具问题；严格delete/其他root/接管和既有普通reset立即拒绝责任需产品修复单独满足。
+日期/作者：2026-10-18 / Codex。
 
 决策：文件点击等待焦点、可命中且稳定的矩形，在同一原10秒期限发送一次完整primary pointer；不附加selection要求。短路径显式传原settings路径，全部重开日志按session保留。
 理由：当前production Host首跑证明动画中probe后矩形改变；第二次独立运行错误要求selection而超时，外部DOM记录target已居中/可命中，旧多选仍在。移除错误前提后完整文件视图及原Host/reader/短目录退役通过，未改产品打开/drag或业务上限。先失败的两目录和外部trace保留，只作为诊断；正确scope是当前源码production+旧native，非正式验收。
@@ -118,7 +141,7 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 ## 结果与复盘
 
-第五轮与0.26.1临时组合均已终态。组合330必跑328通过，完整source118/packaged104均通过，只余macOS长IPC与Windows缓存几何失败；第五轮另有三固定宿主下载与文件清理失败。当前关联修正保留原预算和production输入，105合同、426功能/3视觉与当前production文件视图Host诊断通过。当前提交正式跨平台及新组合尚未验收，产品恢复竞态未修，不能发布0.26.1。
+第六轮与当前0.26.1临时组合均已终态失败：组合330必跑328通过、完整source118/packaged104均通过；两平台真实resize与Stop已通过，安装失败转到URI用户确认。第六轮另有source panel焦点准备和runtime-mode迟到回调失败。公开确认与panel focus已补并有真实受控诊断，原预算/production输入保持；新head全量尚待验收。生产mode-switch边界与恢复订阅竞态未修，不能发布0.26.1。
 
 严格入口、真实浏览器配置和 reusable 任务图已有初版及部分行为验证，尚无新 CI/产品完整通过。设计模型验证不是实施验证。每一阶段完成后在此写实际命令、结果和剩余边界；最终发布输入完整通过前不宣称 0.26.1 可以发布。2026-10-18 再 fetch 后 origin/main 仍为 6e708c6b93ce4b2b343729c422f59099f4fb42ba，用户主工作区 dirty 文件未动。
 
@@ -183,3 +206,7 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 修订记录：2026-10-18 同步第四轮全部终态/330回执及同批原双包；登记stager行为、官方macOS入口、CDP/resize/receiver/locale公开安装前提和MouseEvent缺view根因、Linux原包全流程及两个原包先红后绿回归。静态登记与诊断无acceptance，新增首败摘要仍保producer严格失败判定；继续新head完整门禁和PR327组合。
 
 修订记录：2026-10-18 收齐第五轮39101493143与0.26.1组合39101774719终态、330结果及独立parents；登记原包焦点竞态红绿、点击命中/动画与selection前提对照、当前production文件视图通过、105合同/429目录/123预算逐项不变、短路径及fresh同fd几何。当前head跨平台及更新组合继续待验。
+
+2026-10-18 07:49Z更新：已推当前实现并启动第六轮和最新0.26.1组合，核原计划与双parents，修正参考摘要命名；正式终态和Windows新首败仍待收取，未修产品竞态不豁免。
+
+修订记录：2026-10-18 07:55Z原两平台截图与宿主源码定因URI确认交互缺失，真实resize和Stop已通过；选定同原预算执行公开确认，不设信任白名单，macOS额外清理失败保留。

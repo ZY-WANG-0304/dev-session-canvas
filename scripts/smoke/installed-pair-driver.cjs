@@ -40,6 +40,12 @@ exports.activate=async function(context) {
     let request;
     try {
       request=JSON.parse(await fs.readFile(config.request,'utf8'));await fs.unlink(config.request);
+      if(request.command==='driver/describeUri') {
+        assert.equal(request.args?.length,1);assert.equal(typeof request.args[0],'string');
+        const uri=vscode.Uri.parse(request.args[0]);
+        await writeAtomic(config.response,{id:request.id,result:{original:request.args[0],serialized:uri.toString()}});
+        return;
+      }
       const allowed=['devSessionCanvasNotifier.postSystemNotification','workbench.action.closeWindow',
         'workbench.action.closeAllEditors',
         'workbench.view.extension.devSessionCanvasNotifier','devSessionCanvasNotifier.status.focus',

@@ -12476,6 +12476,10 @@ async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5
         await vscode.commands.executeCommand(surface === 'editor' ? COMMAND_IDS.openCanvasInEditor : COMMAND_IDS.openCanvasInPanel);
         assert.ok(Date.now() < deadline, 'File click surface preparation exceeded its original budget.');
         await vscode.commands.executeCommand(COMMAND_IDS.focusNode, action.nodeId);
+        assert.ok(Date.now() < deadline, 'File click target preparation exceeded its original budget.');
+        if (surface === 'panel') {
+          await vscode.commands.executeCommand('devSessionCanvas.canvasPanel.focus');
+        }
         let previous, stableSince, observation;
         while (Date.now() < deadline) {
           const probe = await captureWebviewProbe(surface, Math.max(1, deadline - Date.now()));

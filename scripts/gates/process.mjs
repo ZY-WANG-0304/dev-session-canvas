@@ -7,7 +7,11 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 export function processGroupExists(pid) {
   if (!pid || process.platform === 'win32') return false;
   try { process.kill(-pid, 0); return true; }
-  catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+  catch (error) {
+    if (error.code === 'ESRCH') return false;
+    error.processGroup = { pid, target: -pid, signal: 0, phase: 'observe-original-group' };
+    throw error;
+  }
 }
 export async function retireProcessGroup(pid, { graceMs = 5000, killMs = 5000 } = {}) {
   if (process.platform === 'win32') {
@@ -24,11 +28,21 @@ export async function retireProcessGroup(pid, { graceMs = 5000, killMs = 5000 } 
       boundary: 'windows-taskkill-tree', ...result };
   }
   if (!processGroupExists(pid)) return { status: 'passed', boundary: 'original-process-group', observed: 'absent' };
-  try{process.kill(-pid, 'SIGTERM');}catch(error){if(error.code!=='ESRCH')throw error;}
+  try { process.kill(-pid, 'SIGTERM'); } catch (error) {
+    if (error.code !== 'ESRCH') {
+      error.processGroup = { pid, target: -pid, signal: 'SIGTERM', phase: 'retire-original-group' };
+      throw error;
+    }
+  }
   const grace = Date.now() + graceMs;
   while (processGroupExists(pid) && Date.now() < grace) await sleep(25);
   if (processGroupExists(pid)) {
-    try { process.kill(-pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    try { process.kill(-pid, 'SIGKILL'); } catch (error) {
+      if (error.code !== 'ESRCH') {
+        error.processGroup = { pid, target: -pid, signal: 'SIGKILL', phase: 'force-retire-original-group' };
+        throw error;
+      }
+    }
   }
   const kill = Date.now() + killMs;
   while (processGroupExists(pid) && Date.now() < kill) await sleep(25);

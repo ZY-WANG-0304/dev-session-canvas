@@ -320,6 +320,50 @@
       "originalInfrastructureDeadlineMs": 300000,
       "coldTransportRecovery": "not-verified",
       "semanticRetry": false
+    },
+    "currentInteractionContracts": {
+      "gatePassed": 77,
+      "releasePassed": 29,
+      "failed": 0,
+      "skipped": 0,
+      "gateLog": "/dev/shm/dsc-ci-gate-contract-implementation-10.log",
+      "releaseLog": "/dev/shm/dsc-ci-release-contract-implementation-10.log",
+      "scope": "before final cleanup phase evidence changes; full final batch in progress"
+    },
+    "cleanupEvidenceContracts": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/dev/shm/dsc-ci-cleanup-contract-2.log",
+      "scope": "actual extracted process and installed cleanup methods; EPERM remains failure, ESRCH absent only"
+    },
+    "uriConfirmationDiagnostic": {
+      "acceptance": false,
+      "status": "passed",
+      "root": "/dev/shm/dsc-ci-installed-uri-confirmation-diagnostic-2",
+      "caveat": "Real installed original fifth-round pair; controlled nonexistent token confirms fresh-profile UI and command dispatch only; original notification token routing still pending"
+    },
+    "panelFocusDiagnostic": {
+      "acceptance": false,
+      "status": "passed",
+      "root": "/dev/shm/dsc-ci-file-focus-viewport-inspection-2",
+      "caveat": "Current production source with prior native; only public panel view focus added; complete file/views and original Host cleanup passed"
+    },
+    "productionModeSwitchReproduction": {
+      "acceptance": false,
+      "status": "reproduced-production-mode-switch-path",
+      "cases": 4,
+      "evidence": "runtime-mode-switch-reproduction.json",
+      "implementationModified": false,
+      "releaseBlocker": true,
+      "caveat": "Production Host methods, controlled external store/delete/state callback; no real PTY/Electron or other platforms"
+    },
+    "finalContracts": {
+      "passed": 108,
+      "failed": 0,
+      "skipped": 0,
+      "log": "/dev/shm/dsc-ci-gate-contract-implementation-11.log",
+      "scope": "final production gate/notification/panel/cleanup evidence + release/completion/delivery contract batch"
     }
   },
   "notYetVerified": [
@@ -879,7 +923,9 @@
             "payloadDigest": "7918a6dd20970183ee7e6b147bf4255d897d2fe640419b333789178693f5c025"
           }
         ],
-        "packageReceiptDigest": "d5305c8e4f14e20458eca388cf0cb82fb586fc144355d1d204113623f2e21e64"
+        "packageReceiptDigest": "f789de317ead2c647777a2c49fac2d478cf853c03dc6e34c77a3e62472d7de27",
+        "packageReceiptRawFileSHA256": "d5305c8e4f14e20458eca388cf0cb82fb586fc144355d1d204113623f2e21e64",
+        "receiptDigestMethod": "scripts/gates/receipts.mjs objectDigest(canonicalJSON); rawFileSHA256 is the separately preserved original file hash"
       }
     },
     {
@@ -914,7 +960,7 @@
         "errors": [],
         "notRun": [],
         "status": "failed",
-        "caveat": "Six ordinary-PR calibration operations are included in passed but not required; passed count must not be presented as all required passed"
+        "caveat": "All 330 tasks are required in this release-pr run, including all six native operations; no ordinary-PR calibration exception applies"
       },
       "failures": [
         {
@@ -968,6 +1014,263 @@
         "pr335": "2c4a16afd684b2a1caef36a133929c61b12545d6",
         "pr327": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
         "combinedHead": "56d54377678b0f411d8391f2d1785fb0392c4bde"
+      }
+    },
+    {
+      "runID": "39108395021",
+      "attempt": 1,
+      "mode": "pr",
+      "version": "0.26.0",
+      "headSHA": "47bd74e602216f7642e1cd1fa64e672c391f3256",
+      "inputSHA": "a62e5d7e44c9a39c23534e16452eff49a92d87d6",
+      "parentsVerified": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "47bd74e602216f7642e1cd1fa64e672c391f3256"
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "acceptance": false,
+      "plan": {
+        "artifactID": 12128689032,
+        "archiveSHA256": "a044c963cf369894134a4674993985e9c6273d2e16d5f7d4dde729e8428062e9",
+        "planDigest": "ff6f01d3d7d270ca623c2a291c56b71a9208f2eb65fa38af9669859b8ef0a264",
+        "inputSHA": "a62e5d7e44c9a39c23534e16452eff49a92d87d6",
+        "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "headSHA": "47bd74e602216f7642e1cd1fa64e672c391f3256",
+        "run": {
+          "id": "39108395021",
+          "attempt": 1,
+          "headSHA": "47bd74e602216f7642e1cd1fa64e672c391f3256"
+        },
+        "scope": "bootstrap downloaded plan; full producer provenance remains to be independently collected"
+      },
+      "scope": "Original immutable full run failed; original aggregate artifact downloaded and producer bound; full task downloads still pending",
+      "pr335Head": "47bd74e602216f7642e1cd1fa64e672c391f3256",
+      "counts": {
+        "required": 324,
+        "actual": 330,
+        "passed": 326,
+        "requiredPassed": 320,
+        "failed": 4
+      },
+      "failures": [
+        {
+          "key": "source-host/runtime-mode--reload-clear/smoke/runtime-mode/reload-clear",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":2945,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":true,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Final Host did not confirm fixture cleanup"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Final Host did not confirm fixture cleanup"
+            }
+          ]
+        },
+        {
+          "key": "source-host/execution-file-activity--views/smoke/execution-file-activity/views",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":2988,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":true,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            }
+          ]
+        },
+        {
+          "key": "installed-pair/darwin-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":3699,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Expected values to be strictly equal:\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        },
+        {
+          "key": "installed-pair/win32-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":8096,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"child-close; owning task observes additional resources\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        }
+      ],
+      "notRun": [],
+      "errors": [],
+      "jobs": {
+        "total": 247,
+        "success": 241,
+        "failure": 6
+      },
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39108395021-download-1",
+        "originalResult": "/dev/shm/dsc-ci-actions-39108395021-download-1/gate-acceptance-39108395021-1/gate-acceptance-39108395021-1/gate-final/gate-result.json",
+        "originalAggregateProvenance": "/dev/shm/dsc-ci-actions-39108395021-download-1/gate-acceptance-39108395021-1/gate-acceptance-39108395021-1/gate-provenance.json",
+        "aggregateArtifactBinding": {
+          "id": 12130017065,
+          "name": "gate-acceptance-39108395021-1",
+          "expired": false,
+          "runID": "39108395021",
+          "attempt": 1,
+          "headSHA": "47bd74e602216f7642e1cd1fa64e672c391f3256",
+          "jobID": 117625297319,
+          "archiveHash": "c0a02886beb5ed0be19c6707b190e5576fba02435c03bc947db3f75d8dc6ebea",
+          "receiptDigests": []
+        },
+        "originalProducerProvenanceCount": 253,
+        "independentFullTaskDownload": "pending",
+        "candidateRoot": "/dev/shm/dsc-ci-actions-39108395021-download-1/candidate-original-1792312997721/gate-transfer-candidate-39108395021-1"
+      },
+      "candidateTransfer": {
+        "id": 12128899187,
+        "name": "gate-transfer-candidate-39108395021-1",
+        "expired": false,
+        "runID": "39108395021",
+        "attempt": 1,
+        "headSHA": "47bd74e602216f7642e1cd1fa64e672c391f3256",
+        "jobID": 117620263247,
+        "archiveHash": "d509e62706078d9fd4a3cee7a5dab63332cd9f36a01370b4094d944b549aaf19",
+        "receiptDigests": [
+          "2e749efb3988a75b03102026436856039c94630ac64edcf3bf41b0229471b3d6"
+        ]
+      },
+      "packages": [
+        {
+          "id": "devsessioncanvas.dev-session-canvas",
+          "version": "0.26.0",
+          "path": "main.vsix",
+          "size": 5999744,
+          "sha256": "428e5b53c93d55f71d9c734f36296387a4738c2c63edf99924ff59ad01e06b37",
+          "payloadDigest": "23b2308d8cfa165acd73da227f9444c530fd25808b1bbc57e2c62e247b7ebbc2"
+        },
+        {
+          "id": "devsessioncanvas.dev-session-canvas-notifier",
+          "version": "0.26.0",
+          "path": "notifier.vsix",
+          "size": 160172,
+          "sha256": "9cc13eafe1eb29b3c88276766afaeb7ec41b375e8bb5ba9c413284b6df72c06d",
+          "payloadDigest": "2d0a3bc45d6bcbcbc75a04fd11e2d286b544c676d77ce7ce7a219a81655138cf"
+        }
+      ],
+      "packageReceiptDigest": "2e749efb3988a75b03102026436856039c94630ac64edcf3bf41b0229471b3d6"
+    },
+    {
+      "runID": "39108780795",
+      "attempt": 1,
+      "mode": "release-pr",
+      "version": "0.26.1",
+      "headSHA": "e65e06ffc6cf209f4ae6b15a73ca9672de9d8d2a",
+      "inputSHA": "e65e06ffc6cf209f4ae6b15a73ca9672de9d8d2a",
+      "parentsVerified": [
+        "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "c9d5ed48f73ae048292fa22f4c7e6c4b29eaa84e"
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "acceptance": false,
+      "plan": {
+        "artifactID": 12129736076,
+        "archiveSHA256": "744df7658f58e22b9dae10c8be3c63f2a7b818220450e8af930f7dbe5064efb2",
+        "planDigest": "bed79d844b3af0abe7cb09e3d3053b617cecee6778800cf9fbc8a443989772b0",
+        "inputSHA": "e65e06ffc6cf209f4ae6b15a73ca9672de9d8d2a",
+        "baseSHA": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+        "headSHA": "c9d5ed48f73ae048292fa22f4c7e6c4b29eaa84e",
+        "run": {
+          "id": "39108780795",
+          "attempt": 1,
+          "headSHA": "e65e06ffc6cf209f4ae6b15a73ca9672de9d8d2a"
+        },
+        "scope": "bootstrap downloaded plan; full producer provenance remains to be independently collected"
+      },
+      "scope": "Original immutable full run failed; original aggregate artifact downloaded and producer bound; full task downloads still pending",
+      "pr335Head": "47bd74e602216f7642e1cd1fa64e672c391f3256",
+      "pr327Head": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+      "combinedHeadSHA": "c9d5ed48f73ae048292fa22f4c7e6c4b29eaa84e",
+      "counts": {
+        "required": 330,
+        "actual": 330,
+        "passed": 328,
+        "requiredPassed": 328,
+        "failed": 2
+      },
+      "failures": [
+        {
+          "key": "installed-pair/darwin-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":13056,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"original-process-group\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "cleanup",
+              "reason": "Expected values to be strictly equal:\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        },
+        {
+          "key": "installed-pair/win32-x64/installed-pair",
+          "reason": "Actual producer job is failure",
+          "failures": [
+            {
+              "stage": "action",
+              "reason": "Process failed: {\"code\":1,\"signal\":null,\"timedOut\":false,\"cancelled\":false,\"pid\":5784,\"error\":null,\"exited\":true,\"residualGroup\":false,\"observedResidualGroup\":false,\"drainTimedOut\":false,\"cleanup\":{\"status\":\"passed\",\"boundary\":\"child-close; owning task observes additional resources\",\"observed\":\"absent\"},\"status\":\"failed\"}\n\n'failed' !== 'passed'\n"
+            },
+            {
+              "stage": "host-exit",
+              "reason": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'not-run'\n- 'passed'\n"
+            }
+          ]
+        }
+      ],
+      "notRun": [],
+      "errors": [],
+      "jobs": {
+        "total": 247,
+        "success": 243,
+        "failure": 4
+      },
+      "evidence": {
+        "root": "/dev/shm/dsc-ci-actions-39108780795-download-1",
+        "originalResult": "/dev/shm/dsc-ci-actions-39108780795-download-1/gate-acceptance-39108780795-1/gate-acceptance-39108780795-1/gate-final/gate-result.json",
+        "originalAggregateProvenance": "/dev/shm/dsc-ci-actions-39108780795-download-1/gate-acceptance-39108780795-1/gate-acceptance-39108780795-1/gate-provenance.json",
+        "aggregateArtifactBinding": {
+          "id": 12130497656,
+          "name": "gate-acceptance-39108780795-1",
+          "expired": false,
+          "runID": "39108780795",
+          "attempt": 1,
+          "headSHA": "e65e06ffc6cf209f4ae6b15a73ca9672de9d8d2a",
+          "jobID": 117627087411,
+          "archiveHash": "1a946155d7abed8c442b970270e91d373917f0b18998306759eb9dc21b719994",
+          "receiptDigests": []
+        },
+        "originalProducerProvenanceCount": 253,
+        "independentFullTaskDownload": "pending"
       }
     }
   ]

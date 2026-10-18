@@ -2,6 +2,14 @@
 
 此目录属于参考证据，不取代正式设计和逐任务验收。正式决策在[release-gate-redesign.md](../../../design-docs/release-gate-redesign.md)，推进状态在[实施计划](../../../exec-plans/active/release-gate-implementation.md)。实现和证据继续随 PR335，发布 PR327 保留。
 
+最新状态（2026-10-18）：第六轮 [39108395021](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108395021) 终态失败，324 required/320 required passed，326 total passed 含六校准操作；最新真实 0.26.1 组合 [39108780795](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108780795) 330 required/328通过、source118/packaged104全通过，剩两平台安装URI确认失败。Linux原样安装和六native同批通过；原aggregate/两失败安装工件已独立绑定job/hash，第六轮双包artifact12128899187/ZIP d509e627原bytes已核，原包摘要不变。不同轮次不互补验收，均无acceptance。全量原任务下载仍待收齐。
+
+公开URI确认按真实VSCode DOM和Uri.toString完整title核原token、不记忆授权，在原20秒完成；受控不存在token的真实Host诊断通过仅说明确认/命令派发/退出，不代证原通知token回跳。panel file/views原probe缺document focus，补公开view focus的production+旧native诊断通过，原10秒和file/split/mounted/reader断言保留。最终108门禁/发布/恢复合同同批通过，0失败/0跳过，四workflow actionlint通过；新head三平台完整安装尚须实跑。
+
+[runtime-mode-switch-reproduction.mjs](runtime-mode-switch-reproduction.mjs) 从仓库根执行，直接加载原生产Host类并受控回调进入时机；JSON记录四生产/模拟×共享/非共享路径都复现delete后pending拒绝和后续缓存失败。脚本是定位资料，输出`acceptance=false`、`status=reproduced-production-mode-switch-path`，不是产品回归通过。原正式source首败与受控源码hash各自记录，正式责任在[runtime-shared-root-canvas-sync.md](../../../design-docs/runtime-shared-root-canvas-sync.md)。产品mode-switch边界和旧代恢复订阅竞态均未修，CI不得增加静默期/重试或放宽原断言掩盖。
+
+macOS原两份cleanup只有kill EPERM，无法确定具体signal/对象/阶段；当前增加原group PID、target、signal、syscall/stack及逐清理步骤取证，两个受控反例确认权限失败仍失败、保原业务首败且不继续发信号。具体历史权限根因仍未确认，新输入通过也不追认原失败已修。
+
 [local-results.json](local-results.json)记录当前实际目录、代码摘要、本地回归和旧资产诊断结果。完整80项regression同批通过，83项合同通过；423前端功能、3固定视觉及Marketplace浏览器通过。SSH原Host退出/保留和两个Marketplace Host新包装器均有实际本地诊断。旧dist/native输入明确仅诊断，没有修改inputCommit或将它们算入新SHA验收。
 
 首败现场保持独立：SSH第二轮证实Host缺少继承env，第三轮systemd路径及重复reset cleanup失败；第四轮两态通过。Marketplace第一轮IPC/Xvfb路径失败，第二轮preview语言前提失败，第三轮显式语言包/locale后通过。fixture修正保留原产品等待和断言。真实SSH必要证据导出42文件、461626bytes，原依赖缓存不上传；内容清单复算、结构化文件超限、篡改、取证超时和活动checkout并发清理均有反例。

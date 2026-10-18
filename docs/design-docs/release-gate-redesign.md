@@ -119,11 +119,19 @@ native操作driver通过当前平台provider消费本次addon，Stop在这层指
 
 当前production的真实Host首跑证明focus命令返回不表示页面已经完成缩放：probe采样后按钮矩形从x493/y243变为x432/y216，点击时仍不可命中，检查按预期失败。准备必须观察页面有焦点、原目标可命中及连续矩形采样稳定，再在同一原期限内发送一次点击；不能重试已经失败的点击或移除hit test。外部DOM取证显示focus后新目标已居中且可命中，但多选集合仍可保留之前的节点；selection不能代证动画完成，也不是点击目标的前提，不在文件打开case中附加selection约束。短路径迁移后，写入用户设置的夹具显式接收原user-data路径，不再从artifacts位置猜测；多次重开的日志按原session目录保留，最终导出不能用最后一次日志覆盖setup证据。
 
+第六轮源码file/views在panel点击前失败，原probe证明目标矩形已经可命中，而`document.hasFocus()`为false。产品的`host/focusNode`负责视口居中，`scheduleCanvasShellFocusRestore`明确仅为editor恢复根元素焦点；不能把panel reveal/居中当作面板文档focus已完成。当前production及旧原生资产的真实Host受控对照，仅在panel文件点击准备中增加公开`devSessionCanvas.canvasPanel.focus`，完整file/views随后通过。选定将此动作纳入原10秒准备期限，继续等待文档焦点和稳定hit target，不要求产品新增panel自动焦点、不取消focus条件，不重试已经派发的点击。
+
+`runtime-mode/reload-clear` 继续从运行中的原会话进行模式切换，不增加静默期、回调重试或产品保存等待来迁就实现。第六轮实际删除期间收到先前发出的空输出批次，触发状态回调及保存；非永久边界在删除后立即检查并拒绝。受控原生产方法对照同时复现模拟 reload 和生产 deactivation 的 shared/non-shared 路径：模式清理发生在永久事件准入关闭之前，首轮 callback 集合排空不阻止删除期间的新回调；回调完成后原 `modeSwitchCleanup` 失败仍保留。同输入有通过轮次不能解除这项责任。正式边界、实证范围和未修复状态见 [runtime-shared-root-canvas-sync.md](runtime-shared-root-canvas-sync.md#ci-改造时发现的模式切换回调边界2026-10-18)。既有 reset 等立即拒绝、单节点删除有界保存及 preserving reload drain 的范围分别保持，不全局扩大 drain。
+
 原样安装resize的新UI box观测、唯一geometry请求和原子进程当前OS尺寸检查共享动作开始时冻结的原20秒期限。观测增加不能在前一步等待结束后重置20秒。短路径settings和日志须导出到原证据根；跨窗口共用runtime不会使两个独立profile互相覆盖，跨阶段真实重开也不得因退役短目录而失去原状态。
 
 source/packaged/Marketplace正式Host把每个私有路径登记到同nonce的Host证据目录。设置在prepare时导出、每次Host退出后再次导出设置和日志；只有外层任务已独立核完全部预期Host退出及fixture清理，才按登记的原路径回收runtime和外移profile。登记必须核nonce、原scene范围及按同系统临时根重新计算的路径，禁止删除任意输入目录；真实重开与双窗口共用目录只在完整因果suite结束后回收。清理失败保持producer红灯，不能先删除证据目录或活动Host的状态。
 
 通知夹具的 receiver 是外部操作系统后端替身，不改主/notifier包。实际输入记录证明原Node CLI收到`notify`并发出OSC9、真实节点attention=true；独立driver只读观察证明Linux的VSCode登录shell解析覆盖了launch PATH，receiver目录丢失。installed启动显式`--force-disable-user-env`，保留冻结的私有receiver环境；不在产品activate后改process.env，不改变system桥接配置，也不把fallback工作台消息当系统路由通过。driver只记录所需receiver路径是否生效，不导出完整环境。新Terminal先等待真实mounted终端出现可见首批输出，再输入，准备和实际动作仍在原等待期限内；前置握手、正文、原子进程/几何/Stop等已观察事实逐阶段保留，后续失败不抹掉它们。
+
+第六轮的macOS/Windows原样安装均已通过activation、真实I/O/resize、原shell和子进程Stop及OS receiver投递。随后`vscode.open`回调等待超时，两平台原截图均为VSCode询问“Allow 'Dev Session Canvas Notifier' extension to open this URI?”。固定宿主的`ExtensionUrlHandler.handleURL`等待用户确认后才转发原URI，因此不能在等待公开命令返回后才处理UI。选定由外部观察器并行等待该命令和真实workbench确认框，核Notifier显示名及完整原callback URI后点击一次Open，保留复选框默认不记忆；命令、确认UI和回调居中观察共用既有20秒绝对期限。不配置trusted extension、不修改UriHandler、不调用测试回放命令、不绕过确认。确认缺失、错误扩展/URI、取消或命令失败仍失败。第六轮macOS失败收口又出现kill EPERM，记录为独立清理失败，未定因不豁免；新输入需三平台正式完整验收。
+
+真实固定宿主的受控URI对照证明，确认框只有URI元素的`title`，没有对应`aria-label`，且显示的是`vscode.Uri.parse(original).toString()`编码结果（例如query中的`=`与`&`被编码）。独立driver先用公开`vscode.Uri`只读返回原字符串及该宿主的序列化结果，外部观察器据此精确核对完整title；不自行猜编码、不匹配截断文字、不增加宿主不存在的属性前提。此只读准备、真正公开open及UI交互仍共享原20秒；该受控对照使用未知token只证明真实确认流程，不能代证原通知token的产品回跳。
 
 系统通知回跳遵守`canvas-node-notifications.md`：回调只居中目标、保持原selection和attention，不自动输入/focus或确认。接收前用原Stop节点建立不同selection，通过公开fit-all把目标移离视口中心；点击receiver或打开其原protocol URI后核真实目标在视口中心、selection未变且attention仍为true。最后由用户UI左键点击目标，才要求attention=false。真实桌面呈现继续标observational；不得改产品令回跳自动确认来适配错误旧断言，也不得仅以attention仍true代证回调执行。
 
@@ -158,6 +166,8 @@ schema、类型、版本和必需字段严格检查，未知状态不默认成�
 基础设施默认上限选npm ci10分钟、单次浏览器/VSCode获取5分钟、Host启动/测试驱动握手3分钟、Host退出30秒、私有资源cleanup60秒、失败取证30秒。它们是拟议的首轮工程预算，须真实CI校准，不写成产品SLA。普通Host整场上限由计划计算为启动预算+所有case不重叠budgetGroup之和+cleanup/退出/取证储备；job timeout覆盖其所有Host计划总上限再加5分钟收口，不能只写一个90分钟大上限。保留原asset20分钟、渠道45分钟/finalize20分钟外层保险，拆层后有观测数据再调整。
 
 启动完成、产品Stop、尾部保存、reader消费、原session退役、Host退出、Supervisor退出是独立对象结果。持续Supervisor在活跃模式下允许存在，不强制全部case结束后它必退出；测试私有Supervisor到组收口时应按夹具所有权有界回收并记录。旧Host退出/保留场景用原PID/startTicks或平台等价身份确定前提，不能只sleep3秒假设已退出。为了cleanup执行kill不会把之前业务超时改为成功。
+
+安装夹具的清理逐阶段记录 CDP 断开、原私有进程组回收、原 Host 身份消失、子进程 close、双包摘要复算、日志完成与私有目录退役。信号失败保留 `code/syscall/stack` 及原 group PID、实际 target 和 signal；只把 ESRCH 解释为已不存在，EPERM 等继续失败。第六轮 macOS 两份原报告只有 `kill EPERM`，不能据后续成功断定其具体 syscall 或根因已修复；新增取证服务于下一次原失败归因，不改变原清理期限及后置断言。
 
 每job在固定`gate-artifacts/<job>/<variant>/`写结果/环境/有限stdout-stderr/阶段及原身份。失败先保存最后有效snapshot、实际页面probe及其新鲜度、process/session/owner/frame/readId、等待predicate/deadline，再清理；敏感环境和凭据不采集。clean构建/smoke的临时目录在退出前把必要现场复制到固定工件根，不只打印/tmp路径。trace/截图、包/原生摘要和case日志always上传，成功保留回执与必要摘要。首次失败与后续取证/cleanup失败均保留。
 

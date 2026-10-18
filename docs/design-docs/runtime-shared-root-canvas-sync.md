@@ -6,10 +6,18 @@ domains: [协作对象域, 项目状态域, 执行编排域, VSCode 集成域]
 architecture_layers: [共享模型与编排层, 宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/runtime-shared-root-canvas-sync.md, docs/exec-plans/completed/pr319-review-repairs.md, docs/exec-plans/completed/pr319-takeover-coordination.md]
-updated_at: 2026-10-13
+updated_at: 2026-10-18
 ---
 
 # 共享 root 画布同步与模式切换
+
+## CI 改造时发现的模式切换回调边界（2026-10-18）
+
+本节记录未修复的生产责任，原共享切换与接管方案保持。PR335 第六轮源码 `runtime-mode/reload-clear` 的正式输入 `a62e5d7e44c9a39c23534e16452eff49a92d87d6`、run [39108395021](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108395021) 在最后开启窗口关闭持久化时失败。07:56:05.967–.968 派发三份原会话 delete；07:56:06.024 接受删除前 07:56:05.937 已发送的 Agent 空输出 batch3 并开始 Host 状态保存，07:56:06.040 边界以 `Runtime session updates are still pending` 拒绝。不是业务等待到期、resize 或宿主获取失败。清理随后无法在已删除的原 Supervisor 观察该会话，保留为附加失败，不能替换原业务错误。
+
+源码 `cleanupRuntimePersistenceModeSwitch → leaveSharedCanvasesForModeSwitch → prepareForHostBoundary` 在首轮当前回调集合快照等待、保存及原绑定删除后立即检查 pending。生产 `prepareForDeactivation` 同样先执行 mode-switch cleanup，再关闭 Runtime 事件准入；最后页面关闭亦会执行该清理。因此不能将这个失败归为仅模拟 reload 的夹具时机。受控 [复现脚本](../references/release-gate-redesign/implementation/runtime-mode-switch-reproduction.mjs) 直接加载原 `CanvasPanelManager`，只替换外部 store、删除回包和状态回调屏障；shared/non-shared × 模拟 reload/生产 deactivation 四条路径都确定性拒绝。放行回调后 pending 为零，再次进入仍取得同一失败，因为 `modeSwitchCleanup` 缓存了首轮拒绝。保留原 graph/binding 只能证明没有伪清空，不能证明已经派发的删除可回滚或用户可以继续控制原进程。实际样本及源码摘要见 [reproduction.json](../references/release-gate-redesign/implementation/runtime-mode-switch-reproduction.json)。受控对照不是新增真实 PTY、Electron、macOS/Windows 或多 root 证据。
+
+现有产品规格要求结算已派发的删除及对应读者、存储责任后才完成模式切换。修复仍待实施，需按原会话/root 责任保护迟到回调与旧保存，保留其他开启窗口使用的会话、接管四阶段和严格删除失败；不能以全局 drain、测试 sleep/retry、关闭所有 root 准入或重新启动原会话换取绿灯。既有 reset 等保存 pending 的立即拒绝和 preserving reload 的显式有界等待不因此扩大。当前无产品代码改动，CI 改造保留原 case、原预算和红灯；最新组合的相同 case 通过不能解除该确定性生产边界缺口。这项责任独立于旧代恢复撤销订阅竞态，均未由 CI 重划修复。
 
 ## 目标与边界
 

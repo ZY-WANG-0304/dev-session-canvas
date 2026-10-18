@@ -8,9 +8,17 @@
 
 第五轮39101493143及0.26.1组合39101774719已终态：前者330 actual/324 required/318 required passed，六校准项包含于324 total passed；后者330全必跑328通过，source118/packaged104全通过，仅macOS长IPC和Windowscached geometry失败，均无acceptance。当前原包焦点tab红绿、稳定hit-target/完整pointer、短路径设置与日志、安全退役、同fd fresh geometry及有界transport恢复已落实；105合同、429浏览器目录的426功能/3视觉、当前production文件视图诊断通过。123 suite原期限逐项不变；最新三平台原样安装与新组合仍需实跑，旧资产诊断不能补验收。
 
-六平台有限操作与三x64原样安装须实际runner验证，Node/VSCode/Chromium及基础设施预算须校准；最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
+第六轮39108395021与最新组合39108780795已终态失败：前者324 required/320 required passed（326 total passed含六校准），后者330 required/328 passed。两者Linux安装、六native、104packaged及基础层通过；组合source118全通过。两平台真实resize/Stop通过，新首败均是vscode.open等真实确认框；已补公开确认并保原token/完整URI/不记忆和20秒，原Host受控不存在token诊断通过不代证完整回跳。source file/views原panel缺文档focus，公开view focus对照通过，原10秒及全部file/split/reader断言不变。macOS原附加kill EPERM尚无具体syscall/对象/栈，新增严格阶段取证，不吞错。
+
+六平台有限操作已有多轮同批实际验证；新head三x64原样安装仍须真实runner验收，固定环境/基础设施预算继续校准。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 
 关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。
+
+## 2026-10-18：Runtime 模式切换删除期间的迟到回调（生产路径已复现，未修）
+
+第六轮source runtime-mode/reload-clear原input a62e5d7e/run39108395021在三delete派发后接纳此前空输出batch3、开始状态保存，84ms内以pending callback拒绝；并非等待到期。直接调用原生产CanvasPanelManager的受控shared/non-shared × simulate reload/prepareForDeactivation四路径确定复现：mode cleanup先于永久准入关闭，首轮集合快照等待不覆盖delete期间的新回调。放行回调归零后再次操作仍取得同一缓存失败；不能据graph保留推断原已删除会话可控制，也不能因最新组合通过解除责任。
+
+未修产品阻塞，与旧代恢复撤销订阅竞态分别记录。CI保原case、原预算、严格失败，不增加sleep/retry或全局drain。后续产品修复须结算原root/session的已派发操作与回调/保存，保其他开启窗口、四阶段接管、严格delete失败和普通reset保存立即拒绝；真实Electron/PTY及不同root仍需相关验收，当前控制脚本仅证明Host方法顺序。见[正式记录](../design-docs/runtime-shared-root-canvas-sync.md#ci-改造时发现的模式切换回调边界2026-10-18)、[复现](../references/release-gate-redesign/implementation/runtime-mode-switch-reproduction.mjs)及其JSON/hash。实现与证据继续PR335，不另建诊断或文档PR。
 
 ## 2026-10-17：发布门禁分层与产物证据（审查完成，方案待确认）
 

@@ -20,6 +20,8 @@ import {validateAcceptance} from '../gates/check-acceptance.mjs';
 import {digest} from '../gates/receipts.mjs';
 import {verifyInstrumentation} from '../smoke/package-instrumentation.mjs';
 import {readNotificationInvocation} from '../smoke/notification-receiver.mjs';
+import { openInstalledNotificationCallback } from '../smoke/installed-notification-callback.mjs';
+import { chromium } from 'playwright';
 import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
@@ -76,13 +78,20 @@ test('file click preparation waits for focus and stable geometry within one dead
   assert(start >= 0 && end > start);
   const commands = { openCanvasInEditor: 'editor', openCanvasInPanel: 'panel', focusNode: 'focus',
     testPerformWebviewDomAction: 'click' };
-  for (const mode of ['stable', 'unfocused', 'moving', 'rejected', 'late-surface']) {
-    let probes = 0, clicks = 0, focuses = 0;
-    const began = Date.now(), budget = mode === 'stable' || mode === 'rejected' ? 700 : 80;
+  for (const mode of ['stable', 'panel', 'unfocused', 'moving', 'rejected', 'late-surface', 'late-focus']) {
+    let probes = 0, clicks = 0, focuses = 0, panelFocuses = 0;
+    const surface = mode === 'panel' || mode === 'late-focus' ? 'panel' : 'editor';
+    const began = Date.now(), budget = ['stable', 'panel', 'rejected'].includes(mode) ? 700 : 80;
     const failure = new Error('Click hit target changed');
     const vscode = { commands: { executeCommand: async (command, ...args) => {
       if (command === 'editor' && mode === 'late-surface') await new Promise(resolve => setTimeout(resolve, 110));
-      if (command === 'focus') focuses++;
+      if (command === 'focus') {
+        focuses++;
+        if (mode === 'late-focus') await new Promise(resolve => setTimeout(resolve, 110));
+      }
+      if (command === 'devSessionCanvas.canvasPanel.focus') {
+        assert.equal(surface, 'panel');assert(Date.now() - began < budget);panelFocuses++;
+      }
       if (command === 'click') {
         clicks++;
         assert(probes >= 4, 'The first transient visible observation cannot authorize a click');
@@ -94,17 +103,19 @@ test('file click preparation waits for focus and stable geometry within one dead
     const run = vm.runInNewContext(`${source.slice(start, end)}\nperformWebviewDomAction`, { assert, vscode,
       COMMAND_IDS: commands, Date, setTimeout, clearTimeout,
       sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
-      captureWebviewProbe: async () => { probes++; return { hasDocumentFocus: mode !== 'unfocused', nodes: [{
+      captureWebviewProbe: async () => { probes++; return { hasDocumentFocus: mode !== 'unfocused' &&
+        (surface !== 'panel' || panelFocuses === 1), nodes: [{
         nodeId: 'original', selected: false,
         fileEntries: [{ filePath: '/original.txt', clickable: true, width: 80, height: 24,
           x: mode === 'moving' || probes < 4 ? probes * 10 : 40, y: 20 }]
       }] }; } });
     const action = { kind: 'clickFileEntry', nodeId: 'original', filePath: '/original.txt' };
-    if (mode === 'stable') assert.equal(await run(action, 'editor', budget), 'actual-click');
-    else if (mode === 'rejected') await assert.rejects(() => run(action, 'editor', budget), error => error === failure);
-    else await assert.rejects(() => run(action, 'editor', budget), /original budget/u);
+    if (mode === 'stable' || mode === 'panel') assert.equal(await run(action, surface, budget), 'actual-click');
+    else if (mode === 'rejected') await assert.rejects(() => run(action, surface, budget), error => error === failure);
+    else await assert.rejects(() => run(action, surface, budget), /original budget/u);
     await new Promise(resolve => setTimeout(resolve, 120));
-    assert.equal(clicks, ['stable', 'rejected'].includes(mode) ? 1 : 0, 'Failed preparation cannot dispatch a late click');
+    assert.equal(clicks, ['stable', 'panel', 'rejected'].includes(mode) ? 1 : 0, 'Failed preparation cannot dispatch a late click');
+    assert.equal(panelFocuses, mode === 'panel' ? 1 : 0, 'Only panel preparation explicitly focuses the workbench view');
     if (mode === 'late-surface') assert.equal(focuses, 0);
   }
 });
@@ -749,6 +760,58 @@ test('bounded process reports timeout, cancellation and partial output without p
     const missing=await runProcess(path.join(temp,'missing'),[],{deadline:Date.now()+1000,quiet:true});assert.equal(missing.status,'failed');
   }finally{await fs.rm(temp,{recursive:true,force:true});}
 });
+test('process-group permission failures keep their exact original target and signal and remain failures', async () => {
+  const source = await fs.readFile(new URL('../gates/process.mjs', import.meta.url), 'utf8');
+  const methods = source.slice(source.indexOf('export function processGroupExists('),
+    source.indexOf('// Process completion, deadline and resource retirement')).replaceAll('export ', '');
+  for (const phase of ['observe', 'term', 'kill', 'absent']) {
+    const failure = Object.assign(new Error('kill EPERM'), { code: 'EPERM', syscall: 'kill' }), calls = [];
+    const process = { platform: 'darwin', kill: (target, signal) => {
+      calls.push({ target, signal });
+      assert.equal(target, -7716, 'The original private process group must be the only signal target');
+      if (phase === 'absent') throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+      if (phase === 'observe' && signal === 0 || phase === 'term' && signal === 'SIGTERM'
+        || phase === 'kill' && signal === 'SIGKILL') throw failure;
+    } };
+    const context = vm.createContext({ process, Date, sleep: async () => {},
+      spawn: () => assert.fail('The Unix group test must not create another process') });
+    const operation = vm.runInContext(`${methods}\nretireProcessGroup(7716, { graceMs: 0, killMs: 0 })`, context);
+    if (phase === 'absent') {
+      const result = await operation;
+      assert.equal(result.status, 'passed'); assert.equal(result.observed, 'absent');
+      assert.deepEqual(calls, [{ target: -7716, signal: 0 }]);
+    } else {
+      await assert.rejects(operation, error => error === failure);
+      const expected = { observe: [0, 'observe-original-group'], term: ['SIGTERM', 'retire-original-group'],
+        kill: ['SIGKILL', 'force-retire-original-group'] }[phase];
+      assert.deepEqual(JSON.parse(JSON.stringify(failure.processGroup)),
+        { pid: 7716, target: -7716, signal: expected[0], phase: expected[1] });
+      assert.equal(calls.at(-1).signal, expected[0], 'A permission failure must stop further signals');
+    }
+  }
+});
+test('installed cleanup retains the business failure and records its exact failing phase and syscall', async () => {
+  const source = await fs.readFile(new URL('../smoke/run-installed-pair.mjs', import.meta.url), 'utf8');
+  const start = source.indexOf("  let cleanup = 'passed';"), end = source.indexOf('  const driverHash =', start);
+  assert(start >= 0 && end > start);
+  const original = new Error('Original public callback failed'), permission = Object.assign(new Error('kill EPERM'), {
+    code: 'EPERM', syscall: 'kill', processGroup: { pid: 7716, target: -7716, signal: 'SIGTERM', phase: 'retire-original-group' }
+  }), calls = [];
+  const context = vm.createContext({ assert, Date, facts: {}, failure: original, failureList: [], unsettled: false,
+    cleanupDeadline: Date.now() + 5000, browser: { close: async () => { calls.push('disconnect'); } }, child: { pid: 7716 },
+    bounded: async (_label, _deadline, operation) => operation(),
+    retireProcessGroup: async pid => { assert.equal(pid, 7716); calls.push('retire'); throw permission; },
+    waitForHostAbsence: () => assert.fail('Permission failure cannot become confirmed Host absence'), originalHosts: [{ pid: 7720 }]
+  });
+  const result = await vm.runInContext(`(async () => {${source.slice(start, end)}\nreturn { cleanup, failure, failureList, facts };})()`, context);
+  assert.equal(result.cleanup, 'failed'); assert.equal(result.failure, original);
+  assert.deepEqual(calls, ['disconnect', 'retire']);
+  assert.equal(result.failureList[0].phase, 'retire-original-process-group');
+  assert.equal(result.failureList[0].code, 'EPERM'); assert.equal(result.failureList[0].syscall, 'kill');
+  assert.equal(result.failureList[0].stack, permission.stack);
+  assert.deepEqual(result.failureList[0].processGroup, permission.processGroup);
+  assert.deepEqual(Array.from(result.facts.cleanup.steps, step => step.status), ['passed', 'failed']);
+});
 test('task preserves original action error and additional cleanup failure',async()=>{
   const f=fixture();const temp=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-gate-task-'));
   const task={...f.plan.tasks[0],stages:['prepare','action','assert','cleanup'],timeoutMs:1000,
@@ -860,6 +923,72 @@ test('packaged instrumentation forbids unexpected payload changes and notifier s
   const changed=structuredClone(input);changed.afterMain[0].sha256='d'.repeat(64);assert.throws(()=>verifyInstrumentation(changed));
   const notifier=structuredClone(input);notifier.afterNotifier[0].sha256='d'.repeat(64);assert.throws(()=>verifyInstrumentation(notifier));
 });
+test('installed callback interacts with the fresh-profile URI dialog before awaiting the public command', async () => {
+  const browser = await chromium.launch({ headless: true });
+  const callback = 'vscode://devsessioncanvas.dev-session-canvas-notifier/focus?token=original-token&windowId=1';
+  const serialized = 'vscode://devsessioncanvas.dev-session-canvas-notifier/focus?token%3Doriginal-token%26windowId%3D1';
+  try {
+    for (const variant of ['valid', 'wrong-description', 'wrong-uri', 'wrong-extension', 'preauthorized', 'rejected', 'cancelled', 'no-dialog', 'late-command']) {
+      const page = await browser.newPage();
+      try {
+        await page.setContent(`<main><div id="confirmation" role="dialog" hidden>
+          <p id="message">Allow 'Dev Session Canvas Notifier' extension to open this URI?</p>
+          <div class="rendered-markdown"><div id="callback" title="${serialized}">vscode://devsessioncanvas.dev-...d%3D1</div></div>
+          <label><input id="remember" type="checkbox">Do not ask me again for this extension</label>
+          <button id="allow">Open</button><button id="cancel">Cancel</button>
+        </div></main>`);
+        await page.evaluate(() => {
+          for (const [id, decision] of [['allow', 'opened'], ['cancel', 'cancelled']])
+            document.getElementById(id).addEventListener('click', () => {
+              document.getElementById('confirmation').hidden = true;
+              window.notificationDecision = decision;
+            });
+        });
+        const evidence = [], began = Date.now(), limit = began + (variant === 'late-command' || variant === 'no-dialog' ? 400 : 2500);
+        let called = 0;
+        const open = async (value, deadline) => {
+          called++;assert.equal(value, callback);assert.equal(deadline, limit);
+          if (variant === 'rejected') throw new Error('Public open rejected the callback');
+          if (variant === 'wrong-uri') await page.locator('#callback').evaluate(element => {
+            element.setAttribute('title', element.getAttribute('title') + '-other');
+          });
+          if (variant === 'wrong-extension') await page.locator('#message').evaluate(element => {
+            element.textContent = "Allow 'Other Extension' extension to open this URI?";
+          });
+          if (variant === 'preauthorized') await page.locator('#remember').check({ force: true });
+          if (variant !== 'no-dialog') await page.locator('#confirmation').evaluate(element => { element.hidden = false; });
+          if (variant === 'cancelled') {
+            await page.locator('#cancel').click();throw new Error('Public open cancelled by user');
+          }
+          await page.waitForFunction(() => window.notificationDecision, { }, { timeout: Math.max(1, deadline - Date.now()) });
+          assert.equal(await page.evaluate(() => window.notificationDecision), 'opened');
+          assert.equal(await page.locator('#remember').isChecked(), false);
+          if (variant === 'late-command') await new Promise(resolve => setTimeout(resolve, 500));
+          return 'original-uri-delivered';
+        };
+        const operation = openInstalledNotificationCallback({ page, callback, deadline: limit, open,
+          describe: async (original, deadline) => {
+            assert.equal(original, callback);assert.equal(deadline, limit);
+            return { original: variant === 'wrong-description' ? callback + '-other' : callback, serialized };
+          },
+          record: value => evidence.push(value) });
+        if (variant === 'valid') {
+          assert.equal(await operation, 'original-uri-delivered');
+          assert.deepEqual(evidence.map(value => value.phase), ['confirmation-visible', 'confirmation-opened']);
+          assert(Date.now() <= limit);
+        } else {
+          await assert.rejects(() => operation);
+          if (['wrong-description', 'wrong-uri', 'wrong-extension', 'preauthorized', 'rejected', 'no-dialog'].includes(variant))
+            assert.equal(await page.evaluate(() => window.notificationDecision), undefined,
+              'A missing or unrelated prompt cannot authorize the notification callback');
+          assert(!evidence.some(value => value.phase === 'confirmation-opened'));
+        }
+        assert.equal(called, variant === 'wrong-description' ? 0 : 1, 'The public URI request is never retried or replaced');
+      } finally { await page.close(); }
+    }
+  } finally { await browser.close(); }
+});
+
 test('notification receivers validate actual OS invocation rather than product test backend',()=>{
   assert.equal(readNotificationInvocation({args:['--action=view=View Node','--wait','title','message']},'linux').message,'message');
   assert.throws(()=>readNotificationInvocation({args:['title','message']},'linux'));
