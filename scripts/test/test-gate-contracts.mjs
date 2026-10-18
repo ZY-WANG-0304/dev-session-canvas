@@ -22,8 +22,11 @@ import {digest} from '../gates/receipts.mjs';
 import {verifyInstrumentation} from '../smoke/package-instrumentation.mjs';
 import {readNotificationInvocation} from '../smoke/notification-receiver.mjs';
 import { openInstalledNotificationCallback } from '../smoke/installed-notification-callback.mjs';
+import { observeInstalledPublicExit, installedPublicExitCommand } from '../smoke/installed-public-exit.mjs';
+import { readWindowsProcessIdentity } from '../smoke/windows-process-identity.mjs';
 import { chromium } from 'playwright';
-import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize } from '../smoke/installed-ui-observation.mjs';
+import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
+  prepareInstalledLocalizedStop } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
@@ -39,7 +42,7 @@ import { assertEvidencePath, collectEvidence, evidenceLimits, verifyEvidenceMani
 import { freezeLocalInput, preserveAndRetireLocalCheckout } from '../gates/run-local.mjs';
 import { downloadFixedVSCode, isTransientDownloadError } from '../smoke/download-vscode.mjs';
 import { prepareRuntime, retireFormalSmokeRuntimes, snapshotVSCodeLogs } from '../smoke/vscode-smoke-runner.mjs';
-import { processIdentity } from '../smoke/host-evidence.mjs';
+import { processIdentity, waitForHostAbsence } from '../smoke/host-evidence.mjs';
 import { once } from 'node:events';
 const { readRuntimeSessions, runtimeIsRetired, verifyOriginalLocalRetirement }=createRequire(import.meta.url)('../../tests/vscode-smoke/gate-runtime-state.cjs');
 const sha='a'.repeat(40), base='b'.repeat(40), hash='c'.repeat(64);
@@ -73,6 +76,115 @@ function fixture({mode='pr',changedPaths=['docs/design-docs/example.md']}={}) {
   refresh();return {plan,receipts,provenance,packageReceipt,refresh};
 }
 const rejects=f=>{const result=aggregateResults(f);assert.equal(result.result.status,'failed');assert.equal(result.acceptance,null);return result;};
+test('Windows identity uses one direct process observation and rejects unknown, wrong PID, empty and late responses', async () => {
+  const pid = 8123, startTime = '2026-10-18T09:00:00.1234567Z';
+  for (const outcome of ['present', 'absent', 'unknown', 'wrong-pid', 'empty', 'late', 'permission', 'inconsistent', 'missing-time']) {
+    const calls = [], deadline = Date.now() + (outcome === 'late' ? 50 : 1000);
+    const permission = Object.assign(new Error('access denied'), { code: 'EACCES' });
+    const execute = async (file, args, options) => {
+      calls.push({ file, args, options });
+      assert.equal(file, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+      assert(args.includes('-File') && args.at(-1) === String(pid));
+      assert(args.some(value => value.endsWith('windows-process-identity.ps1')));
+      assert(options.timeout > 0 && options.timeout <= Math.min(5000, deadline - Date.now()));
+      if (outcome === 'permission') throw permission;
+      if (outcome === 'empty') return { stdout: '', stderr: '' };
+      if (outcome === 'late') await new Promise(resolve => setTimeout(resolve, 70));
+      return { stdout: JSON.stringify({ schemaVersion: 1, pid: outcome === 'wrong-pid' ? pid + 1 : pid,
+        status: outcome === 'absent' || outcome === 'inconsistent' ? 'absent' : outcome === 'unknown' ? 'unknown' : 'present',
+        ...(outcome !== 'absent' && outcome !== 'missing-time' ? { startTime } : {}) }), stderr: '' };
+    };
+    const action = () => readWindowsProcessIdentity(pid, deadline, { execute, systemRoot: 'C:\\Windows' });
+    if (outcome === 'present') assert.deepEqual(await action(), { pid, startTime });
+    else if (outcome === 'absent') assert.equal(await action(), null);
+    else await assert.rejects(action);
+    assert.equal(calls.length, 1, 'Failed identity observation must not retry or reset its deadline');
+    if (outcome === 'permission') assert.equal(permission.observation.status, 'unknown');
+  }
+  let calls = 0;
+  await assert.rejects(() => readWindowsProcessIdentity(pid, Date.now() - 1, {
+    execute: async () => { calls++; }, systemRoot: 'C:\\Windows' }), /deadline exhausted/u);
+  assert.equal(calls, 0, 'An expired observation cannot launch another helper');
+});
+test('original process identity and absence observe actual live and exited subjects within the original deadline', async t => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  const closed = once(child, 'close');
+  t.after(async () => { if (child.exitCode === null) child.kill(); await closed; });
+  const expected = await processIdentity(child.pid); assert(expected?.startTicks || expected?.startTime);
+  const deadline = Date.now() + 120;
+  await assert.rejects(() => waitForHostAbsence(expected, deadline), /deadline exhausted|unconfirmed/u);
+  assert.equal(child.exitCode, null, 'An absence observation must not terminate the subject');
+  child.kill(); await closed;
+  const absent = await waitForHostAbsence(expected, Date.now() + 5000);
+  assert.equal(absent.result, 'original-absent'); assert.deepEqual(absent.expected, expected);
+  await assert.rejects(() => waitForHostAbsence(expected, Date.now() - 1), /deadline exhausted/u);
+});
+test('installed public shutdown observes the original application and Host separately and never accepts a request or kill as exit', async () => {
+  const expectedHost = { pid: 9102, startTime: 'original-host' };
+  for (const platform of ['linux', 'darwin', 'win32']) {
+    const commandName = platform === 'darwin' ? 'workbench.action.quit' : 'workbench.action.closeWindow';
+    assert.equal(installedPublicExitCommand(platform), commandName);
+    for (const outcome of ['normal', 'app-retained', 'host-retained', 'wrong-command', 'wrong-host', 'signal', 'nonzero', 'late']) {
+      const events = [], deadline = Date.now() + (outcome === 'app-retained' || outcome === 'late' ? 50 : 1000);
+      let hostObservations = 0;
+      const action = () => observeInstalledPublicExit({ platform, expectedHost, deadline,
+        command: async (name, args, limit) => {
+          events.push('request'); assert.equal(name, commandName); assert.deepEqual(args, []); assert.equal(limit, deadline);
+          if (outcome === 'late') await new Promise(resolve => setTimeout(resolve, 70));
+          return { status: 'exit-requested', command: outcome === 'wrong-command' ? 'unrelated' : name };
+        },
+        readChildExit: () => outcome === 'app-retained' ? undefined
+          : { code: outcome === 'nonzero' ? 17 : 0, signal: outcome === 'signal' ? 'SIGTERM' : null },
+        observeHost: async (original, limit) => {
+          events.push('host'); hostObservations++; assert.equal(original, expectedHost); assert.equal(limit, deadline);
+          if (outcome === 'host-retained') throw new Error('Original Host exit is unconfirmed');
+          return { result: 'original-absent', expected: outcome === 'wrong-host' ? { ...original, pid: original.pid + 1 } : original, actual: null };
+        }, record: step => events.push(step.phase) });
+      if (outcome === 'normal') {
+        const result = await action(); assert.equal(result.command, commandName); assert.equal(result.absence.result, 'original-absent');
+        assert.deepEqual(events, ['request', 'exit-requested', 'application-closed', 'host']);
+      } else await assert.rejects(action);
+      assert.equal(events.filter(value => value === 'request').length, 1, 'A rejected public request must not retry');
+      if (['app-retained', 'wrong-command', 'signal', 'nonzero', 'late'].includes(outcome)) assert.equal(hostObservations, 0);
+    }
+  }
+});
+test('localized Stop preparation binds a unique new subject, navigates publicly and keeps creation, navigation and action in one budget', async () => {
+  for (const outcome of ['normal', 'ambiguous', 'hidden', 'wrong-name', 'navigation-failed', 'late']) {
+    let created = false, navigated = false, doubleClicks = 0, stops = 0;
+    const events = [], nodeID = 'locale-original', deadline = Date.now() + (['hidden', 'wrong-name'].includes(outcome) ? 140 : outcome === 'late' ? 50 : 1000);
+    const stop = { isVisible: async () => navigated && outcome !== 'hidden' && outcome !== 'wrong-name',
+      isEnabled: async () => navigated, click: async options => { assert(navigated); assert(options.timeout <= deadline - Date.now()); stops++; } };
+    const chrome = { dblclick: async options => {
+      doubleClicks++; assert.deepEqual(options.position, { x: 4, y: 4 }); assert(options.timeout <= deadline - Date.now());
+      if (outcome === 'navigation-failed') throw new Error('Original titlebar click rejected');
+      navigated = true;
+    } };
+    const node = { count: async () => 1, getAttribute: async name => {
+      assert.equal(name, 'data-node-selected'); return navigated ? 'true' : 'false';
+    }, locator: selector => { assert.equal(selector, '.window-chrome'); return chrome; },
+    getByRole: (role, options) => { assert.equal(role, 'button'); assert.deepEqual(options, { name: '停止', exact: true }); return stop; } };
+    const frame = { locator: selector => {
+      if (selector === '[data-node-kind="terminal"][data-node-id]') return { evaluateAll: async () => created
+        ? ['existing', nodeID, ...(outcome === 'ambiguous' ? ['unrelated'] : [])] : ['existing'] };
+      if (selector === '.canvas-shell') return { getAttribute: async name => {
+        assert.equal(name, 'data-canvas-overview-mode'); return navigated && outcome !== 'hidden' ? 'false' : 'true';
+      } };
+      assert.equal(selector, `[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`); return node;
+    } };
+    const action = () => prepareInstalledLocalizedStop({ frame, deadline, record: step => events.push(step),
+      create: async limit => { assert.equal(limit, deadline); created = true;
+        if (outcome === 'late') await new Promise(resolve => setTimeout(resolve, 70)); } });
+    if (outcome === 'normal') {
+      const result = await action(); assert.equal(result.nodeID, nodeID); assert.equal(result.deadline, deadline);
+      assert.equal(stops, 0, 'Preparing a visible localized action must not dispatch Stop');
+      await result.stop.click({ timeout: result.deadline - Date.now() }); assert.equal(stops, 1);
+      assert.deepEqual(events.map(step => step.phase), ['original-node-bound', 'localized-stop-interactive']);
+    } else { await assert.rejects(action); assert.equal(stops, 0); }
+    assert(doubleClicks <= 1, 'A rejected navigation cannot retry');
+    if (['ambiguous', 'late'].includes(outcome)) assert.equal(doubleClicks, 0);
+  }
+});
 test('frozen smoke budgets match the current sources and reject an unreviewed helper change', async t => {
   verifySmokeBudgetSources();
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-frozen-budget-'));

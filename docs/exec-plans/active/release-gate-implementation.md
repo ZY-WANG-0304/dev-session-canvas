@@ -10,6 +10,10 @@
 
 ## 进度
 
+- [x] (2026-10-18 09:33Z) 第八轮39113768051和PR335+未改PR327组合39113960317已收正式终态，各330任务。精确预合并parents及原aggregate/candidate producer/ZIP/hash已核；分别321/324 required和327/330通过，247 jobs分别241成功/6失败、242成功/5失败，errors/notRun空，均无acceptance。独立全量本地task下载均在原300000ms失败，部分证据保留。
+- [x] (2026-10-18) 三个平台观察修正已实现：Windows直接Process/SafeHandle原身份；中文唯一新增节点公开双击退出概览；macOS公开Quit分别核应用/Host。在原5秒/20秒/30秒内保全部动作及断言，当前113合同全通过，四workflow actionlint exit0；429→430仅新增一回归，427production功能/3视觉全通过、retry0、baseline不变。原生产bundle概览回归与原第八轮双包Linux完整公开安装诊断通过，acceptance=false。
+- [x] (2026-10-18) 原测试动作和product bundle完全不改，仅加CDP只读网络/Runtime观察，file/views和real-reopen两个Host诊断均通过，原文件hash/Host退出/目录退役核对。保原CI首败：source新45秒ready与原10秒panel焦点根因尚未确认，不用偶发通过解除。
+- [ ] 新head三平台原样安装、六native操作及最新PR335/PR327真实组合完整正式验收；两项已复现生产竞态继续阻塞发布。
 - [x] (2026-10-18 08:49Z) 第七轮39112933251以真正预合并7e4d71fc/head0201c58f在resolve失败；API独立核双parents为main6e708c6b及该head。原错误为面板focus改动遗漏冻结helper摘要，17 jobs中1成功/3失败/13 skipped，业务任务未运行且无acceptance。重新生成并核123场景全部期限、wait表达式、倍数、parts和loop bounds不变，仅源码hash与行号变；新增真实源码校验及未审查改动拒绝正反例2/2通过。当前完整门禁/发布/恢复合同同批109通过/0失败/0跳过（161103ms），四workflow actionlint通过；后续新输入完整运行仍须完成。
 - [x] (2026-10-18) 第四轮39097246318在真正预合并aa969012/headcdf40738结束：六native load/六有限操作、118源码Host、2 Marketplace Host、423功能/3视觉、source-build及一次clean双包通过，packaged103/104。实际247 jobs为240成功/7失败；全量330回执已采集，299满足验收，errors/notRun为空，整轮无acceptance。
 - [x] (2026-10-18) 定因并修测试输入/观察：native回归改调用真实stager而非源码字符串；macOS同官方包plist入口Code；原安装CDP先连接再创建、固定nodeID、画布内完整resize、launch env receiver、按正式契约center/preserve/用户ack及独立locale。第四轮原包Linux公开全流程exit0，64×20→105×34、原进程Stop和两个Host正常退出通过；诊断acceptance=false，原双包前后摘要不变。
@@ -48,6 +52,8 @@
 
 ## 意外与发现
 
+第八轮macOS应用PID15584在closeWindow后仍存在，原Extension Host15734已exit0；固定宿主源码明确macOS窗口关闭与应用退出是两种边界。该轮清理EPERM已定位到TERM后原group -15584的signal0观察，权限机制仍未知。Windows中文Stop截图和源码同时证明概览模式按设计禁用动作，必须先满足公开交互前提。win32-x64原生操作的旧CIM身份查询在5秒超时，io/resize/Stop尚未执行，另一独立组合native通过不能覆盖此原失败。原source real-reopen setup保存/退出和offline屏障成立，verify在公开openCanvasEditor的45秒ready失败，保原现场后继续定因。
+
 最新组合39108780795和第六轮39108395021已终态，分别328/330与320/324 required通过，aggregate和稳定入口按预期拒绝。原source mode-switch在三delete期间接纳此前发出的空输出batch并启动保存，84ms内拒绝；生产deactivation也先mode cleanup再关event admission。shared/non-shared ×模拟reload/真实生产deactivation方法受控对照全复现同拒绝，并在callback归零后仍复用失败。该产品问题不通过测试等待修复；根因/脚本/hash集中原实施目录，正式边界写入runtime-shared-root-canvas-sync.md。旧独立Host逻辑脚本直接运行先因未提供appliedStartupConfiguration失败，未计为通过，不从该过时夹具外推产品结果。
 
 原两平台URI确认是实际VSCode DOM `.rendered-markdown [title]`，并无URI aria-label；title采用公开Uri.toString的编码（query等号与与号已编码）。最初假定aria-label的诊断失败保持，改用独立driver的只读describeUri后原Host确认/派发/退出通过；原token产品回跳仍待新head正式运行。文件panel focus对照通过，不把居中或selection代证文档focus。macOS附加清理原报告只有kill EPERM，当前补阶段/stack/code/syscall/原group与signal，受控反例保首败及停止进一步信号；未认定原权限原因已修。
@@ -83,6 +89,10 @@ packaged原失败trace的production bundle行/列指向d3-drag nodrag(event.view
 URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×20，旧 helper 却以 92×28 Start；snapshot restore 临时 resize 为 92×28，随后 deferred fit 恢复 64×20。鼠标已进入正确单元，URL provider 与 hover 均实际执行，但第二次 resize 触发 xterm linkLeave，取消尚未显示的 tooltip。修正只在测试夹具：用原 10 秒 probe 等待已 mounted 且 projection 完成的实际 fit 几何，再以该几何 Start。tooltip 文字、清 hover、浏览器路由和 OSC8 断言及原等待全部保留，未改产品行为。`/dev/shm/dsc-ci-url-inspection-7/dom.json` 中的 buffer-resize 调用栈保留取证；复验 17 秒通过。
 
 ## 决策记录
+
+决策：Windows身份观察改用一次采样内持有的Process/SafeHandle及StartTime；中文Stop创建前后绑定唯一新增节点并执行公开标题栏聚焦；macOS独立locale场景以公开Quit收口应用，继续分别核原应用和Host退出。
+理由：这些前提与固定平台/产品设计可独立验证。CIM的具体历史阻塞和macOS清理EPERM不写成已消除；任何查询未知、隐藏按钮、导航/动作失败或期限耗尽仍失败，不增加原5秒/20秒/30秒，不用清理kill补业务事实。补实际正反例和原包诊断后，仍由新同输入完整Actions验收。
+日期/作者：2026-10-18 / Codex。
 
 决策：预算源码变动后在提交前显式重生成并审查清单，本地门禁合同与正式resolve都核真实源码；不在正式CI自动修摘要。
 理由：第七轮正确拒绝漏更新的helper hash，原完整108合同没有调用该校验导致本地漏报。新正反例直接调用原模块，当前源码成立、同副本追加未审查内容立即失败；123预算逐项不变，不能借更新hash暗改等待。
@@ -146,6 +156,8 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 ## 结果与复盘
 
+第八轮与组合已终态失败，分别321/324和327/330 required通过，均没有acceptance。三个已证实平台观察前提修正和本地113合同、427production功能/3视觉通过；原双包Linux完整公开诊断通过。原source real-reopen45秒未ready及组合panel10秒无焦点仍未定因，当前不改动作的只读CDP诊断通过不覆盖原CI。新跨平台输入与两项生产竞态均保持待验/阻塞。
+
 第六轮与当前0.26.1临时组合均已终态失败：组合330必跑328通过、完整source118/packaged104均通过；两平台真实resize与Stop已通过，安装失败转到URI用户确认。第六轮另有source panel焦点准备和runtime-mode迟到回调失败。公开确认与panel focus已补并有真实受控诊断，原预算/production输入保持；新head全量尚待验收。生产mode-switch边界与恢复订阅竞态未修，不能发布0.26.1。
 
 严格入口、真实浏览器配置和 reusable 任务图已有初版及部分行为验证，尚无新 CI/产品完整通过。设计模型验证不是实施验证。每一阶段完成后在此写实际命令、结果和剩余边界；最终发布输入完整通过前不宣称 0.26.1 可以发布。2026-10-18 再 fetch 后 origin/main 仍为 6e708c6b93ce4b2b343729c422f59099f4fb42ba，用户主工作区 dirty 文件未动。
@@ -178,6 +190,8 @@ URL/OSC8 首次独立失败有真实 CDP 调用证据：页面已稳定为 64×2
 
 ## 证据与备注
 
+最新原两轮终态、parents、原aggregate/candidate producer/ZIP/hash和失败详情登记于docs/references/release-gate-redesign/implementation/local-results.json。当前113合同日志/dev/shm/dsc-ci-gate-contract-implementation-13.log；427功能及3视觉回执分别/dev/shm/dsc-ci-browser-functional-430-1/playwright-execution.json、/dev/shm/dsc-ci-browser-visual-430-1/playwright-execution.json；正确actionlint调用/dev/shm/dsc-ci-actionlint-11.log。原生产概览回归/dev/shm/dsc-ci-locale-overview-original-browser-4，原第八轮双包Linux公开安装/dev/shm/dsc-ci-platform-original-installed-linux-diagnostic-1。两个原动作只读CDP诊断/dev/shm/dsc-ci-current-file-focus-readonly-1、/dev/shm/dsc-ci-current-reopen-ready-readonly-1均passed、acceptance=false，保原CI失败未定因。
+
 所有本地结果用固定Node22.23.3；native诊断用官方checksum核对的Node25.6.0。完整regression在/dev/shm/dsc-ci-regression-implementation-3/results.json记80/80通过；test:ci-gates当批80/80。有界证据三个新增正反例在/dev/shm/dsc-ci-evidence-contract-2.log通过；完整合同批/dev/shm/dsc-ci-gate-contract-implementation-6.log为83 passed/0 failed/0 skipped（129.5秒）；最终摘要/引用路径补充按相关项复验。
 
 浏览器功能/视觉证据为/dev/shm/dsc-ci-browser-function-3和/dev/shm/dsc-ci-browser-visual。source独立30为/dev/shm/dsc-ci-independent-diagnostic-2，URL修后/dev/shm/dsc-ci-url-fixed-diagnostic-1；trusted71首败在/dev/shm/dsc-ci-trusted-independent-diagnostic-1。resize guard精选/dev/shm/dsc-ci-resize-guard-diagnostic-1；并发原身份/退役修后/dev/shm/dsc-ci-concurrency-remote-diagnostic-1。SSH最终2/2在/dev/shm/dsc-ci-remote-cleanup-diagnostic-4/results.json，两Marketplace在/dev/shm/dsc-ci-marketplace-host-diagnostic-3/results.json。此前每轮失败目录原样保留，不覆盖首败。必要SSH工件导出/dev/shm/dsc-ci-remote-retained-evidence-1已复算42文件/461626bytes。
@@ -191,6 +205,8 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 使用现有 Node、esbuild、JSZip、Playwright、@vscode/test-electron 和 GitHub Actions；无需新服务。`gate-plan.json` 定义任务和 producer 期望，`package-receipt.json` 定义固定双包，逐任务 JSON 由执行器写出，`verify-result` 仅在身份和所有必需阶段通过时写 `acceptance-receipt.json`。实际 GitHub provenance 由 API/artifact 元数据采集，不能接受未经核实的 JSON 自报。
 
 修订记录：2026-10-17 创建实施计划，明确从正式设计实施并保留旧覆盖及未验证边界。
+
+修订记录：2026-10-18 09:33Z登记第八轮与0.26.1组合原计划/三个安装和原生首败，先选定正确平台/公开交互/进程观察边界再实施；source新ready失败保留原45秒，完整终态与新输入验证待完成。
 
 修订记录：2026-10-18 同步初版实现、实际 27 测试和共享构建验证；登记校准聚合、来源采集、deadline/cleanup 与 installed 接线错误，避免将配置测试通过误写为正式门禁通过。
 
@@ -215,3 +231,5 @@ docs/references/release-gate-redesign/verify.py是方案模型，mapping/AST是�
 2026-10-18 07:49Z更新：已推当前实现并启动第六轮和最新0.26.1组合，核原计划与双parents，修正参考摘要命名；正式终态和Windows新首败仍待收取，未修产品竞态不豁免。
 
 修订记录：2026-10-18 07:55Z原两平台截图与宿主源码定因URI确认交互缺失，真实resize和Stop已通过；选定同原预算执行公开确认，不设信任白名单，macOS额外清理失败保留。
+
+修订记录：2026-10-18 收正式第八轮/组合终态并核原330任务/双包来源；同步三平台观察修正、113合同、430浏览器登记与原包/只读Host诊断，区分历史失败、局部通过和新head未验，保原期限及两项生产阻塞。

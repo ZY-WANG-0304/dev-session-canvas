@@ -180,6 +180,8 @@ Stop业务完成、保存完成、reader消费、存储退役、Host退出与Sup
 
 ## 当前实施与验证状态（2026-10-18）
 
+第八轮PR335与PR327组合分别321/324和327/330 required通过，均失败且无acceptance。source两批各117/118，首败分别是real-reopen新页面原45秒未ready和file/views原10秒缺文档focus；当前外部只读CDP诊断同原测试动作通过不能追认历史。安装层中文Stop按固定新增节点的公开标题栏双击满足概览退出/精确名称可见可用，随后只点击一次；原生产bundle回归及427功能/3视觉通过，原429登记未删。macOS locale隔离用公开Quit，原应用和原Host退出分别在原30秒核对。两项生产竞态、三平台新输入及完整source/packaged来源验收仍须独立收口。
+
 `scripts/smoke/smoke-catalog.mjs`现登记102个独立product-case、13个默认因果suite和3个focused诊断。独立case各自从prepare开始，以实际执行的prepare/action/assert step写Host回执；旧代、多窗口、真实重开等继续保留完整因果步骤和原身份。源码默认115项加3个notifier/locale辅助，packaged默认102项加2notifier辅助；两个Marketplace Host单独归层。152个设计目的地由`scripts/smoke/smoke-implementation-map.json`完整映射：137现有目的地为implemented-unverified，15proposed-gap为not-implemented。数字不是实跑通过数；任何mapping或AST检查都不能签发acceptance。
 
 本地独立fixture、特殊拓扑及Marketplace新Host包装器已有真实诊断和保留的首败→修正→复验证据，详见[实施计划](../exec-plans/active/release-gate-implementation.md)。其输入是当前工作树与旧dist/native，不外推新SHA、六native或原样安装。原产品resize/ready/Stop/保存/reader等待保持，修正只解决明确夹具前提：mounted/fit尺寸、Host原身份传递、短systemd/VSCode socket、Remote SSH官方依赖及环境、已空graph避免重复reset、locale语言包。

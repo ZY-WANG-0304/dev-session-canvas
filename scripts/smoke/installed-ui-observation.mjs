@@ -2,6 +2,56 @@ import assert from 'node:assert/strict';
 
 const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
+export async function prepareInstalledLocalizedStop({ frame, create, deadline, record = () => {} }) {
+  const remaining = () => {
+    const value = deadline - Date.now();
+    assert(Number.isFinite(value) && value > 0, 'Original localized Terminal preparation deadline exhausted');
+    return value;
+  };
+  const readNodeIDs = () => frame.locator('[data-node-kind="terminal"][data-node-id]').evaluateAll(nodes =>
+    nodes.map(node => node.getAttribute('data-node-id')));
+  const wait = async (label, read, predicate) => {
+    let value;
+    while (true) {
+      remaining(); value = await read(); remaining();
+      if (predicate(value)) return value;
+      await new Promise(resolve => setTimeout(resolve, Math.min(100, remaining())));
+    }
+  };
+  remaining();
+  const existing = await readNodeIDs();
+  assert.equal(new Set(existing).size, existing.length, 'Installed Terminal identities are duplicated');
+  await create(deadline);
+  const nodeID = await wait('Unique newly created installed Terminal', readNodeIDs, ids => {
+    assert.equal(new Set(ids).size, ids.length, 'Installed Terminal identities are duplicated');
+    const added = ids.filter(id => !existing.includes(id));
+    assert(added.length <= 1, 'Public creation produced multiple ambiguous Terminal subjects');
+    return added.length === 1;
+  }).then(ids => ids.find(id => !existing.includes(id)));
+  assert(typeof nodeID === 'string' && nodeID, 'Original localized Terminal identity is missing');
+  const node = frame.locator(`[data-node-kind="terminal"][data-node-id=${JSON.stringify(nodeID)}]`);
+  const shell = frame.locator('.canvas-shell');
+  const stop = node.getByRole('button', { name: '停止', exact: true });
+  await record({ phase: 'original-node-bound', nodeID, existing,
+    overview: await shell.getAttribute('data-canvas-overview-mode', { timeout: remaining() }), deadline });
+  // User navigation uses the titlebar's own double-click handler. It leaves
+  // the product overview configuration and action visibility unchanged.
+  const chrome = node.locator('.window-chrome');
+  await chrome.dblclick({ position: { x: 4, y: 4 }, timeout: remaining() });
+  await wait('Original localized Terminal interactive view', async () => {
+    const stopVisible = await stop.isVisible();
+    return { originalCount: await node.count(),
+      overview: await shell.getAttribute('data-canvas-overview-mode', { timeout: remaining() }),
+      selected: await node.getAttribute('data-node-selected', { timeout: remaining() }), stopVisible,
+      stopEnabled: stopVisible && await stop.isEnabled({ timeout: remaining() }) };
+  }, view => view.originalCount === 1 && view.overview === 'false' && view.selected === 'true'
+    && view.stopVisible && view.stopEnabled);
+  remaining();
+  await record({ phase: 'localized-stop-interactive', nodeID, overview: 'false', name: '停止', deadline });
+  remaining();
+  return { nodeID, stop, deadline };
+}
+
 export function installedGeometryMatchesResize(before, after, { nonce, requestedAt }) {
   return after?.method === 'original-stdout-fresh-tty-handle' && after.pid === before.pid && after.ppid === before.ppid
     && after.nonce === nonce && Number.isFinite(after.observedAt) && after.observedAt >= requestedAt

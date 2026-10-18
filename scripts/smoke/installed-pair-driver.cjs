@@ -46,14 +46,16 @@ exports.activate=async function(context) {
         await writeAtomic(config.response,{id:request.id,result:{original:request.args[0],serialized:uri.toString()}});
         return;
       }
-      const allowed=['devSessionCanvasNotifier.postSystemNotification','workbench.action.closeWindow',
+      const allowed=['devSessionCanvasNotifier.postSystemNotification','workbench.action.closeWindow','workbench.action.quit',
         'workbench.action.closeAllEditors',
         'workbench.view.extension.devSessionCanvasNotifier','devSessionCanvasNotifier.status.focus',
         'devSessionCanvasNotifier.notes.focus','devSessionCanvasNotifier.codex.focus',
         'devSessionCanvas.openCanvasInEditor','devSessionCanvas.createTerminalFromExplorerResource','vscode.open'];
       assert(allowed.includes(request.command),'Driver command not allowed');
-      if(request.command==='workbench.action.closeWindow') {
-        await writeAtomic(config.response,({id:request.id,status:'close-requested'}));
+      if(['workbench.action.closeWindow','workbench.action.quit'].includes(request.command)) {
+        // The Host disappears during shutdown. This receipt confirms only the
+        // public request; the external observer must prove the original exits.
+        await writeAtomic(config.response,({id:request.id,status:'exit-requested',command:request.command}));
         await vscode.commands.executeCommand(request.command);return;
       }
       const args=request.command==='vscode.open'?[vscode.Uri.parse(request.args[0])]

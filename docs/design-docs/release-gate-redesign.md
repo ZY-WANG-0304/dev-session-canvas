@@ -135,7 +135,11 @@ source/packaged/Marketplace正式Host把每个私有路径登记到同nonce的Ho
 
 系统通知回跳遵守`canvas-node-notifications.md`：回调只居中目标、保持原selection和attention，不自动输入/focus或确认。接收前用原Stop节点建立不同selection，通过公开fit-all把目标移离视口中心；点击receiver或打开其原protocol URI后核真实目标在视口中心、selection未变且attention仍为true。最后由用户UI左键点击目标，才要求attention=false。真实桌面呈现继续标observational；不得改产品令回跳自动确认来适配错误旧断言，也不得仅以attention仍true代证回调执行。
 
-原样安装的locale重开不验证状态恢复，英文Terminal全部Stop并核原进程退役后，用公开`closeAllEditors`关闭画布，再公开closeWindow且核原Host正常退出；中文Host由自己的CDP连接与公开创建动作开始。原Stop按钮通过可见文本提供可访问名称，没有单独aria-label；中文断言通过真实button角色/精确名称“停止”核对并实际点击，不新增产品属性来适配错误夹具。节点locator固定初始nodeID，不能用持续`.last()`把新节点当原节点。
+原样安装的locale重开不验证状态恢复，英文Terminal全部Stop并核原进程退役后，用公开`closeAllEditors`关闭画布，再请求公开的应用退出并分别核原应用正常关闭与原Extension Host消失；中文Host由自己的CDP连接与公开创建动作开始。Windows/Linux使用`workbench.action.closeWindow`，macOS使用`workbench.action.quit`。固定VSCode1.142.0的commit为`6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1`，其`LifecycleMainService.registerListeners`明确macOS关闭最后窗口不会退出应用；`desktop.contribution.ts`的公开Quit调用nativeHostService.quit。driver只能在真正派发该公开命令前记录请求，不能将请求回执当退出事实；两种locale各自在原30秒内观察child关闭及同原PID/startTime的Host消失，清理kill不计入此前验收。第八轮macOS原Host确实exit0，应用仍保留而触发旧close断言；追加的signal0/kill EPERM仍是独立未定因清理失败，不因更换Quit追认原轮成功。
+
+原Stop按钮通过可见文本提供可访问名称，没有单独aria-label；中文断言通过真实button角色/精确名称“停止”核对并实际点击，不新增产品属性来适配错误夹具。第八轮Windows中文页已显示“活动”，但画布处于正式概览模式，产品按设计隐藏并禁用操作按钮。创建前记录原节点集合，创建后要求唯一新增Terminal并固定nodeID；原20秒准备内通过用户可执行的标题栏双击聚焦该节点，再观察概览退出、原节点仍存在及精确名称按钮可见可用。准备与一次Stop点击共享绝对期限，不关闭overview配置、不强点隐藏按钮、不使用内部focus命令；导航或实际Stop失败不重试。
+
+Windows进程身份查询只需要原PID、创建时间和存活状态。第八轮win32-x64原生操作已经started，尚未派发I/O时，旧PowerShell+CIM查询在原5秒内超时；另一个完整组合批次同逻辑通过，历史CIM阻塞的具体服务机制仍未知。选定`scripts/smoke/windows-process-identity.ps1`直接用`.NET Diagnostics.Process.GetProcessById`，在一次观察内持有SafeHandle、读取StartTime并核HasExited，finally释放；不导入CIM、不扫描全系统、不以空输出或权限错误当消失。只有明确不存在或已退出可返回absent，访问拒绝和不一致结果继续失败。`processIdentity`及`waitForHostAbsence`每次查询的5秒上限与轮询都夹到调用者原剩余deadline，逾期结果不能签发原身份消失。跨平台真实存活/退出及unknown、错PID、空响应、迟到响应反例需验证，原生有限操作的实际I/O/resize/exit17/Stop及资源退役完整保留。
 
 第四轮packaged文件打开失败保留原producer：实际生产bundle的d3-drag在夹具合成mousedown的`event.view=null`处访问document失败，随后click路由未生效。原bundle原行/列与锁定d3-drag源码一致。选定修正为测试DOM动作给MouseEvent传所属document.defaultView及真实目标中心、buttons等浏览器字段；不绕过产品onClick/Host.openCanvasFile，也不给生产drag加null容错去支持不完整测试输入。原包浏览器回归在minimal/card均先复现同一异常，修后私有production build两个行为回归通过，保连续打开和后续真实拖动；原可见文件/split group/画布保持mounted断言仍由Host用例验收，不能以浏览器消息替代。真实Actions新输入才能验收。
 
@@ -260,6 +264,14 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 | 发布六job与恢复 | [publish-flow.svg](../references/release-gate-redesign/publish-flow.svg) | [PNG](../references/release-gate-redesign/publish-flow.png) |
 
 ## 实施状态（2026-10-18）
+
+最新完整输入为第八轮 [39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051) 与未改 PR327 的组合 [39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317)，均已终态失败。PR335 head03930c18 的真正预合并e4331d26精确parents为main6e708c6b与该head，247 jobs为241成功/6失败；330 actual、324 required、321 required passed，326 total passed包含5个校准操作。组合真正预合并4dd88eaa精确parents为main6e708c6b与组合6109a027，PR33503930c18和PR3278313fc72 ancestry均已核；247 jobs为242成功/5失败，330项全部required、327通过。两轮各source117/118、packaged104/104、Linux原样安装通过，errors/notRun为空，均无acceptance；required首败分别为real-reopen或file/views，加macOS及Windows安装。PR335另有win32-x64校准操作身份观察失败，不能把326 total passed误写为required通过。
+
+原工件已独立核实际producer、上传ID与ZIP摘要，原双包各有同批回执；第八轮candidate artifact12131187990/ZIP1e0e1498、规范回执1b86af7b，组合candidate12131977938/ZIPb8089216、规范回执b19f6505。两次本地全量逐task下载均在原300000ms终止，部分原现场保留，独立全量再聚合未完成；Actions正式aggregate的完整330任务结果与此分别登记，不加时或拼接追认。完整摘要和原地址见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。
+
+三个平台观察修正已经实现，当前113项门禁/发布/恢复合同同批113通过、0失败/0跳过；四workflow actionlint正确路径exit0，此前误指不存在workflow的调用明确失败、不作通过证据。真实Playwright注册429→430，原429全部保留，只增概览中文Stop准备回归；同production输入427功能与3视觉全通过、retry0、baseline不变。原第八轮生产bundle的真实标题栏双击→退出概览→原ID一次可见Stop回归通过。新driver消费第八轮原样Linux双包，真实I/O/resize/Stop、原通知token公开确认、回跳居中/selection保持/用户ack、独立中英文和两个应用/Host正常退出/清理全通过；其中文初始概览为false，不能外推Windows概览和macOS Quit，所有局部诊断acceptance=false。
+
+两处原source失败保持未定因：第八轮real-reopen已通过setup保存、原Host退出和离线屏障，verify期间activateExtension的公开open→closeAllEditors→open后generation5没有ready/bootstrapAck，原45秒断言失败。组合file/views已ready/bootstrapAck且目标稳定可命中，但一次公开panel focus后document.hasFocus=false，在原10秒准备失败。当前原测试动作/产品bundle完全不改、仅外部CDP网络和Runtime只读观察的两个Host诊断均通过并核原退出/退役；这只证明并非每次必现，不能说明历史根因已消除，也不能据此删除focus/ready前提、加sleep或自动重开。新head跨平台完整验收与两项生产竞态仍未收口。
 
 当前实现包括15个reusable job、六发布外层job、保守PR分类、固定输入与阶段回执、共享production浏览器构建、同批双包/消费式packaged/三x64原样安装及原包恢复模块。真实旧覆盖迁移由`scripts/smoke/smoke-implementation-map.json`绑定152个设计目的地，其中137项为implemented-unverified、15项not-implemented；静态AST可达/实际step审查不产生产品验收。旧入口与具体断言的迁移替换理由保留在同一映射，未把未实现缺口记成通过。
 

@@ -21,8 +21,9 @@ import { buildVSCodeArgs, buildVSCodeChildEnv, ensureVSCodeExecutable, prepareRu
 import { installCandidateVsix } from './installed-execution-candidate.mjs';
 import { processIdentity, waitForHostAbsence } from './host-evidence.mjs';
 import { openInstalledNotificationCallback } from './installed-notification-callback.mjs';
+import { observeInstalledPublicExit } from './installed-public-exit.mjs';
 import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered,
-  installedGeometryMatchesResize } from './installed-ui-observation.mjs';
+  installedGeometryMatchesResize, prepareInstalledLocalizedStop } from './installed-ui-observation.mjs';
 
 const { values } = parseArgs({ options: { plan: { type: 'string' }, candidate: { type: 'string' }, output: { type: 'string' } } });
 assert(values.plan && values.candidate && values.output);
@@ -131,14 +132,14 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   const id = randomUUID(); await fs.rm(responsePath, { force: true });
   await writeJSON(requestPath, { id, command, args });
   const response = await wait('Public driver response', () => readJSON(responsePath), response => response.id === id, requestedDeadline);
-  assert(!response.error, response.error); return response.status==='close-requested'?response:response.result;
+  assert(!response.error, response.error); return response.status==='exit-requested'?response:response.result;
 };
   const driver = await wait('Installed subject activation', () => readJSON(driverReceipt), value => value.subjects?.length === 2,
     Date.now() + 180000);
   facts.driver=driver;
   facts.productManifestsUnmodified=true;
   facts.desktopPresentation='observational';
-  originalHost = await processIdentity(driver.hostPID); assert(originalHost); originalHosts.push(originalHost);
+  originalHost = await processIdentity(driver.hostPID, deadline); assert(originalHost); originalHosts.push(originalHost);
   await wait('CDP startup', async () => {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1000) });
     return response.ok;
@@ -169,8 +170,8 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   await type(`"${process.execPath}" "${subject}" "${geometryFile}"`);
   const before = await wait('PTY child geometry', () => readJSON(geometryFile), value =>
     value.nonce === 'startup' && value.cols > 0 && value.rows > 0);
-  const subjectIdentity = await processIdentity(before.pid); assert(subjectIdentity);
-  const shellIdentity=await processIdentity(before.ppid);assert(shellIdentity,'Original Terminal shell identity is unavailable');
+  const subjectIdentity = await processIdentity(before.pid, deadline); assert(subjectIdentity);
+  const shellIdentity=await processIdentity(before.ppid, deadline);assert(shellIdentity,'Original Terminal shell identity is unavailable');
   Object.assign(facts.terminal,{before,subjectIdentity,shellIdentity});
   await node.locator('.window-chrome').click();
   facts.terminal.nodeBefore = await node.boundingBox();
@@ -206,7 +207,7 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
     if(line==='notify')process.stdout.write('\\x1b]9;${marker}\\x07');});\n`);
   await notificationInput.focus();await frame.page().keyboard.insertText(`"${process.execPath}" "${notify}"`);await notificationInput.press('Enter');
   const notificationProcess=await wait('Original notification subject startup',()=>readJSON(notificationPIDFile),value=>Number.isSafeInteger(value.pid));
-  const notificationSubject=await processIdentity(notificationProcess.pid),notificationShell=await processIdentity(notificationProcess.ppid);
+  const notificationSubject=await processIdentity(notificationProcess.pid, deadline),notificationShell=await processIdentity(notificationProcess.ppid, deadline);
   assert(notificationSubject&&notificationShell,'Original notification Terminal processes are unobservable');
   Object.assign(facts.notificationRoute,{notificationSubject,notificationShell});
   await fs.rm(receiver.capture,{force:true});await fs.rm(receiver.release,{force:true});
@@ -259,13 +260,12 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   // so restart cannot restore its inner frame before the observer attaches.
   await driverCommand('workbench.action.closeAllEditors',[]);
   await wait('Original canvas closed before independent locale restart',()=>frame.isDetached(),value=>value===true);
-  const close=await driverCommand('workbench.action.closeWindow',[]);assert.equal(close.status,'close-requested');
   let exited;childExit.then(value=>{exited=value;});
-  const exit=await wait('Public close completes original UI exit',()=>exited,value=>value!==undefined,
-    Math.min(deadline,Date.now()+infrastructureBudgets.hostExit));
-  assert.equal(exit.code,0);assert.equal(exit.signal,null);
-  publicExits.push({ locale: 'en', exit,
-    absence: await waitForHostAbsence(originalHost,Math.min(deadline,Date.now()+infrastructureBudgets.hostExit)) });
+  facts.publicExitSteps=[];
+  publicExits.push({ locale: 'en', ...await observeInstalledPublicExit({ platform: process.platform,
+    command: driverCommand, readChildExit: () => exited, expectedHost: originalHost, observeHost: waitForHostAbsence,
+    deadline: Math.min(deadline, Date.now() + infrastructureBudgets.hostExit),
+    record: step => facts.publicExitSteps.push({ locale: 'en', ...step }) }) });
   await browser.close();browser=undefined;
   await stageLanguagePackFixture(runtime,NOTIFIER_ZH_CN_LANGUAGE_PACK_FIXTURE);
   await fs.rm(driverReceipt,{force:true});
@@ -274,7 +274,7 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   childExit=once(child,'close').then(([code,signal])=>({code,signal}));childExit.catch(()=>{});
   const localized=await wait('Original subjects reactivate with zh-cn',()=>readJSON(driverReceipt),value=>value.subjects?.length===2,
     Math.min(deadline,Date.now()+infrastructureBudgets.hostStartup));
-  assert.equal(localized.locale.toLowerCase(),'zh-cn');originalHost=await processIdentity(localized.hostPID);assert(originalHost);
+  assert.equal(localized.locale.toLowerCase(),'zh-cn');originalHost=await processIdentity(localized.hostPID, deadline);assert(originalHost);
   originalHosts.push(originalHost);
   await wait('Locale CDP startup',async()=>{try{return (await fetch(`http://127.0.0.1:${port}/json/version`,{signal:AbortSignal.timeout(1000)})).ok;}
     catch(error){if(error.cause?.code==='ECONNREFUSED')return false;throw error;}},value=>value===true);
@@ -289,22 +289,24 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   },text=>text.includes('当前环境')&&text.includes('发送测试通知')&&text.includes('本机 UI 端'));
   facts.locales.notifierText=localeText;
   await driverCommand('devSessionCanvas.openCanvasInEditor',[]);
-  await driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[]);
-  const localizedCanvas=await wait('Unmodified Terminal zh-cn action',async()=>{
-    for(const context of browser.contexts())for(const page of context.pages())for(const candidateFrame of page.frames()) {
-      const terminal=candidateFrame.locator('[data-node-kind="terminal"]').last();
-      if(await terminal.count()&&await terminal.locator('[data-node-action-id=stop]').count())return terminal;
-    }return null;
+  const localizedFrame=await wait('Original zh-cn canvas',async()=>{
+    for(const context of browser.contexts())for(const page of context.pages())for(const candidateFrame of page.frames())
+      if(await candidateFrame.locator('.canvas-shell').count())return candidateFrame;
+    return null;
   },value=>value!==null);
-  const localizedStop=localizedCanvas.getByRole('button',{name:'停止',exact:true});
-  await localizedStop.waitFor({state:'visible'});
-  await localizedStop.click();
+  facts.locales.terminalPreparation=[];
+  const {nodeID:localizedNodeID,stop:localizedStop,deadline:localizedActionDeadline}=await prepareInstalledLocalizedStop({
+    frame:localizedFrame,create:limit=>driverCommand('devSessionCanvas.createTerminalFromExplorerResource',[],limit),
+    deadline:Math.min(deadline,Date.now()+20000),record:step=>facts.locales.terminalPreparation.push(step) });
+  await localizedStop.click({timeout:Math.max(1,localizedActionDeadline-Date.now())});
+  assert(Date.now()<=localizedActionDeadline,'Original localized Stop deadline exhausted');
+  facts.locales.terminalNodeID=localizedNodeID;
   facts.locales.terminalStop='停止';
-  await driverCommand('workbench.action.closeWindow',[]);exited=undefined;childExit.then(value=>{exited=value;});
-  const localeExit=await wait('Localized Host public close',()=>exited,value=>value!==undefined,Math.min(deadline,Date.now()+30000));
-  assert.equal(localeExit.code,0);assert.equal(localeExit.signal,null);
-  publicExits.push({ locale: 'zh-cn', exit: localeExit,
-    absence: await waitForHostAbsence(originalHost,Math.min(deadline,Date.now()+infrastructureBudgets.hostExit)) });
+  exited=undefined;childExit.then(value=>{exited=value;});
+  publicExits.push({ locale: 'zh-cn', ...await observeInstalledPublicExit({ platform: process.platform,
+    command: driverCommand, readChildExit: () => exited, expectedHost: originalHost, observeHost: waitForHostAbsence,
+    deadline: Math.min(deadline, Date.now() + infrastructureBudgets.hostExit),
+    record: step => facts.publicExitSteps.push({ locale: 'zh-cn', ...step }) }) });
   hostExit='passed'; actionCompletedAt = new Date().toISOString();
   } finally { signal.removeEventListener('abort', abort); }
 }, { settlementDeadline: Math.min(cleanupDeadline, deadline + 10000) });

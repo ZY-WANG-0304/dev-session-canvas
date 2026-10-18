@@ -2,7 +2,17 @@
 
 此目录属于参考证据，不取代正式设计和逐任务验收。正式决策在[release-gate-redesign.md](../../../design-docs/release-gate-redesign.md)，推进状态在[实施计划](../../../exec-plans/active/release-gate-implementation.md)。实现和证据继续随 PR335，发布 PR327 保留。
 
-最新状态（2026-10-18）：第七轮 [39112933251](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39112933251) 在resolve正确拒过时helper摘要，原业务任务未运行，17 jobs为1成功/3失败/13 skipped，无acceptance。输入7e4d71fc的双parents已独立核为main6e708c6b与head0201c58f；重新生成123预算的期限、wait表达式、倍数、parts与有限循环逐项不变，只同步摘要和行号。真实当前源码核对/副本未审查改动拒绝与panel焦点合同2/2通过；后续完整新输入仍需验证。
+最新状态（2026-10-18）：第八轮[39113768051](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113768051)在真正预合并e4331d26/head03930c18终态失败，精确parents已API核为main6e708c6b与该head；247 jobs为241成功/6失败，330 actual、324 required、321 required passed，326 total passed含5个校准操作。未改PR327的组合[39113960317](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39113960317)在真正预合并4dd88eaa/组合6109a027终态失败，精确main/组合parents和双PR ancestry已核，247 jobs为242成功/5失败，330全部required、327通过。两批source117/118、packaged104/104、Linux原样安装通过；required失败各为一个source与两平台安装，PR335另有Windows身份校准失败，errors/notRun空，均无acceptance。
+
+两个原aggregate artifact12132143479/ZIPa5594668、12132134790/ZIP8ae1fa06和原candidate12131187990/ZIP1e0e1498、12131977938/ZIPb8089216已独立绑定actual producer/上传ID/原摘要。规范包回执分别1b86af7b和b19f6505，原主/notifierVSIX摘要见JSON。两次本地全量task原下载均在300000ms失败，现场在各download-1/all-original、日志full-readonly-1.log；没有完整本地再聚合，不能加时追认。正式Actions aggregate的330任务结果与本地下载分别记录。
+
+三项平台观察修正保原预算和产品：Windows Process/SafeHandle直接观察原PID/StartTime/HasExited，权限/空/错PID/未知/逾期不当absent；macOS公开Quit后原30秒分别核应用close0和原Host消失；中文新Terminal固定唯一新增ID，原20秒内通过真实标题栏双击退出概览，精确“停止”可见可用后只点击一次。原CIM历史阻塞机制及macOSTERM后group signal0 EPERM仍未确认，修观察不追认历史成功。
+
+当前113门禁/发布/恢复合同同批通过、0失败/0跳过，四workflow actionlint正确调用exit0；误指不存在workflow的actionlint-10原失败保留。真实浏览器注册429→430仅新增概览中文Stop回归，原429全保留；同production输入427功能/3视觉全通过、retry0、baseline不变。原第八轮production bundle概览回归通过。更新driver消费原第八轮Linux双包的公开完整安装诊断通过，包括I/O/resize/Stop、原通知token确认/回跳/用户ack、中英文和两原应用/Host退出/清理；中文初始overview=false，不外推Windows概览/macOSQuit，全部局部acceptance=false。
+
+原source ready/panel焦点两失败尚未定因：real-reopen原setup退出/离线屏障成立，verify公开open→close→open的generation5原45秒没有ready/bootstrapAck；组合file/views原10秒内已ready/命中但documentFocus=false。仅加外部只读CDP网络/Runtime、不改测试body/产品bundle的当前两个Host诊断通过，并核原hash/退出/退役，不能抹原首败。新head完整实际验收、两生产竞态仍未收口，详细原地址/hash见[local-results.json](local-results.json)。
+
+历史第七轮状态：第七轮 [39112933251](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39112933251) 在resolve正确拒过时helper摘要，原业务任务未运行，17 jobs为1成功/3失败/13 skipped，无acceptance。输入7e4d71fc的双parents已独立核为main6e708c6b与head0201c58f；重新生成123预算的期限、wait表达式、倍数、parts与有限循环逐项不变，只同步摘要和行号。真实当前源码核对/副本未审查改动拒绝与panel焦点合同2/2通过；后续完整新输入仍需验证。
 
 第六轮 [39108395021](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108395021) 终态失败，324 required/320 required passed，326 total passed 含六校准操作；真实 0.26.1 组合 [39108780795](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39108780795) 330 required/328通过、source118/packaged104全通过，剩两平台安装URI确认失败。Linux原样安装和六native同批通过；原aggregate/两失败安装工件已独立绑定job/hash，第六轮双包artifact12128899187/ZIP d509e627原bytes已核，原包摘要不变。不同轮次不互补验收，均无acceptance。第六轮全量原任务本地下载在原5分钟期限终止，已下载部分保留于`/dev/shm/dsc-ci-actions-39108395021-download-1/all-original`，日志`/dev/shm/dsc-ci-actions-39108395021-full-readonly-2.log`；独立全量再聚合未完成。
 

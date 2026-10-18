@@ -1848,6 +1848,11 @@
       "title": "multi-root rootGroups arrange menu defaults to current root and offers workspace scope"
     },
     {
+      "id": "a03daaf9564243b49609-db7218ff9945a3a902b2",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed localized Stop preparation publicly focuses the original overview Terminal before one visible action"
+    },
+    {
       "id": "a03daaf9564243b49609-db979a9603ff0ed95da4",
       "file": "webview-harness.spec.mjs",
       "title": "note markdown preview text remains selectable in read mode"

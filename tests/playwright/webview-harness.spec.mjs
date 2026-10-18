@@ -6,6 +6,7 @@ import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
 import { transform } from 'esbuild';
 import terminalResize from '../vscode-smoke/terminal-resize.cjs';
+import { prepareInstalledLocalizedStop } from '../../scripts/smoke/installed-ui-observation.mjs';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -8815,6 +8816,38 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('1');
+});
+
+test('installed localized Stop preparation publicly focuses the original overview Terminal before one visible action', async ({ page }) => {
+  await openHarness(page);
+  const state = createDistantOverviewState();
+  await bootstrap(page, state);
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  const originalID = 'installed-locale-original';
+  const terminal = createLiveExecutionNodeState('terminal').nodes[0];
+  const original = { ...terminal, id: originalID, title: '原中文 Terminal',
+    position: { x: 7200, y: 9200 } };
+  const evidence = [], deadline = Date.now() + 20000;
+  const result = await prepareInstalledLocalizedStop({ frame: page, deadline,
+    create: async limit => {
+      expect(limit).toBe(deadline);
+      await bootstrap(page, { ...state, nodes: [...state.nodes, original] });
+      await expect(nodeById(page, originalID).getByRole('button', { name: '停止', exact: true })).toBeHidden();
+    }, record: step => evidence.push(step) });
+  expect(result.nodeID).toBe(originalID);
+  expect(result.deadline).toBe(deadline);
+  expect(evidence.map(step => step.phase)).toEqual(['original-node-bound', 'localized-stop-interactive']);
+  expect(evidence[0].overview).toBe('true');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(result.stop).toBeVisible();
+  await expect(result.stop).toBeEnabled();
+  const readStops = () => readPostedMessagesByType(page, 'webview/stopExecutionSession');
+  await expect.poll(readStops).toHaveLength(0);
+  await result.stop.click({ timeout: Math.max(1, deadline - Date.now()) });
+  await expect.poll(readStops).toEqual([
+    expect.objectContaining({ payload: expect.objectContaining({ nodeId: originalID }) })
+  ]);
 });
 
 test('minimap wheel honors the dynamic fit view min zoom', async ({ page }) => {

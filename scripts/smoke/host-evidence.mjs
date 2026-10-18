@@ -1,37 +1,54 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { readJSON } from '../gates/receipts.mjs';
 import { smokeCatalog } from './smoke-catalog.mjs';
+import { readWindowsProcessIdentity } from './windows-process-identity.mjs';
 
-export async function processIdentity(pid) {
+const executeFile = promisify(execFile);
+
+export async function processIdentity(pid, deadline = Date.now() + 5000) {
   assert(Number.isSafeInteger(pid) && pid > 0);
+  assert(Number.isFinite(deadline) && deadline > Date.now(), 'Original process identity deadline exhausted');
   if (process.platform === 'linux') {
     try {
-      const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
+      const stat = await fs.readFile(`/proc/${pid}/stat`, { encoding: 'utf8',
+        signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))) });
+      assert(Date.now() <= deadline, 'Original process identity deadline exhausted');
       const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
       return { pid, startTicks: fields[19], state: fields[0] };
-    } catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return null; throw error; }
+    } catch (error) {
+      if (['ENOENT', 'ESRCH'].includes(error.code) && Date.now() <= deadline) return null;
+      throw error;
+    }
   }
   if (process.platform === 'darwin') {
     try {
-      const start = execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout: 5000 }).trim();
+      const { stdout } = await executeFile('ps', ['-p', String(pid), '-o', 'lstart='], {
+        encoding: 'utf8', timeout: Math.max(1, Math.min(5000, deadline - Date.now())), maxBuffer: 8192 });
+      assert(Date.now() <= deadline, 'Original process identity deadline exhausted');
+      const start = stdout.trim();
       return start ? { pid, startTime: start } : null;
-    } catch(error) {if(error.status===1)return null;throw error;}
+    } catch(error) {
+      if (error.code === 1 && !error.stdout?.trim() && !error.stderr?.trim() && Date.now() <= deadline) return null;
+      throw error;
+    }
   }
-  const script = `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { $p.CreationDate.ToUniversalTime().ToString("o") }`;
-  const executable=path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
-  const start = execFileSync(executable, ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8',timeout:5000 }).trim();
-  return start ? { pid, startTime: start } : null;
+  assert.equal(process.platform, 'win32', 'Process identity observation is unsupported on this platform');
+  return readWindowsProcessIdentity(pid, deadline);
 }
 export async function waitForHostAbsence(expected, deadline = Date.now() + 30000) {
+  assert(expected?.startTicks || expected?.startTime, 'Original Host creation identity is required');
   do {
-    const actual = await processIdentity(expected.pid);
+    assert(Date.now() < deadline, 'Original Host exit deadline exhausted');
+    const actual = await processIdentity(expected.pid, deadline);
+    assert(Date.now() <= deadline, 'Original Host exit deadline exhausted');
     if (!actual || (expected.startTicks && expected.startTicks !== actual.startTicks)
       || (expected.startTime && expected.startTime !== actual.startTime)) return { expected, actual, result: 'original-absent' };
     if (Date.now() >= deadline) throw new Error(`Original Host exit is unconfirmed: ${JSON.stringify({ expected, actual })}`);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(0, deadline - Date.now()))));
   } while (true);
 }
 export async function collectHostEvidence(directory, nonce, { contract, requireActions = true, observeExit=true,deadline=Date.now()+30000 } = {}) {

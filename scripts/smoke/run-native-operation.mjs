@@ -98,7 +98,7 @@ export async function runNativeOperation({ assets, output }) {
     const result = await wait('Native start', () => { if (startFailure) throw startFailure; return startedResult; },
       value => value !== undefined, startedDeadline);
     assert.equal(result.kind, 'started');
-    const identity = await processIdentity(result.pid); assert(identity, 'Started PTY process must be independently observed');
+    const identity = await processIdentity(result.pid, startedDeadline); assert(identity, 'Started PTY process must be independently observed');
     observationEvidence.identity = identity;
     return { record, identity, terminal, result: () => processResult };
   };
@@ -139,7 +139,7 @@ export async function runNativeOperation({ assets, output }) {
     await wait('Original Stop subject is interactive', () => stop.terminal.snapshot(),
       () => stop.terminal.hasExactLine(stopMarker), stopReadyDeadline);
     assert.equal(stop.result(), undefined, 'Stop must target a still-running original process');
-    const beforeStop = await processIdentity(stop.identity.pid);
+    const beforeStop = await processIdentity(stop.identity.pid, stopReadyDeadline);
     assert.equal(beforeStop?.startTicks ?? beforeStop?.startTime, stop.identity.startTicks ?? stop.identity.startTime);
     const stopDeadline = actionDeadline();
     const stopped = await withinDeadline('Original provider Stop', stopDeadline,
