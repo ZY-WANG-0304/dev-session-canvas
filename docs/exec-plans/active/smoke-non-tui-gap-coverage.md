@@ -64,3 +64,6 @@
 
 
 后续发现与决策：Stop最终失败/unknown不能通过真实SIGKILL抵抗模型随意伪造，使用已有production owner的受控transport故障合同，纳入默认regression；真实PTY另核INT忽略后产品升级、原identity退出、final saved与reader applied。新增回归改变shard后，旧aggregate反例需按实际producer选择sibling，不写死shard。Host正文标记来自原setup实际输出，不能由状态或尚未保存快照推断。完整合同118/118后加强Host正文，仅重跑受影响六合同和两Host场景，未再次重复全部合同。所有首败日志保留。
+
+
+PR335已更新c679a60f，正式39311924428固定真预合并3da5f41a（base6e708c6b/headc679a60f）；原计划ZIP摘要/producer下载已核，353项中新增11项source和packaged均required，原owner合同在Actions54/54通过。首轮shard-1失败为test-smoke-runtime-retirement实际runner方法的受控VM没注入新增process.execPath；这是本轮遗漏的测试接线，补显式outer Node路径并加prepare/launch传递断言后定向原脚本通过。原CI失败保留，不以重跑抹去；follow-up新head重新触发完整输入验收。

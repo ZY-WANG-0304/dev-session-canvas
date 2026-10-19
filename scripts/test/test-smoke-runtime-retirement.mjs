@@ -117,7 +117,7 @@ test('the actual source smoke entry explicitly enables observation in preparatio
   const start = runner.indexOf('async function main()');
   const main = runner.slice(start, runner.indexOf('\nasync function ', start + 1));
   const calls = [];
-  const context = vm.createContext({ path, projectRoot: '/test/project', smokeDebugRoot: '/test/debug',
+  const context = vm.createContext({ path, process: { execPath: '/test/node22' }, projectRoot: '/test/project', smokeDebugRoot: '/test/debug',
     scenarios: [{ name: 'execution-start/auto-start', variant: 'execution-start--auto-start', disableWorkspaceTrust: true }], fakeAgentProviderPath: '/test/agent',
     missingAgentProviderPath: '/test/missing', smokeFixturesPath: '/test/bin', console: { log() {} },
     shouldReRunInsideXvfb: () => false, shouldRunScenario: name => name === 'execution-start/auto-start',
@@ -128,8 +128,12 @@ test('the actual source smoke entry explicitly enables observation in preparatio
   });
   await vm.runInContext(`${main}\nmain()`, context);
   assert.equal(calls.length, 2);
-  for (const call of calls) assert.equal(call.extensionTestsEnv.DEV_SESSION_CANVAS_SMOKE_TEST_MODE, '1',
-    'Source Host ExtensionMode.Test does not itself enable observation in the separate Supervisor');
+  for (const call of calls) {
+    assert.equal(call.extensionTestsEnv.DEV_SESSION_CANVAS_SMOKE_TEST_MODE, '1',
+      'Source Host ExtensionMode.Test does not itself enable observation in the separate Supervisor');
+    assert.equal(call.extensionTestsEnv.DEV_SESSION_CANVAS_TEST_NODE_PATH, '/test/node22',
+      'TTY subject uses the outer Node executable rather than the Electron Host executable');
+  }
 });
 
 for (const mode of ['retained-then-absent', 'wrong-owner', 'wrong-session', 'wrong-kind', 'invalid-absence', 'missing-before-stop', 'disconnect']) {

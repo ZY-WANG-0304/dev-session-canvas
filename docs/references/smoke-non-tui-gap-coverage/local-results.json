@@ -427,5 +427,38 @@
     "Host新反例错误字段引用，修正合同subjects结构。",
     "Host可见历史断言误用结束status/尚未保存的setup快照，改原setup捕获输出marker。",
     "原包提取darwin spawn-helper丢可执行位，恢复既有mode后构建通过。"
-  ]
+  ],
+  "ciFirstAttempt": {
+    "runID": 39311924428,
+    "head": "c679a60ff2175eaa4a68c3439bccc858758bcf34",
+    "inputSHA": "3da5f41a38435987a9bd4ecb73e65822b3965c09",
+    "planArtifactID": 12215996793,
+    "planZIP": {
+      "path": "/dev/shm/dsc-pr335-gap-ci-plan-original.zip",
+      "sha256": "5e5d8da6cb71eae20ef1b54a0216ec43706465793a2286e94537c27a9953dc72",
+      "size": 22043
+    },
+    "taskCount": 353,
+    "sourceRequired": 129,
+    "packagedRequired": 115,
+    "newCasesRequiredEach": 11,
+    "failedJobID": 118263769598,
+    "failure": "test:smoke-runtime-retirement VM context omitted process.execPath introduced by outer Node22 geometry fixture binding",
+    "log": {
+      "path": "/dev/shm/dsc-pr335-gap-ci-regression-shard1-first.log",
+      "sha256": "181cafd33d151dd2388f244690ae7b271dfb90f8e38bfca3e11087a2421b08f3",
+      "size": 109706
+    },
+    "ownerLifecycle": "54/54 passed in actual Actions",
+    "acceptance": false
+  },
+  "runtimeRetirementRepair": {
+    "result": "passed",
+    "log": {
+      "path": "/dev/shm/dsc-pr335-gap-runtime-retirement-fix.log",
+      "sha256": "8b5d162ac95c5e164e5c2f793aa6d9703ab074f463e011e8e31e563afb273160",
+      "size": 1350
+    },
+    "change": "受控VM显式给outer Node execPath，并核prepare/launch均传同Node路径；产品和runner实现无变化"
+  }
 }

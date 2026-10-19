@@ -220,3 +220,6 @@ Stop 证据分层：真实 PTY smoke 让原外部进程确认忽略 INT，然后
 
 
 本轮Linux source十一项通过；末次加强两Host可见历史后定向重跑通过，13份实际回执（两Host各setup/verify）及原退出已独立核验。合同118/118，末次源码后预算/可达/Host反例6/6，owner54/54、history6、runner env和typecheck通过。借用依赖/旧native资产与有限输入边界明记；新同批双包与完整Actions验收尚待PR更新，不宣布发布解除。证据见[本轮记录](../references/smoke-non-tui-gap-coverage/local-results.json)。
+
+
+首轮新CI39311924428在regression shard-1失败：受控runtime-retirement VM遗漏runner新绑定的outer Node路径process.execPath，尚未进入packaged验收；原owner54/54在Actions通过。补齐VM环境与同路径断言后本地定向通过，产品未改。新head验收仍待，原输入失败和计划required新增集合均记入本轮证据。
