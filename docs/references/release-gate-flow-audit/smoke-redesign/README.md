@@ -1,6 +1,6 @@
 # Smoke 重划设计的可读目录与覆盖映射
 
-这是拟议目录，尚未修改 runner 或 CI。输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`；静态报告不构成产品验收。设计见[场景与子场景边界](../../../design-docs/smoke-scenario-boundaries.md)，原[现状六图](../smoke/README.md)保持。
+原始目录设计输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`；静态报告不构成产品验收。2026-10-20按用户授权在PR335实现十一项非真实TUI默认source/packaged入口，实际映射148/4；四项真实TUI仍待覆盖，运行证据与历史输入分别记录。设计见[场景与子场景边界](../../../design-docs/smoke-scenario-boundaries.md)，原[现状六图](../smoke/README.md)保持。
 
 ## 原入口迁移
 
@@ -62,25 +62,25 @@
 | `canvas-reconcile/remove-root` | 移除root只清理所属执行 | 源码默认、packaged默认 |
 | `surface-continuity/cutover` | 切面与重读保持原执行正文 | 源码默认、packaged默认 |
 | `surface-continuity/completed-reflow` | 结束后重排保护保存尺寸 | 源码默认、packaged默认 |
-| `surface-continuity/live-page-remount` | 活动执行下真实页面重建 | 新增待验 |
+| `surface-continuity/live-page-remount` | 活动执行下真实页面重建 | 新增源码/packaged默认；实跑结果独立记录 |
 | `host-boundary-local/interrupt-and-flush` | 模拟Host边界中断并保存本地执行 | 源码默认、packaged默认 |
 | `host-boundary-local/manual-terminal-start` | 边界后Terminal显式新启动 | 源码默认、packaged默认 |
 | `host-boundary-local/explicit-new-start` | 边界后Agent/Terminal显式普通新Start | 源码默认、packaged默认 |
 | `host-boundary-local/recent-state-flush` | 模拟Host边界flush近期本地状态 | 源码默认、packaged默认 |
-| `host-boundary-local/preserve-terminal-state` | 自然或Stop终态经边界仍保持 | 新增待验 |
-| `host-boundary-local/new-host-manual-recovery` | snapshot-only真正新Host恢复 | 新增待验 |
+| `host-boundary-local/preserve-terminal-state` | 自然或Stop终态经边界仍保持 | 新增源码/packaged默认；实跑结果独立记录 |
+| `host-boundary-local/new-host-manual-recovery` | snapshot-only真正新Host恢复 | 新增源码/packaged默认；实跑结果独立记录 |
 | `agent-tui/input-during-work` | 真实TUI处理中输入可用 | 新增待验 |
 | `agent-tui/answer-with-footer` | 真实回答在footer上方正确呈现 | 新增待验 |
 | `agent-tui/tool-network-silence` | 工具网络静默期间原回合仍处理中 | 新增待验 |
 | `agent-tui/turn-completion-redraw` | 独立provider完成证据与完成后重绘 | 新增待验 |
-| `execution-exit/native-crash` | 原生异常终止独立故障模型 | 新增待验 |
-| `execution-exit/terminal-natural` | Terminal自然退出契约 | 新增待验 |
-| `execution-exit/terminal-error` | Terminal异常退出契约 | 新增待验 |
-| `execution-restart/terminal-after-exit` | Terminal自然异常退出后新Start | 新增待验 |
-| `execution-stop/unresponsive` | 不响应Stop时升级与失败责任 | 新增待验 |
-| `execution-resize/live-geometry` | 普通活动执行的独立几何resize正例 | 新增待验 |
-| `output-pressure/resize` | 高输出中原PTY几何resize | 新增待验 |
-| `output-pressure/full-integrity` | 高输出完整性独立验收 | 新增待验 |
+| `execution-exit/native-crash` | 原生异常终止独立故障模型 | 新增源码/packaged默认；实跑结果独立记录 |
+| `execution-exit/terminal-natural` | Terminal自然退出契约 | 新增源码/packaged默认；实跑结果独立记录 |
+| `execution-exit/terminal-error` | Terminal异常退出契约 | 新增源码/packaged默认；实跑结果独立记录 |
+| `execution-restart/terminal-after-exit` | Terminal自然异常退出后新Start | 新增源码/packaged默认；实跑结果独立记录 |
+| `execution-stop/unresponsive` | 不响应Stop时升级与失败责任 | 新增源码/packaged默认；实跑结果独立记录 |
+| `execution-resize/live-geometry` | 普通活动执行的独立几何resize正例 | 新增源码/packaged默认；实跑结果独立记录 |
+| `output-pressure/resize` | 高输出中原PTY几何resize | 新增源码/packaged默认；实跑结果独立记录 |
+| `output-pressure/full-integrity` | 高输出完整性独立验收 | 新增源码/packaged默认；实跑结果独立记录 |
 | `agent-resume-context/manual-resume` | mount不自动继续且用户显式resume | 源码默认、packaged默认 |
 | `agent-resume-context/claude-explicit-id` | 文件确认显式Claude ID经Stop保持 | 源码默认、packaged默认 |
 | `terminal-links/file-position` | 文件链接打开准确行列 | 源码默认、packaged默认 |

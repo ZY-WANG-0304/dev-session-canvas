@@ -5,8 +5,8 @@ validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域, 画布交互域, 项目状态域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-18
+related_plans: [docs/exec-plans/completed/smoke-scenario-redesign.md, docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md, docs/exec-plans/active/smoke-non-tui-gap-coverage.md]
+updated_at: 2026-10-20
 ---
 
 # Smoke 场景与子场景的验证边界重划
@@ -206,3 +206,17 @@ fake Agent输入区状态仍只覆盖受控启发式，不证明真实TUI回合�
 第五轮39101493143实际source115/118、packaged103/104失败，PR327临时组合39101774719则source118/packaged104同批通过，原样安装macOS/Windows两项仍失败；两个批次均无acceptance。当前文件输入按原URI/group关闭、真实中心命中和动画稳定准备/完整primary pointer修正，保原产品等待、split/mounted和reader断言；当前源码production+旧native的完整文件视图诊断通过，不代证新head正式packaged。真实浏览器428→429保原428，426功能/3视觉及105合同同批通过；123 suite预算逐项未变。实际来源与未验边界见[实施证据](../references/release-gate-redesign/implementation/local-results.json)。
 
 第六轮39108395021和最新0.26.1组合39108780795已终态，组合source118/packaged104全部通过但两平台URI用户确认仍失败。第六轮额外source panel点击缺文档焦点与runtime-mode删除期间pending回调失败。panel公开focus和URI真实确认已补，原10秒/20秒及完整后置断言保持，最终108合同同批通过；三平台新head尚待验收。mode-switch在生产deactivation同样复现，继续保原case和业务时序，不加等待/retry，未修责任见[共享模式边界](runtime-shared-root-canvas-sync.md#ci-改造时发现的模式切换回调边界2026-10-18)。生产既有恢复订阅竞态也未豁免。
+
+## 非真实 Agent TUI 缺口的实施范围（2026-10-20）
+
+用户明确要求在 PR335 先覆盖十一项非真实 TUI 目标。此次范围覆盖此前暂不新增必跑的约定：这十一项完成实际入口、严格断言及预算后进入 source 与 packaged 默认门禁；四项真实 Agent TUI 仍保持未实现。实际实现与结果见 `docs/exec-plans/active/smoke-non-tui-gap-coverage.md`，当前尚未验收，不将新增目录或静态可达算成通过。新 Host 场景必须确认旧 Host 创建身份消失再启动新 Host；页面重建必须保持原执行；原生异常不能用普通非零退出更名；resize 必须读取子进程原 stdout 的新鲜 TTY 几何；高输出逐行/顺序/hash 校验；不响应 Stop 由外部夹具确认故障前提，产品升级及真实退出单独验证。
+
+
+新增默认入口为 `surface-continuity/live-page-remount`、Terminal 自然/非零退出与结束后新 Start、`execution-exit/native-crash`、`execution-stop/unresponsive`、普通/输出中真实 resize、逐行完整输出和两项 `host-boundary-local`。它们都从独立夹具开始；两项 Host 边界分别产生 setup/verify 回执，最终 verify 承担清理。新 Host 前除旧 Host 外还核原 Agent 与 Terminal shell 的创建身份消失；resume 需原 provider session 提示、新 execution 和真实输入输出。默认 source 加十一项、packaged 加十一项。
+
+Stop 证据分层：真实 PTY smoke 让原外部进程确认忽略 INT，然后一次产品 Stop 触发有界升级，核原进程 absence 与原执行 final saved/reader applied。最终故障/未知结果由 `test:execution-owner-lifecycle` 的受控 transport 和实际 production owner 验证（54项），现纳入默认 regression：graceful/force/cancel 各一次，accepted 不等于 settled，原期限后 unconfirmed，晚到释放不能重写首败或重新准入。这不是“真实 OS 进程抵抗 SIGKILL”的 UI 验收，不能作该声称。
+
+152 项目的地现为 148 implemented-unverified / 4 not-implemented；四项真实 TUI 保持待覆盖。此处状态只表达实现追踪，不签发通过；新增目标实际运行、原输入和限制在本轮计划与证据单独记录。原 123 个 suite 的 timeoutMs 完全相同，新增外层上限由有限调用点生成，不重置或扩张内部 ready/resize/Stop 期限。历史段落的 137/15 是当时事实，不据本轮改写历史验收。
+
+
+本轮Linux source十一项通过；末次加强两Host可见历史后定向重跑通过，13份实际回执（两Host各setup/verify）及原退出已独立核验。合同118/118，末次源码后预算/可达/Host反例6/6，owner54/54、history6、runner env和typecheck通过。借用依赖/旧native资产与有限输入边界明记；新同批双包与完整Actions验收尚待PR更新，不宣布发布解除。证据见[本轮记录](../references/smoke-non-tui-gap-coverage/local-results.json)。

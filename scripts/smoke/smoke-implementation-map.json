@@ -411,9 +411,18 @@
     },
     {
       "id": "surface-continuity/live-page-remount",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "surface-continuity/live-page-remount",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentLivePageRemount",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "host-boundary-local/interrupt-and-flush",
@@ -486,15 +495,53 @@
     },
     {
       "id": "host-boundary-local/preserve-terminal-state",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "host-boundary-local/preserve-terminal-state",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "setup"
+        },
+        {
+          "suite": "host-boundary-local/preserve-terminal-state",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "host-boundary-local/new-host-manual-recovery",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "host-boundary-local/new-host-manual-recovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "setup"
+        },
+        {
+          "suite": "host-boundary-local/new-host-manual-recovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "agent-tui/input-during-work",
@@ -522,51 +569,123 @@
     },
     {
       "id": "execution-exit/native-crash",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/native-crash",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentNativeCrash",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "execution-exit/terminal-natural",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/terminal-natural",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentTerminalNatural",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "execution-exit/terminal-error",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/terminal-error",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentTerminalError",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "execution-restart/terminal-after-exit",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-restart/terminal-after-exit",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentTerminalRestart",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "execution-stop/unresponsive",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-stop/unresponsive",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentUnresponsiveStop",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "execution-resize/live-geometry",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-resize/live-geometry",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentLiveGeometry",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "output-pressure/resize",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "output-pressure/resize",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentPressureResize",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "output-pressure/full-integrity",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "output-pressure/full-integrity",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentOutputIntegrity",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
     },
     {
       "id": "agent-resume-context/manual-resume",

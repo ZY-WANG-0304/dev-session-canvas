@@ -1,3 +1,4 @@
+import { runSnapshotHostBoundary } from './snapshot-host-boundary.mjs';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
@@ -15,6 +16,8 @@ import {
   resolveStagedSmokeTestPath,
   runInsideXvfb,
   runVSCodeScenario,
+  prepareRuntime,
+  launchPreparedVSCodeScenario,
   stageSmokeTestSuite,
   shouldReRunInsideXvfb
 } from './vscode-smoke-runner.mjs';
@@ -77,7 +80,7 @@ async function main() {
       workspacePath = path.join(debugRoot, 'owned-canvas.code-workspace');
       await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }), 'utf8');
     }
-    await runVSCodeScenario({
+    const options = {
       projectRoot,
       debugRoot: path.join(debugRoot, scenario),
       runtimeDirName: `dsc-vsix-${scenario.replaceAll('/', '--')}`,
@@ -89,9 +92,17 @@ async function main() {
         [SMOKE_TEST_MODE_ENV_KEY]: '1',
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+        DEV_SESSION_CANVAS_TEST_NODE_PATH: process.execPath,
         DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath
       }
-    });
+    };
+    const entry = suites.find(item => item.id === scenario);
+    if (entry.hostRoles) {
+      const runtime = await prepareRuntime(options);
+      await runSnapshotHostBoundary({ runtime, scenario, launch: extraEnv => launchPreparedVSCodeScenario({
+        ...options, runtime, extensionTestsEnv: { ...options.extensionTestsEnv, ...extraEnv }
+      }) });
+    } else await runVSCodeScenario(options);
   }
 
   await verifyPackageFiles(packageReceipt, plan, candidateRoot);

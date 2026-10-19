@@ -1,3 +1,4 @@
+import { runSnapshotHostBoundary } from './snapshot-host-boundary.mjs';
 import path from 'path';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -87,6 +88,7 @@ async function main() {
         DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+        DEV_SESSION_CANVAS_TEST_NODE_PATH: process.execPath,
         DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
         PATH: smokeFixturesPath
       }
@@ -101,7 +103,7 @@ async function main() {
       workspacePath = path.join(runtime.debugRoot, 'owned-canvas.code-workspace');
       await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }));
     }
-    await launchPreparedVSCodeScenario({
+    const launch = async extraEnv => launchPreparedVSCodeScenario({
       projectRoot,
       runtime,
       workspacePath,
@@ -113,10 +115,14 @@ async function main() {
         DEV_SESSION_CANVAS_SMOKE_TEST_MODE: '1',
         DEV_SESSION_CANVAS_SMOKE_SCENARIO: scenario.name,
         DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: fakeAgentProviderPath,
+        DEV_SESSION_CANVAS_TEST_NODE_PATH: process.execPath,
         DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: missingAgentProviderPath,
-        PATH: smokeFixturesPath
+        PATH: smokeFixturesPath,
+        ...extraEnv
       }
     });
+    if (scenario.hostRoles) await runSnapshotHostBoundary({ runtime, scenario: scenario.id, launch });
+    else await launch({});
     console.log(`${scenario.description} passed.`);
   }
 

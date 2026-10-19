@@ -120,6 +120,9 @@ exports.runWrapped = async function runWrapped(testFile) {
   if (testFile === 'real-reopen-tests.cjs') {
     const control = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE, 'utf8'));
     role = control.phase;
+  } else if (process.env.DEV_SESSION_CANVAS_SNAPSHOT_HOST_CONTROL_FILE) {
+    const control = JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_SNAPSHOT_HOST_CONTROL_FILE, 'utf8'));
+    role = control.phase;
   } else if (testFile === 'two-window-shared-runtime-tests.cjs') role = process.env.DEV_SESSION_CANVAS_TWO_WINDOW_ROLE;
   else if (['notifier-locale-tests.cjs', 'ui-copy-locale-tests.cjs'].includes(testFile)) role = process.env.DEV_SESSION_CANVAS_EXPECTED_LOCALE;
   const { pathToFileURL } = require('node:url');
@@ -202,6 +205,8 @@ exports.runWrapped = async function runWrapped(testFile) {
   let setup = false;
   const controlFile = process.env.DEV_SESSION_CANVAS_REAL_REOPEN_CONTROL_FILE;
   if (testFile === 'real-reopen-tests.cjs' && controlFile) setup = JSON.parse(await fs.readFile(controlFile, 'utf8')).phase === 'setup';
+  if (process.env.DEV_SESSION_CANVAS_SNAPSHOT_HOST_CONTROL_FILE) setup =
+    JSON.parse(await fs.readFile(process.env.DEV_SESSION_CANVAS_SNAPSHOT_HOST_CONTROL_FILE, 'utf8')).phase === 'setup';
   if ((setup || transferred) && !original) {
     receipt.cleanup = 'transferred-to-verify';
     receipt.phase = 'setup';

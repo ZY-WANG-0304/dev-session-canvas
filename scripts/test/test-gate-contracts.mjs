@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -28,7 +29,8 @@ import { chromium } from 'playwright';
 import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
   prepareInstalledLocalizedStop, findUniqueInstalledTerminalCreation } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
-import { selectSmokeSuites, smokeCatalog } from '../smoke/smoke-catalog.mjs';
+import { regressionScripts } from '../gates/catalog.mjs';
+import { selectSmokeSuites, smokeHostContract, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
 import { withinDeadline } from '../gates/deadline.mjs';
@@ -864,8 +866,8 @@ test('actual Host cleanup observes an already retired graph without a competing 
 test('smoke migration resolves actual registered helpers and causal steps without claiming unimplemented gaps', async () => {
   const result = await verifySmokeImplementationSources();
   assert.equal(result.designDestinations, 152);
-  assert.equal(result.mappedDestinations, 137);
-  assert.equal(result.unimplemented.length, 15);
+  assert.equal(result.mappedDestinations, 148);
+  assert.equal(result.unimplemented.length, 4);
   assert.equal(result.reviewedAssertionReplacements, 16);
   assert.equal(result.scope, 'implementation-traceability-not-execution-acceptance');
 });
@@ -936,9 +938,11 @@ test('failed shard reports the original failed task before passed tasks rejected
   f.provenance.jobs.find(job=>job.name===original.producer.jobName).conclusion='failure';f.refresh();
   const {result,acceptance}=aggregateResults(f);
   assert.equal(acceptance,null);assert.equal(result.status,'failed');
-  assert(result.failed.some(item=>item.key==='regression/shard-1/typecheck'),
+  const sibling = f.receipts.find(receipt => receipt !== original && receipt.producer.jobName === original.producer.jobName);
+  assert(sibling, 'The fixture requires a passing sibling in the failed producer');
+  assert(result.failed.some(item => item.key === `${sibling.job}/${sibling.variant}/${sibling.taskID}`),
     'A passing sibling cannot be accepted from a failed producer');
-  assert.equal(result.firstFailure.key,'regression/shard-1/test:execution-native-assets');
+  assert.equal(result.firstFailure.key, `${original.job}/${original.variant}/${original.taskID}`);
   assert.deepEqual(result.firstFailure.failures,original.failures);
 });
 for(const [name,mutate]of Object.entries({
@@ -1457,4 +1461,71 @@ test('clean checkout retirement preserves an unsettled original action and refus
   const actual = await retireCandidateCheckout(temp, new Error('Settled build failed'), deadline);
   assert(Date.parse(actual.cleanupCompletedAt) <= deadline);
   assert.equal(await fs.stat(temp).catch(() => null), null);
+});
+
+test('new smoke observations reject stale geometry, missing/reordered/duplicated output and reused Host', () => {
+  const { assertOutputIntegrity, assertGeometry, assertNewHost } = createRequire(import.meta.url)('../../tests/vscode-smoke/smoke-gap-observations.cjs');
+  const nonce = 'a'.repeat(32), prefix = `DSC_${nonce}_full_`;
+  const lines = ['00001', '00002', '00003'].map(value => prefix + value);
+  const receipt = { count: 3, phase: 'full', sha256: createHash('sha256').update(lines.join('\n')).digest('hex') };
+  assert.equal(assertOutputIntegrity(lines, { nonce, phase: 'full', count: 3 }, receipt).count, 3);
+  for (const bad of [lines.slice(1), [...lines].reverse(), [...lines, lines[0]], [...lines.slice(0, 2), prefix + '00004']]) {
+    assert.throws(() => assertOutputIntegrity(bad, { nonce, phase: 'full', count: 3 }, receipt));
+  }
+  assert.throws(() => assertOutputIntegrity(lines, { nonce, phase: 'full', count: 3 }, { ...receipt, sha256: '0'.repeat(64) }));
+  const expected = { request: nonce, after: 100, cols: 90, rows: 28 };
+  const observed = { request: nonce, observedAt: 101, cols: 90, rows: 28, method: 'original-stdout-fresh-tty-handle' };
+  assertGeometry(observed, expected);
+  for (const bad of [{ request: 'old' }, { observedAt: 99 }, { cols: 80 }, { rows: 24 }, { method: 'cached' }]) {
+    assert.throws(() => assertGeometry({ ...observed, ...bad }, expected));
+  }
+  assertNewHost({ pid: 1, start: 'a' }, { pid: 1, start: 'b' });
+  assert.throws(() => assertNewHost({ pid: 1, start: 'a' }, { pid: 1, start: 'a' }));
+});
+
+
+test('snapshot Host contract requires both actual roles, final cleanup and original Host absence', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-snapshot-contract-'));
+  t.after(() => fs.rm(temp, { recursive: true, force: true }));
+  const entry = smokeCatalog.find(item => item.id === 'host-boundary-local/new-host-manual-recovery');
+  const contract = { caseID: entry.id, vscode: '1.142.0', subjects: [
+    { testFile: entry.testFile, sha256: hash, roles: ['setup', 'verify'] }] };
+  assert.deepEqual(smokeHostContract(entry.id).subjects[0].roles, ['setup', 'verify']);
+  const start = Date.now() - 1000, completed = new Date(start + 100).toISOString();
+  const receipt = role => ({ schemaVersion: 1, nonce: 'snapshot', caseID: entry.id, role,
+    testFile: entry.testFile, subjectHash: hash,
+    host: { pid: process.pid, platform: process.platform, startTicks: 'original' },
+    environment: { vscode: '1.142.0', platform: process.platform },
+    startedAt: new Date(start).toISOString(), actionCompletedAt: completed, completedAt: completed,
+    deadline: start + 500, cleanupDeadline: start + 900,
+    action: 'passed', assert: 'passed', failures: [],
+    cleanup: role === 'setup' ? 'transferred-to-verify' : 'passed',
+    cleanupStartedAt: completed, cleanupCompletedAt: completed,
+    steps: entry.steps.map(id => ({ id, caseID: entry.id, status: 'passed',
+      startedAt: new Date(start + 10).toISOString(), completedAt: completed })) });
+  const save = async (setup, verify) => {
+    for (const [role, value] of [['setup', setup], ['verify', verify]]) {
+      const file = path.join(temp, `${role}.host.json`);
+      if (value) await fs.writeFile(file, JSON.stringify(value));
+      else await fs.rm(file, { force: true });
+    }
+  };
+  const check = () => collectHostEvidence(temp, 'snapshot', { contract, observeExit: false });
+  await save(receipt('setup'), receipt('verify')); await check();
+  await save(receipt('setup'), null);
+  await assert.rejects(check, /invocation set/);
+  await save(receipt('setup'), receipt('setup'));
+  await assert.rejects(check, /invocation set/);
+  await save(receipt('setup'), { ...receipt('verify'), cleanup: 'transferred-to-verify' });
+  await assert.rejects(check, /Final Host/);
+  await save(receipt('setup'), { ...receipt('verify'), steps: entry.steps.slice(1).map(id => ({ id })) });
+  await assert.rejects(check, /step set/);
+  const original = await processIdentity(process.pid);
+  await assert.rejects(() => waitForHostAbsence(original, Date.now() + 30), /exit/);
+});
+
+test('default regression includes owner Stop failure and unknown-result responsibility', async () => {
+  assert(regressionScripts.includes('test:execution-owner-lifecycle'));
+  const manifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.scripts['test:execution-owner-lifecycle'], 'node scripts/test/test-execution-owner-lifecycle.mjs');
 });

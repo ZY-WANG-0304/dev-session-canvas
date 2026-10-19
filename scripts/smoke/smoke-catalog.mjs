@@ -222,9 +222,24 @@ const lifecycleSmokeCases = [
   }
 ];
 
-// These cases migrate every trusted-only helper with a declared baseline.
-// Execution identities and persisted output come from real preparation, never
-// from a previous case or a fabricated diagnostic summary.
+// Additional non-TUI coverage uses independent real process fixtures.
+const additionalSmokeCases = [
+  ['surface-continuity/live-page-remount', '活动执行下真实页面重建', 'prepareIndependentTerminal', 'runIndependentLivePageRemount'],
+  ['execution-exit/terminal-natural', 'Terminal 自然退出、最终保存和原 reader', 'prepareIndependentTerminal', 'runIndependentTerminalNatural'],
+  ['execution-exit/terminal-error', 'Terminal 非零退出、最终保存和原 reader', 'prepareIndependentTerminal', 'runIndependentTerminalError'],
+  ['execution-restart/terminal-after-exit', 'Terminal 正常及非零退出后显式新 Start', 'prepareIndependentTerminal', 'runIndependentTerminalRestart'],
+  ['execution-exit/native-crash', '外部进程信号异常终止与资源退役', 'prepareIndependentAgent', 'runIndependentNativeCrash'],
+  ['execution-stop/unresponsive', '忽略首次中断的原进程由产品有界升级停止', 'prepareIndependentAgent', 'runIndependentUnresponsiveStop'],
+  ['execution-resize/live-geometry', '活动执行真实 TTY、页面和 Host 几何一致', 'prepareIndependentGeometrySubject', 'runIndependentLiveGeometry'],
+  ['output-pressure/resize', '持续输出过程中原 TTY resize', 'prepareIndependentGeometrySubject', 'runIndependentPressureResize', 'pressure'],
+  ['output-pressure/full-integrity', '高输出每行顺序、独立 hash 与最终保存一致', 'prepareIndependentGeometrySubject', 'runIndependentOutputIntegrity', 'pressure'],
+  ['host-boundary-local/preserve-terminal-state', '真实新 Host 保留自然/Stop 终态', 'prepareIndependentHostBoundary', 'runIndependentHostBoundary'],
+  ['host-boundary-local/new-host-manual-recovery', '真正新 Host 的 snapshot-only 手动恢复', 'prepareIndependentHostBoundary', 'runIndependentHostBoundary']
+].map(([id, title, prepare, entry, group = 'local-products']) => ({ id, title, prepare, entry, group,
+  fixture: prepare.replace('prepareIndependent', ''),
+  ...(id.startsWith('host-boundary-local/') ? { hostRoles: ['setup', 'verify'] } : {}) }));
+
+// These cases migrate trusted-only helpers from independent real preparation.
 const trustedSmokeCases = [
   ['canvas-entry/first-template', '首次打开使用默认模板', 'prepareIndependentFirstOpen', 'verifyFirstOpenDefaultTemplate'],
   ['canvas-entry/surface-sidebar', 'Panel 和 Editor 入口及侧栏摘要', 'prepareIndependentEmpty', 'runIndependentSurfaceSidebar'],
@@ -300,7 +315,7 @@ const trustedSmokeCases = [
 ].map(([id, title, prepare, entry, group = 'local-products']) => ({ id, title, prepare, entry, group,
   fixture: prepare.replace('prepareIndependent', '') }));
 
-export const independentSmokeCases = Object.freeze([...lifecycleSmokeCases, ...trustedSmokeCases].map(entry => Object.freeze({
+export const independentSmokeCases = Object.freeze([...lifecycleSmokeCases, ...trustedSmokeCases, ...additionalSmokeCases].map(entry => Object.freeze({
   ...entry, variant: entry.id.replaceAll('/', '--'), kind: 'product-case', source: true, packaged: true,
   launcher: 'ordinary', disableWorkspaceTrust: true,
   group: entry.group ?? 'local-products',
@@ -367,8 +382,8 @@ export const smokeCatalog = Object.freeze([...independentSmokeCases, ...legacySm
 export function smokeHostContract(caseID) {
   const entry = smokeCatalog.find(item => item.id === caseID);
   if (entry) return { caseID, subjects: [{ testFile: entry.testFile,
-    roles: entry.id === 'two-window-shared-runtime' ? ['owner', 'attacher']
-      : entry.testFile === 'real-reopen-tests.cjs' ? ['setup', 'verify'] : ['main'] }] };
+    roles: entry.hostRoles ?? (entry.id === 'two-window-shared-runtime' ? ['owner', 'attacher']
+      : entry.testFile === 'real-reopen-tests.cjs' ? ['setup', 'verify'] : ['main']) }] };
   const auxiliary = {
     'notifier-companion': [{ testFile: 'notifier-companion-tests.cjs', roles: ['main'] }],
     'notifier-locale': [{ testFile: 'notifier-locale-tests.cjs', roles: ['en', 'zh-cn'] }],

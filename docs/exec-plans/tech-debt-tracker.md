@@ -944,3 +944,8 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 PR335已实现固定输入/实际Actions来源、15验证job、六发布job、一次clean双包、消费式packaged和三x64原样安装；当前整批通过不改变第四轮39097246318的packaged103/104和7个失败job历史。原源码字符串、官方macOS入口、安装CDP观察及合成MouseEvent缺view各保留受控证据与修正回归，不将历史单项通过拼接为新的完整验收。渠道模块仅完成本地HTTP/内存合同，不据CI绿色宣称真实交付验证完成。
 
 main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正式设置需实际负例验证。152设计目的地中15新增范围仍明确not-implemented，真实TUI完成信号尚未选定，其余最低宿主、arm64安装、真实systemd/桌面呈现/Marketplace自动依赖和渠道重签边界不外推。生产旧代恢复撤销订阅竞态已复现未修，仍是0.26.1阻塞；CI迁移不能删除原身份/Stop/保存/reader/退役断言或用新等待抹去故障。已完成实施计划release-gate-implementation.md、正式设计release-gate-redesign.md、原竞态legacy-supervisor-stop-timeout-investigation.md分别可追溯。
+
+
+## PR335 非真实 TUI 缺口覆盖（2026-10-20）
+
+用户授权先覆盖原十五项中的十一项。source/packaged独立入口、双Host角色回执、原process身份absence、真实几何和全量输出断言已实现，默认regression补登记production owner的Stop故障与sticky unknown合同。152目的地现148 implemented-unverified/4 not-implemented；这不代证完整新输入验收。四个真实TUI场景保留待覆盖，完成信号仍未选定。最低宿主、arm64原样安装、真实systemd/通知/渠道等既有边界继续独立存在，不因本轮关闭。计划见active/smoke-non-tui-gap-coverage.md，结果按实际运行记录。

@@ -45,6 +45,8 @@ export function validateSmokeImplementationMap(map, design = readJSON(designFile
   for (const expected of design.cases) {
     const item = cases.get(expected.id);
     assert(Array.isArray(item.destinations));
+    assert(['existing-to-migrate', 'proposed-gap', 'implementation-target'].includes(expected.status),
+      `Unknown design coverage status: ${expected.id}/${expected.status}`);
     if (expected.status === 'proposed-gap') {
       assert.equal(item.status, 'not-implemented', `Proposed gap cannot claim implementation: ${item.id}`);
       assert.equal(item.destinations.length, 0, `Unimplemented gap cannot count as coverage: ${item.id}`);

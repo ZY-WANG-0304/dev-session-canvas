@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "inputHead": "50e201caefb7c7d20ee2818455318fc33d8a2ba9",
-  "status": "proposal-not-implemented",
+  "status": "implementation-targets-with-historical-proposal-baseline",
   "validationScope": "static-design-traceability-not-product-acceptance",
   "sourceSha256": {
     "package.json": "9869b3f1aefa49b2cec333c718916f83351df5e1e20f6792601311513b4cd371",
@@ -443,11 +443,12 @@
       "scenario": "surface-continuity",
       "case": "live-page-remount",
       "title": "活动执行下真实页面重建",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "host-boundary-local/interrupt-and-flush",
@@ -509,22 +510,24 @@
       "scenario": "host-boundary-local",
       "case": "preserve-terminal-state",
       "title": "自然或Stop终态经边界仍保持",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "host-boundary-local/new-host-manual-recovery",
       "scenario": "host-boundary-local",
       "case": "new-host-manual-recovery",
       "title": "snapshot-only真正新Host恢复",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "agent-tui/input-during-work",
@@ -575,88 +578,96 @@
       "scenario": "execution-exit",
       "case": "native-crash",
       "title": "原生异常终止独立故障模型",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "execution-exit/terminal-natural",
       "scenario": "execution-exit",
       "case": "terminal-natural",
       "title": "Terminal自然退出契约",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "execution-exit/terminal-error",
       "scenario": "execution-exit",
       "case": "terminal-error",
       "title": "Terminal异常退出契约",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "execution-restart/terminal-after-exit",
       "scenario": "execution-restart",
       "case": "terminal-after-exit",
       "title": "Terminal自然异常退出后新Start",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "execution-stop/unresponsive",
       "scenario": "execution-stop",
       "case": "unresponsive",
       "title": "不响应Stop时升级与失败责任",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "execution-resize/live-geometry",
       "scenario": "execution-resize",
       "case": "live-geometry",
       "title": "普通活动执行的独立几何resize正例",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "output-pressure/resize",
       "scenario": "output-pressure",
       "case": "resize",
       "title": "高输出中原PTY几何resize",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "output-pressure/full-integrity",
       "scenario": "output-pressure",
       "case": "full-integrity",
       "title": "高输出完整性独立验收",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
     },
     {
       "id": "agent-resume-context/manual-resume",

@@ -20,7 +20,9 @@ const defaultWaits = { waitForSnapshot: [1, 15000], waitForWebviewProbe: [1, 800
   captureWebviewProbe: [1, 8000], activateVisibleExtension: [2, 20000], waitForCommand: [-1, 20000],
   waitForVisibleExtension: [-1, 20000], resetCanvasAfterFinalPersistence: [-1, 15000],
   stopRuntimeExecutionsAfterRetirement: [-1, 15000], restoreTerminalHistory: [-1, 20000] };
-const loopBounds = { 'runRuntimeCheckpointRefreshSmoke:chunks': [512, 'Current-state pages are bounded by the finite 18000-row fixture'],
+const loopBounds = { 'runIndependentHostBoundary:expected.nodes': [2, 'Two original execution nodes across the Host boundary'],
+  'runIndependentHostBoundary:expected.originalProcesses': [2, 'Original fake provider and Terminal shell processes'],
+  'verifyGapLocalFinal:readers': [8, 'Bounded original visible page reader observations'], 'runRuntimeCheckpointRefreshSmoke:chunks': [512, 'Current-state pages are bounded by the finite 18000-row fixture'],
   'runGenerationContinuity:[legacyAgentSessionId, legacyTerminalSessionId].filter(Boolean)':
     [2, 'Only the original previous-generation Agent and Terminal'],
   'runRuntimeCheckpointRefreshSmoke:legacy.nodes': [2, 'Only the two original execution nodes'],
@@ -42,7 +44,9 @@ const sourceHashes = Object.fromEntries([...files.map(name => `tests/vscode-smok
   'scripts/smoke/smoke-catalog.mjs',
   'tests/vscode-smoke/test-helpers.cjs','tests/vscode-smoke/runtime-retirement.cjs',
   'tests/vscode-smoke/reset-canvas.cjs','tests/vscode-smoke/terminal-history.cjs',
-  'tests/vscode-smoke/terminal-resize.cjs','tests/vscode-smoke/remote-host-control.cjs']
+  'tests/vscode-smoke/terminal-resize.cjs','tests/vscode-smoke/remote-host-control.cjs',
+  'tests/vscode-smoke/smoke-gap-observations.cjs','tests/vscode-smoke/fixtures/smoke-geometry-output-subject.cjs',
+  'scripts/smoke/snapshot-host-boundary.mjs']
   .map(file => [file, hash(fs.readFileSync(file))]));
 const models = new Map();
 function model(name) {
@@ -174,8 +178,8 @@ const suites={};
 for (const entry of smokeCatalog.filter(item => item.testFile === 'extension-tests.cjs')) {
   if (entry.kind === 'product-case') {
     const parts = [entry.prepare, entry.entry, 'assertNoOwnedResizeFailures']
-      .map(fn => inspectSuite('extension-tests.cjs', entry.id, fn, 1, true));
-    suites[entry.id] = { timeoutMs: parts.reduce((n, part) => n + part.timeoutMs, 0),
+      .map(fn => inspectSuite('extension-tests.cjs', entry.id, fn, entry.hostRoles ? 2 : 1, true));
+    suites[entry.id] = { timeoutMs: parts.reduce((n, part) => n + part.timeoutMs, 0) + (entry.hostRoles ? 30000 : 0),
       method: 'Independent fixture and business call-site bounds; original product waits unchanged', parts };
   } else suites[entry.id] = inspectSuite('extension-tests.cjs', entry.id);
 }
