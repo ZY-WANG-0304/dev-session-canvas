@@ -415,7 +415,7 @@
     "Linux source定向验证，acceptance=false；未冒充Actions完整输入验收。",
     "本地依赖借用另一worktree node_modules只读链接；不是本次npm ci证明。",
     "production source构建借用旧固定六平台资产；本地构建不代证新输入native来源。",
-    "本轮尚未运行冻结同批新双包packaged及完整Actions；PR更新后由正式CI构建和验收。",
+    "本轮packaged本地11项为旧固定production bytes/当前harness兼容性，acceptance=false；新head正式同批双包和完整Actions仍待。",
     "Stop最终失败证据为production owner受控transport合同；真实PTY smoke覆盖忽略INT后升级成功。",
     "四项真实Agent TUI未覆盖。"
   ],
@@ -460,5 +460,126 @@
       "size": 1350
     },
     "change": "受控VM显式给outer Node execPath，并核prepare/launch均传同Node路径；产品和runner实现无变化"
+  },
+  "packagedLocal": {
+    "acceptance": false,
+    "scope": "old-fixed-production-bytes-current-harness-local-compatibility",
+    "verified": [
+      {
+        "caseID": "surface-continuity/live-page-remount",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-exit/terminal-natural",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-exit/terminal-error",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-restart/terminal-after-exit",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-exit/native-crash",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-stop/unresponsive",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-resize/live-geometry",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "output-pressure/resize",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "output-pressure/full-integrity",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "host-boundary-local/preserve-terminal-state",
+        "roles": [
+          "setup",
+          "verify"
+        ],
+        "exits": 2
+      },
+      {
+        "caseID": "host-boundary-local/new-host-manual-recovery",
+        "roles": [
+          "setup",
+          "verify"
+        ],
+        "exits": 2
+      }
+    ],
+    "packages": [
+      {
+        "path": "/dev/shm/dsc-ci-actions-39133495259-download-1/candidate-original-1792332132890/gate-transfer-candidate-39133495259-1/main.vsix",
+        "sha256": "975cefedea6df811c3e1149f8ace400f21db7f32c7ea8ea5c51bdd2d30793bee"
+      },
+      {
+        "path": "/dev/shm/dsc-ci-actions-39133495259-download-1/candidate-original-1792332132890/gate-transfer-candidate-39133495259-1/notifier.vsix",
+        "sha256": "388aa3e3253827309a20c7417cce971fbfbb83a4407c124859983eae2635c7fd"
+      }
+    ],
+    "originalInput": "e92670f21f0aa2702dfb6a7ef488051f145dfef5",
+    "harnessHead": "52bbf2b2e1eebe1d40aa5fbc4e467dc5cabb6725",
+    "log": {
+      "path": "/dev/shm/dsc-pr335-gap-packaged-local.log",
+      "sha256": "c8aa24c08a27902b504d928c23d23f559f510b553b6ccb2c77f4afbd2fcac8a6"
+    },
+    "driver": {
+      "path": "/dev/shm/dsc-pr335-gap-packaged-local-driver.mjs",
+      "sha256": "526e6f18e992c420ea98c0b866c873020f63292f043b3eebaa45e970c7908c79"
+    },
+    "instrumentationFile": "docs/references/smoke-non-tui-gap-coverage/packaged-local-instrumentation.json",
+    "receipts": [
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-exit/native-crash/3935204-a3d02331-e23a-4d90-be90-62db73dc68ef.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-exit/terminal-error/3930112-c32c5137-1c28-48e6-a90d-72ae2937113e.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-exit/terminal-natural/3927010-a3f9c671-1cc2-4a80-a267-9f0cb3fcd22c.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-resize/live-geometry/3942630-714db69e-0e76-4d77-bf4b-6a7010e9bf78.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-restart/terminal-after-exit/3932485-e4d457ea-6077-4070-8004-da1df8612feb.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-stop/unresponsive/3938330-093ead67-3b89-4ffd-94f5-5972b403021b.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/new-host-manual-recovery/3957922-fa3bce52-d115-4f1e-ad86-6fc0abc436f0.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/new-host-manual-recovery/3960111-41805976-443a-4714-95d7-37fd333431fb.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/preserve-terminal-state/3953704-afed5898-a31d-4311-8eb6-96037042adff.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/preserve-terminal-state/3955836-9117a0f9-3748-407a-aa18-e10be50d89d4.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/output-pressure/full-integrity/3950866-bdcfb7f2-3de2-4769-89c3-64f0f7b1ca4d.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/output-pressure/resize/3945052-5a7cd977-9b11-40ed-a4a5-ffbfecdb99c7.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/surface-continuity/live-page-remount/3924327-c3980eff-6521-4e8e-97fa-96f3aa8d0a51.host.json"
+    ]
   }
 }

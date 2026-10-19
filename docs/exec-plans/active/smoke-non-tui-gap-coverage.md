@@ -67,3 +67,6 @@
 
 
 PR335已更新c679a60f，正式39311924428固定真预合并3da5f41a（base6e708c6b/headc679a60f）；原计划ZIP摘要/producer下载已核，353项中新增11项source和packaged均required，原owner合同在Actions54/54通过。首轮shard-1失败为test-smoke-runtime-retirement实际runner方法的受控VM没注入新增process.execPath；这是本轮遗漏的测试接线，补显式outer Node路径并加prepare/launch传递断言后定向原脚本通过。原CI失败保留，不以重跑抹去；follow-up新head重新触发完整输入验收。
+
+
+本地packaged兼容性补验：原39133495259的固定双包（输入e92670f2）先核receipt bytes和生产payload，再只作登记instrumentation测试副本，当前52bbf2b2夹具十一项全通过，13Host真实角色/原退出/清理独立核验。完整逐行/hash及输出中fresh geometry都通过。此批acceptance=false，不伪造新输入包回执，不替代39312632938或最终同批新双包完整验收。packaged原回执/副本改动和本地日志digest见本轮local-results.json及packaged-local-instrumentation.json。主线程worktree及六份未提交文档均未触碰。

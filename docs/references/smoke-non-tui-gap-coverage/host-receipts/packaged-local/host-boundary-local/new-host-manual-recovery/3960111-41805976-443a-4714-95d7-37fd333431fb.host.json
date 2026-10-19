@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "nonce": "local-packaged-host-boundary-local--new-host-manual-recovery",
+  "testFile": "extension-tests.cjs",
+  "subjectHash": "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912",
+  "host": {
+    "pid": 3960111,
+    "startTicks": "306282141",
+    "platform": "linux"
+  },
+  "caseID": "host-boundary-local/new-host-manual-recovery",
+  "role": "verify",
+  "deadline": 1792439291789,
+  "cleanupDeadline": 1792439351789,
+  "environment": {
+    "vscode": "1.142.0",
+    "node": "24.21.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "steps": [
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "id": "fixture",
+      "status": "passed",
+      "phase": "prepare",
+      "startedAt": "2026-10-19T19:42:20.996Z",
+      "deadline": 1792439291789,
+      "completedAt": "2026-10-19T19:42:21.992Z",
+      "evidence": {
+        "control": {
+          "phase": "verify",
+          "stateFile": "/dev/shm/dsc-pr335-gap-packaged-local/cases/host-boundary-local/new-host-manual-recovery/artifacts/snapshot-host-state.json"
+        },
+        "expected": {
+          "host": {
+            "pid": 3957922,
+            "start": "306281596",
+            "state": "S"
+          },
+          "caseID": "host-boundary-local/new-host-manual-recovery",
+          "nodes": [
+            {
+              "id": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+              "kind": "agent",
+              "title": "Agent 1",
+              "status": "waiting-input",
+              "summary": ">",
+              "position": {
+                "x": 160,
+                "y": 140
+              },
+              "size": {
+                "width": 560,
+                "height": 430
+              },
+              "metadata": {
+                "agent": {
+                  "backend": "node-pty",
+                  "lifecycle": "waiting-input",
+                  "provider": "codex",
+                  "launchPreset": "default",
+                  "runtimeKind": "pty-cli",
+                  "resumeSupported": true,
+                  "resumeStrategy": "fake-provider",
+                  "shellPath": "codex",
+                  "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "attached-live",
+                  "liveSession": true,
+                  "lastCols": 67,
+                  "lastRows": 21,
+                  "attentionPending": false,
+                  "lastBackendLabel": "Codex",
+                  "resumeSessionId": "eb4e7312-1e00-46d0-96f1-a3d86e724745",
+                  "resumeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b"
+                }
+              }
+            },
+            {
+              "id": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+              "kind": "terminal",
+              "title": "Terminal 2",
+              "status": "live",
+              "summary": "<t:/dev/shm/dsc-pr335-smoke-gap-coverage$",
+              "position": {
+                "x": 780,
+                "y": 140
+              },
+              "size": {
+                "width": 540,
+                "height": 420
+              },
+              "metadata": {
+                "terminal": {
+                  "backend": "node-pty",
+                  "lifecycle": "live",
+                  "shellPath": "/usr/bin/bash",
+                  "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "attached-live",
+                  "liveSession": true,
+                  "lastCols": 64,
+                  "lastRows": 20,
+                  "attentionPending": false
+                }
+              }
+            }
+          ],
+          "originalProcesses": [
+            {
+              "pid": 3958969,
+              "start": "306281851",
+              "state": "S"
+            },
+            {
+              "pid": 3959005,
+              "start": "306281878",
+              "state": "S"
+            }
+          ],
+          "providerSessionId": "eb4e7312-1e00-46d0-96f1-a3d86e724745",
+          "originalExecutions": [
+            {
+              "kind": "agent",
+              "nodeId": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+              "executionSessionId": "de1409fd-2d37-430b-9d2f-fd04b92bf1aa",
+              "generation": "b4676031-0989-4d3c-b290-d7a4a84d956e"
+            },
+            {
+              "kind": "terminal",
+              "nodeId": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+              "executionSessionId": "24fb2551-84e6-4753-8a54-1e49d48b703d",
+              "generation": "08d6f148-df92-4ba7-adc7-9ae52186a921"
+            }
+          ],
+          "snapshotPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/canvas-state.json",
+          "markers": {
+            "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b": "[fake-agent] burst 001",
+            "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e": "DEV_SESSION_CANVAS_TERMINAL_SMOKE"
+          }
+        }
+      }
+    },
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "id": "business",
+      "status": "passed",
+      "phase": "action/assert",
+      "startedAt": "2026-10-19T19:42:21.992Z",
+      "deadline": 1792439291789,
+      "completedAt": "2026-10-19T19:42:23.875Z",
+      "evidence": {
+        "originalHost": {
+          "pid": 3957922,
+          "start": "306281596",
+          "state": "S"
+        },
+        "currentHost": {
+          "pid": 3960111,
+          "start": "306282141",
+          "state": "R"
+        },
+        "manualRecovery": true
+      }
+    },
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "id": "owned-resize-errors",
+      "status": "passed",
+      "phase": "assert",
+      "startedAt": "2026-10-19T19:42:23.876Z",
+      "deadline": 1792439291789,
+      "completedAt": "2026-10-19T19:42:23.879Z"
+    }
+  ],
+  "startedAt": "2026-10-19T19:42:20.966Z",
+  "action": "passed",
+  "assert": "passed",
+  "cleanup": "passed",
+  "failures": [],
+  "actionCompletedAt": "2026-10-19T19:42:23.881Z",
+  "cleanupStartedAt": "2026-10-19T19:42:23.882Z",
+  "cleanupEvidence": {
+    "expected": [
+      {
+        "id": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+        "kind": "agent",
+        "session": null
+      },
+      {
+        "id": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+        "kind": "terminal",
+        "session": null
+      }
+    ],
+    "nodes": [
+      "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+      "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e"
+    ],
+    "originalRuntime": {
+      "observedRootSupervisorProcesses": [],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "bindings": [],
+      "registries": {
+        "legacy-detached": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/dev-session-canvas/supervisor-2c71f8d888e19f2eeb1c799a.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/dev-session-canvas/supervisor-893bc4512bdd61d305893e7c.sock",
+              "exists": false
+            }
+          ]
+        },
+        "systemd-user": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/state/dsc/rh/2c71f8d888e19f2eeb1c799a/s.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/state/dsc/rh/893bc4512bdd61d305893e7c/s.sock",
+              "exists": false
+            }
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "observedRootSupervisorProcesses": [],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "bindings": [],
+      "registries": {
+        "legacy-detached": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/dev-session-canvas/supervisor-2c71f8d888e19f2eeb1c799a.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/dev-session-canvas/supervisor-893bc4512bdd61d305893e7c.sock",
+              "exists": false
+            }
+          ]
+        },
+        "systemd-user": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/state/dsc/rh/2c71f8d888e19f2eeb1c799a/s.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf0204e3463fa944/state/dsc/rh/893bc4512bdd61d305893e7c/s.sock",
+              "exists": false
+            }
+          ]
+        }
+      }
+    },
+    "supervisorScope": {
+      "canonicalStorage": "/dev/shm/dsc-pr335-gap-packaged-local/cases/host-boundary-local/new-host-manual-recovery",
+      "canonicalRoots": [
+        "/dev/shm/dsc-pr335-gap-packaged-local/cases/host-boundary-local/new-host-manual-recovery",
+        "/dev/shm/dsc-bf0204e3463fa944",
+        "/dev/shm/dsc-ud-dd1b2a11730d"
+      ],
+      "processes": [],
+      "absent": []
+    },
+    "supervisors": [],
+    "localRetirement": [],
+    "resetRequired": true
+  },
+  "cleanupCompletedAt": "2026-10-19T19:42:23.940Z",
+  "completedAt": "2026-10-19T19:42:23.940Z"
+}

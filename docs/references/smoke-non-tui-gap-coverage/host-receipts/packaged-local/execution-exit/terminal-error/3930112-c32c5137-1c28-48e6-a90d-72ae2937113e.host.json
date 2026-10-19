@@ -1,0 +1,487 @@
+{
+  "schemaVersion": 1,
+  "nonce": "local-packaged-execution-exit--terminal-error",
+  "testFile": "extension-tests.cjs",
+  "subjectHash": "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912",
+  "host": {
+    "pid": 3930112,
+    "startTicks": "306274218",
+    "platform": "linux"
+  },
+  "caseID": "execution-exit/terminal-error",
+  "role": "main",
+  "deadline": 1792439217953,
+  "cleanupDeadline": 1792439277953,
+  "environment": {
+    "vscode": "1.142.0",
+    "node": "24.21.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "steps": [
+    {
+      "caseID": "execution-exit/terminal-error",
+      "id": "fixture",
+      "status": "passed",
+      "phase": "prepare",
+      "startedAt": "2026-10-19T19:41:02.197Z",
+      "deadline": 1792439217953,
+      "completedAt": "2026-10-19T19:41:03.816Z",
+      "evidence": {
+        "terminal": {
+          "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+          "snapshot": {
+            "localExecutions": [
+              {
+                "kind": "terminal",
+                "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+                "identity": {
+                  "executionId": "7a561756-4638-44a2-b482-896656c9471b",
+                  "generation": "36673056-b0cf-4783-90f4-1e9cb8b8f899"
+                },
+                "retired": false,
+                "persistence": {
+                  "submitted": false
+                }
+              }
+            ],
+            "activeSurface": "editor",
+            "configuration": {
+              "linkOpenMode": "editorPreview",
+              "terminalShellPath": "/usr/bin/bash",
+              "terminalShellResolutionSource": "default-shell",
+              "terminalInheritEnv": true,
+              "terminalShellArgs": []
+            },
+            "sidebar": {
+              "canvasSurface": "visible",
+              "surfaceLocation": "editor",
+              "configuredSurface": "panel",
+              "runtimePersistenceEnabled": false,
+              "notificationBridgeMode": "system",
+              "enabledAttentionSignals": [
+                "bel",
+                "osc9",
+                "osc777",
+                "agentAbnormalExit",
+                "codexAbnormalOutputText"
+              ],
+              "notificationStrongReminderMode": "both",
+              "agentAbnormalOutputTextNotificationMode": "off",
+              "filesFeatureEnabled": false,
+              "filePresentationMode": "lists",
+              "fileNodeDisplayStyle": "minimal",
+              "fileNodeDisplayMode": "icon-path",
+              "filePathDisplayMode": "basename",
+              "terminalShellConfiguredValue": "default",
+              "terminalShellPath": "/usr/bin/bash",
+              "agentCodexCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/fake-agent-provider",
+              "agentClaudeCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/missing-agent-provider",
+              "nodeCount": 1,
+              "runningExecutionCount": 0,
+              "workspaceTrusted": true,
+              "creatableKinds": [
+                "agent",
+                "terminal",
+                "note"
+              ],
+              "fileFilters": {
+                "includeGlobs": [],
+                "excludeGlobs": []
+              }
+            },
+            "state": {
+              "version": 1,
+              "updatedAt": "2026-10-19T19:41:03.764Z",
+              "nodes": [
+                {
+                  "id": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+                  "kind": "terminal",
+                  "title": "Terminal 1",
+                  "status": "launching",
+                  "summary": "Starting embedded Terminal.",
+                  "position": {
+                    "x": 160,
+                    "y": 140
+                  },
+                  "size": {
+                    "width": 540,
+                    "height": 420
+                  },
+                  "metadata": {
+                    "terminal": {
+                      "backend": "node-pty",
+                      "lifecycle": "launching",
+                      "shellPath": "/usr/bin/bash",
+                      "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                      "persistenceMode": "snapshot-only",
+                      "attachmentState": "attached-live",
+                      "liveSession": true,
+                      "lastCols": 64,
+                      "lastRows": 20,
+                      "attentionPending": false
+                    }
+                  }
+                }
+              ],
+              "edges": [],
+              "groups": [],
+              "nextGroupSequence": 1,
+              "fileReferences": [],
+              "suppressedFileActivityEdgeIds": [],
+              "suppressedAutomaticFileArtifactNodeIds": []
+            },
+            "surfaceMode": {
+              "editor": "active"
+            },
+            "surfaceReady": {
+              "editor": true,
+              "panel": false
+            },
+            "surfaceLifecycle": {
+              "editor": {
+                "generation": 2,
+                "mode": "active",
+                "ready": true,
+                "bootstrapAck": true,
+                "frameId": "frame-311f1fe6-c6c9-48af-807f-37bdb68f9de5",
+                "terminalReadSettlementV1": true,
+                "terminalLocalSettlementV1": true,
+                "terminalLocalOutputCreditV1": true,
+                "terminalAvailableReceiptV1": true,
+                "terminalCurrentStateV1": true
+              },
+              "panel": {
+                "generation": 0,
+                "ready": false,
+                "bootstrapAck": false
+              }
+            }
+          },
+          "execution": {
+            "kind": "terminal",
+            "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+            "executionSessionId": "7a561756-4638-44a2-b482-896656c9471b",
+            "generation": "36673056-b0cf-4783-90f4-1e9cb8b8f899"
+          },
+          "started": {
+            "timestamp": "2026-10-19T19:41:03.764Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+              "sessionId": "7a561756-4638-44a2-b482-896656c9471b",
+              "cols": 64,
+              "rows": 20,
+              "shellPath": "/usr/bin/bash",
+              "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+              "launchArgs": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "caseID": "execution-exit/terminal-error",
+      "id": "business",
+      "status": "passed",
+      "phase": "action/assert",
+      "startedAt": "2026-10-19T19:41:03.818Z",
+      "deadline": 1792439217953,
+      "completedAt": "2026-10-19T19:41:04.150Z",
+      "evidence": {
+        "snapshot": {
+          "localExecutions": [
+            {
+              "kind": "terminal",
+              "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+              "identity": {
+                "executionId": "7a561756-4638-44a2-b482-896656c9471b",
+                "generation": "36673056-b0cf-4783-90f4-1e9cb8b8f899"
+              },
+              "retired": false,
+              "persistence": {
+                "submitted": false
+              }
+            }
+          ],
+          "activeSurface": "editor",
+          "configuration": {
+            "linkOpenMode": "editorPreview",
+            "terminalShellPath": "/usr/bin/bash",
+            "terminalShellResolutionSource": "default-shell",
+            "terminalInheritEnv": true,
+            "terminalShellArgs": []
+          },
+          "sidebar": {
+            "canvasSurface": "visible",
+            "surfaceLocation": "editor",
+            "configuredSurface": "panel",
+            "runtimePersistenceEnabled": false,
+            "notificationBridgeMode": "system",
+            "enabledAttentionSignals": [
+              "bel",
+              "osc9",
+              "osc777",
+              "agentAbnormalExit",
+              "codexAbnormalOutputText"
+            ],
+            "notificationStrongReminderMode": "both",
+            "agentAbnormalOutputTextNotificationMode": "off",
+            "filesFeatureEnabled": false,
+            "filePresentationMode": "lists",
+            "fileNodeDisplayStyle": "minimal",
+            "fileNodeDisplayMode": "icon-path",
+            "filePathDisplayMode": "basename",
+            "terminalShellConfiguredValue": "default",
+            "terminalShellPath": "/usr/bin/bash",
+            "agentCodexCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "agentClaudeCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/missing-agent-provider",
+            "nodeCount": 1,
+            "runningExecutionCount": 0,
+            "workspaceTrusted": true,
+            "creatableKinds": [
+              "agent",
+              "terminal",
+              "note"
+            ],
+            "fileFilters": {
+              "includeGlobs": [],
+              "excludeGlobs": []
+            }
+          },
+          "state": {
+            "version": 1,
+            "updatedAt": "2026-10-19T19:41:03.822Z",
+            "nodes": [
+              {
+                "id": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+                "kind": "terminal",
+                "title": "Terminal 1",
+                "status": "live",
+                "summary": "<t:/dev/shm/dsc-pr335-smoke-gap-coverage$",
+                "position": {
+                  "x": 160,
+                  "y": 140
+                },
+                "size": {
+                  "width": 540,
+                  "height": 420
+                },
+                "metadata": {
+                  "terminal": {
+                    "backend": "node-pty",
+                    "lifecycle": "live",
+                    "shellPath": "/usr/bin/bash",
+                    "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                    "persistenceMode": "snapshot-only",
+                    "attachmentState": "attached-live",
+                    "liveSession": true,
+                    "lastCols": 64,
+                    "lastRows": 20,
+                    "attentionPending": false
+                  }
+                }
+              }
+            ],
+            "edges": [],
+            "groups": [],
+            "nextGroupSequence": 1,
+            "fileReferences": [],
+            "suppressedFileActivityEdgeIds": [],
+            "suppressedAutomaticFileArtifactNodeIds": []
+          },
+          "surfaceMode": {
+            "editor": "active"
+          },
+          "surfaceReady": {
+            "editor": true,
+            "panel": false
+          },
+          "surfaceLifecycle": {
+            "editor": {
+              "generation": 2,
+              "mode": "active",
+              "ready": true,
+              "bootstrapAck": true,
+              "frameId": "frame-311f1fe6-c6c9-48af-807f-37bdb68f9de5",
+              "terminalReadSettlementV1": true,
+              "terminalLocalSettlementV1": true,
+              "terminalLocalOutputCreditV1": true,
+              "terminalAvailableReceiptV1": true,
+              "terminalCurrentStateV1": true
+            },
+            "panel": {
+              "generation": 0,
+              "ready": false,
+              "bootstrapAck": false
+            }
+          }
+        },
+        "execution": {
+          "kind": "terminal",
+          "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+          "executionSessionId": "7a561756-4638-44a2-b482-896656c9471b",
+          "generation": "36673056-b0cf-4783-90f4-1e9cb8b8f899"
+        },
+        "started": {
+          "timestamp": "2026-10-19T19:41:03.764Z",
+          "kind": "execution/started",
+          "detail": {
+            "kind": "terminal",
+            "nodeId": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+            "sessionId": "7a561756-4638-44a2-b482-896656c9471b",
+            "cols": 64,
+            "rows": 20,
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+            "launchArgs": []
+          }
+        },
+        "marker": "DSC_TERMINAL_EXIT_68435aa448218b0d",
+        "exitCode": 17
+      }
+    },
+    {
+      "caseID": "execution-exit/terminal-error",
+      "id": "owned-resize-errors",
+      "status": "passed",
+      "phase": "assert",
+      "startedAt": "2026-10-19T19:41:04.152Z",
+      "deadline": 1792439217953,
+      "completedAt": "2026-10-19T19:41:04.154Z"
+    }
+  ],
+  "startedAt": "2026-10-19T19:41:02.165Z",
+  "action": "passed",
+  "assert": "passed",
+  "cleanup": "passed",
+  "failures": [],
+  "actionCompletedAt": "2026-10-19T19:41:04.155Z",
+  "cleanupStartedAt": "2026-10-19T19:41:04.156Z",
+  "cleanupEvidence": {
+    "expected": [
+      {
+        "id": "terminal-1-461545c5-6ced-4b56-9906-258618829f9c",
+        "kind": "terminal",
+        "session": null
+      }
+    ],
+    "nodes": [
+      "terminal-1-461545c5-6ced-4b56-9906-258618829f9c"
+    ],
+    "originalRuntime": {
+      "observedRootSupervisorProcesses": [],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "bindings": [],
+      "registries": {
+        "legacy-detached": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/dev-session-canvas/supervisor-93c8e662e5690638fe91300e.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/dev-session-canvas/supervisor-b2b24d9ada6db9b904970f60.sock",
+              "exists": false
+            }
+          ]
+        },
+        "systemd-user": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/state/dsc/rh/93c8e662e5690638fe91300e/s.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/state/dsc/rh/b2b24d9ada6db9b904970f60/s.sock",
+              "exists": false
+            }
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "observedRootSupervisorProcesses": [],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "bindings": [],
+      "registries": {
+        "legacy-detached": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/dev-session-canvas/supervisor-93c8e662e5690638fe91300e.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/dev-session-canvas/supervisor-b2b24d9ada6db9b904970f60.sock",
+              "exists": false
+            }
+          ]
+        },
+        "systemd-user": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/state/dsc/rh/93c8e662e5690638fe91300e/s.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-bf4a1fc5f6fb8da0/state/dsc/rh/b2b24d9ada6db9b904970f60/s.sock",
+              "exists": false
+            }
+          ]
+        }
+      }
+    },
+    "supervisorScope": {
+      "canonicalStorage": "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error",
+      "canonicalRoots": [
+        "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error",
+        "/dev/shm/dsc-bf4a1fc5f6fb8da0",
+        "/dev/shm/dsc-pr335-gap-packaged-local/cases/execution-exit/terminal-error/user-data"
+      ],
+      "processes": [],
+      "absent": []
+    },
+    "supervisors": [],
+    "localRetirement": [],
+    "resetRequired": true
+  },
+  "cleanupCompletedAt": "2026-10-19T19:41:04.218Z",
+  "completedAt": "2026-10-19T19:41:04.218Z"
+}

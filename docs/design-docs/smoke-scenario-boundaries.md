@@ -223,3 +223,6 @@ Stop 证据分层：真实 PTY smoke 让原外部进程确认忽略 INT，然后
 
 
 首轮新CI39311924428在regression shard-1失败：受控runtime-retirement VM遗漏runner新绑定的outer Node路径process.execPath，尚未进入packaged验收；原owner54/54在Actions通过。补齐VM环境与同路径断言后本地定向通过，产品未改。新head验收仍待，原输入失败和计划required新增集合均记入本轮证据。
+
+
+52bbf2b2夹具对旧固定生产双包的本地packaged兼容性十一项全通过，13Host原角色/退出/清理已核，原bytes及instrumentation边界记入本轮证据。该结果为acceptance=false；最新head正式CI仍待，不用旧包追认新输入同批验收。
