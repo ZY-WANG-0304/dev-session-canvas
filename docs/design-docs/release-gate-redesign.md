@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-18
+updated_at: 2026-10-23
 ---
 
 # CI与发布门禁重设计
@@ -324,3 +324,7 @@ PR3352c4a16af+PR3278313fc72临时0.26.1组合[39101774719](https://github.com/ZY
 当前关联修正：私有短runtime/user-data/TMPDIR及安全登记退役；settings路径显式传给原夹具，日志按每次重开session保留；原子进程由唯一公开输入nonce触发fresh同fd的OS几何查询；下载只在同原五分钟期限最多三次已识别transport恢复，拒semantic重试；本地Git2.34使用真实index merge核精确parents/拒冲突。原包文件tab焦点受控先红后绿；新fileEntries probe、稳定命中准备和完整primary pointer保持原file/split/mounted/reader断言。当前production完整文件视图Host诊断通过，原Host退出及短目录退役通过，仍是旧native诊断acceptance=false。最终105门禁/发布恢复合同、typecheck、vscode环境、四workflow actionlint/结构合同通过；真实浏览器428→429仅增一项，原428完整保留，production426功能和3视觉全通过/基线不变。123 suite timeout逐项与上一head相同，installed新观测共用原20秒。新head正式跨平台/完整来源与更新后的0.26.1组合仍须运行。
 
 `main`保护API返回404 Branch not protected，尚未配置required check，不能声称已有强制合并阻断。生产旧代恢复撤销订阅竞态依然是独立发布阻塞；即使CI改造通过也不由此宣称0.26.1可发布。渠道模块只在本地HTTP/内存受控输入验证过，未进行真实发布/上传重签对照，未知内容继续拒绝完成。
+
+## 依赖安装范围（2026-10-23）
+
+正式任务图的安装范围现按实际调用派生：插件、notifier、共享包及根工具使用plugin，含市场workspace类型/API/web的regression使用marketplace；候选双包独立checkout也用plugin。市场Host的Node HTTP夹具及市场浏览器API拦截不启动Worker。完整任务、预算和验收规则不变，细节与本地证据见[依赖安装边界](smoke-dependency-install-scope.md)。本轮移除根Wrangler/workers-types重复声明，保留app所有权和原锁版本；原CI ECONNRESET仍缺包名证据，不声称已修复网络根因。

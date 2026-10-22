@@ -1,0 +1,53 @@
+[
+  {
+    "name": "source-agent",
+    "command": [
+      "node",
+      "scripts/smoke/run-vscode-smoke.mjs",
+      "--scenario",
+      "execution-io/agent-line",
+      "--diagnostic"
+    ],
+    "exitCode": 0,
+    "seconds": 13.486
+  },
+  {
+    "name": "source-resize",
+    "command": [
+      "node",
+      "scripts/smoke/run-vscode-smoke.mjs",
+      "--scenario",
+      "execution-resize/live-geometry",
+      "--diagnostic"
+    ],
+    "exitCode": 0,
+    "seconds": 13.79
+  },
+  {
+    "name": "notifier",
+    "command": [
+      "node",
+      "scripts/smoke/run-vscode-notifier-smoke.mjs"
+    ],
+    "exitCode": 0,
+    "seconds": 13.641
+  },
+  {
+    "name": "marketplace-host",
+    "command": [
+      "node",
+      "scripts/smoke/run-template-marketplace-vscode-e2e.mjs"
+    ],
+    "exitCode": 0,
+    "seconds": 15.355
+  },
+  {
+    "name": "marketplace-preview",
+    "command": [
+      "node",
+      "scripts/smoke/run-template-marketplace-vscode-local-preview-e2e.mjs"
+    ],
+    "exitCode": 0,
+    "seconds": 13.179
+  }
+]

@@ -155,7 +155,7 @@
     "package:main": "npm run -w extensions/vscode/dev-session-canvas package",
     "test:ui-copy-localization": "node --no-warnings --experimental-transform-types scripts/test/test-ui-copy-localization.mts",
     "test:shared-root-canvas": "node scripts/test/test-shared-root-canvas-store.mjs",
-    "test:ci-gates": "node --test scripts/test/test-gate-contracts.mjs scripts/test/test-release-completion.mjs scripts/test/test-release-delivery.mjs",
+    "test:ci-gates": "node --test scripts/test/test-gate-contracts.mjs scripts/test/test-release-completion.mjs scripts/test/test-release-delivery.mjs scripts/test/test-dependency-install.mjs",
     "ci:verify": "node scripts/gates/run-local.mjs",
     "ci:diagnose": "node scripts/gates/run-local.mjs --diagnose"
   },
@@ -170,7 +170,6 @@
     "@azure/msal-node": "5.2.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260911.1",
     "@playwright/test": "^1.59.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^20.19.0",
@@ -188,7 +187,6 @@
     "tailwindcss": "^3.4.17",
     "typescript": "5.0.4",
     "vite": "^7.3.5",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.104.0"
+    "vitest": "^4.1.11"
   }
 }

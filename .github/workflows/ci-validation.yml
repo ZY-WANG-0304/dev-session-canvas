@@ -129,7 +129,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Execute planned stage
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job input-contract --variant "${{ matrix.variant }}" --output gate-results
@@ -178,7 +178,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install declared regression browser dependency
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
@@ -230,7 +230,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Execute planned stage
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job frontend-build --variant "${{ matrix.variant }}" --output gate-results
@@ -289,7 +289,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -354,7 +354,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -419,7 +419,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -494,7 +494,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Build and load native input
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job native-assets --variant "${{ matrix.variant }}" --output gate-results --assets "${{ runner.temp }}/native-assets/${{
@@ -564,7 +564,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Collect independent native provenance
       run: node scripts/gates/github-provenance.mjs --plan gate-plan/gate-plan.json --scope native-load --download gate-native --output gate-native-provenance.json
@@ -627,7 +627,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -699,7 +699,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -767,7 +767,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Collect independent native provenance
       run: node scripts/gates/github-provenance.mjs --plan gate-plan/gate-plan.json --scope native-load --download gate-native --output gate-native-provenance.json
@@ -830,7 +830,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -899,7 +899,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install locked dependencies
-      run: node scripts/gates/run-infrastructure.mjs --kind install --output gate-results -- npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
@@ -975,7 +975,7 @@ jobs:
         name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-plan
     - name: Install verifier dependencies
-      run: npm ci --no-audit --no-fund
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
     - name: Download actual producers and receipts
       run: node scripts/gates/github-provenance.mjs --plan gate-plan/gate-plan.json --download gate-actual --output gate-provenance.json
@@ -1003,6 +1003,7 @@ jobs:
           gate-final
           gate-provenance.json
           gate-plan
+          gate-results/infrastructure
         if-no-files-found: error
         retention-days: 14
     - name: Expose verified acceptance

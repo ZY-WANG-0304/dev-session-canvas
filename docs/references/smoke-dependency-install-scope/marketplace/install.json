@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "kind": "install",
+  "profile": "marketplace",
+  "args": [
+    "ci",
+    "--no-audit",
+    "--no-fund",
+    "--include-workspace-root",
+    "--workspace=extensions/vscode/dev-session-canvas",
+    "--workspace=extensions/vscode/dev-session-canvas-notifier",
+    "--workspace=packages/attention-protocol",
+    "--workspace=packages/marketplace-shared",
+    "--workspace=apps/template-marketplace"
+  ],
+  "startedAt": "2026-10-22T17:30:39.149Z",
+  "completedAt": "2026-10-22T17:30:52.365Z",
+  "deadline": 1792690839149,
+  "code": 0,
+  "signal": null,
+  "timedOut": false,
+  "cancelled": false,
+  "pid": 17354,
+  "error": null,
+  "exited": true,
+  "residualGroup": false,
+  "observedResidualGroup": false,
+  "drainTimedOut": false,
+  "cleanup": {
+    "status": "passed",
+    "boundary": "original-process-group",
+    "observed": "absent"
+  },
+  "status": "passed"
+}

@@ -10,6 +10,7 @@ import JSZip from 'jszip';
 import { assertFormalEnvironment, resolvePlan, validateFrozenPlan } from './resolve-plan.mjs';
 import { assertCheckout, markNotRun, taskFileName } from './run-task.mjs';
 import { runProcess } from './process.mjs';
+import { dependencyInstallArgs, dependencyProfileForTasks, npmLogEnvironment } from './dependency-install.mjs';
 import { digest, objectDigest, readJSON, validateTaskReceipt, verifyPackageFiles, writeJSON } from './receipts.mjs';
 import { environmentPolicy, infrastructureBudgets, installedTargets, jobDependencies, nativeTargets, taskKey } from './catalog.mjs';
 import { loadReceipts } from './verify-result.mjs';
@@ -243,12 +244,14 @@ export async function runLocalCLI(args = process.argv.slice(2)) {
     await writeJSON(planFile, plan); await writeJSON(path.join(output, 'gate-plan.json'), plan);
     for (const directory of ['home', 'config', 'cache', 'tmp']) await fs.mkdir(path.join(privateRoot, directory));
     for (const name of ['user.npmrc', 'global.npmrc']) await fs.writeFile(path.join(privateRoot, name), '');
-    const env = isolatedEnvironment(privateRoot, planFile);
+    const env = npmLogEnvironment(isolatedEnvironment(privateRoot, planFile), path.join(output, 'npm-debug'));
     const npmEntry = path.join(path.dirname(process.execPath), process.platform === 'win32' ? 'node_modules' : '../lib/node_modules', 'npm/bin/npm-cli.js');
     assert((await fs.stat(npmEntry)).isFile(), 'The fixed Node distribution must supply npm');
-    const install = observeSettlement(await runProcess(process.execPath, [npmEntry, 'ci', '--no-audit', '--no-fund'], {
+    const dependencyProfile = dependencyProfileForTasks(plan.tasks);
+    const installArgs = dependencyInstallArgs(dependencyProfile);
+    const install = observeSettlement(await runProcess(process.execPath, [npmEntry, ...installArgs], {
       cwd: checkout, env, deadline: Date.now() + infrastructureBudgets.install, logPath: path.join(output, 'install.log') }));
-    await writeJSON(path.join(output, 'install.json'), install);
+    await writeJSON(path.join(output, 'install.json'), { ...install, profile: dependencyProfile, args: installArgs });
     const receipts = new Map(), stages = [], resultsRoot = path.join(checkout, 'gate-results');
     let browserPreparation, nativeExecutable, nativeFailure;
     for (const stage of localStageGraph(plan)) {

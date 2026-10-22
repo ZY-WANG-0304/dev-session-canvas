@@ -1,0 +1,35 @@
+{
+  "inputSHA": "working-tree-from-0d29481a",
+  "headSHA": "0d29481a622518032668c9f63988140e74b2a70d",
+  "command": [
+    "node",
+    "scripts/gates/run-infrastructure.mjs",
+    "--kind",
+    "install",
+    "--profile",
+    "plugin",
+    "--output",
+    "/tmp/dsc335-deps-evidence/gate-results",
+    "--",
+    "npm",
+    "ci",
+    "--no-audit",
+    "--no-fund"
+  ],
+  "platform": "Linux-5.19.17-saturnv01-x86_64-with-glibc2.35",
+  "node": "v22.23.3",
+  "npm": "10.9.9",
+  "registry": "https://registry.npmjs.org/",
+  "freshCache": true,
+  "scope": "plugin",
+  "proxyVariablesPresent": [
+    "no_proxy",
+    "NO_PROXY",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY"
+  ],
+  "lockSHA256": "926d4708676043836e3ee59ed0968c479bef68fc0248042d4c482cb1381b290e",
+  "exitCode": 0,
+  "elapsedSeconds": 43.469
+}

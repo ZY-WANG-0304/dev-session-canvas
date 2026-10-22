@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "install",
+  "startedAt": "2026-10-22T16:05:40.983Z",
+  "completedAt": "2026-10-22T16:15:46.048Z",
+  "deadline": 1792685740983,
+  "code": null,
+  "signal": "SIGKILL",
+  "timedOut": true,
+  "cancelled": false,
+  "pid": 2560670,
+  "error": null,
+  "exited": true,
+  "residualGroup": false,
+  "observedResidualGroup": false,
+  "drainTimedOut": false,
+  "cleanup": {
+    "status": "passed",
+    "boundary": "original-process-group",
+    "observed": "absent"
+  },
+  "status": "failed"
+}

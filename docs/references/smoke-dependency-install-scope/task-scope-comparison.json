@@ -1,0 +1,30 @@
+[
+  {
+    "scope": {
+      "functional": false,
+      "artifact": false,
+      "release": false
+    },
+    "count": 89,
+    "digest": "d6ed9a54ddf8217e3e298ee304e33fc4be53f7474a0a1373d3d32dd3e85a14f4",
+    "equal": true
+  },
+  {
+    "scope": {
+      "functional": true,
+      "artifact": true,
+      "release": false
+    },
+    "count": 353,
+    "digest": "23e3f580c5b1e5d6d43e4bdc6d5b9e05fdaee4ddd503f108bdd19732ea8b2f7e",
+    "equal": true
+  },
+  {
+    "scope": {
+      "release": true
+    },
+    "count": 353,
+    "digest": "b5dd4542f2f7f0fedc776ba3df20e70aa816957a08d64f6f2067c95b6600ce46",
+    "equal": true
+  }
+]

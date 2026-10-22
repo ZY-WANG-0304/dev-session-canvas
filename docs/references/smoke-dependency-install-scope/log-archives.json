@@ -1,0 +1,38 @@
+[
+  {
+    "path": "marketplace/console.log.gz",
+    "sha256": "0cd032ebaf2fc8006798b6555e3c3389935b8c65b786b7fa43b6112833d34cfd",
+    "decodedSHA256": "11329e86c0608c524ec6167c4ee9af88fed89645cec927d7485a801c6905c4d1",
+    "decodedBytes": 123004
+  },
+  {
+    "path": "marketplace/npm-debug.log.gz",
+    "sha256": "da1c0a7545b0e955429aed25e3f1ca247688e574b01f0f9362ab7837a39e78fd",
+    "decodedSHA256": "f4adef1ee5e4e3c827a3b228d37719c6c809fb289f3f20d1cdff3f1086ea1009",
+    "decodedBytes": 260520
+  },
+  {
+    "path": "original-local-attempt/console.log.gz",
+    "sha256": "6fcb4315d7b7deb1d01718199b36044f9e4476585f02bb2b0ada245c17d0317b",
+    "decodedSHA256": "61bad703f76a50bbc85604e888843ab6a909cd400f09deaaa52bf2e986f3b267",
+    "decodedBytes": 148901
+  },
+  {
+    "path": "original-local-attempt/npm-debug.log.gz",
+    "sha256": "d6227bd60b6126bb29e9f24844baae012efdf2372ea7c37241d338f88613fbdb",
+    "decodedSHA256": "4b7bde3a716ebd490ee4ede36ed48b13b3d12863dd79f06f996d8972a30d8490",
+    "decodedBytes": 284032
+  },
+  {
+    "path": "plugin/console.log.gz",
+    "sha256": "f9f9de16cf4a683ca08e7631d6cff96f5567802d78f4cdd73ba978e48865d079",
+    "decodedSHA256": "d76df77a0e3e810490103037070460ccea70f3252a408b7789e28ac8ec11a2f3",
+    "decodedBytes": 134507
+  },
+  {
+    "path": "plugin/npm-debug.log.gz",
+    "sha256": "1ab65f8361240fb5823122f757c9c0e05a1844fc9eeeb61d20ac29671eac85ed",
+    "decodedSHA256": "11f71694a3f528511efd89acbfb69c1b43558a7fffbcaeb6a7f4dea81d42cc52",
+    "decodedBytes": 281183
+  }
+]

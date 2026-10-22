@@ -11,6 +11,7 @@ import { smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { assertSHA, objectDigest, readJSON, validatePlan, writeJSON } from './receipts.mjs';
 import { smokeBudgets, smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
 import { readSmokeImplementationMap, smokeImplementationFile } from './smoke-implementation.mjs';
+import { dependencyProfileForTasks } from './dependency-install.mjs';
 
 export const classificationRules = Object.freeze({
   documentation: ['docs/exec-plans/', 'docs/design-docs/', 'docs/references/', 'docs/workflows/',
@@ -191,6 +192,7 @@ export function planJobs(plan) {
       + infrastructureBudgets.install + infrastructureBudgets.download * 2 + infrastructureBudgets.evidence) / 60000);
     assert(minutes <= 360, `Job ${job}/${variant} exceeds the CI ceiling; split its cases rather than truncate the plan`);
     const target = (job === 'installed-pair' ? installedTargets : nativeTargets).find(item=>item.variant===variant);
-    return { variant, timeout: minutes, ...(target ? target : { runner:'ubuntu-22.04' }) };
+    return { variant, timeout: minutes, dependencyProfile: dependencyProfileForTasks(tasks),
+      ...(target ? target : { runner:'ubuntu-22.04' }) };
   }) }]));
 }

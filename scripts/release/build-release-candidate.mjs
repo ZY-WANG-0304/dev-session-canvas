@@ -9,6 +9,7 @@ import { assembleExecutionDistributionAssets } from '../build/assemble-execution
 import { assertFormalEnvironment, validateFrozenPlan } from '../gates/resolve-plan.mjs';
 import { digest, fileDigest, objectDigest, producerFor, readJSON, verifyPackageFiles, writeJSON } from '../gates/receipts.mjs';
 import { npmCommand, runProcess } from '../gates/process.mjs';
+import { dependencyInstallArgs, npmLogEnvironment } from '../gates/dependency-install.mjs';
 import { assertCheckout } from '../gates/run-task.mjs';
 import { withinDeadline } from '../gates/deadline.mjs';
 import { assertRuntimeFileList, assertSafeVsixEntry } from './vsix-file-list.mjs';
@@ -112,7 +113,7 @@ export async function buildReleaseCandidate({ plan, output, archives, root = pro
   for (const dir of [home, config, cache]) await fs.mkdir(dir);
   const npmrc = path.join(work, 'user.npmrc'); await fs.writeFile(npmrc, '');
   const globalNpmrc = path.join(work, 'global.npmrc'); await fs.writeFile(globalNpmrc, '');
-  const isolated = { ...env, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: config, XDG_CACHE_HOME: path.join(work, 'cache'),
+  const isolated = { ...npmLogEnvironment(env, path.join(destination, 'npm-debug')), HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: config, XDG_CACHE_HOME: path.join(work, 'cache'),
     NPM_CONFIG_USERCONFIG: npmrc, npm_config_userconfig: npmrc, NPM_CONFIG_GLOBALCONFIG: globalNpmrc,
     npm_config_globalconfig: globalNpmrc, NPM_CONFIG_CACHE: cache, npm_config_cache: cache,
     DEV_SESSION_CANVAS_VSCE_DOC_BRANCH: plan.inputSHA, DEV_SESSION_CANVAS_VSCE_VALIDATE_GIT_ROOT: root };
@@ -125,7 +126,7 @@ export async function buildReleaseCandidate({ plan, output, archives, root = pro
     assembleExecutionDistributionAssets({ source: archives, output: assets, inputCommit: plan.inputSHA });
     const nativeHashes = await treeHashes(assets); const nativeSetDigest = objectDigest(nativeHashes);
     for (const asset of nativeHashes) await fs.chmod(path.join(assets, asset.path), asset.path.endsWith('spawn-helper') ? 0o555 : 0o444);
-    const npm = npmCommand(['ci', '--no-audit', '--no-fund']); await run(npm.file, npm.args);
+    const npm = npmCommand(dependencyInstallArgs('plugin')); await run(npm.file, npm.args);
     for (const workspace of ['extensions/vscode/dev-session-canvas', 'extensions/vscode/dev-session-canvas-notifier']) {
       const command = npmCommand(['run', '-w', workspace, 'typecheck']); await run(command.file, command.args);
     }
