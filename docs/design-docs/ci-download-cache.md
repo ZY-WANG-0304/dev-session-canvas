@@ -15,7 +15,7 @@ updated_at: 2026-10-23
 
 PR335 d6646b38 的 CI39920907930 执行265次 locked npm安装、252次 Chromium安装及3次regression浏览器准备。新workflow没有npm持久缓存，工具缓存仅为每个job私有目录。Webview功能job日志显示Chromium1217、FFmpeg1011和Headless Shell1217先下载到RUNNER_TEMP，随后又下载到仓库.playwright-browsers。
 
-用户授权修复路径统一、npm缓存和固定工具缓存三项；VSCode下载异常未被三次恢复流程捕获的问题留待后续，本次不改download-vscode.mjs。
+前三项提交ee9ff66a只处理路径统一、npm缓存和固定工具缓存，未修改download-vscode.mjs。用户随后授权第四项，异常捕获与重试的新增方案独立见[VSCode下载恢复](vscode-download-recovery.md)。
 
 ## 正式方案
 

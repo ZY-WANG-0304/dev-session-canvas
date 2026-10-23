@@ -127,6 +127,7 @@
 
 | `docs/design-docs/smoke-dependency-install-scope.md` | 插件和市场服务按实际调用选择workspace安装，保留完整门禁与原网络证据边界 | VSCode 集成域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/smoke-dependency-install-scope.md` | 2026-10-23 |
 | `docs/design-docs/ci-download-cache.md` | 统一Chromium准备与运行路径，恢复npm及固定VSCode/Chromium缓存；不调整下载重试，Actions命中待验 | VSCode 集成域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/ci-download-cache.md` | 2026-10-23 |
+| `docs/design-docs/vscode-download-recovery.md` | 单次worker隔离下载异常，清理确认后按原期限和三次上限恢复；真实故障与CI待验 | VSCode 集成域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/vscode-download-recovery.md` | 2026-10-23 |
 
 ## 维护约定
 
