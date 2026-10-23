@@ -451,3 +451,5 @@ smoke的准备、业务动作、观察断言和清理承担不同责任。原链
 覆盖新增必须由真实入口和失败反例支撑：真实页面重建与旧Host退出分别验，TTY尺寸由原子进程fresh句柄观察，输出完整性核每行顺序和独立writer hash。Stop升级成功的原生smoke与最终失败的owner责任合同分别记录，不以安全清理代替业务成功。PR335本轮十一项纳入source/packaged默认目录，映射变为148/4，四项真实TUI仍待覆盖；历史137/15不代表当前新增验收，详见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)。
 
 验证的依赖范围应服从实际调用：插件构建和smoke不应因无关服务运行时的下载而失败；缩小安装闭包不能删减完整门禁任务或必要optional平台包。范围选择和冷安装证据见[依赖安装边界](smoke-dependency-install-scope.md)。
+
+测试已随仓库固定的资源应直接消费，不应再让所有任务依赖完整系统资源包的在线安装；子集夹具的适用范围须明确，移除下载不能被表述为外部网络根因已修复。见[Linux 字体准备范围](release-gate-redesign.md#linux-字体准备范围2026-10-23)。

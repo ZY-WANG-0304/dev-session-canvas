@@ -21,6 +21,16 @@ updated_at: 2026-10-23
 
 ## 正式方案
 
+### Linux 字体准备范围（2026-10-23）
+
+用户确认取消 CI 对完整 `fonts-noto-cjk` 系统包的网络下载与安装。`.github/workflows/ci-validation.yml` 的七类 Linux 浏览器/Host 准备步骤只安装 `xvfb libgtk-3-0 libnss3 libasound2`，保留 APT 更新和原五分钟期限。
+
+`tests/playwright/webview-harness.spec.mjs` 的基线截图用例在 Linux 上直接读取仓库内 `tests/playwright/fixtures/screenshot-fonts/cjk-regular.woff`，以内嵌 `@font-face` 注入并校验加载成功；CI 和本地共用这条路径。该子集只覆盖指定截图字符，不代表其他 Host、市场页面或终端获得了完整 CJK 字体。本次不改字体夹具、截图基线、任务集合或断言；其他场景沿用 runner 自带字体，显示效果仍由实际 CI 验收。
+
+前一输入 `1806300f` 的完整 run [39824883742](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39824883742) 中，265 次 locked npm 安装成功；系统依赖步骤178成功、72失败、2跳过，聚合281项通过、72项未运行。三个失败样本（visual119986121223、source119989078925、packaged119989393078）最后记录为 Azure Ubuntu 镜像的61.2 MB字体下载，随后达到五分钟上限。同轮 packaged cutover119989392780 从同镜像下载相同版本成功，不能据此确定底层网络根因。本次消除这项外部字体下载依赖，不宣称修复 APT 或此前 npm ECONNRESET 的网络根因。
+
+验证说明：静态核对七处安装命令及截图字体的 Linux 加载路径；本轮不新增或运行本地测试。更新 head 的完整 CI 仍需独立验收，历史成功及静态检查不能代证。
+
 ### 1. 四类正式入口与两类辅助入口
 
 用同一个任务目录计算验证范围，不让每个runner各自解析环境变量。**任务目录**是具名检查/case及其环境、准备、所需产物和预算的清单；**验证计划**是某次输入冻结的必跑任务集合；**回执**是运行后绑定任务与输入身份的结果文件。计划由入口生成，消费者只能执行或报失败，不能自行删减任务。
