@@ -25,11 +25,17 @@ updated_at: 2026-10-23
 
 用户确认取消 CI 对完整 `fonts-noto-cjk` 系统包的网络下载与安装。`.github/workflows/ci-validation.yml` 的七类 Linux 浏览器/Host 准备步骤只安装 `xvfb libgtk-3-0 libnss3 libasound2`，保留 APT 更新和原五分钟期限。
 
-`tests/playwright/webview-harness.spec.mjs` 的基线截图用例在 Linux 上直接读取仓库内 `tests/playwright/fixtures/screenshot-fonts/cjk-regular.woff`，以内嵌 `@font-face` 注入并校验加载成功；CI 和本地共用这条路径。该子集只覆盖指定截图字符，不代表其他 Host、市场页面或终端获得了完整 CJK 字体。本次不改字体夹具、截图基线、任务集合或断言；其他场景沿用 runner 自带字体，显示效果仍由实际 CI 验收。
+`tests/playwright/webview-harness.spec.mjs` 的基线截图用例在 Linux 上直接读取仓库内 `tests/playwright/fixtures/screenshot-fonts/cjk-regular.woff`，以内嵌 `@font-face` 注入并校验加载成功；CI 和本地共用这条路径。在 d6646b38 时，该子集只覆盖指定截图字符，其他场景沿用 runner 自带字体；当时只删除安装项，未修改字体夹具。这一替代不完整，后续 Webview 范围按下一节补齐，Host 与市场页面不因此获得完整 CJK 字体。
 
 前一输入 `1806300f` 的完整 run [39824883742](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/39824883742) 中，265 次 locked npm 安装成功；系统依赖步骤178成功、72失败、2跳过，聚合281项通过、72项未运行。三个失败样本（visual119986121223、source119989078925、packaged119989393078）最后记录为 Azure Ubuntu 镜像的61.2 MB字体下载，随后达到五分钟上限。同轮 packaged cutover119989392780 从同镜像下载相同版本成功，不能据此确定底层网络根因。本次消除这项外部字体下载依赖，不宣称修复 APT 或此前 npm ECONNRESET 的网络根因。
 
-验证说明：静态核对七处安装命令及截图字体的 Linux 加载路径；本轮不新增或运行本地测试。更新 head 的完整 CI 仍需独立验收，历史成功及静态检查不能代证。
+历史验证说明：d6646b38 仅静态核对七处安装命令及截图字体的 Linux 加载路径，当时未运行本地测试。后续修正的验证见下一节；完整 CI 仍须按最终 head 独立验收。
+
+### Webview 本地字体补齐（2026-10-23）
+
+后续 run39920907930 的 Linux Webview 功能测试出现中文软换行及两项标题截断失败，截图用例仍通过。原 WOFF 仅在截图测试注入，移除系统字体安装并未为其他功能用例提供替代字体。
+
+本轮将同源 WOFF 扩展为覆盖 Webview 测试及呈现层中文字符的子集，在公共 `openHarness` 和主题切换完成后加载并设置 UI/编辑器字体；保留原 Latin 回退、原截图及业务断言。字体源 SHA256 固定，生成工具只在维护夹具时使用，测试直接消费仓库文件。独立 fontconfig 限制为 Latin 字体，在原三项失败中本机复现软换行与分组标题两项，根工作区标题本机原通过；补齐字体后三项均通过。最终保留默认Latin字体并排除系统CJK字体的完整434项全部通过，零重试、PNG基线不变；字体/字符清单损坏与未覆盖字符三个反例被拒，原38个字形轮廓和字宽不变，字体重复生成字节一致。证据见[本地验证记录](../references/webview-local-cjk-font/README.md)，复用既有Webview dist，不代证新head完整CI。该替代范围限于 Webview harness，不为 VSCode Host 注入测试字体，notifier-locale 的 VSCode 下载 ECONNRESET 另行处理。
 
 ### 1. 四类正式入口与两类辅助入口
 

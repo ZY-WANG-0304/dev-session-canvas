@@ -4,6 +4,7 @@ import { pathToFileURL } from 'url';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
+import { applyLocalCjkFont } from './fixtures/screenshot-fonts/load.mjs';
 import { transform } from 'esbuild';
 import terminalResize from '../vscode-smoke/terminal-resize.cjs';
 import { prepareInstalledLocalizedStop } from '../../scripts/smoke/installed-ui-observation.mjs';
@@ -289,21 +290,6 @@ test.afterEach(async ({ page }, testInfo) => {
 test('webview bundle emits ready and matches the baseline screenshot', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
-  if (process.platform === 'linux') {
-    // Keep the baseline's CJK glyphs independent of the runner's system fonts.
-    const fontRoot = path.join(process.cwd(), 'tests/playwright/fixtures/screenshot-fonts');
-    const characters = (await fs.readFile(path.join(fontRoot, 'characters.txt'), 'utf8')).trim();
-    const unicodeRange = [...characters].map(character => `U+${character.codePointAt(0).toString(16)}`).join(',');
-    const bytes = await fs.readFile(path.join(fontRoot, 'cjk-regular.woff'));
-    await page.addStyleTag({ content: `@font-face { font-family: 'DSC Screenshot CJK'; font-weight: 400; src: url(data:font/woff;base64,${bytes.toString('base64')}) format('woff'); unicode-range: ${unicodeRange}; }` });
-    await page.evaluate(async text => {
-      const loaded = await document.fonts.load('400 16px "DSC Screenshot CJK"', text);
-      if (loaded.length !== 1) throw new Error('Screenshot CJK font did not load');
-      for (const name of ['--vscode-font-family', '--vscode-editor-font-family']) {
-        document.body.style.setProperty(name, `'DSC Screenshot CJK', 'Segoe UI', sans-serif`);
-      }
-    }, characters);
-  }
   await bootstrap(page, createCanvasScreenshotState());
 
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveCount(0);
@@ -18083,6 +18069,7 @@ async function openHarness(page, options = {}) {
   }
 
   await page.goto(harnessUrl);
+  await applyLocalCjkFont(page);
 
   await expect
     .poll(async () => {
@@ -18155,6 +18142,7 @@ async function applyWorkbenchTheme(page, themeName) {
       unsetVars: fixture.unsetVars ?? []
     }
   );
+  await applyLocalCjkFont(page);
   await settleWebview(page, 2);
 }
 

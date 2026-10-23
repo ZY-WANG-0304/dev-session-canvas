@@ -47,3 +47,5 @@
 downloadFixedVSCode保留原参数和注入式download/now/sleep。新增downloadVSCodeAttempt接收version/cachePath/timeout/deadline；worker直接调用锁定的@vscode/test-electron，依赖库内部重试被reporter拒绝。不新增npm包。
 
 修订记录：2026-10-23完成单次worker、取消传播、原期限看门狗、结构化错误及清理后重试接线，验证边界保持。
+
+补充进展：用户要求验证完整CI，840b06b2四组真实worker受控验证通过，证据见docs/references/vscode-download-recovery/README.md；与字体修正共同推送PR335，完整Actions待终态。

@@ -1,0 +1,57 @@
+[
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768656433,
+    "status": "running",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768626433,
+        "deadline": 1792768656433,
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768656433,
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768626433,
+        "deadline": 1792768656433,
+        "status": "failed",
+        "completedAt": 1792768626535,
+        "transient": false,
+        "process": {
+          "code": 7,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 285175,
+          "error": null,
+          "exited": true,
+          "residualGroup": false,
+          "observedResidualGroup": false,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "error": {
+          "name": "Error",
+          "code": null,
+          "message": "Download attempt exited without a readable result"
+        }
+      }
+    ]
+  }
+]
