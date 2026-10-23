@@ -126,6 +126,7 @@
 | `docs/design-docs/release-gate-redesign.md` | 分层CI/同批双包已在ed9257bd与未改PR327临时组合各247 jobs全成功，324/330必跑全通过；原acceptance、双包、六安装及434浏览器验真，临时分支退役；取消七类Linux任务的系统CJK字体下载，截图消费仓库夹具；新head另验，两生产竞态和最终发布输入保持阻塞 | VSCode 集成域、执行编排域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/release-gate-implementation.md` | 2026-10-23 |
 
 | `docs/design-docs/smoke-dependency-install-scope.md` | 插件和市场服务按实际调用选择workspace安装，保留完整门禁与原网络证据边界 | VSCode 集成域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/smoke-dependency-install-scope.md` | 2026-10-23 |
+| `docs/design-docs/ci-download-cache.md` | 统一Chromium准备与运行路径，恢复npm及固定VSCode/Chromium缓存；不调整下载重试，Actions命中待验 | VSCode 集成域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/ci-download-cache.md` | 2026-10-23 |
 
 ## 维护约定
 

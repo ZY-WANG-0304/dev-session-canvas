@@ -4,7 +4,11 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 export const projectRoot = process.cwd();
-export const browserCacheDir = path.join(projectRoot, '.playwright-browsers');
+// Keep infrastructure preparation and nested test runners on the same cache.
+const configuredBrowserCache = process.env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+export const browserCacheDir = configuredBrowserCache === '0' ? '0'
+  : configuredBrowserCache ? path.resolve(projectRoot, configuredBrowserCache)
+    : path.join(projectRoot, '.playwright-browsers');
 export const runtimeRoot = path.join(projectRoot, '.debug', 'playwright');
 export const homeDir = path.join(runtimeRoot, 'home');
 export const configDir = path.join(runtimeRoot, 'config');
@@ -20,7 +24,8 @@ export async function preparePlaywrightRuntime() {
     throw new Error('缺少本地 Playwright CLI。请先安装 @playwright/test 依赖。');
   }
 
-  await fs.mkdir(browserCacheDir, { recursive: true });
+  // Playwright uses 0 for its package-local browser directory.
+  if (browserCacheDir !== '0') await fs.mkdir(browserCacheDir, { recursive: true });
   await fs.mkdir(homeDir, { recursive: true });
   await fs.mkdir(configDir, { recursive: true });
   await fs.mkdir(cacheDir, { recursive: true });

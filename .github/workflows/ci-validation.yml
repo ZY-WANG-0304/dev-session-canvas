@@ -121,6 +121,8 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
     - name: Download frozen plan
@@ -170,8 +172,16 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -222,6 +232,8 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
     - name: Download frozen plan
@@ -281,8 +293,16 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -346,8 +366,16 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -411,8 +439,16 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -486,6 +522,8 @@ jobs:
       with:
         node-version: 25.6.0
         architecture: ${{ matrix.arch }}
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
     - name: Download frozen plan
@@ -556,6 +594,8 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
     - name: Download frozen plan
@@ -619,8 +659,22 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -691,8 +745,22 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -759,6 +827,8 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
     - name: Download frozen plan
@@ -822,8 +892,22 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -891,8 +975,22 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
     - name: Download frozen plan
       uses: actions/download-artifact@v4
       with:
@@ -967,6 +1065,8 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
     - name: Configure isolated runner caches
       run: node scripts/gates/setup-environment.mjs
     - name: Download frozen plan

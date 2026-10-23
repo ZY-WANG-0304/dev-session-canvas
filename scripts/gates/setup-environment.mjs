@@ -6,8 +6,10 @@ import path from 'node:path';
 // runner directory after setup-node so this also works in PowerShell jobs.
 assert(process.env.GITHUB_ENV, 'This setup step requires a GitHub Actions job');
 assert(path.isAbsolute(process.env.RUNNER_TEMP ?? ''), 'RUNNER_TEMP must be absolute');
-const root = path.join(process.env.RUNNER_TEMP, 'dsc-gate',
-  `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
+// actions/cache includes the path in its cache version. A run-id in this
+// path would prevent reuse across runs even when the explicit key matches.
+// Hosted jobs already have separate runner filesystems; profiles stay private.
+const root = path.join(process.env.RUNNER_TEMP, 'dsc-gate-tools');
 const values = {
   PLAYWRIGHT_BROWSERS_PATH: path.join(root, 'playwright-browsers'),
   DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH: path.join(root, 'vscode-cache')

@@ -38,6 +38,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install locked resolver dependencies
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output resolve-evidence -- npm ci --no-audit --no-fund
         timeout-minutes: 10
@@ -94,6 +96,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install locked delivery dependencies
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output prepare-evidence -- npm ci --no-audit --no-fund
         timeout-minutes: 10
@@ -139,6 +143,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install locked channel dependencies
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output channel-result -- npm ci --no-audit --no-fund
         timeout-minutes: 10
@@ -177,6 +183,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install locked channel dependencies
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output channel-result -- npm ci --no-audit --no-fund
         timeout-minutes: 10
@@ -215,6 +223,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install locked completion verifier
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output final-result -- npm ci --no-audit --no-fund
         timeout-minutes: 10
