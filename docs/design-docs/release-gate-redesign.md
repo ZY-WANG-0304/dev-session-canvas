@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-24
+updated_at: 2026-10-25
 ---
 
 # CI与发布门禁重设计
@@ -15,7 +15,7 @@ updated_at: 2026-10-24
 
 用户要求把[分层审查](release-gate-layering-review.md)和[smoke场景重划](smoke-scenario-boundaries.md)推进为完整设计。本设计选定按验证责任组织job、按不可变输入传递产物、按独立回执判定完成的流程。一个失败应直接说明是输入、构建、产品动作、观察、清理还是交付失败；发布的包必须就是最终输入上验收过的那批文件。
 
-`已选定`表示工程设计已收口。现有覆盖迁移与分层CI已在PR335 ed9257bd及其与未改PR327的真实临时组合上完成完整验收；`验证中`仍保留最终发布输入、真实渠道和补充覆盖的验证边界。本文不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，两项生产竞态修复落地及最终正式预合并完整门禁继续按既有要求关闭。
+`已选定`表示工程设计已收口。现有覆盖迁移与分层CI已在PR335 ed9257bd及其与未改PR327的真实临时组合上完成完整验收；`验证中`仍保留最终发布输入、真实渠道和补充覆盖的验证边界。本文不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327 保留发布材料；两项生产竞态已在 PR336 合入后关闭，见 [恢复订阅修复](runtime-restore-subscription-fix.md) 与 [模式切换结算](runtime-mode-switch-settlement.md)。最终 PR327 真实预合并输入仍须完整验收，文档对齐和修复 PR 的绿色均不能代证。
 
 研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。设计研究时未改workflow与发布脚本；2026-10-18起按本文实施，落点及真实验证边界见[已完成实施计划](../exec-plans/completed/release-gate-implementation.md)。实现、回归、根因与文档继续集中PR335，不另建诊断、验证或文档PR。
 
@@ -281,7 +281,7 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 
 实施后验收必须证明：静态错误不等六资产才报；普通代码PR确实运行功能层；每层失败有always现场；原样安装无产品smoke模式；消费者前后原双包摘要与最终GitHub/渠道身份对应；错输入/少case/取消/未知结果不能绿色；渠道提交未知不重发、原包恢复幂等；每个平台实际spawn/resize/exit/Stop/cleanup观察成立。真实TUI必须有独立于被测waiting-input启发式的回合完成证据，现有fake检查只验受控输入。
 
-固定环境组合、infra首轮预算、跨平台操作/三x64安装以及各渠道签名/content口径尚需真实受控验证。支持最低VSCode、arm64原样安装、真实systemd manager、Marketplace自动下载和真实桌面通知另有范围，不被本轮新图暗示已验。源码既有竞态仍需产品修复，重设计CI不会自动解决它。
+固定环境组合、infra首轮预算、跨平台操作/三x64安装以及各渠道签名/content口径尚需真实受控验证。支持最低VSCode、arm64原样安装、真实systemd manager、Marketplace自动下载和真实桌面通知另有范围，不被本轮新图暗示已验。原恢复订阅与模式切换竞态已由 PR336 独立修复并复审，修复事实与最终发布输入的验收分开记录；下面实施历史中的“未修复”只描述当时输入。
 
 ## 设计流程图
 

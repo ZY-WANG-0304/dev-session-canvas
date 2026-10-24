@@ -6,7 +6,7 @@ domains: [执行编排域, VSCode 集成域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-0-26-1-refresh.md]
-updated_at: 2026-10-14
+updated_at: 2026-10-25
 ---
 
 # 从最新主线重新准备 0.26.1
@@ -15,17 +15,31 @@ updated_at: 2026-10-14
 
 用户舍弃 PR #313 并要求从最新 origin/main 重新准备 0.26.1。2026-10-13 fetch 后基线为 ea0c9b194fda1f13098cfd7ad4a3e13c4ec5233b，包含 PR #314/#316/#319 以及#321/#323/#324/#325。旧候选遗漏后续能力且记录过期失败，不予 rebase 或复用；另开 release-0-26-1-refresh。
 
-主线评估 PR #326 仍未合并，不作为发布基线。本分支只按主线已有证据修正共享设计与产品规格中“接管尚未实现”的旧描述，保留有限验收边界；不合入该 PR 全部报告，也不将它的测试当成本版完整验证。v0.26.0 已于 2026-10-08 发布，README/手册的上一已发布版本同步更正。
+2026-10-13 初次准备时，主线评估 PR #326 尚未合并，不作为当时发布基线。本分支只按主线已有证据修正共享设计与产品规格中“接管尚未实现”的旧描述，保留有限验收边界；不合入该 PR 全部报告，也不将它的测试当成本版完整验证。v0.26.0 已于 2026-10-08 发布，README/手册的上一已发布版本同步更正。
 
 ## 正式方案
 
 根与双扩展 manifest、lock 同步为 0.26.1；双 CHANGELOG、中英文 listing/README、两份手册、support 和 docs/release-contracts/v0.26.1.md 构成静态发布输入。内容覆盖主线已完成的执行可靠性和共享 root 画布，不新增产品实现、设置、依赖或模板市场生产部署。共享/私有模式、最后窗口清理接管和普通关闭保留语义按 runtime-shared-root-canvas-sync.md 与 runtime-persistence-modes.md 表达；执行修复以 smoke-reload-autostart-investigation.md 和 terminal-mouse-input-diagnostics.md 为依据。
 
-scripts/release/release-preflight.mjs::runFullVerification 对本版运行标准完整 npm test 及 HEAD 的 clean-checkout VSIX 验证，不能继承 0.26.0 授权例外。先提交静态输入，再用最新 head 和 origin/main 构造临时预合并 commit，在独立工作树安装和验证。验证后若只增加过程/证据文档，核对产品、测试、版本与用户发布输入相同，单独记录手册过程链接变化并注明实际 commit；线上最新 PR 预合并结果仍必须完整验证。合并与 publish tag 需另行授权，最终 tag 须再次 verify。
+当前门禁沿用 `docs/WORKFLOW.md` 与 [CI 与发布门禁重设计](release-gate-redesign.md)。`scripts/release/release-preflight.mjs` 只做版本、双 CHANGELOG 和静态契约检查。正式发布 PR 由 `.github/workflows/release-preflight.yml` 固定最新 base/head 的真实预合并 SHA，`scripts/gates/resolve-plan.mjs` 根据版本与唯一契约将模式升级为完整 `release-pr`；`.github/workflows/ci-validation.yml` 按 `scripts/gates/catalog.mjs` 冻结全部必跑任务、环境和预算。
 
-Linux x64 验证使用 Node22.23.3、VS Code1.141.0、fake Agent 与原生 PTY，六目标资产复用须通过默认 build 的源/依赖/二进制 hash 校验。暖 Chromium 缓存先按 workflow 准备，不称为冷 OS。默认 npm 安装、不设场景 filter、不更改原断言、截图或重试。命令保存 UTC 时间、真实 exit 与日志 hash；失败后独立对照不能追认为首轮或聚合通过。
+任务图覆盖全部登记回归、Webview 功能 / 视觉、Marketplace 浏览器 / Host、六目标原生加载与操作、全部标准 source-host / packaged-host、notifier companion / locale，以及三平台 x64 原样双包安装。`package-clean` 用干净源码和锁定依赖生成一批 main / notifier VSIX；后续 packaged、安装和交付只消费原双包。`scripts/gates/verify-result.mjs` 汇总精确任务与产物身份，`scripts/gates/check-acceptance.mjs` 再独立核对实际 Actions job / 工件来源，稳定检查 `Verify release contract` 成功后才满足 PR 的正式验证门槛。缺结果、取消、错输入和取证 / 清理失败不放行。
 
-## 当前验证输入
+本地 `npm run release:verify -- --version 0.26.1` 已映射到 `scripts/gates/run-local.mjs --mode release-pr`。它冻结已提交输入、建立隔离 checkout 并运行同一任务图，但输出 `acceptance: false`；本机缺少的外平台明确记 `not-run`。局部成功或本地完整结果都不能替代 Actions 正式验收，旧串行 `npm test` / 八场景重打包不是现行发布验收定义。
+
+环境随冻结输入的 `environmentPolicy` 确定，当前 gate Node 为 22.23.3、VS Code 为 1.142.0，视觉基线使用固定 Ubuntu 22.04 与 lockfile Chromium。缓存复用仍须校验来源，不能称为冷安装。既有断言、预算与产品支持范围不因文档修正改变。
+
+PR 合入后，最终 `publish/v0.26.1` 的 SHA 必须以 `release-tag` 独立完整验收。验证阶段生成候选包；发布 prepare 只消费已验收原双包，之后才创建正式 Release 和写渠道。渠道恢复复核原 acceptance、双包与连通状态链，不重打包。合并、tag 和发布依原授权边界执行。
+
+## 当前接续状态（2026-10-25）
+
+PR335 的分层门禁和 PR336 的恢复订阅 / 模式切换修复已合入 main；基线为 PR336 merge `37ff8554b0fb71d4c5cd6d574baaffcabb4d47a6`。PR327 已由旧 head `656b991d` rebase 为 `c0046aad`，没有相对主线增加产品、测试或 workflow。PR336 最新复审已关闭原两项生产 blocker，其 run40107994873 的 269 个 job 全部成功；这些只证明 PR336 的输入，不代证本发布 PR。
+
+本次修正契约、双手册、readiness、设计和执行计划中的旧门禁 / 命令说明。PR327 在 rebase 后的 run40113684471 因 draft 全部 skipped，正式最新预合并输入仍未验收。文档更新后的新 head 须重新生成正式输入并通过完整任务图和最终复审；本节所列历史 head 不是后续输入的固定替代。非阻塞边界与未配置 main 保护的流程缺口见 `docs/exec-plans/tech-debt-tracker.md`。
+
+## 历史验证输入（PR333 合入后，2026-10-14）
+
+本节保留当时的串行门禁和运行记录；后续执行以上文正式方案为准。
 
 PR #328、集中修复 PR #329、Marketplace 门禁修复 PR #332 与本地后代 ESRCH 修复 PR #333 均已合入。2026-10-14 fetch 后 main 为 `eee25291109e7e3bad27e6841520f3f4a5d14dcc`（PR333 merge commit）；发布分支从原远端 head `cfe1ab40e121bc31689f474e2e6f7cbb9bad4f48` rebase 到该主线，无冲突。原远端 head 保留在本地 backup/pr327-before-pr333-rebase。发布 PR 相对 main 不增加产品实现、测试或 workflow 修改。
 
@@ -61,7 +75,7 @@ PR332合入后的正式run38539427680在预合并b0198184的SSH exit本地后代
 
 共享画布真实 UI 限 Linux 单 root，分阶段接管有受控 Host/store 与独立 Supervisor 证据；其他平台、真实 provider、多 root 接管 UI、公开市场自动安装依赖和桌面点击均不由本机 fixture 通过自动扩展。Supervisor/机器故障及跨版本回退无保证。
 
-完成准备需要静态检查和完整本地 verify 的实际结果、notifier 补充验证、最新主线祖先关系与可 review PR。完整 verify 失败时标为草稿阻塞；required CI/review 仍须成功，发布只能在合并后的 main 另行执行。
+完成发布准备验收需要静态文档一致、最新主线祖先关系、该次真实 PR 预合并输入的完整 Actions acceptance 与最终 head 复审。draft skipped、本地 `acceptance: false`、历史组合或单项通过均不足以放行。main 尚无强制保护，仍须人工遵守上述门槛；最终发布只在合入后的 main SHA 上另行验收和执行。
 
 ## 历史证据与交付状态（PR328合入前）
 
@@ -79,6 +93,6 @@ PR332合入后的正式run38539427680在预合并b0198184的SSH exit本地后代
 
 2026-10-14接续：PR332合入main f3bb4425后重新rebase，正式最新PR预合并门禁结果继续绑定PR327实际head/base/input/checks；原Marketplace首败保留历史含义。
 
-## PR334合入后的正式发布输入复验（2026-10-15）
+## 历史 PR334 合入后的正式发布输入复验（2026-10-15）
 
 PR334已正常合入main6e708c6b，模板导出后的具名cleanup复用原最终保存reset helper；28项回归、原生pending窗口及临时组合完整通过为修复证据。PR327从旧head20d237c5 rebase到该主线，静态发布范围、版本与依赖不变，未引入额外测试/产品/workflow修改。正式门禁须由本次最新PR预合并输入生成同run六平台资产并运行无过滤release:verify；结果以PR327最新head/base/预合并SHA/run/checks为准，旧run38579057915与修复组合run38656127632均保留原范围。本次未授权合并、tag或发布。

@@ -17,7 +17,7 @@ related_plans:
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
   - docs/exec-plans/completed/release-gate-contract.md
-updated_at: 2026-10-14
+updated_at: 2026-10-25
 ---
 
 # 公开平台发布准备
@@ -327,29 +327,25 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 补充说明：截至 `2026-04-28`，`Remote SSH` 主路径与 Linux、macOS、Windows 本地路径的当前轮功能可用性验证都已补齐；其中 `Remote SSH` 仍是当前最强验证证据所在路径。仍需显式保留的剩余限制是 Windows 下 `Codex` 历史无法向上翻页，以及三平台自动化矩阵尚未完全补齐。
 
-### 7.5 发布流水线最小 CI 化
+### 7.5 当前发布编排与历史迁移
 
-当前仓库已经有本地打包脚本、VSIX smoke 与 clean-checkout 验证入口；自 2026-06-08 起，release-day 的发布动作迁入最小 GitHub Actions wrapper：`publish/vX.Y.Z` tag 固定发布输入，workflow 负责 checkout、`npm ci`、调用本地 `release:publish-tag` 和上传发布产物。自 2026-06-13 起，workflow 在 Visual Studio Marketplace / Open VSX 发布与验证之外增加 GitHub Release assets：首次运行时用 `--package-only` 打包并生成 manifest，创建或确认正式 tag，创建 / 更新对应 GitHub Release 并上传两个 VSIX 与 manifest；同版本重跑时若 Release 已有完整 assets，则下载并用 `--skip-package --package-only` 校验既有 manifest / VSIX，不重新打包或覆盖 VSIX。自 2026-06-14 起，Open VSX 与 Visual Studio Marketplace 在 workflow 中拆成两个独立目标步骤：任一 marketplace 发布或验证失败都不阻断另一 marketplace 尝试发布和验证；两个目标都跑完后，workflow 根据最终 manifest 上传 release manifest 并重新生成 GitHub Release notes。GitHub Release 创建、assets 上传、最终 manifest / Release notes 覆盖和临时 tag 删除由 workflow 负责；当前完成门禁是 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均发布验证成功；`0.25.0` 沿用该门禁。Visual Studio Marketplace 仍会尝试发布 / 验证并写入 manifest，但当前允许延期补发，不阻塞临时 tag 删除；Open VSX 失败时保留 `publish/vX.Y.Z` 供同一 release input 重跑。失败的 Open VSX job 会在上传自身 result manifest 后标红，使 GitHub Actions 的 Re-run failed jobs 能实际重试失败渠道，而不是只重跑 finalize。workflow 触发范围必须保持收窄：只响应 `publish/v*` tag push 与手动 `workflow_dispatch`，不响应普通分支、普通 tag 或 release 分支创建，避免 Actions 列表出现 skipped publish run 并干扰发布判断。
+当前 `.github/workflows/publish-marketplace-release.yml` 只响应 `publish/v*` tag push 和手动 `workflow_dispatch`。新发布由 resolve 固定 main 上的最终 SHA，verify 调用 `release-validation.yml` / `ci-validation.yml` 的完整 `release-tag`，prepare 消费已验双包，两个渠道独立提交与验真，finalize 汇总回执并清理临时 tag。具体契约见 [发布门禁设计](release-gate-redesign.md#6-发布workflow仍保留六个外层job)。
 
-`v0.25.0` 的发布后回写暴露出两个边界问题：用户 CHANGELOG 曾混入“仍需执行分层 gate”的内部待办，随后又通过 #292 改写为“已完成”；同时，最终 run、工件 hash 和渠道状态只能在发布后才知道。前者不能出现在 tag checkout 会直接生成的 GitHub Release notes 中，后者也不应再用后续 PR 回写到该版本的发布输入。从下一次发布开始，下面的双阶段门禁和证据分层取代把这些事项留给人工发布清单的做法。
+2026-06-08 的最小 wrapper、6 月 13 日加入 GitHub assets 和 6 月 14 日拆分渠道，是历史迁移阶段；当时 `--package-only` / `--skip-package` 的串行发布入口已由显式 phase 与来源回执替换。旧 tag 按 tag 内原流程维护，不能把旧命令用于 0.26.1。
+
+`v0.25.0` 发布后曾通过 #292 把 CHANGELOG 的内部 gate 待办改成“已完成”；这不能成为新版本的收口模式。用户说明在发布前定稿，最终 run、工件摘要与渠道结果留在外部发布证据。
 
 ### 7.6 发布契约与双阶段门禁
 
-每次新版本必须和 `docs/release-contracts/vX.Y.Z.md` 一同进入发布准备 PR。发布契约是静态输入：它写本版本的发布范围、用户 release notes、已审阅的文档清单、已知限制和验证范围，但不写任何发布后事实。主扩展与 notifier 的 `CHANGELOG.md` 同样只写用户可见的版本说明；内部待办、候选 SHA、workflow run、工件 hash、渠道状态和“gate 已通过 / 待执行”都不属于 release note。
+每个版本的静态契约、双 CHANGELOG、版本和 Marketplace 文案一同进入发布准备 PR。`npm run release:preflight -- --version X.Y.Z` 检查根 / 双扩展 / lock 版本、非空用户 release notes 和契约结构；它不执行产品验收，也不能自动发现所有文档语义漂移。
 
-`npm run release:preflight -- --version X.Y.Z` 只做无副作用的输入检查：根 workspace、主扩展、notifier 和 lockfile 版本一致，两个 CHANGELOG 都有非空目标版本段且不含内部执行语句，发布契约存在且结构完整。`npm run release:verify -- --version X.Y.Z` 在这些检查后运行 `npm test` 和 `npm run validate:clean-checkout:vsix -- --ref HEAD`。release PR 的 `Release Preflight` workflow 必须针对由最新 PR head 与基准分支生成的预合并结果运行完整 verify，`publish/vX.Y.Z` checkout 也必须运行完整 verify；仓库 branch protection 必须将 PR workflow 设为 required status check。
+非草稿发布 PR 的 `Release Preflight` 固定最新 base/head 真实预合并 SHA，以 `release-pr` 调用唯一任务图；最终 tag 在 main 上的 SHA 独立执行 `release-tag`。任务图包括全部基础、功能、产物和有限平台操作 / 安装范围。`package-clean` 在验证阶段产生同批双包，后续场景消费原包；独立 acceptance 核对精确必跑集合、真实 Actions job / 工件来源及产物身份后，`Verify release contract` 才能通过。
 
-完整 verify 成功前，publish workflow 不得打包、创建 `vX.Y.Z`、上传 GitHub Release assets 或调用 Marketplace。这样发布准备 PR 与最终 release ref 都具备同一条可观察的验证证据，而不是在发布后用文档声明门禁已经通过。
+本地 `release:verify` 是隔离任务图入口，只输出 `acceptance: false`，缺少外平台记 `not-run`；不能用它替代上述正式验收。稳定检查应设为 required，但目前 main 未配置保护；草稿跳过、取消、少结果、错输入及取证 / 清理失败均不满足仓库合并要求。普通非草稿 PR 也使用同一入口，基础层始终执行，保守分类追加功能 / 产物层。
 
-发布成功后的权威事实仍是 `release-artifacts/release-manifest-X.Y.Z.json`、GitHub Release assets 和从 tag checkout 的 CHANGELOG / manifest 生成的 Release notes。它们允许记录 release ref、VSIX SHA、workflow run、渠道状态和 deferred 原因，但不提交回仓库。历史发布 tag 若需要补发渠道，保留其 tag 内已有的发布路径；新门禁只对包含发布契约的新版本生效。
+最终 SHA 完整验证通过前不创建正式 Release、不写市场、不删除临时 tag；验证本身必须能生成候选包。prepare 与渠道只复用原验收双包。已发生部分交付时，`channel-retry` 复核原 acceptance / 双包 / 状态链后恢复，禁止重打包或以另一输入的绿灯代证。
 
-此前的最小手工 gate 是：
-
-- 在干净环境中执行 `npm ci`、按最终 git ref 锁定 README 改写目标后的 `npm run package:vsix`、VSIX 内容校验和发布前 smoke；GitHub Actions 发布路径会重新打包并上传 Release assets，但不替代发布准备 MR 阶段的人工 gate。
-- 让 `@vscode/vsce` 成为唯一受支持的打包入口，并把当前脚本 fallback 行为纳入发布前检查。
-- 在真正触发发布前，使用 `npm run release:publish-tag -- --trigger-tag publish/vX.Y.Z --dry-run --package-only` 预览 release ref、VSIX 计划与 manifest，避免临场操作漂移。
-
-本轮将完整 PR 测试矩阵和 clean-checkout VSIX smoke 接入 release PR / release-day 的统一命令；一般开发 PR 的测试策略不因该发布专项 workflow 而改变。
+发布后的 manifest、GitHub Release assets 与 Release notes 是权威事实，可记录最终 SHA、产物摘要、实际 run、渠道和 deferred 原因，不提交回同版本仓库输入。
 
 ## 8. 风险与取舍
 
@@ -361,13 +357,13 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 ### 9.0 当前 0.26.1 发布输入
 
-从main ea0c9b19重新创建0.26.1准备分支，PR328、PR329与PR332合入后rebase到main f3bb4425，不沿用已关闭PR #313的静态输入或验证结论。根/双扩展manifest与lock统一版本，双CHANGELOG、中英文README/listing、手册、support及docs/release-contracts/v0.26.1.md构成发布前输入。
+0.26.1 最初从 main ea0c9b19 重新准备，现已接续 PR334、PR335 和 PR336，并 rebase 到 PR336 merge 37ff8554；不沿用已关闭 PR #313 的静态输入或验证结论。根/双扩展manifest与lock统一版本，双CHANGELOG、中英文README/listing、手册、support及docs/release-contracts/v0.26.1.md构成发布前输入。
 
 本版纳入已合入主线的root稳定归属、启动失败反馈与准入收口、历史清理/旧协议重连、本地执行生命周期/终端交互/提醒修复、删除输入边界和共享root画布。共享模式适用于同执行环境、用户存储范围与root，关闭模式私有；开关在关闭/reload边界应用，不迁移内容。非最后窗口退出只detach，最后窗口清理可按阶段被新开启窗口接管；未切换模式的普通关闭保持共享运行。工程依据为runtime-shared-root-canvas-sync.md、smoke-reload-autostart-investigation.md、terminal-mouse-input-diagnostics.md与runtime-persistence-modes.md。
 
 共享能力证据有限，不能扩展为全平台/多root四阶段UI验收。上游Webview资源积压和单次fallback首败边界继续按webview-ready-root-cause.md保留；smoke-reopen-ready-timeout.md的45秒只属于测试容忍，不为普通打开增加超时提示或自动恢复。Supervisor/机器故障、旧live协议及跨版本回退等原限制不变。模板市场服务部署独立，不随本版执行。
 
-scripts/release/release-preflight.mjs::runFullVerification对0.26.1执行标准完整npm test和clean-checkout VSIX；PR最新head预合并结果与最终publish tag各须真实verify成功，历史授权不得代用。本地准备验证的实际输入、首败与结果写入release-0-26-1-refresh.md，不写入契约/CHANGELOG。正式发布和渠道事实仅由外部Release manifest记录。
+本版采用第 7.6 节的完整 `release-pr` / `release-tag` 任务图，静态检查、正式 Actions acceptance 和本地 `acceptance: false` 分别记录。PR336 已关闭恢复订阅与模式切换两项生产竞态，原修复验收不代证 PR327 最终预合并输入；本次文档对齐后仍需该输入完整门禁和最终复审。具名输入、历史首败与过程见 `release-0-26-1-refresh.md`，不写入契约 / CHANGELOG。正式发布与渠道事实由外部 Release manifest / assets / notes 记录。
 
 ### 9.0.1 0.26.0 发布输入与授权（历史）
 
@@ -388,17 +384,17 @@ scripts/release/release-preflight.mjs::runFullVerification对0.26.1执行标准�
 ### 9.2 适用范围与边界
 
 - 本方案原始部分覆盖 `0.5.0` 公开 `Marketplace Preview` 的仓库内准备与 release-day 执行；2026-05-15 的更新只确认后续 release-day 的双市场同步发布机制，不把“已经具备稳定版 SLA”或“所有 Open VSX 兼容宿主均完整支持”写成既成事实。
-- 适用的发布输入必须与上述正式文档保持一致；若真正发布使用的不是当前候选 head，而是后续 merge commit、tag 或其他最终 git ref，则必须基于最终 ref 重新执行 clean-checkout 打包验证，并复核 `extensions/vscode/dev-session-canvas/README.marketplace.md` 的资源改写 ref。
+- 适用的发布输入必须与上述正式文档保持一致；若真正发布使用的不是当前候选 head，而是后续 merge commit、tag 或其他最终 git ref，则必须基于最终 ref 独立执行完整 `release-tag` 任务图，并复核 `extensions/vscode/dev-session-canvas/README.marketplace.md` 的资源改写 ref。
 - 支持矩阵继续以 `Remote SSH` 与桌面三平台主路径已验证为基础，但不把 `Restricted Mode`、`Virtual Workspace`、CLI 依赖边界或更强 runtime guarantee 误写成全量稳定支持。
 
 ### 9.3 核心规则与不变量
 
 - `scripts/release/package-vsix.mjs` 必须继续从 `extensions/vscode/dev-session-canvas/` staging 主扩展发布包，并显式传入 `--readme-path README.marketplace.md`；README 资源改写 ref 必须与最终发布 ref 一致，不允许依赖发布时临时替换文案来修正文档内容。
-- `scripts/release/publish-marketplaces.mjs` 仍是 Marketplace / Open VSX 的底层发布入口；当前 GitHub Actions 首次运行通过 `scripts/release/publish-tag-release.mjs --package-only` 先打包并准备 GitHub Release assets，同版本重跑先下载并校验既有 Release assets，再通过 `--skip-package` 复用同一批 VSIX 调用 marketplace 发布与验证逻辑。
-- `npm run validate:clean-checkout:vsix` 与 `npm run test:vsix-smoke` 是发布前必须保留的最小证据链；只要工件大小、文件数或 packaged payload 内容发生变化，就必须同步刷新本设计文档与相关发布文档中的证据。
+- `scripts/release/publish-tag-release.mjs` 按显式 phase 与冻结 context 编排交付；`scripts/release/publish-marketplaces.mjs` 消费已验双包和 prepare 回执。首次发布及 `channel-retry` 都不能在渠道阶段打包，恢复必须核验原 acceptance、包摘要与状态链。
+- 产物验收以 `package-clean`、消费式 packaged-host 和三平台 x64 installed-pair 的冻结任务为准。独立 clean-checkout / VSIX smoke 只提供具名补充证据；当前包的文件清单、大小和摘要随对应回执保存，不以回写静态发布文档替代验收。
 - 发布准备 PR 必须同时提交 `docs/release-contracts/vX.Y.Z.md`。该契约与版本、CHANGELOG、Marketplace 文案同属 release input，不能在 tag 后补写；`scripts/release/release-preflight.mjs` 是它们的唯一静态校验入口。
 - 主扩展与 notifier CHANGELOG 的目标版本段只面向用户。内部发布待办只能在发布契约的验证范围中写为发布前计划；完整门禁状态、候选 / 最终 ref、workflow run、工件 hash 和渠道状态属于发布后事实，必须写入 release manifest，不能进入 CHANGELOG 或发布契约。
-- `release:verify` 必须在由最新发布准备 PR head 与基准分支生成的预合并结果和 `publish/vX.Y.Z` 指向的最终 release ref 各运行一次；第二次成功前，`.github/workflows/publish-marketplace-release.yml` 不得产生外部发布写入。PR workflow 应被 GitHub branch protection 标记为 required status check。
+- 最新 PR 预合并输入和最终 `publish/vX.Y.Z` 输入各自完成正式任务图与独立 acceptance；本地 `release:verify` 不签发该回执。最终验收成功前，publish workflow 不产生外部发布写入。稳定检查应由 branch protection 强制，但当前尚未配置。
 - `release-artifacts/release-manifest-X.Y.Z.json`、GitHub Release assets 和 GitHub Release notes 是唯一的发布后证据。它们可记录最终 ref、SHA、workflow run 和渠道状态，但不回写到该版本的仓库输入文档。
 - 正式安装真相必须继续保持为“主扩展 `extensionPack` 聚合 notifier + notifier 单向 `extensionDependencies` 回补主扩展”，且两侧都保持 `"api": "none"`；这样才能继续兼顾主扩展安装时自动带上 companion、notifier 单独安装时自动补齐主扩展，以及跨 host 场景下只靠 commands 完成协作。
 - `.debug/`、`.playwright-browsers/`、`.github/`、`node-pty` 的源码/脚本/PDB/重复依赖等冗余内容必须继续留在 VSIX 之外，避免包体回涨或引入不可追溯内容；相关内容守卫继续由 `scripts/smoke/run-vscode-vsix-smoke.mjs` 负责。
@@ -406,21 +402,19 @@ scripts/release/release-preflight.mjs::runFullVerification对0.26.1执行标准�
 
 ### 9.4 Publish tag 发布输入固定规则
 
-自 2026-06-08 起，后续公开 Preview 发布的正式流程从“在最终 `main` ref 上手工 publish 后补 tag”升级为“临时 publish tag 固定输入，脚本成功后创建正式 tag”。维护者仍必须先完成 release prep MR 并合入 `main`，但真正触发发布时不再从当前 shell 的 `HEAD` 推断 release ref，而是在最终 release commit 上创建 `publish/vX.Y.Z`。这个 tag 的 peeled commit 是本次 release input，`scripts/release/publish-tag-release.mjs` 和 `.github/workflows/publish-marketplace-release.yml` 都必须围绕该 commit 进行校验、打包、Release assets 上传和 tag 收口。
+维护者在发布准备 PR 完成正式验收并合入 main 后，才在最终 release commit 创建 `publish/vX.Y.Z`。resolver 校验版本、main 归属和已有正式 tag，把解析出的完整 SHA 固定到 context；后续验证与交付不能重新以可移动 tag 或当前 shell HEAD 作为唯一身份。
 
-核心不变量如下：
+`vX.Y.Z` 是正式 lightweight tag 和 GitHub Release 的绑定。新发布 prepare 在最终 SHA 完整验收后创建或确认正式 tag，上传并验真原双包及来源证据，之后由两个渠道独立验真。仅有正式 tag 或 Release 不代表发布完成；必需目标 GitHub Release assets / Open VSX 均覆盖 main 与 notifier，Visual Studio Marketplace 的 deferred 原因如实记录。
 
-- `publish/vX.Y.Z` 只表示发布意图和固定输入，可以在发布失败时保留并重跑；它不是正式 release tag。若 GitHub Release 已有完整 assets，重跑必须复用并校验这批 assets；若 Release assets 不完整，workflow 必须失败并等待人工修复。
-- `vX.Y.Z` 是正式 lightweight release tag，也是 GitHub Release 绑定的 tag；workflow 会在首次打包后、marketplace 发布验证前创建或确认它，以便先上传 Release assets；后续同版本重跑会复用并校验该 Release 上的既有 VSIX / manifest。单看该 tag 存在不再足以证明整轮发布完成；当前完成条件是 Release assets 已上传、Open VSX 已发布并验证、Visual Studio Marketplace 状态已明确记录为 verified 或 deferred、最终 manifest 已更新，且 `publish/vX.Y.Z` 已删除；`0.25.0` 继续沿用该条件。
-- `release-artifacts/release-manifest-X.Y.Z.json` 由发布脚本生成，记录 `version`、`releaseRef`、`triggerTag`、`finalTag`、VSIX sha256、README doc ref、GitHub Release assets 状态、marketplace 发布 / 验证状态和 tag 状态；它必须作为 GitHub Release asset 保存，不提交回仓库。
-- 打包时必须显式把 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH` 和 `DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF` 绑定到 `publish/vX.Y.Z` 指向的 commit；`--skip-package` 恢复发布必须验证已有 manifest 与 VSIX sha256 匹配，避免复用旧包。
-- 发布成功后，workflow 可以删除远端和本地 `publish/vX.Y.Z`，前提是正式 `vX.Y.Z` 已存在且指向同一 release ref、GitHub Release assets 已上传成功、Open VSX 发布与验证均已成功，且 Visual Studio Marketplace 已写入 verified 或 deferred 状态。
+合法 `channel-retry` 通过 workflow_dispatch 指定原 `trigger_tag` 与所选渠道，从原正式 tag / Release 核验原 acceptance、同批双包和连通状态链，临时 tag 已删除时也不改变原输入。缺资产、错摘要、来源不可核验或状态冲突时保留现场并拒绝覆盖；提交未知先查询，不能凭版本存在认定成功。
+
+最终 manifest、原 acceptance 与状态快照作为外部 Release assets 保存，不提交回仓库。finalize 核对实际回执、必需目标和 trigger / final tag 身份后完成临时 tag 清理；清理失败单独记录并保留幂等恢复路径。完整操作命令见 `docs/public-preview-release-playbook.md`。
 
 ### 9.5 发布输入与发布后事实的边界
 
 发布身份由版本、`publish/vX.Y.Z` peeled SHA、正式 `vX.Y.Z` tag 和 release manifest 定义，不由发布准备分支的 commit subject 或 GitHub merge 生成的 message 定义。发布准备 PR 合并后出现新的 merge commit 是正常 git 行为；任何会预先写死候选 SHA 或依赖 commit message 的说明都不能作为 release note 或门禁输入。
 
-发布准备 PR 完成的标准是：所有静态文档已经完成并经 `release:verify` 验证。发布完成的标准是：同一验证在最终 tag ref 上再次成功，workflow 再生成 / 上传不可变工件，并把发布后的渠道事实写入 manifest。后续 PR 可以改进下一版本的流程或文档，但不负责把刚发布版本的 gate 结果补写进 CHANGELOG、release contract 或 tag 所代表的用户文案。
+发布准备 PR 的验收标准是静态文档一致、最新真实预合并输入完整 Actions acceptance 成功且最终 head 复审完成。发布完成要求最终 tag SHA 独立完整验收，workflow 消费并上传已验原双包，完成必需渠道、manifest / notes 与 tag 清理；不得在验收后重新生成交付包。后续 PR 可以改进下一版本的流程或文档，但不负责把刚发布版本的 gate 结果补写进 CHANGELOG、release contract 或 tag 所代表的用户文案。
 
 ## 10. 验证方法
 

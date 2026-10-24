@@ -1005,3 +1005,12 @@ Marketplace完成等待修复PR332已合入main f3bb4425。其“待review/合�
 2026-10-14：本地后代ESRCH修复PR333正常合入main eee25291，PR327从cfe1ab40 rebase后运行新的正式预合并完整门禁。run38539427680的ESRCH原首败保持原输入/日志hash，未记录的具体后代角色仍未知；39项/真实内核/SSH两状态定向通过不代证发布闭环。本轮必须实际完成全量npm test、Webview与clean-checkout VSIX八场景，结果绑定PR327当前head/base/预合并/run，未通过前不合并或发布。
 
 2026-10-15正式接续：PR334已合入main6e708c6b，原“待合入”为其交付时历史状态。PR327从20d237c5 rebase后重跑正式最新预合并完整门禁；修复28项/原生保存窗口/临时组合完整通过不代证该正式发布输入。结果和无损日志关联PR327最新head/base/预合并/run，尚未合并或发布。
+
+
+## PR327 文档口径对齐后的剩余门槛（2026-10-25）
+
+PR335 的分层门禁与 PR336 的恢复订阅 / 模式切换修复已进入 main，PR327 已 rebase 到 37ff8554；原两项生产竞态不再作为当前未修复 blocker。发布契约、双手册、readiness 与执行计划已对齐冻结任务图、同批候选双包、独立 Actions acceptance 和原包渠道恢复，旧 runFullVerification / 手工发布参数不再作为当前执行说明。修复验证见 `docs/exec-plans/completed/release-0-26-1-refresh.md`；历史首败与输入保留。
+
+最终 PR327 真实预合并输入的完整验收仍是合并门槛，不降级为技术债：rebase head c0046aad 的 run40113684471 因 draft 全部 skipped，文档修改后的 head 还须独立运行完整任务图并完成复审。本地 `acceptance: false`、PR336 绿色或旧临时组合均不代证。
+
+既有非阻塞边界继续按各设计追踪：main 尚未配置 branch protection / rulesets，应在配置工作中以真实红灯验证阻断；四项真实 TUI、最低宿主、arm64 原样安装、真实 systemd / 桌面通知 / 市场自动依赖和多 root / 跨平台 GUI，在对应能力验收时补具名证据。当前以公开 Preview 与明确支持限制约束，不把有限原生操作 / x64 安装升级为全平台承诺。入口为 `docs/design-docs/release-gate-redesign.md`、`docs/design-docs/release-0-26-1-refresh.md` 与 `docs/WORKFLOW.md`。
