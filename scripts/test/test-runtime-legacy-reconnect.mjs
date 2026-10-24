@@ -626,3 +626,75 @@ console.log('disconnect before initial session creation preserves the original e
   } finally { blocked.resolve(); await first; }
 }
 console.log('independent session recovery remains concurrent');
+
+for (const kind of ['agent', 'terminal']) {
+  for (const scenario of ['ended', 'invalid-before-connect', 'invalid-during-connect', 'live']) {
+    const f = makeHost(kind);
+    delete f.host.subscribeRuntimeSupervisorTerminalStream;
+    let current = scenario !== 'invalid-before-connect';
+    let acquisitions = 0;
+    const requests = [];
+    const snapshot = { kind, sessionId: f.node.metadata[kind].runtimeSessionId,
+      live: scenario !== 'ended', runtimeBackend: 'legacy-detached',
+      terminalStreamPaged: true, terminalAuthorityId: 'original-authority', terminalRevision: 7 };
+    const client = {
+      supportsTerminalSessionStream: () => true,
+      supportsTerminalPagedCompletion: () => false,
+      subscribeSession: async (params, isCurrent) => {
+        assert.equal(isCurrent(), true, 'Only a current recovery may submit a subscription');
+        requests.push(params);
+      }
+    };
+    f.host.getRuntimeSupervisorClientForKind = async () => {
+      acquisitions++;
+      await Promise.resolve();
+      if (scenario === 'invalid-during-connect') current = false;
+      return client;
+    };
+    await f.host.subscribeRuntimeSupervisorTerminalStream(snapshot, '/controlled/legacy-slot', undefined, () => current);
+    assert.equal(acquisitions, ['ended', 'invalid-before-connect'].includes(scenario) ? 0 : 1);
+    assert.deepEqual(requests, scenario === 'live' ? [{ sessionId: snapshot.sessionId,
+      authorityId: 'original-authority', afterRevision: 7, terminalStreamMode: 'paged' }] : [],
+    `${kind}/${scenario}: ended or superseded recovery must not subscribe; live recovery must still work`);
+  }
+  const f = makeHost(kind);
+  const binding = f.host.getPersistedLiveRuntimeSessionForNode(f.node);
+  const result = await f.host.attachPersistedRuntimeSession(kind, f.node.id, binding.sessionId, async () => ({
+    snapshot: { kind, sessionId: binding.sessionId, live: false, runtimeBackend: 'legacy-detached' },
+    terminalProjectionMode: 'terminal-stream-v1'
+  }));
+  assert.equal(result, 'restored');
+  assert.equal(f.calls.applied.length, 1, 'Completed recovery still applies its final snapshot');
+  assert.equal(f.calls.subscribed.length, 0, 'Completed recovery never subscribes the retired original session');
+}
+console.log('actual Host subscription admission: ended, superseded, live and completed recovery passed (10 cases)');
+
+for (const outcome of ['restored', 'failed', 'ignored']) {
+  const f = makeHost('terminal'), gate = deferredRestore(), entered = deferredRestore();
+  const client = {}, backend = {}, failure = new Error('Original attach failed');
+  const sessionId = f.node.metadata.terminal.runtimeSessionId;
+  f.host.getRuntimeHostBackend = () => backend;
+  f.host.getRuntimeSupervisorClientForKind = async () => client;
+  f.host.requestRuntimeSupervisorSessionAttach = async () => {
+    entered.resolve();
+    await gate.promise;
+    if (outcome === 'failed') throw failure;
+    return { snapshot: { kind: 'terminal', sessionId, live: true, runtimeBackend: 'legacy-detached' },
+      terminalProjectionMode: 'legacy-interactive' };
+  };
+  const first = f.host.restoreLiveRuntimeSessions();
+  await entered.promise;
+  const second = f.host.restoreLiveRuntimeSessions();
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(f.calls.retired.length, 0, 'The pending original request retains its client');
+  if (outcome === 'ignored') f.host.state.nodes = [];
+  const settled = Promise.allSettled([first, second]);
+  gate.resolve();
+  const results = await settled;
+  assert.ok(results.every(result => outcome === 'failed'
+    ? result.status === 'rejected' && result.reason === failure : result.status === 'fulfilled'));
+  assert.deepEqual(f.calls.retired, [{ backend, client }],
+    `${outcome}: shared recovery rechecks client retirement exactly once after settling`);
+  assert.equal(f.host.runtimeSessionRestoreTasks.size, 0);
+}
+console.log('actual Host shared recovery rechecks client retirement after success/failure/ignored (3 cases)');

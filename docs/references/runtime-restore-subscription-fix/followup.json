@@ -1,0 +1,86 @@
+{
+  "collected_at": "2026-10-24T12:57:32.139972+00:00",
+  "prior_head": "d7496a9916b9d1566e586b1a2f104913d0424b17",
+  "prior_evidence": "result.json",
+  "acceptance": false,
+  "environment": {
+    "node": "22.23.3",
+    "platform": "linux-x64",
+    "vscode": "1.142.0",
+    "dependencies": "复用/tmp/dsc335-deps/node_modules，不是本轮npm ci",
+    "native_assets": "/tmp/dsc335-assets；默认build核验原生输入与摘要",
+    "vscode_cache": "/dev/shm/dsc-ci-vscode",
+    "gui_artifacts": "/tmp/rrsf-1024/legacy-supervisor-upgrade"
+  },
+  "ci": {
+    "run_id": 40094803396,
+    "failed_job_id": 120874800053,
+    "failed_job": "regression shard-2",
+    "source_host_legacy_supervisor_upgrade": "success",
+    "updated_head_validation": "pending"
+  },
+  "production_unchanged_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "f83630bcab72507c8828216f92c9d09557e5384fac6bb13e8d45738dc89dee98",
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts": "98aa75a1f2edfcc3e0862637c5739d30399c4c2ed9c4175763ccf175e9cfddea"
+  },
+  "checks": [
+    {
+      "command": "gh api repos/ZY-WANG-0304/dev-session-canvas/actions/jobs/120874800053/logs",
+      "scope": "取得已失败的 CI 日志；远端 job conclusion=failure，首败为旧结束态源码正则",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/ci-shard-2.log",
+      "bytes": 94212,
+      "sha256": "9e45e744f06b5eaf31ec2c1e72da25c305b9276da50fb6e396a2e3d8e5df8ab3"
+    },
+    {
+      "command": "npm run test:execution-output-sequence",
+      "scope": "替换首条正则后继续发现第二条 client 退役源码正则不匹配",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/followup-output-sequence.log",
+      "bytes": 13412,
+      "sha256": "1c52fb63368053cf03d3da65ecb1924f334e5d642a0850ed54b4028b81c4525c"
+    },
+    {
+      "command": "npm run test:execution-output-sequence",
+      "scope": "两条已迁移为行为约束，剩余输出序列检查通过",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/followup-output-sequence-final.log",
+      "bytes": 165,
+      "sha256": "5476779b9563ab71c5ae19997bc348b695401b30fc4e47ddaed0b292869053ff"
+    },
+    {
+      "command": "npm run test:runtime-legacy-reconnect",
+      "scope": "13 项新增实际 Host 行为、既有恢复回归和真实 socket/PTY 单次/并发 I/O/Stop/ACK 全部通过",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/followup-runtime-reconnect-final.log",
+      "bytes": 2846,
+      "sha256": "88ffa26dc8f2f00454be61b1839ecd06e756d77778f0b8d37835f015ac020c9b"
+    },
+    {
+      "command": "node scripts/test/.runtime-restore-mutant-ended-guard.mjs",
+      "scope": "仅 esbuild 内存源码变体去掉 !snapshot.live；新增 ended 行为断言以 client 获取 1 != 0 失败",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/followup-mutant-ended-guard.log",
+      "bytes": 1281,
+      "sha256": "e2d5d4a674324e5258e4e4c17c493db02a58d34ed21fe1cb1ac3bd3db3ebf7ee"
+    },
+    {
+      "command": "node scripts/test/.runtime-restore-mutant-retirement.mjs",
+      "scope": "仅 esbuild 内存源码变体去掉 options.onSettled；既有实际 client 退役断言 0 != 1 失败，未运行到新增末尾用例",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/followup-mutant-retirement.log",
+      "bytes": 948,
+      "sha256": "7d5e4368272b5df497b242668c891fdcf3be07f2631d58110aa2d3df1ca54aa9"
+    }
+  ],
+  "test_sha256": {
+    "scripts/test/test-execution-output-sequence.mjs": "8e7b354cac37e1e98e977bdb2d3175d2ed4a3f943424cfcb1b8a6d41d6d4fccc",
+    "scripts/test/test-runtime-legacy-reconnect.mjs": "ac9ef4d273f04f29c0f5a80c0b44752e62812c26e8ab7e21586aa9e193fa0d14"
+  },
+  "limitations": [
+    "仅增加行为验证及同步文档，生产代码与初始修复相同。",
+    "临时 mutant 脚本运行后已删除，原生产文件未改动。",
+    "真实 socket/PTY 的快照与 UI 仍为显式受控边界；跨窗口、跨进程、全平台与最终 PR327 正式门禁不由这些结果代证。",
+    "初始整轮 CI 失败仍保留；新 head 的完整 CI 与 review 待完成。"
+  ]
+}

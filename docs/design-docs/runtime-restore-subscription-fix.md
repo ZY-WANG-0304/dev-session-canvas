@@ -51,3 +51,21 @@ Node 22.23.3/Linux 的当前实现已通过完整 `test:runtime-supervisor-proto
 首次 Host 全套与协议链并行时，原 PID 等待用例超过其原 3 秒期限；随后同输入单项和串行全套 634/634 通过，未延长期限，原因仍未确认。VS Code 日志有 watcher ENOSPC 警告，具名场景最终通过。依赖、六目标资产和 VS Code 缓存均复用既有输入，build 按原规则校验原生资产；不称为冷安装或新的六平台产品验收。
 
 命令、日志摘要与本轮文件 hash 见 `docs/references/runtime-restore-subscription-fix/result.json`。正式 CI/复审、剩余模式切换缺陷以及 PR327 最新正式预合并完整验收仍分别待收口，状态保持验证中。
+
+## 判断修复成立的标准与证据边界
+
+当前结论限于同一 Host、同一有效执行绑定的重复恢复及已覆盖的失效交错。任务在 client 获取前登记，并一直保留到订阅完成；因此迟到的同身份调用没有第二次 deferred attach 可以撤销已有订阅。client 在连接等待结束后到 socket 写入之间同步检查资格，避免等待期间失效的请求再次派发。已经发出的请求不能靠此检查撤回，仍依赖既有结果身份保护、连接代次和服务端顺序；本次没有新增服务端恢复代次协议，也没有证明所有跨窗口/跨进程交错。
+
+判据不是 GUI 偶尔不超时，而是以下可失败的行为约束：
+
+| 检查 | 失败如何判定 | 当前证据 |
+| --- | --- | --- |
+| 迟到重复恢复 | 首次订阅存在，第二次恢复后消失 | 原 main 真实 socket/PTY 确定失败，修复后通过 |
+| 完整恢复责任 | 快照已应用但订阅尚未完成，等待者提前成功 | Agent/Terminal 受控异步边界回归通过 |
+| 资格失效 | 连接等待期间删除、替换或关闭后仍派发旧请求 | Host 与实际 client 方法回归通过 |
+| 失败与新代次 | 等待者丢失错误、旧任务删除新登记或首次断连永久 reattaching | 共同失败、首次断连、连续断连和任务清理回归通过 |
+| 用户结果 | 原进程退出但 Host 收不到 closed，或输出未消费 | 真实 I/O、独立 PTY exit、Supervisor/Host 终态与 consumed ACK 通过 |
+
+PR336 初始 head `d7496a99` 的 CI `40094803396` 在 regression shard-2 失败。`test-execution-output-sequence.mjs` 的两条源码正则分别限定独立 `if (!snapshot.live)` 和没有其他清理语句的 `finally`，与本次合并准入条件、登记清理的实现写法不匹配。相应要求已移到 `test-runtime-legacy-reconnect.mjs`，直接调用实际 Host 方法：结束态/失效不订阅、正常会话订阅、完成快照不补订阅，以及共享恢复成功/失败/忽略后才复核 client 退役，共新增 13 例。两个定向命令通过；分别移除结束态保护和退役回调的内存变体均使行为回归失败。没有删除行为要求或更改生产代码来适配正则。证据见 `docs/references/runtime-restore-subscription-fix/followup.json`；初始证据文件继续对应初始 head，不用新结果覆盖旧失败。
+
+该 CI 的 source-host 原 `legacy-supervisor-upgrade` 场景已通过，但整轮未通过，更新后的 PR head 仍需正式 CI/复审。自然 GUI 没有注入迟到时序；多 root、跨平台产品行为和最终 PR327 完整验收不能由当前受控回归代证。
