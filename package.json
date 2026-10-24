@@ -79,7 +79,7 @@
     "test:vscode-agent-candidate": "node scripts/smoke/run-vscode-agent-candidate.mjs",
     "test:terminal-session-journal": "node scripts/test/test-terminal-session-journal.mjs",
     "test:runtime-supervisor-request-timeout": "node scripts/test/test-runtime-supervisor-request-timeout.mjs",
-    "test:runtime-legacy-reconnect": "node scripts/test/test-runtime-legacy-reconnect.mjs",
+    "test:runtime-legacy-reconnect": "node scripts/test/test-runtime-legacy-reconnect.mjs && npm run test:runtime-restore-subscription",
     "test:runtime-supervisor-protocol": "npm run test:runtime-supervisor-request-timeout && npm run test:runtime-legacy-reconnect && node scripts/test/test-runtime-supervisor-protocol.mjs && npm run test:runtime-checkpoint-refresh && npm run test:terminal-paged-projection && npm run test:runtime-completed-history && npm run test:runtime-paged-completion && npm run test:runtime-host-output-credit",
     "test:runtime-host-output-credit": "node scripts/test/test-runtime-host-output-credit.mjs && npm run test:terminal-available-credit",
     "test:terminal-available-credit": "node scripts/test/test-terminal-available-credit.mjs",
@@ -157,7 +157,8 @@
     "test:shared-root-canvas": "node scripts/test/test-shared-root-canvas-store.mjs",
     "test:ci-gates": "node --test scripts/test/test-gate-contracts.mjs scripts/test/test-release-completion.mjs scripts/test/test-release-delivery.mjs scripts/test/test-dependency-install.mjs",
     "ci:verify": "node scripts/gates/run-local.mjs",
-    "ci:diagnose": "node scripts/gates/run-local.mjs --diagnose"
+    "ci:diagnose": "node scripts/gates/run-local.mjs --diagnose",
+    "test:runtime-restore-subscription": "node scripts/test/test-runtime-restore-subscription.mjs"
   },
   "overrides": {
     "cheerio": "1.0.0-rc.12",

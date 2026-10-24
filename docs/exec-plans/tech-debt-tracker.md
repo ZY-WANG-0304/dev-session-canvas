@@ -953,3 +953,11 @@ main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正�
 ## PR335 非真实 TUI 缺口覆盖（2026-10-20）
 
 用户授权先覆盖原十五项中的十一项。source/packaged独立入口、双Host角色回执、原process身份absence、真实几何和全量输出断言已实现，默认regression补登记production owner的Stop故障与sticky unknown合同。152目的地现148 implemented-unverified/4 not-implemented；这不代证完整新输入验收。四个真实TUI场景保留待覆盖，完成信号仍未选定。最低宿主、arm64原样安装、真实systemd/通知/渠道等既有边界继续独立存在，不因本轮关闭。计划见active/smoke-non-tui-gap-coverage.md，结果按实际运行记录。
+
+## 恢复订阅竞态独立修复的验收边界（2026-10-24）
+
+`runtime-restore-subscription-fix` 已实现完整恢复任务共享、实际 RPC 派发前资格及断连代次。原 main 22998ff4 的真实 socket/PTY 对照确认订阅 true→false；修复后同一测试单次/并发订阅、真实 I/O/Stop/终态 ACK 通过。完整协议链、Host 634/634、类型/build 与 VS Code 1.142.0 原旧升级具名场景通过；证据见 `docs/references/runtime-restore-subscription-fix/result.json`，设计与计划同名。正式 CI、复审及合入状态仍需针对新 head 确认，不能称为最终发布验收。
+
+Host 首次全套与协议链并行时，未改的 PR319 原 PID 等待用例超出原 3 秒，单项和随后串行 634/634 均通过；原始失败保留，未确认是否由资源调度引起。若再现，应固定输入核对原子进程与实际等待时间，不延长业务期限来掩盖故障。原生 VS Code 日志还出现 watcher ENOSPC，场景最终通过；本轮未改变系统配置或清理其他工作的进程。两者作为环境/复现 follow-up，不作为本恢复修复的确定性 blocker。
+
+生产模式切换删除期间迟到回调及失败缓存不在本次恢复修复范围内，仍是独立产品阻塞；其根因见 `runtime-shared-root-canvas-sync.md`。PR327 必须在所需修复合入后再次 rebase，并对最新正式预合并输入完整验收。本轮 Linux、受控快照/UI、复用依赖/资产和单项自然 GUI 不外推多 root、跨平台或真实 provider 完整验收；历史首败唯一归因缺口保留。

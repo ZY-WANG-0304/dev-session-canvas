@@ -533,36 +533,7 @@ async function verifySupervisorRetention(directory) {
 }
 
 async function verifyHostReconnect() {
-  const filename = path.resolve('extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts');
-  const source = await readFile(filename, 'utf8');
-  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
-  const manager = ast.statements.find((node) => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
-  const names = ['handleRuntimeSupervisorDisconnected', 'reconnectPagedRuntimeSession',
-    'subscribeRuntimeSupervisorTerminalStream', 'isRuntimeSupervisorEventAdmitted'];
-  const methods = names.map((name) => {
-    const method = manager.members.find((node) => ts.isMethodDeclaration(node) && node.name.getText(ast) === name);
-    assert.ok(method);
-    return method.getText(ast);
-  });
-  const bundle = await esbuild.build({ stdin: { contents: `
-    import { RUNTIME_SUPERVISOR_ERROR_CODES } from './common/runtimeSupervisorProtocol';
-    import { normalizeTerminalStreamAttachPayload, normalizeTerminalStreamRevision } from './common/terminalSessionStream';
-    const timers = [];
-    const setTimeout = (callback) => { timers.push(callback); return {}; };
-    const formatUnknownError = (error) => String(error);
-    const updateExecutionNode = (state, nodeId, kind, patch) => ({ ...state, ...patch });
-    const buildExecutionMetadataPatch = (state, nodeId, kind, patch) => patch;
-    class Harness {
-      runtimeSupervisorEventAdmissionOpen = true;
-      runtimeSupervisorClientEpochs = new Map();
-      ${methods.join('\n')}
-    }
-    export { Harness, timers, RUNTIME_SUPERVISOR_ERROR_CODES };
-  `, resolveDir: path.dirname(path.dirname(filename)), loader: 'ts' }, bundle: true,
-    platform: 'node', format: 'cjs', write: false });
-  const module = { exports: {} };
-  new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(import.meta.url));
-  const { Harness, timers, RUNTIME_SUPERVISOR_ERROR_CODES } = module.exports;
+  const { Harness, timers, RUNTIME_SUPERVISOR_ERROR_CODES } = await loadActualHost();
   const subscriber = new Harness();
   let subscribedWithoutRestart = false;
   subscriber.getRuntimeSupervisorClientForKind = async (backend, options, storage) => {
@@ -590,14 +561,14 @@ async function verifyHostReconnect() {
     terminalStreamHealthy: true };
   host.agentSessions = new Map();
   host.terminalSessions = new Map([['node', original]]);
-  host.state = {};
+  initializeReconnectIdentity(host);
   host.getExecutionSessions = () => host.terminalSessions;
   host.resolveRuntimeStoragePath = (storage) => storage;
   host.getRuntimeHostBackend = (kind, runtimeStoragePath) => ({ kind, runtimeStoragePath });
   host.retireLegacyRuntimeSupervisorClientIfUnused = () => {
-    assert.equal(host.terminalSessions.get('node'), original, 'paged reconnect retains its attached-session pin');
+    assert.equal(host.terminalSessions.get('node').runtimeSessionId, 'original', 'paged reconnect retains its attached-session pin');
   };
-  host.requireNode = () => ({ status: 'live', summary: '' });
+  host.requireNode = () => host.state.nodes[0];
   host.terminalReadRelay = { closeMatching() {} };
   host.postState = () => {};
   host.getLiveRuntimeReconnectBlockReason = () => undefined;
@@ -610,13 +581,13 @@ async function verifyHostReconnect() {
     throw new Error('temporary connection failure');
   };
   host.handleRuntimeSupervisorDisconnected('legacy-detached', '/same-runtime', new Error('socket closed'));
-  assert.equal(host.state.metadata.attachmentState, 'reattaching');
+  assert.equal(host.state.nodes[0].metadata.terminal.attachmentState, 'reattaching');
   assert.equal(timers.length, 1);
   timers.shift()();
   await pending;
   assert.equal(timers.length, 1, 'failed reconnect schedules one retry');
   assert.equal(host.terminalSessions.get('node'), original);
-  host.getRuntimeSupervisorClientForKind = async () => ({});
+  host.getRuntimeSupervisorClientForKind = async () => ({ supportsTerminalHostOutputCredit: () => false });
   host.requestRuntimeSupervisorSessionAttach = async (client, sessionId) => {
     assert.equal(sessionId, 'original');
     return { snapshot: { sessionId, kind: 'terminal', live: true }, terminalProjectionMode: 'terminal-stream-v1' };
@@ -680,8 +651,8 @@ async function verifyHostReconnect() {
       lineContextTracker: { flush: async () => retryCalls.push('flush') } };
     retryHost.terminalSessions = new Map([['node', retrySession]]);
     retryHost.getExecutionSessions = () => retryHost.terminalSessions;
-    retryHost.state = {};
-    retryHost.requireNode = host.requireNode;
+    initializeReconnectIdentity(retryHost);
+    retryHost.requireNode = () => retryHost.state.nodes[0];
     retryHost.terminalReadRelay = host.terminalReadRelay;
     retryHost.postState = () => {};
     retryHost.recordDiagnosticEvent = (name, detail) => retryCalls.push({ name, detail });
@@ -734,6 +705,28 @@ async function verifyHostReconnect() {
       timers.length = 0;
     }
   }
+  // A second real disconnect while subscribe is pending invalidates that generation
+  // and leaves an explicit retry, even though the interrupted task resolves ignored.
+  const subscribeEntered = deferredHostOperation(), subscribeGate = deferredHostOperation();
+  let reconnectSubscriptions = 0;
+  host.getRuntimeSupervisorClientForKind = async () => ({
+    supportsTerminalHostOutputCredit: () => true,
+    subscribeSession: async () => {
+      reconnectSubscriptions++;
+      if (reconnectSubscriptions === 1) { subscribeEntered.resolve(); await subscribeGate.promise; }
+    }
+  });
+  host.reconnectPagedRuntimeSession('terminal', 'node', current);
+  timers.shift()(); await subscribeEntered.promise;
+  host.handleRuntimeSupervisorDisconnected('legacy-detached', '/same-runtime', new Error('second disconnect'));
+  subscribeGate.resolve(); await pending;
+  assert.equal(current.reconnectPending, false);
+  assert.equal(timers.length, 1, 'interrupted recovery needs a new generation');
+  timers.shift()(); await pending;
+  assert.equal(reconnectSubscriptions, 2);
+  assert.equal(current.terminalStreamHealthy, true);
+  assert.equal(current.reconnectPending, false);
+  assert.equal(timers.length, 0);
   host.runtimeSupervisorEventAdmissionOpen = false;
   host.handleRuntimeSupervisorDisconnected('legacy-detached', '/same-runtime', new Error('late socket close'));
   assert.equal(timers.length, 0, 'closed admission must not schedule a reconnect');
@@ -1810,4 +1803,51 @@ async function verifyControllerSettlement(directory) {
     } finally { f.dispose(); }
   });
   console.log(`Actual Webview controller settlement: ${passed}/${passed} passed (real headless xterm callbacks, no UI/native).`);
+}
+
+// Load the complete production class. Only timers and the VS Code boundary are controlled.
+async function loadActualHost() {
+  const bundled = await esbuild.build({
+    stdin: { contents: `export { CanvasPanelManager as Harness, reconnectTestTimers as timers }
+      from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
+      export { RUNTIME_SUPERVISOR_ERROR_CODES } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';`,
+      resolveDir: process.cwd(), loader: 'ts' },
+    bundle: true, write: false, platform: 'node', format: 'cjs', external: ['node-pty'],
+    plugins: [{ name: 'paged-host-boundaries', setup(build) {
+      build.onLoad({ filter: /src\/panel\/CanvasPanelManager\.ts$/ }, async args => ({ loader: 'ts',
+        contents: `const reconnectTestTimers = [];
+          const setTimeout = callback => { reconnectTestTimers.push(callback); return {}; };
+          ${await readFile(args.path, 'utf8')}
+          export { reconnectTestTimers };` }));
+      build.onResolve({ filter: /^vscode$/ }, () => ({ path: 'vscode', namespace: 'test-vscode' }));
+      build.onLoad({ filter: /.*/, namespace: 'test-vscode' }, () => ({ loader: 'js', contents: `
+        module.exports = { EventEmitter: class { event = () => ({ dispose() {} }); },
+          l10n: { t: value => value }, workspace: { isTrusted: true } };` }));
+    } }]
+  });
+  const loaded = { exports: {} };
+  new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.outputFiles[0].text)(
+    createRequire(import.meta.url), loaded, loaded.exports,
+    path.resolve('scripts/test/paged-actual-host.cjs'), path.resolve('scripts/test'));
+  const ActualHost = loaded.exports.Harness;
+  function Harness() {
+    const host = Object.create(ActualHost.prototype);
+    host.runtimeSupervisorEventAdmissionOpen = true;
+    host.runtimeSupervisorClientEpochs = new Map();
+    return host;
+  }
+  Harness.prototype = ActualHost.prototype;
+  return { ...loaded.exports, Harness };
+}
+
+function initializeReconnectIdentity(host) {
+  host.state = { nodes: [{ id: 'node', kind: 'terminal', status: 'live', summary: '',
+    metadata: { terminal: { persistenceMode: 'live-runtime', attachmentState: 'attached-live',
+      runtimeSessionId: 'original', runtimeStoragePath: '/same-runtime', runtimeBackend: 'legacy-detached' } } }] };
+  host.executionSessionOperationTokens = new Map();
+  host.resolveRuntimeStoragePath = value => value;
+  host.getPersistedRuntimeStoragePath = metadata => metadata.runtimeStoragePath;
+  host.runtimeSessionBindings = new Map([[host.buildRuntimeSessionBindingKey(
+    'terminal', 'original', '/same-runtime', 'legacy-detached'), { kind: 'terminal', nodeId: 'node' }]]);
+  host.recordDiagnosticEvent = () => {};
 }

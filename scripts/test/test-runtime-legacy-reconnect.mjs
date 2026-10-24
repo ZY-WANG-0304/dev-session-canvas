@@ -124,10 +124,10 @@ for (const kind of ['agent', 'terminal']) {
     const failure = new Error(`Original ${failurePoint} unavailable`);
     if (failurePoint === 'connect') {
       f.host.getRuntimeSupervisorClientForKind = async () => { throw failure; };
-      await f.host.restoreLiveRuntimeSessions();
+      await assert.rejects(f.host.restoreLiveRuntimeSessions(), error => error === failure);
     } else if (failurePoint === 'attach') {
-      await f.host.attachPersistedRuntimeSession(kind, f.node.id, original.sessionId,
-        async () => { throw failure; }, { originalBinding: original });
+      await assert.rejects(f.host.attachPersistedRuntimeSession(kind, f.node.id, original.sessionId,
+        async () => { throw failure; }, { originalBinding: original }), error => error === failure);
     } else {
       const session = { owner: 'supervisor', runtimeBackend: original.backendKind,
         runtimeStoragePath: original.runtimeStoragePath, runtimeSessionId: original.sessionId,
@@ -149,7 +149,8 @@ for (const kind of ['agent', 'terminal']) {
     async () => ({ snapshot, terminalProjectionMode: 'legacy-interactive' }), { originalBinding: binding });
   assert.equal(healthy.calls.applied.length, 1, 'A healthy original legacy runtime still attaches.');
   assert.strictEqual(healthy.calls.applied[0][2], snapshot);
-  assert.deepEqual(healthy.calls.subscribed[0], [snapshot, binding.runtimeStoragePath, undefined]);
+  assert.deepEqual(healthy.calls.subscribed[0].slice(0, 3), [snapshot, binding.runtimeStoragePath, undefined]);
+  assert.equal(typeof healthy.calls.subscribed[0][3], 'function');
   assert.equal(healthy.host.runtimeSessionBindings.size, 1);
 
   const staleIntent = makeHost(kind);
@@ -247,7 +248,7 @@ for (const mode of ['failed-connect', 'disconnected']) {
     }
     if (mode === 'failed-connect') {
       f.host.getRuntimeSupervisorClientForKind = async () => { throw new Error('Original connection failed'); };
-      await f.host.restoreLiveRuntimeSessions();
+      await assert.rejects(f.host.restoreLiveRuntimeSessions(), /Original connection failed/);
     } else {
       f.host.agentSessions.set(f.node.id, { owner: 'supervisor', runtimeBackend: original.backendKind,
         runtimeStoragePath: original.runtimeStoragePath, runtimeSessionId: original.sessionId });
@@ -431,3 +432,197 @@ for (const lifecycle of ['resume-ready', 'stopped']) {
 assert.deepEqual(reconcileAgentNodesInArray([resumable]), [resumable]);
 
 console.log('Legacy reconnect tests passed: original bindings, healthy attach, no automatic resume, explicit startup, strict replacement, shared deletion retirement.');
+
+function deferredRestore() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+for (const kind of ['agent', 'terminal']) {
+  const f = makeHost(kind), acquired = deferredRestore(), subscribed = deferredRestore(), entered = deferredRestore();
+  let connects = 0, attaches = 0, subscriptions = 0;
+  const client = {};
+  f.host.getRuntimeSupervisorClientForKind = async () => { connects++; await acquired.promise; return client; };
+  f.host.requestRuntimeSupervisorSessionAttach = async () => {
+    attaches++;
+    return { snapshot: { sessionId: f.node.metadata[kind].runtimeSessionId, kind, live: true,
+      runtimeBackend: 'legacy-detached' }, terminalProjectionMode: 'legacy-interactive' };
+  };
+  f.host.applyRuntimeSupervisorSnapshot = async () => { f.node.metadata[kind].attachmentState = 'attached-live'; };
+  f.host.subscribeRuntimeSupervisorTerminalStream = async () => { subscriptions++; entered.resolve(); await subscribed.promise; };
+  const first = f.host.restoreLiveRuntimeSessions();
+  const second = f.host.restoreLiveRuntimeSessions();
+  await Promise.resolve(); await Promise.resolve();
+  acquired.resolve(); await entered.promise;
+  let lateSettled = false;
+  const late = f.host.restoreLiveRuntimeSessions().then(() => { lateSettled = true; });
+  await Promise.resolve(); await Promise.resolve();
+  try {
+    assert.equal(connects, 1, 'same-binding callers must share recovery before client acquisition');
+    assert.equal(attaches, 1, 'a duplicate recovery must not cancel the established subscription');
+    assert.equal(lateSettled, false, 'attached metadata does not complete recovery before subscription');
+  } finally { subscribed.resolve(); await Promise.all([first, second, late]); }
+  assert.equal(subscriptions, 1);
+  await f.host.restoreLiveRuntimeSessions();
+  assert.equal(attaches, 1);
+}
+console.log('concurrent full recovery regression passed');
+
+for (const kind of ['agent', 'terminal']) {
+  for (const stage of ['attach', 'snapshot', 'subscribe']) {
+    const f = makeHost(kind), gate = deferredRestore(), entered = deferredRestore();
+    const failure = new Error(`shared ${stage} failure`);
+    f.host.applyRuntimeSupervisorSnapshot = async () => {
+      if (stage === 'snapshot') { entered.resolve(); await gate.promise; throw failure; }
+      f.node.metadata[kind].attachmentState = 'attached-live';
+    };
+    f.host.subscribeRuntimeSupervisorTerminalStream = async () => {
+      if (stage === 'subscribe') { entered.resolve(); await gate.promise; throw failure; }
+    };
+    let attachCount = 0;
+    const attach = async () => {
+      attachCount++;
+      if (stage === 'attach') { entered.resolve(); await gate.promise; throw failure; }
+      return { snapshot: { kind, sessionId: f.node.metadata[kind].runtimeSessionId, live: true,
+        runtimeBackend: 'legacy-detached' }, terminalProjectionMode: 'legacy-interactive' };
+    };
+    const binding = f.host.getPersistedLiveRuntimeSessionForNode(f.node);
+    const first = f.host.attachPersistedRuntimeSession(kind, f.node.id, binding.sessionId, attach);
+    await entered.promise;
+    const second = f.host.attachPersistedRuntimeSession(kind, f.node.id, binding.sessionId, attach);
+    const settled = Promise.allSettled([first, second]);
+    gate.resolve(); const results = await settled;
+    assert.equal(attachCount, 1);
+    assert.ok(results.every(result => result.status === 'rejected' && result.reason === failure));
+    assert.equal(f.host.runtimeSessionRestoreTasks.size, 0);
+    assert.equal(f.host.state.nodes[0].metadata[kind].lastRuntimeError, failure.message);
+  }
+  for (const mutation of ['delete', 'replace', 'closed', 'disconnect']) {
+    const f = makeHost(kind), gate = deferredRestore(), entered = deferredRestore();
+    const disconnectFailure = new Error('Original restore connection lost');
+    let dispatches = 0;
+    const client = { supportsTerminalSessionStream: () => false, attachSession: async () => {
+      dispatches++; return { kind, sessionId: `${kind}-original-session`, live: true };
+    } };
+    const binding = f.host.getPersistedLiveRuntimeSessionForNode(f.node);
+    const request = async isCurrent => { entered.resolve(); await gate.promise;
+      return f.host.requestRuntimeSupervisorSessionAttach(client, binding.sessionId, isCurrent); };
+    const first = f.host.attachPersistedRuntimeSession(kind, f.node.id, binding.sessionId, request);
+    await entered.promise;
+    const second = f.host.attachPersistedRuntimeSession(kind, f.node.id, binding.sessionId, request);
+    if (mutation === 'delete') f.host.state.nodes = [];
+    if (mutation === 'replace') f.node.metadata[kind].runtimeSessionId = 'new-session';
+    if (mutation === 'closed') f.host.closeRuntimeSupervisorEventAdmission();
+    if (mutation === 'disconnect') f.host.handleRuntimeSupervisorDisconnected('legacy-detached', binding.runtimeStoragePath, disconnectFailure);
+    gate.resolve();
+    if (mutation === 'disconnect') {
+      const results = await Promise.allSettled([first, second]);
+      assert.ok(results.every(result => result.status === 'rejected' && result.reason === disconnectFailure));
+    } else assert.deepEqual(await Promise.all([first, second]), ['ignored', 'ignored']);
+    assert.equal(dispatches, 0, `${mutation}: late attach must not dispatch`);
+    assert.equal(f.calls.applied.length, 0);
+    assert.equal(f.calls.subscribed.length, 0);
+  }
+}
+for (const method of ['attachSession', 'subscribeSession']) {
+  const gate = deferredRestore(); let current = true, dispatched = 0;
+  const client = Object.create(RuntimeSupervisorClient.prototype);
+  client.ensureConnected = async () => gate.promise;
+  client.requestOnConnectedSocket = async () => { dispatched++; };
+  const request = client[method]({ sessionId: 'old', terminalStreamMode: 'paged' }, () => current);
+  current = false; gate.resolve();
+  await assert.rejects(request, /changed before/);
+  assert.equal(dispatched, 0, `${method} must recheck after its internal connection await`);
+}
+console.log('recovery shared failures, deletion/replacement/disconnect and RPC dispatch guards passed (16 cases)');
+
+// A disconnected leader cannot remove the registration of its replacement generation.
+{
+  const f = makeHost('terminal'), oldGate = deferredRestore(), newGate = deferredRestore();
+  const oldEntered = deferredRestore(), newEntered = deferredRestore();
+  const binding = f.host.getPersistedLiveRuntimeSessionForNode(f.node);
+  const result = { snapshot: { kind: 'terminal', sessionId: binding.sessionId, live: true,
+    runtimeBackend: 'legacy-detached' }, terminalProjectionMode: 'legacy-interactive' };
+  const first = f.host.attachPersistedRuntimeSession('terminal', f.node.id, binding.sessionId, async () => {
+    oldEntered.resolve(); await oldGate.promise; return result;
+  });
+  await oldEntered.promise;
+  f.host.terminalSessions.set(f.node.id, { owner: 'supervisor', runtimeSessionId: binding.sessionId,
+    runtimeBackend: 'legacy-detached', runtimeStoragePath: binding.runtimeStoragePath, terminalStreamPaged: true });
+  f.host.reconnectPagedRuntimeSession = () => {};
+  f.host.handleRuntimeSupervisorDisconnected('legacy-detached', binding.runtimeStoragePath);
+  const second = f.host.attachPersistedRuntimeSession('terminal', f.node.id, binding.sessionId, async () => {
+    newEntered.resolve(); await newGate.promise; return result;
+  });
+  await newEntered.promise;
+  oldGate.resolve(); assert.equal(await first, 'ignored');
+  assert.equal(f.host.runtimeSessionRestoreTasks.size, 1, 'old cleanup must retain the new generation');
+  newGate.resolve(); assert.equal(await second, 'restored');
+  assert.equal(f.calls.applied.length, 1);
+  assert.equal(f.calls.subscribed.length, 1);
+  assert.equal(f.host.runtimeSessionRestoreTasks.size, 0);
+}
+for (const mutation of ['delete', 'replace']) {
+  const f = makeHost('terminal'), gate = deferredRestore(), entered = deferredRestore();
+  const binding = f.host.getPersistedLiveRuntimeSessionForNode(f.node);
+  f.host.applyRuntimeSupervisorSnapshot = async () => { f.node.metadata.terminal.attachmentState = 'attached-live'; };
+  let subscriptions = 0;
+  f.host.subscribeRuntimeSupervisorTerminalStream = async () => { subscriptions++; entered.resolve(); await gate.promise; };
+  const attach = async () => ({ snapshot: { kind: 'terminal', sessionId: binding.sessionId, live: true,
+    runtimeBackend: 'legacy-detached' }, terminalProjectionMode: 'legacy-interactive' });
+  const first = f.host.attachPersistedRuntimeSession('terminal', f.node.id, binding.sessionId, attach);
+  await entered.promise;
+  const second = f.host.attachPersistedRuntimeSession('terminal', f.node.id, binding.sessionId, attach);
+  if (mutation === 'delete') f.host.state.nodes = [];
+  else f.node.metadata.terminal.runtimeSessionId = 'new-session';
+  const successor = { owner: 'supervisor', runtimeSessionId: 'new-session' };
+  f.host.terminalSessions.set(f.node.id, successor);
+  gate.resolve(); assert.deepEqual(await Promise.all([first, second]), ['ignored', 'ignored']);
+  assert.equal(subscriptions, 1);
+  assert.strictEqual(f.host.terminalSessions.get(f.node.id), successor);
+}
+console.log('new recovery generation and deletion during dispatched subscription passed (3 cases)');
+
+for (const kind of ['agent', 'terminal']) {
+  const f = makeHost(kind), entered = deferredRestore(), acquired = deferredRestore();
+  const failure = new Error('Original connection closed before a managed session existed');
+  let dispatched = 0;
+  f.host.getRuntimeSupervisorClientForKind = async () => { entered.resolve(); await acquired.promise; return {}; };
+  f.host.requestRuntimeSupervisorSessionAttach = async () => { dispatched++; assert.fail('Disconnected restore must not attach'); };
+  const first = f.host.restoreLiveRuntimeSessions();
+  await entered.promise;
+  const second = f.host.restoreLiveRuntimeSessions();
+  await Promise.resolve(); await Promise.resolve();
+  const settled = Promise.allSettled([first, second]);
+  f.host.handleRuntimeSupervisorDisconnected('legacy-detached', '/controlled/legacy-slot', failure);
+  try {
+    assert.equal(f.host.state.nodes[0].metadata[kind].attachmentState, 'history-restored',
+      'initial restore disconnect must not leave a node permanently reattaching');
+    assert.equal(f.host.state.nodes[0].metadata[kind].lastRuntimeError, failure.message);
+  } finally { acquired.resolve(); await settled; }
+  const results = await settled;
+  assert.ok(results.every(result => result.status === 'rejected' && result.reason === failure));
+  assert.equal(dispatched, 0);
+  assert.equal(f.host.runtimeSessionRestoreTasks.size, 0);
+}
+console.log('disconnect before initial session creation preserves the original error for all waiters (2 cases)');
+
+{
+  const f = makeHost('terminal'), entered = deferredRestore(), blocked = deferredRestore();
+  const secondNode = structuredClone(f.node);
+  secondNode.id = 'independent-node';
+  secondNode.metadata.terminal.runtimeSessionId = 'independent-session';
+  f.host.state.nodes.push(secondNode);
+  const snapshot = node => ({ snapshot: { kind: 'terminal', sessionId: node.metadata.terminal.runtimeSessionId,
+    live: true, runtimeBackend: 'legacy-detached' }, terminalProjectionMode: 'legacy-interactive' });
+  const first = f.host.attachPersistedRuntimeSession('terminal', f.node.id, f.node.metadata.terminal.runtimeSessionId,
+    async () => { entered.resolve(); await blocked.promise; return snapshot(f.node); });
+  await entered.promise;
+  try {
+    const second = await f.host.attachPersistedRuntimeSession('terminal', secondNode.id,
+      secondNode.metadata.terminal.runtimeSessionId, async () => snapshot(secondNode));
+    assert.equal(second, 'restored');
+    assert.equal(f.calls.applied[0][0], secondNode.id, 'another session must not wait for a blocked recovery');
+  } finally { blocked.resolve(); await first; }
+}
+console.log('independent session recovery remains concurrent');

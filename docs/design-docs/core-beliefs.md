@@ -463,3 +463,5 @@ smoke的准备、业务动作、观察断言和清理承担不同责任。原链
 鼠标输入本身可以转移焦点，smoke 不应要求目标文档先获得焦点才允许原生点击；几何与命中、输入可信性和最终业务结果各自验证。受控夺焦复现不能代证历史自然触发链。见[文件条目原生输入](file-entry-native-smoke.md)。
 
 产品成熟度、Marketplace通道与GitHub Release类别应分别记录；门禁重构须保持已确认的发布类别，通过真实客户端请求合同防止隐式切换。见[GitHub Release类别](release-gate-redesign.md#github-release-类别2026-10-24-review-修正)。
+
+异步恢复的完成点必须包括建立输出订阅；附着快照已应用不等于终态已有递送路径。同身份调用共用完整责任，资格检查覆盖真实请求派发前，不能只拒绝过时响应。见 [完整恢复与订阅责任](runtime-restore-subscription-fix.md)。
