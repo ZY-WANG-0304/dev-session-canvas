@@ -2,11 +2,16 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
 
 import esbuild from 'esbuild';
 
 const cwd = process.cwd();
 const baselineRef = process.argv.find(value => value.startsWith('--baseline-ref='))?.slice('--baseline-ref='.length);
+// Select one review regression group for independent baseline counterexamples.
+const reviewCase = process.argv.find(value => value.startsWith('--review-case='))?.slice('--review-case='.length);
+assert.ok(reviewCase === undefined || ['p1', 'p2'].includes(reviewCase));
 const vscodeStub = String.raw`class Disposable { dispose() {} }
 class EventEmitter { event = () => new Disposable(); fire() {} dispose() {} }
 class ThemeIcon { constructor(id) { this.id = id; } }
@@ -31,6 +36,7 @@ module.exports = { spawn: blocked, spawnSync: blocked, fork: blocked,
 const bundled = await esbuild.build({
   stdin: {
     contents: `
+      export { SharedRootCanvasParticipants } from './extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasParticipants';
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
     `,
@@ -66,7 +72,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/runtime-mode-switch-races.cjs'), path.resolve('scripts/test')
 );
-const { CanvasPanelManager, TerminalAvailableNotifications } = loaded.exports;
+const { CanvasPanelManager, TerminalAvailableNotifications, SharedRootCanvasParticipants } = loaded.exports;
 
 function deferred() {
   let resolve;
@@ -536,4 +542,127 @@ for (const change of ['removed', 'replaced']) {
   assert.equal(f.host.state.nodes.length, 1);
   f.host.disposeRuntimeSupervisorClients();
   console.log('PASS initial callback drain retains an already accepted save failure');
+}
+
+
+if (reviewCase !== 'p2') for (const multiRoot of [false, true]) {
+  for (const unknownDelete of [false, true]) {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-mode-role-retry-'));
+    const rootA = '/controlled/root-a', rootB = '/controlled/root-b';
+    const changedRoot = multiRoot ? rootB : rootA;
+    const members = new Map((multiRoot ? [rootA, rootB] : [rootA]).map(root =>
+      [root, new SharedRootCanvasParticipants(path.join(directory, path.basename(root), 'canvas.json'))]));
+    const peer = new SharedRootCanvasParticipants(path.join(directory, path.basename(changedRoot), 'canvas.json'));
+    const f = await modeSwitchFixture(true);
+    try {
+      await Promise.all([...members.values(), peer].map(member => member.ready));
+      if (multiRoot) {
+        const node = structuredClone(f.node);
+        node.id = 'terminal-2'; node.metadata.terminal.runtimeSessionId = 'session-2';
+        f.host.state.nodes.push(node);
+      }
+      f.host.getCanvasPersistenceWorkspaceFolders = () => [...members.keys()].map(path => ({ path }));
+      f.host.resolveExecutionNodeRuntimeRoot = node => node.id === 'terminal-2' ? rootB : rootA;
+      const decisions = [], publications = [], requests = [], events = [];
+      const template = f.host.sharedRootCanvasStores.get(rootA);
+      f.host.sharedRootCanvasStores = new Map([...members].map(([root, participant]) => [root, {
+        ...template, admissionPort: participant.admissionPort,
+        depart: (action, held) => participant.depart((last, departure) => {
+          decisions.push({ root, last }); return action(last, f.host.state, departure);
+        }, held),
+        publish: async state => {
+          assert.equal(state.nodes.length, 0);
+          publications.push(root); events.push(`clear:${root}`);
+        }
+      }]));
+      f.host.prepareStoppedLegacyHistoryRetirement = async () => undefined;
+      f.host.getRuntimeSupervisorClientForBackend = async () => f.client;
+      const changedSession = multiRoot ? 'session-2' : 'session-1';
+      let confirmed = !unknownDelete;
+      f.client.deleteSessionStrict = ({ sessionId }) => {
+        requests.push(sessionId); events.push(`delete:${sessionId}`);
+        const current = () => sessionId !== changedSession || confirmed
+          ? { kind: 'legacy-acknowledged' } : { kind: 'unconfirmed', reason: 'Original deletion is still unknown' };
+        return { first: Promise.resolve(current()), current, submitted: true, attemptSettled: false };
+      };
+      const persist = f.host.persistState;
+      let failed = false;
+      f.host.persistState = async options => {
+        if (options.reason === 'runtime-persistence-mode-switch-cleanup' && !failed) {
+          failed = true; throw new Error('First workspace save failed');
+        }
+        return persist(options);
+      };
+      await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /First workspace save failed/);
+      assert.equal(decisions.find(entry => entry.root === changedRoot).last, false);
+      assert.deepEqual(requests, multiRoot ? ['session-1'] : []);
+      peer.dispose();
+      if (unknownDelete) {
+        await assert.rejects(f.host.cleanupRuntimePersistenceModeSwitch(), /unconfirmed/);
+        assert.equal(publications.includes(changedRoot), false, 'Unknown new responsibility must not clear its root');
+        assert.equal(f.host.modeSwitchProgress.completed, false);
+        confirmed = true;
+      }
+      await f.host.cleanupRuntimePersistenceModeSwitch();
+      assert.equal(decisions.filter(entry => entry.root === changedRoot).at(-1).last, true);
+      assert.deepEqual(requests.sort(), multiRoot ? ['session-1', 'session-2'] : ['session-1'],
+        'Each original request is dispatched once even across role changes and unknown results');
+      assert.equal(publications.filter(root => root === changedRoot).length, 1);
+      if (multiRoot) assert.equal(publications.filter(root => root === rootA).length, 1,
+        'The already cleared root is not published again when another root becomes the last participant');
+      assert.ok(events.indexOf(`delete:${changedSession}`) < events.indexOf(`clear:${changedRoot}`));
+      assert.equal(f.host.state.nodes.length, 0);
+      console.log(`PASS review P1 role change before retry: multiRoot=${multiRoot}, unknownDelete=${unknownDelete}`);
+    } finally {
+      for (const participant of members.values()) participant.dispose();
+      peer.dispose(); f.host.disposeRuntimeSupervisorClients();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+}
+
+if (reviewCase !== 'p1') for (const shared of [false, true]) {
+  for (const saveFails of [true, false]) {
+    const f = await modeSwitchFixture(shared), saving = deferred(), saved = deferred();
+    const failure = new Error('Original completed snapshot save failed');
+    const persist = f.host.persistState;
+    f.host.persistState = options => {
+      if (options.reason === 'runtime-supervisor-completed-snapshot') { saving.resolve(); return saved.promise; }
+      return persist(options);
+    };
+    let deletions = 0, completedRetirements = 0;
+    f.host.deleteRuntimeSupervisorSessions = async () => { deletions++; };
+    f.host.deleteRuntimeSupervisorSessionStrict = async () => { completedRetirements++; };
+    f.host.postExecutionExitWithFinalSnapshot = async () => {};
+    let result;
+    try {
+      f.client.options.onSessionState({ sessionId: 'session-1', kind: 'terminal', live: false,
+        lifecycle: 'closed', runtimeBackend: 'legacy-detached', cols: 80, rows: 24 });
+      await saving.promise;
+      assert.equal(f.host.collectPersistedLiveRuntimeSessions().length, 0,
+        'Actual completed-snapshot projection removes the live binding before saving');
+      assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 1);
+      result = f.host.cleanupRuntimePersistenceModeSwitch().then(() => undefined, error => error);
+      if (saveFails) saved.reject(failure); else saved.resolve();
+      const observed = await result;
+      if (saveFails) {
+        assert.strictEqual(observed, failure);
+        assert.equal(deletions, 0, 'A known failed original save must stop before runtime deletion');
+        assert.equal(f.host.state.nodes.length, 1);
+        assert.equal(f.host.state.nodes[0].metadata.terminal.runtimeSessionId, 'session-1');
+        assert.equal(f.published.length, 0);
+      } else {
+        assert.equal(observed, undefined, observed?.stack);
+        assert.equal(f.host.state.nodes.length, 0);
+        assert.equal(completedRetirements, 1);
+        assert.equal(deletions, 0, 'Successful original completion must not be deleted a second time');
+      }
+      assert.equal(f.host.pendingRuntimeSupervisorStateCallbacks.size, 0);
+      assert.equal(f.host.pendingRuntimeSupervisorStateCallbackBindings.size, 0,
+        'Callback identity retires with its original operation');
+      console.log(`PASS review P2 real completed snapshot before mode switch: shared=${shared}, saveFails=${saveFails}`);
+    } finally {
+      saved.resolve(); await result; f.host.disposeRuntimeSupervisorClients();
+    }
+  }
 }

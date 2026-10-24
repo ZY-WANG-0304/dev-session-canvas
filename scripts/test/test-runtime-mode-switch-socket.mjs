@@ -145,8 +145,9 @@ try {
     };
     client = new modules.RuntimeSupervisorClient({
       backend, supervisorScriptPath: 'unused', onSessionTerminalBatch: async (batch, current) => {
+        const binding = host.captureRuntimeSupervisorCallbackBinding('legacy-detached', directory, batch.kind, batch.sessionId);
         const operation = host.handleRuntimeSupervisorTerminalBatch('legacy-detached', directory, batch, current);
-        host.trackRuntimeSupervisorStateCallback(operation.then(() => undefined), key);
+        host.trackRuntimeSupervisorStateCallback(operation.then(() => undefined), binding);
         const outcome = await operation;
         outcomes.push({
           batchId: batch.batchId, revision: batch.revision, live: batch.snapshot?.live, outcome

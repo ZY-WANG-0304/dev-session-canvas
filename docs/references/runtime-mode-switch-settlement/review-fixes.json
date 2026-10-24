@@ -1,0 +1,485 @@
+{
+  "collected_at": "2026-10-24T15:39:27.455452+00:00",
+  "review": "https://github.com/ZY-WANG-0304/dev-session-canvas/pull/336#issuecomment-6385842820",
+  "parent_sha": "4d455028bf9142fa88e5c47cfc51b682de4dc057",
+  "base_sha": "22998ff4f7e540f1b0780890b9ea686fcf493906",
+  "acceptance": false,
+  "scope": [
+    "P1：共享重试在本次 departure 资格下重验原绑定删除责任",
+    "P2：回调按 handler 前的原身份登记，终态投影后仍保留未完成保存与失败"
+  ],
+  "environment": {
+    "platform": "linux-x64",
+    "node": "22.23.3",
+    "path_prefix": "/dev/shm/dsc-ci-toolchains/node-v22.23.3-linux-x64/bin",
+    "vscode": "1.142.0",
+    "dependencies": "复用 /tmp/dsc335-deps/node_modules",
+    "native_assets": "/tmp/dsc335-assets；build 按原规则核验",
+    "DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH": "/dev/shm/dsc-ci-vscode",
+    "DEV_SESSION_CANVAS_VSCODE_VERSION": "1.142.0",
+    "smoke_roots": [
+      "/tmp/dsc-pr336-review-mode-final",
+      "/tmp/dsc-pr336-review-two-window"
+    ]
+  },
+  "checks": [
+    {
+      "command": "node scripts/test/test-runtime-mode-switch-races.mjs --baseline-ref=4d455028 --review-case=p1",
+      "exit_code": 1,
+      "scope": "同一默认回归替换为旧 Host，角色变化后缺少删除请求",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-regression-final-before.log",
+      "bytes": 2509,
+      "sha256": "b7b2dec1864d0d0a6a70f1418887271117d60f3d62080d286674773f87f88122",
+      "excerpt": [
+        "AssertionError [ERR_ASSERTION]: Each original request is dispatched once even across role changes and unknown results",
+        "+ actual - expected",
+        "",
+        "+ []",
+        "- [",
+        "-   'session-1'",
+        "- ]",
+        "",
+        "    at file:///tmp/dsc-runtime-restore-subscription-fix/scripts/test/test-runtime-mode-switch-races.mjs:608:14",
+        "    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {",
+        "  generatedMessage: false,",
+        "  code: 'ERR_ASSERTION',"
+      ]
+    },
+    {
+      "command": "node scripts/test/test-runtime-mode-switch-races.mjs --baseline-ref=4d455028 --review-case=p2",
+      "exit_code": 1,
+      "scope": "同一默认回归替换为旧 Host，终态保存失败被丢失",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-regression-final-before.log",
+      "bytes": 2669,
+      "sha256": "512a7dc44bbc1a17f76a5e135cb1ee87262963f0fb3bc2032accfafba2d461b8",
+      "excerpt": [
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+        "+ actual - expected",
+        "",
+        "+ undefined",
+        "- Error: Original completed snapshot save failed",
+        "-     at file:///tmp/dsc-runtime-restore-subscription-fix/scripts/test/test-runtime-mode-switch-races.mjs:627:21",
+        "",
+        "    at file:///tmp/dsc-runtime-restore-subscription-fix/scripts/test/test-runtime-mode-switch-races.mjs:649:16 {",
+        "  generatedMessage: true,",
+        "  code: 'ERR_ASSERTION',",
+        "  actual: undefined,",
+        "  expected: Error: Original completed snapshot save failed"
+      ]
+    },
+    {
+      "command": "npm run test:runtime-mode-switch-races",
+      "exit_code": 0,
+      "scope": "29 项行为及两种真实 socket/PTY 模式切换通过",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/mode-final.log",
+      "bytes": 4055,
+      "sha256": "162bbfaac35ff9527689f7d27415cea6c70a5306090fd98c414ed5e9c9eea290",
+      "excerpt": [
+        "PASS review P1 role change before retry: multiRoot=false, unknownDelete=false",
+        "PASS review P1 role change before retry: multiRoot=false, unknownDelete=true",
+        "PASS review P1 role change before retry: multiRoot=true, unknownDelete=false",
+        "PASS review P1 role change before retry: multiRoot=true, unknownDelete=true",
+        "PASS review P2 real completed snapshot before mode switch: shared=false, saveFails=true",
+        "PASS review P2 real completed snapshot before mode switch: shared=false, saveFails=false",
+        "PASS review P2 real completed snapshot before mode switch: shared=true, saveFails=true",
+        "PASS review P2 real completed snapshot before mode switch: shared=true, saveFails=false",
+        "actual Host mode-switch settlement with real socket/PTY and strict deletion passed"
+      ]
+    },
+    {
+      "command": "node /tmp/dev-session-canvas-pr336-review/scripts/test/pr336-review-role-retry.mjs",
+      "exit_code": 0,
+      "scope": "原 review 脚本：真实参与者 false→true，删除一次再发布空图",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-final.log",
+      "bytes": 473,
+      "sha256": "c59791e5c0d349e0a67fdc7be63b0c5ddaa3ca27846615568a2b4053534fac4a",
+      "excerpt": [
+        "",
+        "    extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts:240:43:",
+        "      240 │   const nodePtyEntryPath = require.resolve('node-pty');",
+        "          ╵                                            ~~~~~~~~~~",
+        "",
+        "{\"decisions\":[false,true],\"deletes\":1,\"sharedPublishedNodeCounts\":[0],\"boundarySettled\":true,\"cleanupCompleted\":true,\"hostNodes\":0}"
+      ]
+    },
+    {
+      "command": "node /tmp/dev-session-canvas-pr336-review/scripts/test/pr336-review-completed-save.mjs",
+      "exit_code": 0,
+      "scope": "原 review 脚本：传播原终态保存失败，删除零次，保留节点",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-final.log",
+      "bytes": 823,
+      "sha256": "effc5d3ccb2ec5e6668f4491c8b23ed0acbb8de1896e023112342d0a7f28f98f",
+      "excerpt": [
+        "",
+        "    extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts:240:43:",
+        "      240 │   const nodePtyEntryPath = require.resolve('node-pty');",
+        "          ╵                                            ~~~~~~~~~~",
+        "",
+        "{\"observedError\":\"Already accepted completed-snapshot save failed\",\"deletes\":0,\"hostNodes\":1,\"handlerErrors\":[{\"name\":\"runtime/sessionStateHandlerFailed\",\"details\":{\"sessionId\":\"session-1\",\"lifecycle\":\"closed\",\"live\":false,\"message\":\"Error: Already accepted completed-snapshot save failed\\n    at file:///tmp/dev-session-canvas-pr336-review/scripts/test/pr336-review-completed-save.mjs:227:17\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\"}}]}"
+      ]
+    },
+    {
+      "command": "npm run test:runtime-supervisor-protocol",
+      "exit_code": 0,
+      "scope": "最终完整协议链",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/protocol-final.log",
+      "bytes": 27140,
+      "sha256": "92b2b091d8e1bd8c8d56d78b3d9fbbd488b314900ecac02b7311c40f19d1ae49",
+      "excerpt": [
+        "runtime Host output credit: real socket backpressure, controls, tail ordering and lifecycle passed",
+        "",
+        "> dev-session-canvas-workspace@0.26.0 test:terminal-available-credit",
+        "> node scripts/test/test-terminal-available-credit.mjs",
+        "",
+        "terminal available credit: actual Host coalescing, identity, bootstrap, completion, legacy, reattach and delivery regressions passed"
+      ]
+    },
+    {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "exit_code": 0,
+      "scope": "最终 Host 634/634",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/host-final.log",
+      "bytes": 56710,
+      "sha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5",
+      "excerpt": [
+        "ok - takeover actual Host after dispatch waits for settlement and cannot restore stale deleted sessions",
+        "ok - takeover actual Host identity does not release exit responsibility or retain failed control clients",
+        "ok - takeover actual Host closed does not release exit responsibility or retain failed control clients",
+        "ok - takeover modern reader disposal releases unpinned control client and preserves confirmed idle successor",
+        "ok - takeover multi-root handoff releases only the taken PID while the other original must exit",
+        "Host execution owner wiring: 634/634 passed (selected 634/634; non-native only)."
+      ]
+    },
+    {
+      "command": "node scripts/test/test-runtime-host-deactivation-integrity.mjs",
+      "exit_code": 0,
+      "scope": "退出完整性、root 隔离、回调/读者与保存边界",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/deactivation-final.log",
+      "bytes": 4474,
+      "sha256": "8461c3064acf350c37da7c5fea3e3cc1016092054875377d0cd9ad95423270d6",
+      "excerpt": [
+        "finite A6 Host boundary passed: agent-real-start-during-old-delete",
+        "reset/deactivation overlap observation: {\"withOwner\":false,\"events\":[{\"type\":\"persist\",\"reason\":\"execution-boundary\"},{\"type\":\"host/stateUpdated\",\"nodeIds\":[\"terminal-1\"]},{\"type\":\"strict-delete\",\"sessionId\":\"session-1\"},{\"type\":\"deactivation-rejected\",\"error\":\"Host deactivation is unconfirmed because a Runtime mutation is still pending.\"},{\"type\":\"release-delete\"},{\"type\":\"reset-rejected\",\"error\":\"Host permanent boundary has closed canvas mutation admission.\"}],\"lateWrites\":[],\"resetError\":\"Host permanent boundary has closed canvas mutation admission.\",\"deactivationError\":\"Host deactivation is unconfirmed because a Runtime mutation is still pending.\",\"finalNodeIds\":[\"terminal-1\"],\"deletes\":[\"session-1\"]}",
+        "finite A6 Host boundary passed: reset-delete-and-permanent-deactivation",
+        "reset/deactivation overlap observation: {\"withOwner\":true,\"events\":[{\"type\":\"owner-admission-closed\",\"permanent\":false},{\"type\":\"persist\",\"reason\":\"execution-boundary\"},{\"type\":\"host/stateUpdated\",\"nodeIds\":[\"terminal-1\"]},{\"type\":\"strict-delete\",\"sessionId\":\"session-1\"},{\"type\":\"owner-admission-closed\",\"permanent\":true},{\"type\":\"owner-admission-closed\",\"permanent\":true},{\"type\":\"persist\",\"reason\":\"host-deactivation\"},{\"type\":\"persist\",\"reason\":\"execution-boundary\"},{\"type\":\"host/stateUpdated\",\"nodeIds\":[\"terminal-1\"]},{\"type\":\"deactivation-returned\",\"report\":{\"kind\":\"unconfirmed\",\"startedAt\":535.342609,\"deadline\":20535.342609,\"local\":{\"kind\":\"settled\"},\"canvasSnapshot\":{\"kind\":\"unconfirmed\",\"reason\":\"A Runtime mutation was pending when Host deactivation began.\"},\"remoteDetach\":{\"kind\":\"settled\"}},\"nodeIds\":[\"terminal-1\"]},{\"type\":\"release-delete\"},{\"type\":\"reset-rejected\",\"error\":\"Host permanent boundary has closed canvas mutation admission.\"}],\"lateWrites\":[],\"resetError\":\"Host permanent boundary has closed canvas mutation admission.\",\"deactivationError\":null,\"finalNodeIds\":[\"terminal-1\"],\"deletes\":[\"session-1\"]}",
+        "finite A6 Host boundary passed: reset-delete-and-owner-deactivation",
+        "runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)"
+      ]
+    },
+    {
+      "command": "node scripts/test/test-shared-root-canvas-store.mjs",
+      "exit_code": 0,
+      "scope": "共享 store 20/20；store 本轮未改",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/shared-store.log",
+      "bytes": 1674,
+      "sha256": "7f63473f34d1d4e15f3907edef9750c63235acb1acc42a5ff8b5964ab23d3b7a",
+      "excerpt": [
+        "PASS ordinary independent disposal preserves the root and leaves the peer last",
+        "PASS failed last cleanup keeps membership and can be retried under admission",
+        "PASS crashed independent participant is pruned only after connection refusal",
+        "PASS unconfirmed participant identity refuses cleanup without altering the root",
+        "PASS colliding multi-root admission ports reuse the held lease without deadlocking",
+        "Shared root Canvas store: 20/20 passed"
+      ]
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_TAKEOVER_NATIVE=1 DEV_SESSION_CANVAS_HOST_TEST_FILTER='takeover native' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "exit_code": 0,
+      "scope": "真实 Supervisor idle/closing/no-takeover 3/3",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/takeover-native.log",
+      "bytes": 1016,
+      "sha256": "6f3a6bcc5c617f163f33c89e132f4d69432501d7bb111436be88d06d70863e68",
+      "excerpt": [
+        "ok - takeover native actual Host and original Supervisor idle",
+        "NATIVE takeover evidence {\"phase\":\"closing\",\"originalPid\":3021114,\"successorClientsAfterDispose\":0,\"completed\":true}",
+        "ok - takeover native actual Host and original Supervisor closing",
+        "NATIVE takeover evidence {\"phase\":\"no-takeover\",\"originalPid\":3021764,\"successorClientsAfterDispose\":0,\"completed\":true}",
+        "ok - takeover native actual Host and original Supervisor no-takeover",
+        "Host execution owner wiring: 3/3 passed (selected 3/637; includes native Supervisor control lifecycle)."
+      ]
+    },
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "scope": "最终类型检查",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/typecheck-final.log",
+      "bytes": 184,
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+      "excerpt": [
+        "> npm run -w extensions/vscode/dev-session-canvas typecheck",
+        "",
+        "",
+        "> dev-session-canvas@0.26.0 typecheck",
+        "> tsc -p ./tsconfig.json --noEmit",
+        ""
+      ]
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc335-assets npm run build",
+      "exit_code": 0,
+      "scope": "最终生产构建",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/build-final.log",
+      "bytes": 77,
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "excerpt": [
+        "",
+        "> dev-session-canvas-workspace@0.26.0 build",
+        "> node scripts/build/build.mjs",
+        ""
+      ]
+    },
+    {
+      "command": "node scripts/smoke/run-vscode-smoke.mjs --scenario runtime-mode/reload-clear --diagnostic",
+      "exit_code": 0,
+      "scope": "固定 VS Code 1.142.0 原模式切换场景",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/vscode-mode-final.log",
+      "bytes": 59698,
+      "sha256": "595edc7f30f8b72a22e175d24dd1dd7edef936da3e8d10e2a4708b5f309abcae",
+      "excerpt": [
+        "[File Watcher (node.js)] Failed to watch /tmp/dsc-pr336-review-mode-final/runtime-mode/reload-clear/user-data/User/settings.json for changes using fs.watch() (Error: ENOSPC: System limit for number of file watchers reached, watch '/tmp/dsc-pr336-review-mode-final/runtime-mode/reload-clear/user-data/User/settings.json')",
+        "[AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false",
+        "\u001b[90m[main 2026-10-24T15:36:01.385Z]\u001b[0m Extension host with pid 2917015 exited with code: 0, signal: unknown.",
+        "Exit code:   0",
+        "Runtime 配置重载生效及关闭清理 passed.",
+        "VS Code smoke test passed."
+      ]
+    },
+    {
+      "command": "node scripts/smoke/run-vscode-smoke.mjs --scenario two-window-shared-runtime --diagnostic",
+      "exit_code": 0,
+      "scope": "两真实 Host 共享、非最后退出、最后清理和重新开启完整场景",
+      "path": "/tmp/dsc-pr336-review-fix-evidence/vscode-two-window.log",
+      "bytes": 113425,
+      "sha256": "cb97d2b60d63f496b0d9a22c62b58d9588fc8120b44f1ce6ad717e059333d3ab",
+      "excerpt": [
+        "[two-window-shared-runtime] role=owner completed",
+        "Exit code:   0",
+        "\u001b[90m[main 2026-10-24T15:37:28.421Z]\u001b[0m Extension host with pid 2960526 exited with code: 0, signal: unknown.",
+        "Exit code:   0",
+        "Two-window shared runtime smoke passed.",
+        "VS Code smoke test passed."
+      ]
+    }
+  ],
+  "production_and_test_files": [
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+      "bytes": 1233397,
+      "sha256": "a7322a6b718646f6b251c2ef36d02d715bf99127a5c75b86296343f4128ad622"
+    },
+    {
+      "path": "scripts/test/test-runtime-mode-switch-races.mjs",
+      "bytes": 34672,
+      "sha256": "d2e4c6787198d15d63387038fc4e97da2cac1a8c0243e7d1060ae367f3f141b6"
+    },
+    {
+      "path": "scripts/test/test-runtime-mode-switch-socket.mjs",
+      "bytes": 18222,
+      "sha256": "a7f6c6a23a11c70a3e51ea2b023a6ed7ad2588babfd8d0a9578e8768b49b63d8"
+    },
+    {
+      "path": "scripts/test/test-runtime-host-deactivation-integrity.mjs",
+      "bytes": 114176,
+      "sha256": "6f009a01730b8104ce88abdf6765dca38cafc999227e218eb07fb7ee5421b58d"
+    },
+    {
+      "path": "package.json",
+      "bytes": 17956,
+      "sha256": "fa71f345f6ccea661db99bbbe715c26b977ace7775f0bcbc6594ad524886eff3"
+    }
+  ],
+  "identical_production_bundle": [
+    {
+      "path": "/tmp/dsc-runtime-restore-subscription-fix/extensions/vscode/dev-session-canvas/dist/extension.js",
+      "bytes": 3479528,
+      "sha256": "aa816b408aa22854e77e1f1b367f19846ebe8a506be0da28c1673fae91d1b85d"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-mode-final/runtime-mode/reload-clear/smoke-host/dist/extension.js",
+      "bytes": 3479528,
+      "sha256": "aa816b408aa22854e77e1f1b367f19846ebe8a506be0da28c1673fae91d1b85d"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-two-window/two-window-shared-runtime/smoke-host/dist/extension.js",
+      "bytes": 3479528,
+      "sha256": "aa816b408aa22854e77e1f1b367f19846ebe8a506be0da28c1673fae91d1b85d"
+    }
+  ],
+  "gui_observations": {
+    "attacher-after-owner-detach.json": {
+      "originalSessionId": "603c6f67-07db-4042-a12e-26cf93005eee",
+      "originalProcesses": [
+        {
+          "rootPath": "/tmp/dsc-runtime-restore-subscription-fix",
+          "pid": 2964468
+        }
+      ],
+      "peerNodeId": "terminal-6-6922d2d2-4d30-4ce3-be48-b3b70ef2029d",
+      "outputAndResizeConfirmed": true
+    },
+    "attacher-last-departure.json": {
+      "supervisorProcessesExited": [
+        {
+          "rootPath": "/tmp/dsc-runtime-restore-subscription-fix",
+          "pid": 2964468
+        }
+      ]
+    }
+  },
+  "prior_attempts": {
+    "p1-before.log": "原 review 脚本在 4d455028 退出 1：删除为 0 却发布空图并报告完成",
+    "p2-before.log": "原 review 脚本在 4d455028 退出 1：已记录 handler 保存失败，却删除一次并清空",
+    "p2-after.log": "初版已传播错误，但删除发生后才检查；最终补丁在删除前检查，p2-final.log 删除为 0",
+    "earlier_validations": "mode-initial / mode-expanded / protocol-full / host-full / vscode-mode 为同轮早期通过；最终代码另跑本表所列项，不混用生产 bundle"
+  },
+  "ci": "接续修复时 4d455028 的 CI40103743235 仍运行；最新提交推送后必须单独核对 CI 和复审，不从旧 head 继承通过",
+  "limitations": [
+    "P1 使用真实参与者协调器与实际 Host，删除/发布/PID 边界受控；P2 使用实际 completed-snapshot，持久化及通知等外部边界受控",
+    "真实 socket/PTY 快照投影和 UI 边界受控；自然 GUI 未注入 review 时序",
+    "Linux 局部验证不替代跨平台、真实多 root GUI、真实 provider 或 PR327 最新预合并完整验收",
+    "未知删除和实际存储失败仍保持失败；原超时和身份保护不放宽",
+    "VS Code watcher ENOSPC 仍可见，场景通过，未改系统配置"
+  ],
+  "log_inventory": [
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/build-final.log",
+      "bytes": 77,
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/build.log",
+      "bytes": 77,
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/deactivation-final.log",
+      "bytes": 4474,
+      "sha256": "8461c3064acf350c37da7c5fea3e3cc1016092054875377d0cd9ad95423270d6"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/deactivation.log",
+      "bytes": 4474,
+      "sha256": "1902b57c4977387dc248086a653bba038ac1a959c642be62afda4043d2836235"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/host-final.log",
+      "bytes": 56710,
+      "sha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/host-full.log",
+      "bytes": 56710,
+      "sha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/mode-expanded.log",
+      "bytes": 4055,
+      "sha256": "87905701579786f40980a1d77c9e6a4d10ec8c9006714ddc817af841defd0e16"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/mode-final.log",
+      "bytes": 4055,
+      "sha256": "162bbfaac35ff9527689f7d27415cea6c70a5306090fd98c414ed5e9c9eea290"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/mode-initial.log",
+      "bytes": 3443,
+      "sha256": "f6f94f1488d9795a5beff3039ce90ae2b4d6b3168802b608a766495ef006c59a"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-after.log",
+      "bytes": 473,
+      "sha256": "c59791e5c0d349e0a67fdc7be63b0c5ddaa3ca27846615568a2b4053534fac4a"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-before.log",
+      "bytes": 1016,
+      "sha256": "dc0c3092fa3c061c2711bd2bb563d11ec56a64059ae039edc72d54b0b1aff254"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-final.log",
+      "bytes": 473,
+      "sha256": "c59791e5c0d349e0a67fdc7be63b0c5ddaa3ca27846615568a2b4053534fac4a"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-regression-before.log",
+      "bytes": 2509,
+      "sha256": "b7b2dec1864d0d0a6a70f1418887271117d60f3d62080d286674773f87f88122"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p1-regression-final-before.log",
+      "bytes": 2509,
+      "sha256": "b7b2dec1864d0d0a6a70f1418887271117d60f3d62080d286674773f87f88122"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-after.log",
+      "bytes": 823,
+      "sha256": "55c302730c5767ab15c278805ee1fc9606373080e1aff52726a6634766b3d01c"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-before.log",
+      "bytes": 1821,
+      "sha256": "7c96ee4bbbd9c2bf1c0ac4330f277780962080715579ac6a0821626028a66340"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-final.log",
+      "bytes": 823,
+      "sha256": "effc5d3ccb2ec5e6668f4491c8b23ed0acbb8de1896e023112342d0a7f28f98f"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-regression-before.log",
+      "bytes": 2669,
+      "sha256": "512a7dc44bbc1a17f76a5e135cb1ee87262963f0fb3bc2032accfafba2d461b8"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/p2-regression-final-before.log",
+      "bytes": 2669,
+      "sha256": "512a7dc44bbc1a17f76a5e135cb1ee87262963f0fb3bc2032accfafba2d461b8"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/protocol-final.log",
+      "bytes": 27140,
+      "sha256": "92b2b091d8e1bd8c8d56d78b3d9fbbd488b314900ecac02b7311c40f19d1ae49"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/protocol-full.log",
+      "bytes": 27153,
+      "sha256": "4f7442d1806dbc7804292c732db91cb2277696332fd5ac39ecacda6347d37d60"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/shared-store.log",
+      "bytes": 1674,
+      "sha256": "7f63473f34d1d4e15f3907edef9750c63235acb1acc42a5ff8b5964ab23d3b7a"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/takeover-native.log",
+      "bytes": 1016,
+      "sha256": "6f3a6bcc5c617f163f33c89e132f4d69432501d7bb111436be88d06d70863e68"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/typecheck-final.log",
+      "bytes": 184,
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/typecheck.log",
+      "bytes": 184,
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/vscode-mode-final.log",
+      "bytes": 59698,
+      "sha256": "595edc7f30f8b72a22e175d24dd1dd7edef936da3e8d10e2a4708b5f309abcae"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/vscode-mode.log",
+      "bytes": 59745,
+      "sha256": "2422e621e7f468fb5ccd040a580106451fd3ee8e41d7815e844cecfdb0020c65"
+    },
+    {
+      "path": "/tmp/dsc-pr336-review-fix-evidence/vscode-two-window.log",
+      "bytes": 113425,
+      "sha256": "cb97d2b60d63f496b0d9a22c62b58d9588fc8120b44f1ce6ad717e059333d3ab"
+    }
+  ]
+}
