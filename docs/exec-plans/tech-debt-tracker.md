@@ -965,6 +965,6 @@ Host 首次全套与协议链并行时，未改的 PR319 原 PID 等待用例超
 
 ## 模式切换结算修复的验收边界（2026-10-24）
 
-PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败阶段继续。旧输入确定失败、当前行为和真实 socket/PTY 回归通过；共享窗口/多 root 及四阶段接管继续沿原保护，定向结果见 `docs/references/runtime-mode-switch-settlement/result.json`。未知删除不得重新派发或清掉责任，真实持久化错误仍明确失败，不能承诺所有存储错误都可自动恢复。
+PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败阶段继续。旧输入确定失败、当前行为和真实 socket/PTY 回归通过；共享窗口/多 root 及四阶段接管继续沿原保护，定向结果见 `docs/references/runtime-mode-switch-settlement/result.json`。提交后自查补齐首轮 drain 的错误传播：第一次异步等待前登记已接纳回调，旧输入先红、最终第 21 项通过，接续证据为同目录 followup.json。未知删除不得重新派发或清掉责任，真实持久化错误仍明确失败，不能承诺所有存储错误都可自动恢复。
 
 旧 PR336 head 2f219c89 的 CI40096144651 首败为 `source-host(remote-ssh-real-reopen-exit)` editor Canvas ready 45000ms，尚未完成根因归属。新 head 必须取得自己的正式 CI；本轮模式切换局部通过不能证明该 ready 首败已修。Linux 自然 GUI 与受控时序不外推跨平台、真实 provider、多 root GUI 或最终 PR327 预合并门禁。watcher ENOSPC 和历史 Host PID 3 秒等待偶发失败继续按原证据追踪，未通过延长期限或改系统配置绕过。

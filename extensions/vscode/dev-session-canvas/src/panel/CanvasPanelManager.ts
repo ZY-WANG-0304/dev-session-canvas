@@ -3994,6 +3994,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       running: false, completed: false, boundarySettled: false, clearedRoots: new Set() };
     progress.running = true;
     this.modeSwitchCleanup = (async () => {
+      // Capture before the first await so the initial drain cannot lose an
+      // already accepted callback's failure while flushing shared stores.
+      this.captureModeSwitchRuntimeBindings();
       await this.flushSharedRootCanvasStores();
       if (this.isRuntimePersistenceEnabled() && this.sharedRootCanvasStores?.size) {
         await this.leaveSharedCanvasesForModeSwitch();

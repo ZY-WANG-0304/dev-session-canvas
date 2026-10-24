@@ -521,3 +521,19 @@ for (const change of ['removed', 'replaced']) {
   f.host.disposeRuntimeSupervisorClients();
   console.log('PASS actual live snapshot waits for its persistence responsibility');
 }
+
+{
+  const f = await modeSwitchFixture(false), saving = deferred(), releaseSave = deferred();
+  const failure = new Error('Save accepted before the mode boundary failed');
+  f.host.applyRuntimeSupervisorSnapshot = async () => { saving.resolve(); await releaseSave.promise; throw failure; };
+  f.host.deleteRuntimeSupervisorSessions = async () => {};
+  f.client.options.onSessionState({ sessionId: 'session-1', kind: 'terminal', live: true });
+  await saving.promise;
+  const cleanup = f.host.cleanupRuntimePersistenceModeSwitch();
+  const result = cleanup.then(() => undefined, error => error);
+  releaseSave.resolve();
+  assert.strictEqual(await result, failure, 'The initial drain must retain failures from already accepted saves');
+  assert.equal(f.host.state.nodes.length, 1);
+  f.host.disposeRuntimeSupervisorClients();
+  console.log('PASS initial callback drain retains an already accepted save failure');
+}
