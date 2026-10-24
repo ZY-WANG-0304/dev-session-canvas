@@ -2,6 +2,10 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-10-24：文件条目 smoke 原生输入修复的验收边界
+
+文件点击前 documentFocus 的测试门槛已由原生鼠标输入替代，受控编辑器持焦下 source 与原双 VSIX packaged 场景通过。历史 CI 自然夺焦的完整时序缺失，仍不认定上游产品焦点缺陷；后续若再失败，应保存点击前后焦点与可信事件。修改后的 PR head 完整 Actions 验收尚待执行，本地局部诊断不解除发布门禁。方案和证据见 [file-entry-native-smoke.md](../design-docs/file-entry-native-smoke.md)。
+
 ## 2026-10-18：CI与发布门禁重设计（现有覆盖迁移已验，产品阻塞与补充范围保留）
 
 最新已验PR335 ed9257bd：正式完整39128423778在真预合并1d9bb54b完成，精确main/head parents已核，247 jobs全部成功、330 actual/passed、324 required/requiredPassed，六native校准操作亦通过。同head与未改PR3278313fc72的最新临时0.26.1组合39128957644也247 jobs全成功、330全部必跑通过；输入63b168e2的main/组合949432c3精确parents及双PR ancestry已核。两批原aggregate/acceptance的actual producer、ZIP与同批双包原bytes独立验真，118 source/104 packaged、六native、两个Marketplace Host及三x64原样安装同批通过。六份安装原报告全部核精确恢复全集/一次创建/fresh同fd几何/原进程Stop/通知/两locale/原Host公开退出与cleanup；PR335原431功能/3视觉按冻结434目录独立核全通过、retry0。

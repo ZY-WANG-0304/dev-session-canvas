@@ -445,7 +445,7 @@ Canvas资源读取、脚本执行、应用ready消息和Host可见性是不同�
 
 smoke的准备、业务动作、观察断言和清理承担不同责任。原链接与Stop分组来自历史专项验收，不构成业务因果；命令exit17、前台命令Ctrl-C、会话Stop、结束后新Start和Host边界后的resume也不能相互代证。按目标重划的选定方案见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)，现有迁移已取得同输入source/packaged及原样安装的完整真实验收，137映射仍保留implemented-unverified、15缺口保持not-implemented；映射追踪、实际输入验收和产品缺陷关闭各自需要证据。
 
-公开命令可能等待真实用户确认；CI 必须在原期限内完成同一交互，再核原身份及用户可见结果。视口居中或 view reveal 不保证文档已经获得焦点，稳定矩形也不能替代焦点和实际命中。首轮异步集合排空只证明当时已接纳责任完成，不能证明下一次 await 不再进入回调；生产边界同样受影响时保留产品阻塞，不能用测试静默期隐藏。依据见 [release-gate-redesign.md](release-gate-redesign.md) 与 [runtime-shared-root-canvas-sync.md](runtime-shared-root-canvas-sync.md)。
+公开命令可能等待真实用户确认；CI 必须在原期限内完成同一交互，再核原身份及用户可见结果。视口居中或 view reveal 不保证文档已经获得焦点，稳定矩形也不能替代实际命中；合成输入所需焦点与原生点击本身转移焦点的能力应分开验证。首轮异步集合排空只证明当时已接纳责任完成，不能证明下一次 await 不再进入回调；生产边界同样受影响时保留产品阻塞，不能用测试静默期隐藏。依据见 [release-gate-redesign.md](release-gate-redesign.md) 与 [runtime-shared-root-canvas-sync.md](runtime-shared-root-canvas-sync.md)。
 
 
 覆盖新增必须由真实入口和失败反例支撑：真实页面重建与旧Host退出分别验，TTY尺寸由原子进程fresh句柄观察，输出完整性核每行顺序和独立writer hash。Stop升级成功的原生smoke与最终失败的owner责任合同分别记录，不以安全清理代替业务成功。PR335本轮十一项纳入source/packaged默认目录，映射变为148/4，四项真实TUI仍待覆盖；历史137/15不代表当前新增验收，详见[smoke-scenario-boundaries.md](smoke-scenario-boundaries.md)。
@@ -459,3 +459,5 @@ smoke的准备、业务动作、观察断言和清理承担不同责任。原链
 工具下载缓存必须与实际运行路径一致，精确版本/平台键及稳定路径共同决定复用；缓存命中仍需原安装检查和产品验收，不能承诺冷启动完全离线。见[CI下载缓存](ci-download-cache.md)。
 
 下载库的进程级异常应在独立尝试中记录并失败退出，只有确认原尝试已结束且清理完成的明确网络错误才可重试；原总期限、错误分类及首败证据不能因恢复而丢失。见[VSCode下载恢复](vscode-download-recovery.md)。
+
+鼠标输入本身可以转移焦点，smoke 不应要求目标文档先获得焦点才允许原生点击；几何与命中、输入可信性和最终业务结果各自验证。受控夺焦复现不能代证历史自然触发链。见[文件条目原生输入](file-entry-native-smoke.md)。

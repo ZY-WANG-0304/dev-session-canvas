@@ -316,7 +316,7 @@ test('frozen smoke budgets match the current sources and reject an unreviewed he
   assert.throws(() => frozen.verifySmokeBudgetSources(),
     /Smoke budget source changed: tests\/vscode-smoke\/extension-tests\.cjs/u);
 });
-test('file click preparation waits for focus and stable geometry within one deadline and never retries a rejected click', async () => {
+test('file click preparation accepts unfocused stable geometry within one deadline and never retries a rejected click', async () => {
   const source = await fs.readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
   const start = source.indexOf('async function performWebviewDomAction(');
   const end = source.indexOf('\nasync function performSidebarNodeListAction(', start);
@@ -326,7 +326,7 @@ test('file click preparation waits for focus and stable geometry within one dead
   for (const mode of ['stable', 'panel', 'unfocused', 'moving', 'rejected', 'late-surface', 'late-focus']) {
     let probes = 0, clicks = 0, focuses = 0, panelFocuses = 0;
     const surface = mode === 'panel' || mode === 'late-focus' ? 'panel' : 'editor';
-    const began = Date.now(), budget = ['stable', 'panel', 'rejected'].includes(mode) ? 700 : 80;
+    const began = Date.now(), budget = ['stable', 'panel', 'unfocused', 'rejected'].includes(mode) ? 700 : 80;
     const failure = new Error('Click hit target changed');
     const vscode = { commands: { executeCommand: async (command, ...args) => {
       if (command === 'editor' && mode === 'late-surface') await new Promise(resolve => setTimeout(resolve, 110));
@@ -337,16 +337,19 @@ test('file click preparation waits for focus and stable geometry within one dead
       if (command === 'devSessionCanvas.canvasPanel.focus') {
         assert.equal(surface, 'panel');assert(Date.now() - began < budget);panelFocuses++;
       }
-      if (command === 'click') {
-        clicks++;
-        assert(probes >= 4, 'The first transient visible observation cannot authorize a click');
-        assert(Date.now() - began < budget && args[2] < budget, 'Preparation and click must share the original budget');
-        if (mode === 'rejected') throw failure;
-        return 'actual-click';
-      }
+      assert.notEqual(command, 'click', 'File entries must never use synthetic DOM input');
     } } };
     const run = vm.runInNewContext(`${source.slice(start, end)}\nperformWebviewDomAction`, { assert, vscode,
-      COMMAND_IDS: commands, Date, setTimeout, clearTimeout,
+      COMMAND_IDS: commands, Date, setTimeout, clearTimeout, AbortController,
+      nativeFileClick: async ({ action, surface: requestedSurface, deadline, signal }) => {
+        clicks++;
+        assert.equal(action.nodeId, 'original'); assert.equal(requestedSurface, surface);
+        assert(probes >= 4, 'The first transient visible observation cannot authorize a click');
+        assert(Date.now() < deadline && deadline - Date.now() < budget, 'Preparation and click must share the original budget');
+        assert.equal(signal.aborted, false);
+        if (mode === 'rejected') throw failure;
+        return 'actual-click';
+      }, console: { log() {} },
       sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
       captureWebviewProbe: async () => { probes++; return { hasDocumentFocus: mode !== 'unfocused' &&
         (surface !== 'panel' || panelFocuses === 1), nodes: [{
@@ -355,13 +358,68 @@ test('file click preparation waits for focus and stable geometry within one dead
           x: mode === 'moving' || probes < 4 ? probes * 10 : 40, y: 20 }]
       }] }; } });
     const action = { kind: 'clickFileEntry', nodeId: 'original', filePath: '/original.txt' };
-    if (mode === 'stable' || mode === 'panel') assert.equal(await run(action, surface, budget), 'actual-click');
+    if (['stable', 'panel', 'unfocused'].includes(mode)) assert.equal(await run(action, surface, budget), 'actual-click');
     else if (mode === 'rejected') await assert.rejects(() => run(action, surface, budget), error => error === failure);
     else await assert.rejects(() => run(action, surface, budget), /original budget/u);
     await new Promise(resolve => setTimeout(resolve, 120));
-    assert.equal(clicks, ['stable', 'panel', 'rejected'].includes(mode) ? 1 : 0, 'Failed preparation cannot dispatch a late click');
+    assert.equal(clicks, ['stable', 'panel', 'unfocused', 'rejected'].includes(mode) ? 1 : 0, 'Failed preparation cannot dispatch a late click');
     assert.equal(panelFocuses, mode === 'panel' ? 1 : 0, 'Only panel preparation explicitly focuses the workbench view');
     if (mode === 'late-surface') assert.equal(focuses, 0);
+  }
+});
+test('native file input clicks the exact unfocused iframe and rejects blocked, ambiguous or expired input', async t => {
+  const require = createRequire(import.meta.url);
+  const { initializeNativeFileInput, nativeFileClick, closeNativeFileInput } = require('../../tests/vscode-smoke/native-file-click.cjs');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-native-input-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const keys = ['DEV_SESSION_CANVAS_SMOKE_PLAYWRIGHT', 'DEV_SESSION_CANVAS_SMOKE_USER_DATA_DIR'];
+  const previous = keys.map(key => process.env[key]);
+  t.after(() => keys.forEach((key, index) => {
+    if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index];
+  }));
+  process.env[keys[0]] = require.resolve('playwright'); process.env[keys[1]] = root;
+  const context = await chromium.launchPersistentContext(root, { headless: true,
+    args: ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0'] });
+  t.after(async () => { await closeNativeFileInput(); await context.close(); });
+  const page = context.pages()[0];
+  for (const mode of ['valid', 'occluded', 'disabled', 'duplicate', 'expired', 'cancelled']) {
+    await page.setContent('<input id="editor"><iframe id="panel"></iframe><iframe id="other"></iframe>');
+    // Initialize before the instrumented documents are created, as in Host smoke.
+    await initializeNativeFileInput(Date.now() + 3000);
+    const frame = await page.locator('#panel').contentFrame();
+    const other = await page.locator('#other').contentFrame();
+    const html = `<div data-node-id="original"><button data-file-entry-path="/original.txt" ${mode === 'disabled' ? 'disabled' : ''}>Open</button></div>
+      <div data-node-id="wrong"><button data-file-entry-path="/original.txt">Wrong node</button></div>`;
+    await frame.locator('body').evaluate((body, html) => { body.innerHTML = html; }, html);
+    await other.locator('body').evaluate((body, html) => { body.innerHTML = html; }, html);
+    for (const [target, surface] of [[frame, 'panel'], [other, 'editor']]) {
+      await target.locator('body').evaluate((body, surface) => {
+        window.__DEV_SESSION_CANVAS_WEBVIEW_IDENTITY__ = { surface, mode: 'active', generation: 1 };
+        window.clicks = [];
+        body.addEventListener('click', event => window.clicks.push(event.target.closest('[data-node-id]')?.dataset.nodeId));
+      }, surface);
+    }
+    if (mode === 'duplicate') await frame.locator('body').evaluate(body => body.append(body.firstElementChild.cloneNode(true)));
+    if (mode === 'occluded') await page.evaluate(() => {
+      const overlay = document.createElement('div'); overlay.id = 'overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;background:white;z-index:999'; document.body.append(overlay);
+    });
+    await page.locator('#editor').focus();
+    const controller = new AbortController();
+    if (mode === 'cancelled') controller.abort();
+    const invoke = () => nativeFileClick({ action: { nodeId: 'original', filePath: '/original.txt' }, surface: 'panel',
+      deadline: Date.now() + (mode === 'expired' ? -1 : mode === 'valid' ? 3000 : 250),
+      signal: controller.signal, requireUnfocused: true });
+    if (mode === 'valid') {
+      const evidence = await invoke(); assert.equal(evidence.before.documentFocus, false);
+      assert(evidence.events.every(event => event.trusted));
+    } else await assert.rejects(invoke, /budget|Timeout|closed|exactly one/);
+    await page.locator('#overlay').evaluateAll(elements => elements.forEach(element => element.remove()));
+    await page.waitForTimeout(300); // A timed-out click must not fire when its obstruction disappears.
+    assert.deepEqual(await frame.locator('body').evaluate(() => window.clicks), mode === 'valid' ? ['original'] : []);
+    assert.deepEqual(await other.locator('body').evaluate(() => window.clicks), []);
+    await closeNativeFileInput();
+    assert.equal(await page.title(), '', 'Disconnecting the driver must leave the target browser alive');
   }
 });
 test('relocated settings and every original reopen log remain in evidence before short directories retire', async t => {

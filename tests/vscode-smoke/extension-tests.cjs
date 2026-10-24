@@ -5,6 +5,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const vscode = require('vscode');
+const { initializeNativeFileInput, nativeFileClick, closeNativeFileInput } = require('./native-file-click.cjs');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { resetCanvasAfterFinalPersistence } = require('./reset-canvas.cjs');
 const { findExecutionOutput } = require('./execution-output.cjs');
@@ -179,6 +180,8 @@ async function run({ gateRecordStep, gateStepBoundary } = {}) {
   } catch (error) {
     await writeFailureArtifacts(error);
     throw error;
+  } finally {
+    await closeNativeFileInput();
   }
 }
 
@@ -299,7 +302,9 @@ async function prepareIndependentEmpty() {
 }
 
 async function prepareIndependentFirstOpen() {
-  await activateVisibleExtension(vscode, EXTENSION_ID);
+  const activationDeadline = Date.now() + 20000;
+  if (smokeScenario === 'execution-file-activity/views') await initializeNativeFileInput(activationDeadline);
+  await activateVisibleExtension(vscode, EXTENSION_ID, Math.max(1, activationDeadline - Date.now()));
   await waitForCommand(vscode, COMMAND_IDS.testResetState);
   await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
   await ensureEditorCanvasReady();
@@ -4882,7 +4887,8 @@ async function verifyFileActivityViewsAndOpenFiles() {
         filePath: agentOnlySecondaryPath
       },
       'panel',
-      10000
+      10000,
+      { editorFocusBeforeClick: true }
     );
     await waitForVisibleEditor(
       (editor) => editor.document.uri.fsPath === agentOnlySecondaryPath,
@@ -12835,9 +12841,10 @@ async function ensureFilesFeatureEnabledForSmoke(surface = 'panel') {
   return snapshot;
 }
 
-async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5000) {
+async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5000, options = {}) {
   if (action.kind === 'clickFileEntry') {
     const deadline = Date.now() + timeoutMs;
+    const controller = new AbortController();
     let timer;
     try {
       return await Promise.race([Promise.resolve().then(async () => {
@@ -12848,19 +12855,28 @@ async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5
         if (surface === 'panel') {
           await vscode.commands.executeCommand('devSessionCanvas.canvasPanel.focus');
         }
+        if (options.editorFocusBeforeClick) {
+          assert.strictEqual(surface, 'panel', 'Editor-focus regression requires the visible Panel.');
+          await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        }
         let previous, stableSince, observation;
         while (Date.now() < deadline) {
           const probe = await captureWebviewProbe(surface, Math.max(1, deadline - Date.now()));
           const node = probe.nodes.find(node => node.nodeId === action.nodeId);
           observation = node?.fileEntries?.find(file => file.filePath === action.filePath);
-          const ready = probe.hasDocumentFocus && observation?.clickable;
+          const ready = observation?.clickable;
           const stable = ready && previous && ['x', 'y', 'width', 'height']
             .every(key => Math.abs(observation[key] - previous[key]) <= 0.25);
           if (stable) {
             stableSince ??= Date.now();
             if (Date.now() - stableSince >= 100 && Date.now() < deadline) {
-              return vscode.commands.executeCommand(COMMAND_IDS.testPerformWebviewDomAction,
-                action, surface, Math.max(1, deadline - Date.now()));
+              if (options.editorFocusBeforeClick) {
+                assert.strictEqual(probe.hasDocumentFocus, false, 'Regression must start with editor focus.');
+              }
+              const evidence = await nativeFileClick({ action, surface, deadline, signal: controller.signal,
+                requireUnfocused: options.editorFocusBeforeClick === true });
+              console.log(`Native file click: ${JSON.stringify(evidence)}`);
+              return evidence;
             }
           } else stableSince = undefined;
           previous = ready ? observation : undefined;
@@ -12871,7 +12887,7 @@ async function performWebviewDomAction(action, surface = 'editor', timeoutMs = 5
         timer = setTimeout(() => reject(new Error('File click preparation/action exceeded its original budget.')),
           Math.max(1, deadline - Date.now()));
       })]);
-    } finally { clearTimeout(timer); }
+    } finally { controller.abort(); clearTimeout(timer); }
   }
   return vscode.commands.executeCommand(
     COMMAND_IDS.testPerformWebviewDomAction,

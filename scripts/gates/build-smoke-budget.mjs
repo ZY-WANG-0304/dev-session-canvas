@@ -43,6 +43,7 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const sourceHashes = Object.fromEntries([...files.map(name => `tests/vscode-smoke/${name}`),
   'scripts/smoke/smoke-catalog.mjs',
   'tests/vscode-smoke/test-helpers.cjs','tests/vscode-smoke/runtime-retirement.cjs',
+  'tests/vscode-smoke/native-file-click.cjs',
   'tests/vscode-smoke/reset-canvas.cjs','tests/vscode-smoke/terminal-history.cjs',
   'tests/vscode-smoke/terminal-resize.cjs','tests/vscode-smoke/remote-host-control.cjs',
   'tests/vscode-smoke/smoke-gap-observations.cjs','tests/vscode-smoke/fixtures/smoke-geometry-output-subject.cjs',
