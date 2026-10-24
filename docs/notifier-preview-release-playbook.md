@@ -1,25 +1,32 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前发布准备目标为 `0.26.0`，上一已发布版本为 `0.25.0`；publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前发布准备目标为 `0.26.1`，上一已发布版本为 `0.26.0`；publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.26.0` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.26.1` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
 
 ## 后续版本标准流程
 
-`0.25.0` 的发布记录是历史证据；本次随主扩展发布时，notifier 必须进入同一份 `docs/release-contracts/vX.Y.Z.md`。该契约在发布准备 PR 合入前确认 notifier 的用户 release notes、Marketplace 文案、支持 / 设计文档和已知限制已经完成，不能在发布后补写实际渠道结果或 gate 结论。
+notifier 随主扩展进入同一份 `docs/release-contracts/vX.Y.Z.md`，发布前定稿用户说明、Marketplace 文案、文档清单与已知限制。CHANGELOG 只写用户可见行为、安装升级和限制；运行结果、SHA、渠道状态与内部待办不写入 CHANGELOG，也不在发布后回写同版本契约。
 
-notifier CHANGELOG 只写用户可见的 companion 行为、安装升级和限制，不能包含发布准备待办、内部 gate、候选 / 最终 ref、workflow run、工件 SHA、渠道状态或“门禁已通过”。发布准备 PR 与最终 `publish/vX.Y.Z` tag ref 都必须通过：
+正式流程由 `docs/WORKFLOW.md`、`docs/design-docs/release-gate-redesign.md` 和主扩展手册共同定义。发布 PR 的真实最新预合并 SHA 执行完整 `release-pr`；合入 main 后，最终 `publish/vX.Y.Z` 的 SHA 独立执行 `release-tag`。验证阶段的 `package-clean` 在干净源码与锁定依赖上生成同批 main / notifier VSIX，后续 packaged-host、三平台 x64 原样安装和交付消费原双包。
 
-    npm run release:preflight -- --version X.Y.Z
-    npm run release:verify -- --version X.Y.Z
+`Verify release contract` 只有独立核对真实 Actions job / 工件来源、完整必跑集合和同批产物成功后才能通过。它应设为 required status check，但目前 main 尚未配置保护；draft 跳过或本地结果不满足该门槛。最终 SHA 完整验收前可以生成候选 VSIX，不能创建正式 Release、写市场或删除临时 tag。实际交付仅复用验收过的 bytes。
 
-PR check 针对由最新 PR head 与基准分支生成的预合并结果运行，并作为 required status check。tag workflow 的第二次 verify 在成功前不生成 VSIX、GitHub Release asset 或 Marketplace 写入；最终渠道事实只保存在 release manifest、GitHub Release assets 和 Release notes，不能通过发布后 PR 回写同版本 notifier CHANGELOG。
+## 0.26.1 发布前检查
 
-## 0.26.0 发布前检查
+本版采用 `docs/release-contracts/v0.26.1.md` 的完整任务图，不继承 0.26.0 延后 companion 的授权。notifier 类型/source、companion 回跳、英中文 locale，以及双包中的版本、README、NLS/l10n 和单向安装依赖均进入计划。notifier 自身投递后端、点击与语言契约不变，主扩展修复执行提醒接线。
 
-本版用户已授权将 companion posted diagnostic 超时延后修复，根因未确认；typecheck/build/source 和独立打包仍是授权验证范围，locale 历史通过不代证 companion。以 `docs/release-contracts/v0.26.0.md` 的一次性例外为准，下一版本恢复完整要求。
+仓库根的静态检查为：
 
-本版 notifier 无行为变化，随主扩展统一使用 `docs/release-contracts/v0.26.0.md`。先完成双阶段发布验证，并执行 notifier build / typecheck、source、companion 和英中文 locale smoke；两份 VSIX 必须保留安装依赖、本地化资源与当前 README。真实桌面通知点击与市场自动补齐仍按发布后验证步骤在实际宿主复核，staged smoke 不代证这些路径。
+    npm run release:preflight -- --version 0.26.1
+
+本地补充验证使用固定 Node 版本，在已提交的 PR 工作树运行 `npm run release:verify -- --version 0.26.1`。该命令在隔离 checkout 运行同一任务图，仅输出 `acceptance: false`，缺少外平台记 `not-run`；独立 notifier 打包或单项 smoke 也不能代证 Actions 正式验收。主扩展手册说明完整 PR 验收步骤。
+
+过程和历史证据见 `docs/design-docs/release-0-26-1-refresh.md`。staged callback 与 locale 检查不代证真实桌面通知、点击回跳或公开市场自动依赖；后者仍按实际渠道 / 宿主复核。
+
+### 0.26.0 验证例外（历史）
+
+该版companion posted diagnostic超时被授权延后，记录保存在原契约与技术债中；历史失败不能删除，也不能当成0.26.1当前结论。
 
 ## 当前发布素材
 
@@ -92,40 +99,19 @@ PR check 针对由最新 PR head 与基准分支生成的预合并结果运行�
 
 ## 发布命令
 
-在最终 git ref、版本号与 VSIX 产物都锁定后，默认从仓库根目录使用 `publish/vX.Y.Z` 临时 tag 触发统一发布入口；这里的临时 tag 必须指向已经位于 `main` 上的 release commit。主扩展与 notifier 仍由同一个发布脚本同步处理：
+主扩展与 notifier 通过同一次发布交付两个独立 VSIX。取得发布授权、发布准备 PR 正式验收并合入 main 后，按主扩展手册在最终 release commit 创建并推送 `publish/v0.26.1`；完整命令见 [主扩展发布手册](public-preview-release-playbook.md#发布命令)。
 
-    git tag publish/v0.26.0 <final-ref-or-sha>
-    git push origin publish/v0.26.0
+`.github/workflows/publish-marketplace-release.yml` 的 resolve → verify → prepare → 两个独立渠道 → finalize 流程冻结同一个最终 SHA。新发布 verify 执行完整 `release-tag`；prepare 只消费已经验收的 main / notifier 双包，创建或确认正式 tag、GitHub Release 并上传原包与来源证据，随后两渠道各自验真。GitHub Release Assets 是下载入口，裸 tag 对象不承载这些文件。
 
-推送临时 tag 后，`.github/workflows/publish-marketplace-release.yml` 会先执行：
+渠道部分完成后的恢复入口为同一个 workflow 的 `workflow_dispatch`，参数是原 `trigger_tag` 和 `target=all|open-vsx|visual-studio`。具体命令见 [渠道恢复](public-preview-release-playbook.md#渠道恢复)。resolver 复核原 Release 双包、acceptance 和状态链后进入 `channel-retry`，包括原临时 tag 已删除的情况；不提供 `--extension notifier` 单包重发路径，也不重新打包或替换原资产。旧 `--package-only` / `--skip-package` 参数只属于历史发布实现。
 
-    npm run release:verify -- --version X.Y.Z
-    npm run release:publish-tag -- --trigger-tag publish/v0.26.0 --package-only
-
-历史 tag checkout 缺少 `release:verify` 时只保留原有的 immutable-artifact 补发路径；后续版本不能以该兼容行为绕过发布契约和完整门禁。
-
-workflow 只应由 `publish/v*` tag push 或手动 `workflow_dispatch` 触发；创建普通分支、普通 tag 或 release 分支不应产生 skipped publish run。若 Actions 列表出现这类噪音，应优先修正 workflow 触发条件，而不是把 skipped run 当作真实 notifier 发布动作。
-
-workflow 随后会把 notifier VSIX 与主扩展 VSIX、release manifest 一起上传到 `v0.26.0` 对应的 GitHub Release assets。GitHub 不支持裸 tag assets，因此用户下载入口是 GitHub Release 的 Assets 区，不是 tag 对象本身。上传 Release assets 后，workflow 会继续复用同一份 manifest / VSIX，分别发布并验证 Open VSX 与 Visual Studio Marketplace：
-
-    npm run release:publish-tag -- --trigger-tag publish/v0.26.0 --skip-package --target open-vsx --no-create-final-tag
-    npm run release:publish-tag -- --trigger-tag publish/v0.26.0 --skip-package --target visual-studio --no-create-final-tag
-
-两个 marketplace 不再互相串行阻断；其中一个目标失败时，另一个目标仍会尝试发布和验证。workflow 在两个目标都跑完后上传最终 manifest，并根据 `CHANGELOG.md` 与 manifest 重新生成 GitHub Release notes，确保 Release 页面包含版本亮点、渠道状态、残余风险和发布证据。本轮 `0.26.0` 完成门禁是 GitHub Release assets 已上传且 Open VSX 主扩展 / notifier 均 verified；Visual Studio Marketplace 若仍不可见，则以 deferred channel 写入 manifest / notes，不阻塞删除 `publish/v0.26.0` 临时 tag。如果 Open VSX 失败，Release assets 和最终 Release notes 保留为手动安装兜底，失败的 Open VSX job 会在上传自身结果 manifest 后标红，finalize job 也会在收口 Release 状态后标红，临时 tag 保留，便于使用 GitHub Actions 的 Re-run failed jobs 或 workflow_dispatch 重跑同一 release input。重跑同一版本时，workflow 会下载并校验 `v0.26.0` Release 中已有的 notifier VSIX、主扩展 VSIX 与 manifest，不会重新打包或覆盖 VSIX；若既有 Release 缺少任一必需 asset，则直接失败并要求人工修复不完整状态。
-
-若 GitHub Actions 中某个 marketplace 目标失败，或需要只重跑 notifier 到某个市场，可保留或重新创建同一个 `publish/v0.26.0`，复用同一份 manifest / VSIX，并限定扩展与市场：
-
-    npm run release:publish-tag -- --trigger-tag publish/v0.26.0 --skip-package --extension notifier --target visual-studio --no-create-final-tag
-
-    npm run release:publish-tag -- --trigger-tag publish/v0.26.0 --skip-package --extension notifier --target open-vsx --no-create-final-tag
-
-注意：`publish --packagePath` 与 Open VSX publish 都只上传现成 VSIX，不会重新改写 README 或重新补资源 URL。因此发布前必须重新执行一次 package；发布失败后的同版本重跑必须复用 GitHub Release 中已有的 VSIX / manifest，并在使用 `--skip-package` 时让 `release:publish-tag` 校验已有 release manifest 与 notifier VSIX sha256，证明它针对同一个 release ref 完成过打包。
+notifier 与主扩展在所选渠道逐包检查；提交结果未知时先查询，内容 match 才能完成。GitHub Release assets 与 Open VSX 两个必需目标都必须包含主包和 notifier，Visual Studio Marketplace 继续保留明确的 deferred 策略。最终 manifest / notes 与实际渠道状态一致，未完成目标或清理失败必须保留，不能用另一渠道通过覆盖。
 
 ## Tag 与版本对齐约束
 
-- 如果 notifier 与主扩展共用同一个、已经位于 `main` 上的 release commit，继续复用主扩展的正式 `v<release-version>` 仓库 tag，不单独再发 notifier 专属 tag。
-- `publish/v<release-version>` 只是临时发布触发 tag；发布失败时保留用于重跑。`0.26.0` 本轮在 GitHub Release assets 已上传、Open VSX 发布验证成功、Visual Studio Marketplace 已记录为 verified 或 deferred 且正式 `v<release-version>` 已推送后可以删除。同版本重跑必须复用并校验既有 Release assets；若 Release assets 不完整，先人工修复或删除不完整状态。
-- 如果 notifier 准备从另一个 commit 单独发布，但版本号仍想保持 `v<release-version>` 对应的同一组数字，这会让“同一个版本号对应哪个发布输入”变得不清晰；此时必须先决定是一起 bump 版本，还是显式放弃“版本对齐”策略，再继续发布。
+- notifier 与主扩展共用位于 main 上的 release commit 和正式 `v<release-version>` tag，不另发 notifier 专属 tag。
+- `publish/v<release-version>` 由 finalize 在核对正式 tag、原双包、必需渠道回执和状态后清理；失败时保留现场。缺资产、缺回执或身份冲突时停止，不删除原 Release 或重打包覆盖。
+- 若 notifier 要从另一 commit 单独发布且不与主扩展同版本，须另行明确版本策略；当前同批双包流程不允许用同一版本号替换成另一组发布输入。
 
 ## 发布后验证
 
