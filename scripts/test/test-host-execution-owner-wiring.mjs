@@ -7663,6 +7663,9 @@ for (const kind of ['agent', 'terminal']) {
         runtimeBackend: 'systemd-user', persistenceMode: 'live-runtime', liveSession: true };
       Object.assign(f.host, {
         state: { nodes: [f.node], edges: [], groups: [] },
+        runtimeSessionBindings: new Map([[CanvasPanelManager.prototype.buildRuntimeSessionBindingKey.call(f.host, kind, 'original', '/controlled/runtime', 'systemd-user'),
+          { nodeId: f.node.id, kind, runtimeBackend: 'systemd-user', runtimeStoragePath: '/controlled/runtime', runtimeSessionId: 'original' }]]),
+        executionSessionOperationTokens: new Map(),
         terminalAvailableNotifications: new TerminalAvailableNotifications(),
         terminalReadRelay: new RuntimeTerminalReadRelay(),
         isRuntimeSupervisorEventAdmitted: () => true, isRuntimePersistenceEnabled: () => true,

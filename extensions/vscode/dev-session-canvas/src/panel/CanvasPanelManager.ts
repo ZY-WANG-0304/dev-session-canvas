@@ -1253,6 +1253,31 @@ interface PersistedLiveRuntimeSession {
   kind?: ExecutionNodeKind;
 }
 
+interface RuntimeSessionRestoreTask {
+  binding: PersistedLiveRuntimeSession;
+  isCurrent: () => boolean;
+  promise: Promise<'restored' | 'ignored'>;
+  disconnectedError?: Error;
+}
+
+interface RuntimeModeSwitchBinding {
+  binding: PersistedLiveRuntimeSession;
+  sealed: boolean;
+  pending: Set<Promise<void>>;
+  failure?: unknown;
+  deletionRequested?: boolean;
+  deletionConfirmed?: boolean;
+}
+
+interface RuntimeModeSwitchProgress {
+  targetEnabled: boolean;
+  running: boolean;
+  completed: boolean;
+  boundarySettled: boolean;
+  clearedRoots: Set<string>;
+  firstError?: unknown;
+}
+
 type RuntimeHistoryEvidence = LegacyRuntimeHistoryEvidence | 'native-owner-absent';
 type NativeHistoryObservations = Map<string, Promise<RuntimeHistoryEvidence | undefined>>;
 
@@ -1373,6 +1398,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private sharedRootCanvasStores = new Map<string, SharedRootCanvasStore>();
   private sharedCompletedRuntimeProjections = new Map<string, { sessionId: string; node: CanvasNodeSummary }>();
   private modeSwitchCleanup?: Promise<void>;
+  private hostDeactivationPromise?: Promise<HostDeactivationReport | void>;
+  private modeSwitchProgress?: RuntimeModeSwitchProgress;
+  private modeSwitchRuntimeBindings?: Map<string, RuntimeModeSwitchBinding>;
+  private modeSwitchPersistenceEpoch = 0;
+  private runtimeSessionRestoreTasks?: Map<string, RuntimeSessionRestoreTask>;
   private sharedModeSwitchDetachedRoots?: Set<string>;
   private observedRootSupervisorProcesses = new Map<string, Set<number>>();
   private sharedRuntimeTakeoverCandidates = new Map<string, SharedRuntimeTakeoverCandidate>();
@@ -1469,6 +1499,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   /** Runtime events accepted after a host boundary can otherwise revive stale state. */
   private runtimeSupervisorEventAdmissionOpen = true;
   private pendingRuntimeSupervisorStateCallbacks: Set<Promise<void>> | undefined;
+  private pendingRuntimeSupervisorStateCallbackBindings?: Map<Promise<void>, PersistedLiveRuntimeSession>;
   private runtimeSupervisorStateCallbackRevision = 0;
   private runtimeSupervisorClientEpochs: Map<string, number> | undefined;
   private readonly pendingTerminalProjectionRefreshes = new Map<string, Promise<void>>();
@@ -3924,9 +3955,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  public async prepareForDeactivation(): Promise<HostDeactivationReport | void> {
+  public prepareForDeactivation(): Promise<HostDeactivationReport | void> {
+    // Permanent exit keeps its first report even if configuration changes later.
+    return this.hostDeactivationPromise ??= this.prepareForDeactivationCore();
+  }
+
+  private async prepareForDeactivationCore(): Promise<HostDeactivationReport | void> {
+    let nextStartupConfiguration: CanvasStartupConfiguration;
+    try { nextStartupConfiguration = this.readStartupConfiguration(); }
+    catch (error) { this.closeRuntimeSupervisorEventAdmission(); throw error; }
     if (this.modeSwitchCleanup ||
-        (this.readStartupConfiguration().runtimePersistenceEnabled === true) !== this.isRuntimePersistenceEnabled()) {
+        (nextStartupConfiguration.runtimePersistenceEnabled === true) !== this.isRuntimePersistenceEnabled()) {
       await this.cleanupRuntimePersistenceModeSwitch();
     }
     if (this.sharedRootCanvasStores?.size) {
@@ -3938,7 +3977,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return await this.prepareNonNativeDeactivation();
       }
       // Permanent shutdown keeps its first outcome, including failure; it is not a retryable reset.
-      this.ordinaryDeactivationPromise ??= this.prepareOrdinaryDeactivation();
+      this.ordinaryDeactivationPromise ??= this.prepareOrdinaryDeactivation(nextStartupConfiguration);
       return await this.ordinaryDeactivationPromise;
     } finally {
       try { await this.flushSharedRootCanvasStores(); }
@@ -3947,23 +3986,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async cleanupRuntimePersistenceModeSwitch(): Promise<void> {
-    if (this.modeSwitchCleanup) return this.modeSwitchCleanup;
+    if (this.modeSwitchCleanup && (!this.modeSwitchProgress || this.modeSwitchProgress.running ||
+        this.modeSwitchProgress.completed || this.strictRuntimeMutationBoundary)) return this.modeSwitchCleanup;
     const next = this.readStartupConfiguration();
-    if ((next.runtimePersistenceEnabled === true) === this.isRuntimePersistenceEnabled()) return;
+    if (!this.modeSwitchProgress && (next.runtimePersistenceEnabled === true) === this.isRuntimePersistenceEnabled()) return;
+    const progress = this.modeSwitchProgress ??= { targetEnabled: next.runtimePersistenceEnabled === true,
+      running: false, completed: false, boundarySettled: false, clearedRoots: new Set() };
+    progress.running = true;
     this.modeSwitchCleanup = (async () => {
+      // Capture before the first await so the initial drain cannot lose an
+      // already accepted callback's failure while flushing shared stores.
+      this.captureModeSwitchRuntimeBindings();
       await this.flushSharedRootCanvasStores();
       if (this.isRuntimePersistenceEnabled() && this.sharedRootCanvasStores?.size) {
         await this.leaveSharedCanvasesForModeSwitch();
         return;
       }
-      await this.prepareForHostBoundary({ preserveLiveRuntime: false, preserveRootRuntimeBindings: false,
+      if (!progress.boundarySettled) await this.prepareForHostBoundary({ preserveLiveRuntime: false, preserveRootRuntimeBindings: false,
+        settleModeSwitchCallbacks: true,
         allowRuntimeSupervisorRestart: false, invalidatePendingExecutionOperations: true,
         waitForLocalPersistence: true, preserveLocalRecovery: false });
+      progress.boundarySettled = true;
       const folders = this.getCanvasPersistenceWorkspaceFolders();
       const now = new Date().toISOString();
       const retainedState = this.state;
       const retainedRoots = this.lastLoadedRootLocalStates;
       const retainedOverlay = this.multiRootOverlay;
+      this.modeSwitchPersistenceEpoch = (this.modeSwitchPersistenceEpoch ?? 0) + 1;
       this.state = folders.length > 1 ? composeMultiRootCanvasState({ workspaceFolders: folders,
         rootStates: folders.map(folder => ({ rootPath: folder.path, state: createEmptyCanvasState(now) })),
         overlay: this.multiRootOverlay }) : createEmptyCanvasState(now);
@@ -3973,15 +4022,25 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           workspaceStateMode: 'full', requireRootLocalDurability: true });
         await this.flushSharedRootCanvasStores();
       } catch (error) {
+        this.modeSwitchPersistenceEpoch++;
         this.state = retainedState;
         this.lastLoadedRootLocalStates = retainedRoots;
         this.multiRootOverlay = retainedOverlay;
         throw error;
       }
       this.recordDiagnosticEvent('state/runtimeModeSwitchCleared', {
-        fromEnabled: this.isRuntimePersistenceEnabled(), toEnabled: next.runtimePersistenceEnabled
+        fromEnabled: this.isRuntimePersistenceEnabled(), toEnabled: progress.targetEnabled
       });
     })();
+    void this.modeSwitchCleanup.then(() => {
+      progress.running = false;
+      progress.completed = true;
+    }, error => {
+      progress.running = false;
+      progress.firstError ??= error;
+      this.recordDiagnosticEvent('runtime/modeSwitchFailed', { message: formatUnknownError(error),
+        firstError: formatUnknownError(progress.firstError), boundarySettled: progress.boundarySettled });
+    });
     return this.modeSwitchCleanup;
   }
 
@@ -3993,7 +4052,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const lastRoots = new Set<string>();
     const departures = new Map<string, SharedRootCanvasDeparture>();
     const held = new Set<number>();
-    this.sharedModeSwitchDetachedRoots = new Set();
+    this.sharedModeSwitchDetachedRoots ??= new Set();
     const leave = async (index: number): Promise<void> => {
       if (index < roots.length) {
         const [root, store] = roots[index];
@@ -4001,7 +4060,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           if (last) {
             lastRoots.add(root);
             departures.set(root, departure);
-            this.applySharedRootCanvasState(root, current, true);
+            if (!this.modeSwitchProgress?.clearedRoots.has(root)) this.applySharedRootCanvasState(root, current, true);
           } else this.sharedModeSwitchDetachedRoots!.add(root);
           await leave(index + 1);
         }, held);
@@ -4009,7 +4068,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       // All root decisions remain protected until execution settlement and process exit finish.
       const pids = await this.captureSharedSupervisorProcesses(lastRoots);
+      // A retry can acquire new last-participant responsibilities. Recheck this
+      // departure's roots; confirmed deletes are reused by their original binding.
       await this.prepareForHostBoundary({ preserveLiveRuntime: lastRoots.size === 0,
+        settleModeSwitchCallbacks: true,
         runtimeRootsToDelete: lastRoots, allowRuntimeSupervisorRestart: false,
         beforeRuntimeDeletion: () => {
           for (const root of lastRoots) {
@@ -4020,21 +4082,26 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
         },
         invalidatePendingExecutionOperations: true, waitForLocalPersistence: true, preserveLocalRecovery: false });
+      if (this.modeSwitchProgress) this.modeSwitchProgress.boundarySettled = true;
       // Late page saves must not recreate bindings while the original process shuts down.
       for (const [root] of roots) this.sharedModeSwitchDetachedRoots!.add(root);
       // A root with no runtime deletion still crosses the boundary before clearing its graph.
       for (const root of lastRoots) if (!departures.get(root)!.beginSettlement()) lastRoots.delete(root);
       for (const [root, store] of roots) {
-        if (lastRoots.has(root)) await store.publish(createEmptyCanvasState(new Date().toISOString()));
+        if (lastRoots.has(root) && !this.modeSwitchProgress?.clearedRoots.has(root)) {
+          await store.publish(createEmptyCanvasState(new Date().toISOString()));
+          this.modeSwitchProgress?.clearedRoots.add(root);
+        }
       }
       await this.flushSharedRootCanvasStores();
       const retained = this.state;
       const folders = this.getCanvasPersistenceWorkspaceFolders();
+      this.modeSwitchPersistenceEpoch = (this.modeSwitchPersistenceEpoch ?? 0) + 1;
       this.state = folders.length > 1 ? composeMultiRootCanvasState({ workspaceFolders: folders,
         rootStates: folders.map(folder => ({ rootPath: folder.path, state: createEmptyCanvasState(new Date().toISOString()) })),
         overlay: this.multiRootOverlay }) : createEmptyCanvasState(new Date().toISOString());
       try { await this.persistState({ reason: 'runtime-persistence-mode-switch-cleanup', workspaceStateMode: 'full' }); }
-      catch (error) { this.state = retained; throw error; }
+      catch (error) { this.modeSwitchPersistenceEpoch++; this.state = retained; throw error; }
       // Expose idle handoff only after all destructive writes, including this Host's final save.
       for (const root of lastRoots) departures.get(root)!.settle(
         [...(this.sharedRuntimeTakeoverCandidates?.values() ?? [])].filter(value => value.runtimeOwner.root.normalizedPath === root));
@@ -4158,12 +4225,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private async prepareOrdinaryDeactivation(): Promise<void> {
+  private async prepareOrdinaryDeactivation(
+    nextStartupConfiguration: CanvasStartupConfiguration = this.readStartupConfiguration()
+  ): Promise<void> {
     this.nonNativeExecutionOwner?.closeAdmission(true);
     if (this.strictRuntimeMutationBoundary) {
       throw new Error('Host deactivation is unconfirmed because a Runtime mutation is still pending.');
     }
-    const nextStartupConfiguration = this.readStartupConfiguration();
     await this.prepareForHostBoundary({
       preserveLiveRuntime: this.shouldPreserveLiveRuntimeAcrossHostBoundary(nextStartupConfiguration),
       preserveRootRuntimeBindings: !this.isRuntimePersistenceEnabled(),
@@ -4274,6 +4342,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundary(options: {
     preserveLiveRuntime: boolean;
+    settleModeSwitchCallbacks?: boolean;
     runtimeStateCallbackDeadline?: number;
     preserveRootRuntimeBindings?: boolean;
     runtimeRootsToDelete?: ReadonlySet<string>;
@@ -4284,7 +4353,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     waitForLocalPersistence?: boolean;
     preserveLocalRecovery?: boolean;
   }): Promise<void> {
-    if (!this.getExecutionCandidateProfile() || options.preserveLiveRuntime) {
+    if (!options.settleModeSwitchCallbacks && (!this.getExecutionCandidateProfile() || options.preserveLiveRuntime)) {
       return this.prepareForHostBoundaryCore(options);
     }
     if (this.strictRuntimeMutationBoundary) throw new Error('A runtime mutation boundary is still pending.');
@@ -4311,6 +4380,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async prepareForHostBoundaryCore(options: {
     preserveLiveRuntime: boolean;
+    settleModeSwitchCallbacks?: boolean;
     runtimeStateCallbackDeadline?: number;
     preserveRootRuntimeBindings?: boolean;
     runtimeRootsToDelete?: ReadonlySet<string>;
@@ -4321,7 +4391,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     waitForLocalPersistence?: boolean;
     preserveLocalRecovery?: boolean;
   }): Promise<void> {
-    const candidate = Boolean(this.getExecutionCandidateProfile()) && !options.preserveLiveRuntime;
+    const candidate = options.settleModeSwitchCallbacks ||
+      (Boolean(this.getExecutionCandidateProfile()) && !options.preserveLiveRuntime);
     if (options.permanentExecutionClose) {
       this.closeRuntimeSupervisorEventAdmission();
     }
@@ -4348,6 +4419,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     checkBoundary();
     await this.waitForPendingRuntimeSupervisorStateCallbacks(options.runtimeStateCallbackDeadline);
     checkBoundary();
+    if (options.settleModeSwitchCallbacks) {
+      await this.waitForModeSwitchRuntimeCallbacks(this.captureModeSwitchRuntimeBindings());
+      checkBoundary();
+    }
     await this.waitForPendingRuntimeSupervisorOperations();
     checkBoundary();
     const callbackDeadline = options.runtimeStateCallbackDeadline;
@@ -4390,7 +4465,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       (this.runtimeSupervisorStateCallbackRevision ?? 0) !== flushedCallbackRevision));
 
     options.beforeRuntimeDeletion?.();
-    const persistedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions()
+    const selectedRuntimeSessions = options.preserveLiveRuntime ? [] : this.collectPersistedLiveRuntimeSessions()
       .filter(session => !options.preserveRootRuntimeBindings || session.runtimeOwner === undefined)
       .filter(session => {
         if (!options.runtimeRootsToDelete) return true;
@@ -4400,15 +4475,42 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const root = session.runtimeOwner?.root.normalizedPath ?? (node && this.resolveExecutionNodeRuntimeRoot(node));
         return root !== undefined && options.runtimeRootsToDelete.has(root);
       });
-    if (candidate && persistedRuntimeSessions.length > 0) {
+    const modeSwitchBindings = options.settleModeSwitchCallbacks
+      ? this.captureModeSwitchRuntimeBindings() : undefined;
+    const persistedRuntimeSessions = selectedRuntimeSessions.filter(binding => !options.settleModeSwitchCallbacks ||
+      !this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey(binding))?.deletionConfirmed);
+    if (modeSwitchBindings?.some(record => record.deletionRequested && !record.deletionConfirmed &&
+        !selectedRuntimeSessions.some(binding => this.strictRuntimeDeleteKey(binding) === this.strictRuntimeDeleteKey(record.binding)))) {
+      throw new Error('An original mode-switch deletion is still unconfirmed after root ownership changed.');
+    }
+    if ((candidate || options.settleModeSwitchCallbacks) && persistedRuntimeSessions.length > 0) {
+      for (const binding of persistedRuntimeSessions) {
+        const record = this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey(binding));
+        if (record) record.deletionRequested = true;
+      }
       await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, {
         allowRestart: false,
+        strict: options.settleModeSwitchCallbacks,
         allowClosedAdmission: options.permanentExecutionClose === true,
         requireExistingClient: options.permanentExecutionClose === true
       });
+      for (const binding of persistedRuntimeSessions) {
+        const record = this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey(binding));
+        if (record) record.deletionConfirmed = true;
+      }
       checkBoundary();
     }
 
+    if (modeSwitchBindings) {
+      // The delete response follows the original terminal settlement. Stop admitting
+      // new callbacks for these identities, then finish the callbacks already accepted.
+      for (const record of modeSwitchBindings) record.sealed = true;
+      await this.waitForModeSwitchRuntimeCallbacks(modeSwitchBindings);
+      checkBoundary();
+      await this.flushDeferredCanvasStatePersist('runtime-mode-switch-settled');
+      await this.waitForPendingWorkspaceStateUpdates();
+      checkBoundary();
+    }
     if (!options.permanentExecutionClose) this.assertRuntimeSupervisorStateCallbacksSettled();
     for (const [nodeId, session] of Array.from(this.agentSessions.entries())) {
       if (session.owner === 'local') {
@@ -4432,7 +4534,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     this.runtimeSessionBindings.clear();
 
-    if (!candidate && persistedRuntimeSessions.length > 0) {
+    if (!candidate && !options.settleModeSwitchCallbacks && persistedRuntimeSessions.length > 0) {
       await this.deleteRuntimeSupervisorSessions(persistedRuntimeSessions, {
         allowRestart: options.allowRuntimeSupervisorRestart,
         allowClosedAdmission: options.permanentExecutionClose === true,
@@ -5538,7 +5640,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: { restoreWebviewFocus?: boolean }
   ): Promise<void> {
     if (this.modeSwitchCleanup) {
-      await this.modeSwitchCleanup;
+      await this.cleanupRuntimePersistenceModeSwitch();
       this.applyStartupConfiguration(this.readStartupConfiguration());
       this.modeSwitchCleanup = undefined;
       if (this.nonNativeExecutionOwner && !this.nonNativeExecutionOwner.tryResume()) {
@@ -7908,9 +8010,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       multiRootOverlay: overlayToPersist,
       activeSurface: this.activeSurface
     };
-    const saveWorkspace = (): Promise<void> => this.queuePersistedCanvasSnapshotWrite(snapshot, {
-      mode, workspaceStateMode, reason, rootLocalStates: rootLocalStatesToPersist
-    });
+    const modeSwitchEpoch = this.modeSwitchPersistenceEpoch ?? 0;
+    const saveWorkspace = (): Promise<void> => {
+      const replaced = modeSwitchEpoch !== (this.modeSwitchPersistenceEpoch ?? 0);
+      return this.queuePersistedCanvasSnapshotWrite(replaced ? {
+        ...snapshot, state: this.state, multiRootOverlay: this.multiRootOverlay, activeSurface: this.activeSurface
+      } : snapshot, {
+        mode, workspaceStateMode, reason,
+        rootLocalStates: replaced ? this.lastLoadedRootLocalStates : rootLocalStatesToPersist
+      });
+    };
     const operation = this.sharedRootCanvasStores?.size && mode === 'immediate'
       ? this.flushSharedRootCanvasStores().then(saveWorkspace) : saveWorkspace();
     void operation.catch(() => undefined);
@@ -8280,6 +8389,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.disposeSharedRootCanvasStores();
     }
     this.appliedStartupConfiguration = configuration;
+    this.modeSwitchRuntimeBindings = undefined;
+    this.modeSwitchProgress = undefined;
     this.sharedModeSwitchDetachedRoots = undefined;
     this.applyWorkbenchContextKeys();
   }
@@ -11124,26 +11235,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
         supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath(),
         onSessionOutput: (event) =>
-          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
+          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch) &&
+          this.isRuntimeModeSwitchEventAdmitted(backend.kind, runtimeStoragePath, event.kind, event.sessionId)
             ? this.handleRuntimeSupervisorOutput(backend.kind, runtimeStoragePath, event)
             : undefined,
         onSessionTerminalEvent: (event) =>
-          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
+          this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch) &&
+          this.isRuntimeModeSwitchEventAdmitted(backend.kind, runtimeStoragePath, event.kind, event.sessionId)
             ? this.handleRuntimeSupervisorTerminalEvent(backend.kind, runtimeStoragePath, event)
             : undefined,
         onSessionTerminalBatch: (batch, isCurrent) => {
+          if (!this.isRuntimeModeSwitchEventAdmitted(backend.kind, runtimeStoragePath, batch.kind, batch.sessionId)) {
+            return Promise.resolve('cancelled' as const);
+          }
+          const binding = this.captureRuntimeSupervisorCallbackBinding(backend.kind, runtimeStoragePath, batch.kind, batch.sessionId);
           const operation = this.handleRuntimeSupervisorTerminalBatch(backend.kind, runtimeStoragePath, batch,
             () => isCurrent() && this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch));
-          this.trackRuntimeSupervisorStateCallback(operation.then(() => undefined));
+          this.trackRuntimeSupervisorStateCallback(operation.then(() => undefined), binding);
           return operation;
         },
         onTerminalBatchSettled: () => this.retireLegacyRuntimeSupervisorClientIfUnused(backend, client),
         onSessionState: (snapshot) => {
-          if (!this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)) {
+          if (!this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch) ||
+              !this.isRuntimeModeSwitchEventAdmitted(backend.kind, runtimeStoragePath, snapshot.kind, snapshot.sessionId)) {
             return;
           }
-          const operation = this.handleRuntimeSupervisorState(backend.kind, runtimeStoragePath, snapshot)
-            .catch((error) => {
+          const binding = this.captureRuntimeSupervisorCallbackBinding(backend.kind, runtimeStoragePath, snapshot.kind, snapshot.sessionId);
+          const operation = this.handleRuntimeSupervisorState(backend.kind, runtimeStoragePath, snapshot);
+          void operation.catch((error) => {
               this.recordDiagnosticEvent('runtime/sessionStateHandlerFailed', {
                 sessionId: snapshot.sessionId,
                 lifecycle: snapshot.lifecycle,
@@ -11151,7 +11270,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
                 message: formatUnknownError(error)
               });
             });
-          this.trackRuntimeSupervisorStateCallback(operation);
+          this.trackRuntimeSupervisorStateCallback(operation, binding);
         },
         onDisconnected: (error) =>
           this.isRuntimeSupervisorEventAdmitted(clientKey, clientEpoch)
@@ -11591,8 +11710,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async requestRuntimeSupervisorSessionAttach(
     client: RuntimeSupervisorClient,
-    sessionId: string
+    sessionId: string,
+    isCurrent: () => boolean = () => true
   ): Promise<RuntimeSupervisorSessionAttachResult> {
+    if (!isCurrent()) throw new Error('Runtime recovery is no longer current before attach dispatch.');
     const terminalStreamSupported = client.supportsTerminalSessionStream();
     return {
       snapshot: await client.attachSession(
@@ -11605,101 +11726,112 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             }
           : {
               sessionId
-            }
+            },
+        isCurrent
       ),
       terminalProjectionMode: terminalStreamSupported ? 'terminal-stream-v1' : 'legacy-interactive'
     };
   }
 
-  private async attachPersistedRuntimeSession(
+  private attachPersistedRuntimeSession(
     kind: ExecutionNodeKind,
     nodeId: string,
     runtimeSessionId: string,
-    attachSession: () => Promise<RuntimeSupervisorSessionAttachResult>,
+    attachSession: (isCurrent: () => boolean) => Promise<RuntimeSupervisorSessionAttachResult>,
     options: {
       allowAttachedTerminalStreamRecovery?: boolean;
+      restoreExistingStream?: (isCurrent: () => boolean) => Promise<boolean>;
+      preservePagedSessionOnFailure?: boolean;
       originalBinding?: PersistedLiveRuntimeSession;
       onSettled?: () => void;
     } = {}
-  ): Promise<void> {
-    const operationToken = this.beginExecutionSessionOperation(kind, nodeId);
+  ): Promise<'restored' | 'ignored'> {
     const originalBinding = options.originalBinding ?? this.getPersistedLiveRuntimeSessionForNode(this.requireNode(nodeId, kind));
-    const isOriginalBindingCurrent = (): boolean => Boolean(originalBinding &&
-      this.isStrictRuntimeDeleteBindingCurrent(originalBinding));
-
-    try {
-      if (!isOriginalBindingCurrent()) {
-        this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
-        return;
-      }
-      const { snapshot, terminalProjectionMode } = await attachSession();
-      if (!isOriginalBindingCurrent() || !this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options)) {
-        this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
-        return;
-      }
-      if (snapshot.kind !== kind) {
-        this.recordDiagnosticEvent('runtime/sessionKindMismatch', {
-          nodeId,
-          expectedKind: kind,
-          actualKind: snapshot.kind,
-          runtimeSessionId: snapshot.sessionId
-        });
-        this.markExecutionNodeAsHistoryRestored(
-          nodeId,
-          kind,
-          vscode.l10n.t('Runtime session type mismatch: expected {expected}, got {actual}.', {
-            expected: kind,
-            actual: snapshot.kind
-          })
-        );
-        return;
-      }
-
-      const node = this.requireNode(nodeId, kind);
-      const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
-      const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
-      this.bindRuntimeSession(
-        nodeId,
-        kind,
-        snapshot.sessionId,
-        runtimeStoragePath,
-        normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? snapshot.runtimeBackend
-      );
-      await this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, {
-        postSnapshot: true,
-        terminalProjectionMode
-      });
-      await this.subscribeRuntimeSupervisorTerminalStream(
-        snapshot,
-        runtimeStoragePath,
-        metadata.runtimeOwner
-      );
-    } catch (error) {
-      if (!isOriginalBindingCurrent() || !this.isExecutionSessionOperationCurrent(kind, nodeId, operationToken)) {
-        this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
-        return;
-      }
-
-      const message = localizeRuntimeSupervisorError(
-        error,
-        error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.')
-      ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.'));
-      this.markExecutionNodeAsHistoryRestored(
-        nodeId,
-        kind,
-        message
-      );
-    } finally {
-      options.onSettled?.();
+    if (!originalBinding || !this.isStrictRuntimeDeleteBindingCurrent(originalBinding) ||
+        !this.isRuntimeSessionRestoreAdmitted(originalBinding)) return Promise.resolve('ignored');
+    const key = this.getExecutionSessionOperationKey(kind, nodeId);
+    const tasks = this.runtimeSessionRestoreTasks ??= new Map();
+    const previous = tasks.get(key);
+    if (previous?.isCurrent() && this.strictRuntimeDeleteKey(previous.binding) === this.strictRuntimeDeleteKey(originalBinding) &&
+        runtimeBindingOwnersEqual(previous.binding.runtimeOwner, originalBinding.runtimeOwner)) return previous.promise;
+    // A waiter never takes a new operation token away from the leader.
+    const operationToken = this.beginExecutionSessionOperation(kind, nodeId);
+    const isCurrent = (): boolean => this.isStrictRuntimeDeleteBindingCurrent(originalBinding) &&
+      this.isExecutionSessionOperationCurrent(kind, nodeId, operationToken) &&
+      this.isRuntimeSessionRestoreAdmitted(originalBinding);
+    if (!this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options)) {
+      return Promise.resolve('ignored');
     }
+    let resolve!: (result: 'restored' | 'ignored') => void;
+    let reject!: (error: unknown) => void;
+    const task: RuntimeSessionRestoreTask = { binding: originalBinding, isCurrent,
+      promise: new Promise((yes, no) => { resolve = yes; reject = no; }) };
+    // Register before invoking a callback that may wait for client acquisition.
+    tasks.set(key, task);
+    const run = async (): Promise<'restored' | 'ignored'> => {
+      try {
+        if (!isCurrent() || !this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options)) {
+          return 'ignored';
+        }
+        if (options.restoreExistingStream && await options.restoreExistingStream(isCurrent)) {
+          return isCurrent() ? 'restored' : 'ignored';
+        }
+        const { snapshot, terminalProjectionMode } = await attachSession(() => isCurrent() &&
+          this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options));
+        if (!isCurrent() || !this.shouldApplyRuntimeAttachResult(kind, nodeId, operationToken, runtimeSessionId, options)) {
+          this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
+          return 'ignored';
+        }
+        if (snapshot.kind !== kind) {
+          this.recordDiagnosticEvent('runtime/sessionKindMismatch', { nodeId, expectedKind: kind,
+            actualKind: snapshot.kind, runtimeSessionId: snapshot.sessionId });
+          throw new Error(vscode.l10n.t('Runtime session type mismatch: expected {expected}, got {actual}.', {
+            expected: kind, actual: snapshot.kind
+          }));
+        }
+        if (snapshot.sessionId !== runtimeSessionId) {
+          throw new Error('Runtime reattach returned a different original session identity.');
+        }
+        const node = this.requireNode(nodeId, kind);
+        const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
+        const runtimeStoragePath = this.getPersistedRuntimeStoragePath(metadata);
+        this.bindRuntimeSession(nodeId, kind, snapshot.sessionId, runtimeStoragePath,
+          normalizeRuntimeHostBackendKind(metadata.runtimeBackend) ?? snapshot.runtimeBackend);
+        await this.applyRuntimeSupervisorSnapshot(nodeId, kind, snapshot, { postSnapshot: true, terminalProjectionMode });
+        // A completed snapshot retires its binding; no live stream remains to subscribe.
+        if (!snapshot.live) return 'restored';
+        if (!isCurrent()) return 'ignored';
+        await this.subscribeRuntimeSupervisorTerminalStream(snapshot, runtimeStoragePath, metadata.runtimeOwner, isCurrent);
+        return isCurrent() ? 'restored' : 'ignored';
+      } catch (error) {
+        if (!isCurrent()) {
+          this.recordIgnoredExecutionSessionOperation(kind, nodeId, 'attach', runtimeSessionId);
+          return 'ignored';
+        }
+        const message = localizeRuntimeSupervisorError(error,
+          error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.')) ??
+          (error instanceof Error ? error.message : vscode.l10n.t('Failed to reattach live runtime.'));
+        if (!options.preservePagedSessionOnFailure ||
+            (error as { code?: string }).code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound) {
+          this.markExecutionNodeAsHistoryRestored(nodeId, kind, message);
+        }
+        throw error;
+      } finally {
+        if (tasks.get(key) === task) tasks.delete(key);
+        options.onSettled?.();
+      }
+    };
+    void run().then(result => task.disconnectedError ? reject(task.disconnectedError) : resolve(result), reject);
+    return task.promise;
   }
 
   private async subscribeRuntimeSupervisorTerminalStream(
     snapshot: RuntimeSupervisorSessionSnapshot,
     runtimeStoragePath: string | undefined,
-    runtimeOwner?: RuntimeOwnerDescriptorV1 | null
+    runtimeOwner?: RuntimeOwnerDescriptorV1 | null,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
-    if (!snapshot.live) {
+    if (!isCurrent() || !snapshot.live) {
       return;
     }
     const terminalStream = normalizeTerminalStreamAttachPayload(snapshot.terminalStream);
@@ -11721,7 +11853,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       runtimeStoragePath,
       runtimeOwner
     );
-    if (!client.supportsTerminalSessionStream()) {
+    if (!isCurrent() || !client.supportsTerminalSessionStream()) {
       return;
     }
     const hostOutputCredit = paged && client.supportsTerminalPagedCompletion() && client.supportsTerminalHostOutputCredit();
@@ -11738,7 +11870,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ...(paged ? { terminalStreamMode:
         client.supportsTerminalPagedCompletion() ? 'paged-until-exit' as const : 'paged' as const } : {}),
       ...(hostOutputCredit ? { hostOutputCredit: 'journal-pages-v1' as const } : {})
-    });
+    }, isCurrent);
   }
 
   private async restoreLiveRuntimeSessions(): Promise<void> {
@@ -11781,6 +11913,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
 
     if (reconnectableNodes.length === 0) {
+      await Promise.all([...(this.runtimeSessionRestoreTasks?.values() ?? [])].filter(task => task.isCurrent()).map(task => task.promise));
       return;
     }
 
@@ -11812,62 +11945,40 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
+    const restoreOperations: Promise<unknown>[] = [...(this.runtimeSessionRestoreTasks?.values() ?? [])]
+      .filter(task => task.isCurrent()).map(task => task.promise);
     for (const { backendKind, runtimeStoragePath, runtimeOwner, ownerConflict, entries } of nodesByBackend.values()) {
-      let client: RuntimeSupervisorClient;
-      try {
-        if (ownerConflict) throw new Error('Original runtime bindings disagree about their owner descriptor.');
-        client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath, runtimeOwner);
-      } catch (error) {
-        const message = localizeRuntimeSupervisorError(
-          error,
-          error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.')
-        ) ?? (error instanceof Error ? error.message : vscode.l10n.t('Could not connect to the runtime supervisor.'));
-        for (const { node, binding } of entries) {
-          const currentNode = this.state.nodes.find(current => current.id === node.id && current.kind === node.kind);
-          const currentBinding = currentNode && this.getPersistedLiveRuntimeSessionForNode(currentNode);
-          // An unchanged invalid-owner sentinel still receives a diagnostic, never permission to attach.
-          const sameInvalidBinding = currentBinding?.runtimeOwner === null && binding.runtimeOwner === null &&
-            this.strictRuntimeDeleteKey(currentBinding) === this.strictRuntimeDeleteKey(binding);
-          if (!sameInvalidBinding && !this.isStrictRuntimeDeleteBindingCurrent(binding)) continue;
-          this.markExecutionNodeAsHistoryRestored(
-            node.id,
-            node.kind as ExecutionNodeKind,
-            message
-          );
+      for (const { node, binding } of entries) {
+        if (!this.isStrictRuntimeDeleteBindingCurrent(binding)) {
+          const current = this.state.nodes.find(value => value.id === node.id && value.kind === node.kind);
+          const currentBinding = current && this.getPersistedLiveRuntimeSessionForNode(current);
+          if (binding.runtimeOwner === null && currentBinding?.runtimeOwner === null &&
+              this.strictRuntimeDeleteKey(binding) === this.strictRuntimeDeleteKey(currentBinding)) {
+            this.markExecutionNodeAsHistoryRestored(node.id, node.kind as ExecutionNodeKind,
+              'The original runtime binding has an invalid owner descriptor.');
+          }
+          continue;
         }
-        const clientKey = `${backendKind}:${path.join(this.resolveRuntimeStoragePath(runtimeStoragePath), 'runtime-supervisor')}`;
-        if (this.runtimeSupervisorClients.has(clientKey)) {
-          this.retireLegacyRuntimeSupervisorClientIfUnused(
-            this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(runtimeStoragePath))
-          );
-        }
-        continue;
-      }
-
-      await Promise.all(
-        entries.map(async ({ node, binding }) => {
-          if (!this.isStrictRuntimeDeleteBindingCurrent(binding)) return;
-          const runtimeSessionId = binding.sessionId;
-
-          await this.attachPersistedRuntimeSession(
-            node.kind as ExecutionNodeKind,
-            node.id,
-            runtimeSessionId,
-            () => this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId),
-            {
-              originalBinding: binding,
-              onSettled: () => this.retireLegacyRuntimeSupervisorClientIfUnused(
-                this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(runtimeStoragePath)),
-                client
-              )
+        let client: RuntimeSupervisorClient | undefined;
+        restoreOperations.push(this.attachPersistedRuntimeSession(node.kind as ExecutionNodeKind, node.id, binding.sessionId,
+          async isCurrent => {
+            if (ownerConflict) throw new Error('Original runtime bindings disagree about their owner descriptor.');
+            client = await this.getRuntimeSupervisorClientForKind(backendKind, {}, runtimeStoragePath, runtimeOwner);
+            if (!isCurrent()) throw new Error('Runtime recovery changed during client acquisition.');
+            return this.requestRuntimeSupervisorSessionAttach(client, binding.sessionId, isCurrent);
+          }, { originalBinding: binding, onSettled: () => {
+            const clientKey = `${backendKind}:${path.join(this.resolveRuntimeStoragePath(runtimeStoragePath), 'runtime-supervisor')}`;
+            if (client || this.runtimeSupervisorClients.has(clientKey)) {
+              this.retireLegacyRuntimeSupervisorClientIfUnused(
+                this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(runtimeStoragePath)), client);
             }
-          );
-        })
-      );
-      this.retireLegacyRuntimeSupervisorClientIfUnused(
-        this.getRuntimeHostBackend(backendKind, this.resolveRuntimeStoragePath(runtimeStoragePath)), client
-      );
+          } }));
+      }
     }
+    // Wait for every leader to release its resources even when one recovery fails.
+    const results = await Promise.allSettled(restoreOperations);
+    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) throw failed.reason;
   }
 
   private bindRuntimeSession(
@@ -12005,6 +12116,30 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const current = node && this.getPersistedLiveRuntimeSessionForNode(node);
     return Boolean(current && this.strictRuntimeDeleteKey(current) === this.strictRuntimeDeleteKey(session)
       && runtimeBindingOwnersEqual(current.runtimeOwner, session.runtimeOwner));
+  }
+
+  private isRuntimeSessionRestoreAdmitted(session: PersistedLiveRuntimeSession): boolean {
+    if (!this.isRuntimeSupervisorEventAdmitted()) return false;
+    const switching = this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey(session));
+    if (switching && switching.binding.nodeId === session.nodeId &&
+        runtimeBindingOwnersEqual(switching.binding.runtimeOwner, session.runtimeOwner)) return false;
+    if (this.sharedModeSwitchDetachedRoots?.size) {
+      const node = session.nodeId && this.state.nodes.find(node => node.id === session.nodeId && node.kind === session.kind);
+      const root = session.runtimeOwner?.root.normalizedPath ?? (node && this.resolveExecutionNodeRuntimeRoot(node));
+      if (root && this.sharedModeSwitchDetachedRoots.has(root)) return false;
+    }
+    return true;
+  }
+
+  private isRuntimeSupervisorSessionRestoreAdmitted(
+    backend: RuntimeHostBackendKind, storage: string, kind: ExecutionNodeKind, sessionId: string
+  ): boolean {
+    const binding = this.runtimeSessionBindings.get(this.buildRuntimeSessionBindingKey(kind, sessionId, storage, backend));
+    const node = binding && this.state.nodes.find(node => node.id === binding.nodeId && node.kind === kind);
+    const current = node && this.getPersistedLiveRuntimeSessionForNode(node);
+    return Boolean(current && current.sessionId === sessionId && current.backendKind === backend &&
+      this.resolveRuntimeStoragePath(current.runtimeStoragePath) === this.resolveRuntimeStoragePath(storage) &&
+      this.isRuntimeSessionRestoreAdmitted(current));
   }
 
   private currentStrictRuntimeDeleteResult(record: StrictHostRuntimeDelete): StrictRuntimeDeleteResult | undefined {
@@ -12199,6 +12334,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const failed = results.filter(({ session, result }) =>
       !this.isStrictRuntimeDeleteBindingCurrent(session) ||
       (result.kind !== 'legacy-acknowledged' && result.kind !== 'legacy-absent' && result.kind !== 'legacy-history-retired'));
+    for (const entry of results) {
+      const record = this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey(entry.session));
+      if (record?.deletionRequested && !failed.includes(entry)) record.deletionConfirmed = true;
+    }
     if (scheduler.now() >= deadline || failed.length) {
       throw new Error(`Runtime deletion did not complete on the original bindings: ${
         failed.length ? failed.map(({ session, result }) => `${session.sessionId}: ${result.kind}`).join(', ') : 'deadline expired'}`);
@@ -12255,13 +12394,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private async deleteRuntimeSupervisorSessions(
     sessions: PersistedLiveRuntimeSession[],
-    options: { allowRestart: boolean; allowClosedAdmission?: boolean; requireExistingClient?: boolean }
+    options: { allowRestart: boolean; allowClosedAdmission?: boolean; requireExistingClient?: boolean; strict?: boolean }
   ): Promise<void> {
     for (const session of sessions) this.assertRuntimeBindingOwner(session.runtimeStoragePath, session.runtimeOwner);
     if (sessions.length === 0) {
       return;
     }
-    if (this.getExecutionCandidateProfile()) {
+    if (this.getExecutionCandidateProfile() || options.strict) {
       await this.deleteRuntimeSupervisorSessionsWithCandidate(sessions);
       return;
     }
@@ -12342,14 +12481,75 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.runtimeSupervisorEventAdmissionOpen = false;
   }
 
-  private trackRuntimeSupervisorStateCallback(operation: Promise<void>): void {
+  private captureModeSwitchRuntimeBindings(): RuntimeModeSwitchBinding[] {
+    const records = this.modeSwitchRuntimeBindings ??= new Map();
+    const callbacks = [...(this.pendingRuntimeSupervisorStateCallbackBindings ?? [])];
+    for (const binding of [...this.collectPersistedLiveRuntimeSessions(), ...callbacks.map(([, binding]) => binding)]) {
+      const key = this.strictRuntimeDeleteKey(binding);
+      let record = records.get(key);
+      if (record && (record.binding.nodeId !== binding.nodeId ||
+          !runtimeBindingOwnersEqual(record.binding.runtimeOwner, binding.runtimeOwner))) {
+        throw new Error('An original mode-switch binding was replaced before settlement.');
+      }
+      if (!record) {
+        record = { binding, sealed: false, pending: new Set() };
+        records.set(key, record);
+      }
+    }
+    for (const [operation, binding] of callbacks) records.get(this.strictRuntimeDeleteKey(binding))!.pending.add(operation);
+    return [...records.values()];
+  }
+
+  private captureRuntimeSupervisorCallbackBinding(
+    backendKind: RuntimeHostBackendKind, runtimeStoragePath: string, kind: ExecutionNodeKind, sessionId: string
+  ): PersistedLiveRuntimeSession | undefined {
+    const current = this.runtimeSessionBindings.get(
+      this.buildRuntimeSessionBindingKey(kind, sessionId, runtimeStoragePath, backendKind));
+    if (!current) return undefined;
+    const node = this.state.nodes.find(node => node.id === current.nodeId && node.kind === kind);
+    const binding = node && this.getPersistedLiveRuntimeSessionForNode(node);
+    const key = this.strictRuntimeDeleteKey({ backendKind, runtimeStoragePath, kind, sessionId });
+    if (binding && this.strictRuntimeDeleteKey(binding) === key) return binding;
+    // A completed projection may already have removed its persisted live fields
+    // while the original managed session still owns readers and the pending save.
+    const session = this.getExecutionSessions(kind).get(current.nodeId);
+    if (session?.owner !== 'supervisor' || session.runtimeSessionId !== sessionId ||
+        (session.runtimeBackend ?? 'legacy-detached') !== backendKind ||
+        this.resolveRuntimeStoragePath(session.runtimeStoragePath) !== this.resolveRuntimeStoragePath(runtimeStoragePath)) return undefined;
+    return { backendKind, runtimeStoragePath, kind, sessionId, nodeId: current.nodeId, runtimeOwner: session.runtimeOwner };
+  }
+
+  private async waitForModeSwitchRuntimeCallbacks(records: RuntimeModeSwitchBinding[]): Promise<void> {
+    const results = await Promise.allSettled(records.flatMap(record => [...record.pending]));
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failure) throw failure.reason;
+    const failedRecord = records.find(record => record.failure !== undefined);
+    if (failedRecord) throw failedRecord.failure;
+  }
+
+  private isRuntimeModeSwitchEventAdmitted(
+    backend: RuntimeHostBackendKind, storage: string, kind: ExecutionNodeKind, sessionId: string
+  ): boolean {
+    const record = this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey({
+      backendKind: backend, runtimeStoragePath: storage, kind, sessionId }));
+    return record?.sealed !== true;
+  }
+
+  private trackRuntimeSupervisorStateCallback(operation: Promise<void>, binding?: PersistedLiveRuntimeSession): void {
     this.runtimeSupervisorStateCallbackRevision = (this.runtimeSupervisorStateCallbackRevision ?? 0) + 1;
     const pending = this.pendingRuntimeSupervisorStateCallbacks ??= new Set<Promise<void>>();
     pending.add(operation);
-    const settled = (): void => {
+    const bindings = this.pendingRuntimeSupervisorStateCallbackBindings ??= new Map();
+    if (binding) bindings.set(operation, binding);
+    const record = binding && this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey(binding));
+    if (record) record.pending.add(operation);
+    const settled = (error?: unknown): void => {
+      if (record && error !== undefined) record.failure ??= error;
+      if (record) record.pending.delete(operation);
+      bindings.delete(operation);
       pending.delete(operation);
     };
-    void operation.then(settled, settled);
+    void operation.then(() => settled(), error => settled(error));
   }
 
   private async waitForPendingRuntimeSupervisorStateCallbacks(deadline?: number): Promise<void> {
@@ -12937,6 +13137,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return 'consumed';
     } catch (error) {
       if (current()) {
+        const switching = this.modeSwitchRuntimeBindings?.get(this.strictRuntimeDeleteKey({
+          backendKind: runtimeBackend, runtimeStoragePath, kind: batch.kind, sessionId: batch.sessionId }));
+        if (switching) switching.failure ??= error;
         session.terminalStreamHealthy = false;
         this.recordDiagnosticEvent('runtime/hostOutputConsumptionFailed', {
           sessionId: batch.sessionId, authorityId: batch.authorityId, revision: batch.revision,
@@ -13100,6 +13303,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (!this.isRuntimeSupervisorEventAdmitted()) {
       return;
     }
+    for (const task of this.runtimeSessionRestoreTasks?.values() ?? []) {
+      if (task.binding.backendKind === backendKind &&
+          this.resolveRuntimeStoragePath(task.binding.runtimeStoragePath) === runtimeStoragePath && task.isCurrent()) {
+        this.invalidateExecutionSessionOperation(task.binding.kind!, task.binding.nodeId!);
+        const session = this.getExecutionSessions(task.binding.kind!).get(task.binding.nodeId!);
+        if (session?.owner !== 'supervisor' || !session.terminalStreamPaged) {
+          task.disconnectedError = error ?? new Error(vscode.l10n.t('Could not connect to the runtime supervisor.'));
+          // Before the first snapshot there is no managed session for the loops below.
+          // Preserve the normal failure projection instead of leaving reattaching forever.
+          if (!session) this.markExecutionNodeAsHistoryRestored(
+            task.binding.nodeId!, task.binding.kind!, task.disconnectedError.message);
+        }
+      }
+    }
     for (const [nodeId, session] of this.agentSessions.entries()) {
       if (
         session.owner === 'supervisor' &&
@@ -13138,13 +13355,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session: SupervisorExecutionSession,
     error?: Error
   ): void {
-    if (!this.isRuntimeSupervisorEventAdmitted()) {
+    if (!this.isRuntimeSupervisorSessionRestoreAdmitted(session.runtimeBackend ?? 'legacy-detached',
+        this.resolveRuntimeStoragePath(session.runtimeStoragePath), kind, session.runtimeSessionId)) {
       return;
     }
-    if (session.reconnectTimer || session.reconnectPending || this.getExecutionSessions(kind).get(nodeId) !== session) {
-      return;
-    }
+    if (this.getExecutionSessions(kind).get(nodeId) !== session) return;
     session.terminalStreamHealthy = false;
+    if (session.reconnectTimer || session.reconnectPending) return;
     this.terminalReadRelay.closeMatching((key) => key.endsWith(`:${kind}:${nodeId}`));
     const node = this.requireNode(nodeId, kind);
     this.state = updateExecutionNode(this.state, nodeId, kind, {
@@ -13157,62 +13374,53 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
     session.reconnectTimer = setTimeout(() => {
       session.reconnectTimer = undefined;
-      if (!this.isRuntimeSupervisorEventAdmitted() ||
-          this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason(session)) {
-        return;
-      }
+      if (!this.isRuntimeSupervisorSessionRestoreAdmitted(session.runtimeBackend ?? 'legacy-detached',
+          this.resolveRuntimeStoragePath(session.runtimeStoragePath), kind, session.runtimeSessionId) ||
+          this.getExecutionSessions(kind).get(nodeId) !== session || this.getLiveRuntimeReconnectBlockReason(session)) return;
       session.reconnectPending = true;
-      const operation = (async () => {
-        try {
-          const client = await this.getRuntimeSupervisorClientForKind(
-            session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath, session.runtimeOwner
-          );
-          if (session.hostOutputCredit && client.supportsTerminalHostOutputCredit()) {
-            // An existing Host resumes its consumed cursor, not the latest attach snapshot's head.
+      let client: RuntimeSupervisorClient | undefined;
+      const acquire = async (): Promise<RuntimeSupervisorClient> => client ??= await this.getRuntimeSupervisorClientForKind(
+        session.runtimeBackend ?? 'legacy-detached', { allowRestart: false }, session.runtimeStoragePath, session.runtimeOwner);
+      const retry = (failure?: unknown): void => {
+        const current = this.getExecutionSessions(kind).get(nodeId);
+        if (current?.owner === 'supervisor' && current.runtimeSessionId === session.runtimeSessionId &&
+            current.runtimeStoragePath === session.runtimeStoragePath && current.terminalStreamPaged &&
+            !current.terminalStreamHealthy && this.isRuntimeSupervisorSessionRestoreAdmitted(
+              session.runtimeBackend ?? 'legacy-detached', this.resolveRuntimeStoragePath(session.runtimeStoragePath),
+              kind, session.runtimeSessionId)) {
+          this.reconnectPagedRuntimeSession(kind, nodeId, current, failure instanceof Error ? failure : undefined);
+        }
+      };
+      const operation = this.attachPersistedRuntimeSession(kind, nodeId, session.runtimeSessionId,
+        async isCurrent => this.requestRuntimeSupervisorSessionAttach(await acquire(), session.runtimeSessionId, isCurrent), {
+          allowAttachedTerminalStreamRecovery: true,
+          preservePagedSessionOnFailure: true,
+          restoreExistingStream: async isCurrent => {
+            const connected = await acquire();
+            if (!isCurrent()) return false;
+            if (!session.hostOutputCredit || !connected.supportsTerminalHostOutputCredit()) return false;
+            // Existing readers resume their consumed cursor instead of replacing it with the latest head.
             await session.lineContextTracker.flush();
-            if (!this.isRuntimeSupervisorEventAdmitted() || this.getExecutionSessions(kind).get(nodeId) !== session) return;
+            if (!isCurrent() || this.getExecutionSessions(kind).get(nodeId) !== session) return false;
             session.terminalStreamHealthy = true;
             try {
-              await client.subscribeSession({ sessionId: session.runtimeSessionId, authorityId: session.terminalAuthorityId!,
-                afterRevision: session.outputSequence, terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1' });
-              if (this.isRuntimeSupervisorEventAdmitted() && this.getExecutionSessions(kind).get(nodeId) === session) {
+              await connected.subscribeSession({ sessionId: session.runtimeSessionId, authorityId: session.terminalAuthorityId!,
+                afterRevision: session.outputSequence, terminalStreamMode: 'paged-until-exit', hostOutputCredit: 'journal-pages-v1' }, isCurrent);
+              if (isCurrent() && this.getExecutionSessions(kind).get(nodeId) === session) {
                 await this.postPagedExecutionSnapshot(kind, nodeId, session, { executionSessionId: session.sessionId });
               }
-              return;
-            } catch (error) {
+              return true;
+            } catch (failure) {
               session.terminalStreamHealthy = false;
-              if ((error as { code?: string }).code !== RUNTIME_SUPERVISOR_ERROR_CODES.terminalHostCursorCompacted) throw error;
-              if (!this.isRuntimeSupervisorEventAdmitted() || this.getExecutionSessions(kind).get(nodeId) !== session) return;
-              this.recordDiagnosticEvent('runtime/hostOutputCursorReset', {
-                sessionId: session.runtimeSessionId, authorityId: session.terminalAuthorityId,
-                afterRevision: session.outputSequence, reason: 'disconnected-cursor-compacted'
-              });
+              if (!isCurrent() || (failure as { code?: string }).code !== RUNTIME_SUPERVISOR_ERROR_CODES.terminalHostCursorCompacted) throw failure;
+              this.recordDiagnosticEvent('runtime/hostOutputCursorReset', { sessionId: session.runtimeSessionId,
+                authorityId: session.terminalAuthorityId, afterRevision: session.outputSequence, reason: 'disconnected-cursor-compacted' });
+              return false;
             }
           }
-          const result = await this.requestRuntimeSupervisorSessionAttach(client, session.runtimeSessionId);
-          if (this.getExecutionSessions(kind).get(nodeId) !== session) {
-            return;
-          }
-          await this.applyRuntimeSupervisorSnapshot(nodeId, kind, result.snapshot, {
-            postSnapshot: true, terminalProjectionMode: result.terminalProjectionMode
-          });
-          await this.subscribeRuntimeSupervisorTerminalStream(result.snapshot, session.runtimeStoragePath, session.runtimeOwner);
-        } catch (failure) {
-          const current = this.getExecutionSessions(kind).get(nodeId);
-          if (current?.owner !== 'supervisor' || current.runtimeSessionId !== session.runtimeSessionId ||
-              current.runtimeStoragePath !== session.runtimeStoragePath || !current.terminalStreamPaged) {
-            return;
-          }
-          session.reconnectPending = false;
-          if ((failure as { code?: string }).code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound) {
-            this.markExecutionNodeAsHistoryRestored(nodeId, kind, formatUnknownError(failure));
-          } else if (this.isRuntimeSupervisorEventAdmitted()) {
-            this.reconnectPagedRuntimeSession(kind, nodeId, current, failure instanceof Error ? failure : undefined);
-          }
-        } finally {
-          session.reconnectPending = false;
-        }
-      })();
+        }).finally(() => { session.reconnectPending = false; }).then(result => {
+          if (result === 'ignored') retry();
+        }, retry);
       this.trackRuntimeSupervisorOperation(operation);
     }, 500);
   }
@@ -13341,7 +13549,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               })
         })
       });
-      this.persistState({ reason: 'runtime-supervisor-live-snapshot' });
+      await this.persistState({ reason: 'runtime-supervisor-live-snapshot' });
       this.postState('host/stateUpdated');
       if (options.postSnapshot) {
         void this.postExecutionSnapshot(kind, nodeId, {
@@ -13363,7 +13571,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     onCompletedProjection?: (isCurrent: () => boolean) => void
   ): Promise<void> {
     const preserveRuntimeBinding = Boolean(finalizationRecord);
-    if (!preserveRuntimeBinding && (this.executionCandidateProfile || this.nonNativeExecutionOwner?.options.profile)) {
+    if (!preserveRuntimeBinding && this.strictRuntimeDeletes?.size) {
       const binding = this.getPersistedLiveRuntimeSessionForNode(this.requireNode(nodeId, kind));
       const record = binding && binding.sessionId === snapshot.sessionId
         ? this.strictRuntimeDeletes?.get(this.strictRuntimeDeleteKey(binding)) : undefined;
@@ -19695,6 +19903,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const metadata = kind === 'agent' ? ensureAgentMetadata(node) : ensureTerminalMetadata(node);
     const activeSession = this.getExecutionSessions(kind).get(nodeId);
+    const currentBinding = this.getPersistedLiveRuntimeSessionForNode(node);
+    if (currentBinding && !this.isRuntimeSessionRestoreAdmitted(currentBinding)) return;
     if (activeSession?.owner === 'supervisor' && activeSession.terminalStreamHealthy) {
       if (activeSession.terminalStreamPaged) {
         this.trackRuntimeSupervisorOperation(this.postExecutionSnapshot(kind, nodeId, options));
@@ -19732,7 +19942,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind,
         nodeId,
         runtimeSessionId,
-        () =>
+        isCurrent =>
           this.getRuntimeSupervisorClientForKind(
             backendKind,
             {},
@@ -19740,7 +19950,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             activeSession.runtimeOwner
           ).then((client) => {
             attachClient = client;
-            return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId);
+            return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId, isCurrent);
           }),
         {
           allowAttachedTerminalStreamRecovery: true,
@@ -19751,6 +19961,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
         }
       );
+      void operation.catch(error => this.recordDiagnosticEvent('runtime/restoreFailed', { message: formatUnknownError(error) }));
       this.trackRuntimeSupervisorOperation(operation);
       return;
     }
@@ -19770,14 +19981,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         kind,
         nodeId,
         runtimeSessionId,
-        () => this.getRuntimeSupervisorClientForKind(
+        isCurrent => this.getRuntimeSupervisorClientForKind(
           backendKind,
           {},
           runtimeStoragePath,
           metadata.runtimeOwner
         ).then((client) => {
           attachClient = client;
-          return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId);
+          return this.requestRuntimeSupervisorSessionAttach(client, runtimeSessionId, isCurrent);
         }),
         {
           onSettled: () => {
@@ -19787,6 +19998,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
         }
       );
+      void operation.catch(error => this.recordDiagnosticEvent('runtime/restoreFailed', { message: formatUnknownError(error) }));
       this.trackRuntimeSupervisorOperation(operation);
     }
 

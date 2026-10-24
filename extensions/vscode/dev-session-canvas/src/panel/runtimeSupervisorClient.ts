@@ -419,13 +419,12 @@ export class RuntimeSupervisorClient {
   }
 
   public async attachSession(
-    params: RuntimeSupervisorAttachSessionParams
+    params: RuntimeSupervisorAttachSessionParams,
+    isCurrent?: () => boolean
   ): Promise<RuntimeSupervisorSessionSnapshot> {
-    if (params.terminalStreamMode) {
-      await this.ensureConnected({ allowRestart: false });
-      return this.requestOnConnectedSocket('attachSession', params);
-    }
-    return this.request('attachSession', params);
+    await this.ensureConnected(params.terminalStreamMode ? { allowRestart: false } : {});
+    if (isCurrent && !isCurrent()) throw new Error('Runtime recovery changed before attach dispatch.');
+    return this.requestOnConnectedSocket('attachSession', params);
   }
 
   public async getSessionSnapshot(
@@ -441,10 +440,12 @@ export class RuntimeSupervisorClient {
   }
 
   public async subscribeSession(
-    params: RuntimeSupervisorSubscribeSessionParams
+    params: RuntimeSupervisorSubscribeSessionParams,
+    isCurrent?: () => boolean
   ): Promise<RuntimeSupervisorSubscribeSessionResult> {
+    await this.ensureConnected(params.terminalStreamMode || params.hostOutputCredit !== undefined ? { allowRestart: false } : {});
+    if (isCurrent && !isCurrent()) throw new Error('Runtime recovery changed before subscription dispatch.');
     if (params.hostOutputCredit !== undefined) {
-      await this.ensureConnected({ allowRestart: false });
       const socket = this.socket!;
       if (params.hostOutputCredit !== 'journal-pages-v1' || params.terminalStreamMode !== 'paged-until-exit' ||
           !this.supportsTerminalHostOutputCredit() || !this.options.onSessionTerminalBatch) {
@@ -462,10 +463,9 @@ export class RuntimeSupervisorClient {
       });
     }
     if (params.terminalStreamMode) {
-      await this.ensureConnected({ allowRestart: false });
       return this.requestOnConnectedSocket('subscribeSession', params);
     }
-    return this.request('subscribeSession', params);
+    return this.requestOnConnectedSocket('subscribeSession', params);
   }
 
   public async ackSessionRevision(

@@ -695,7 +695,7 @@ try {
       host.attachPersistedRuntimeSession = async (nodeKind, nodeId, sessionId, request, options) => {
         assert.deepEqual(options.originalBinding, originalBinding);
         attached.push({ kind: nodeKind, nodeId, sessionId });
-        await request();
+        await request(() => true);
       };
       await host.restoreLiveRuntimeSessions();
       assert.deepEqual(attached, [{ kind, nodeId: originalBinding.nodeId, sessionId: originalBinding.sessionId }],
@@ -727,7 +727,7 @@ try {
       };
       host.requestRuntimeSupervisorSessionAttach = async (_client, sessionId) => ({ sessionId });
       host.attachPersistedRuntimeSession = async (nodeKind, nodeId, sessionId, request) => {
-        attached.push({ nodeKind, nodeId, sessionId, result: await request() });
+        attached.push({ nodeKind, nodeId, sessionId, result: await request(() => true) });
       };
       await host.restoreLiveRuntimeSessions();
       assert.deepEqual(deleted.map(session => session.nodeId), enabled ? [] : [legacyNode.id],
@@ -826,7 +826,8 @@ try {
           const currentState = host.state;
           if (connectionFails) rejectConnection(new Error('The original owner is unavailable.'));
           else resolveConnection(originalClient);
-          await restoring;
+          if (connectionFails && changed === 'none') await assert.rejects(restoring, /original owner is unavailable/i);
+          else await restoring;
           const label = `${kind}/${connectionFails ? 'failed' : 'ready'}/${changed}`;
           assert.deepEqual(requested, changed === 'none' && !connectionFails ? [node.metadata[kind].runtimeSessionId] : [],
             `${label}: a superseded bucket must not dispatch an attach to its original client.`);

@@ -1,0 +1,139 @@
+{
+  "collected_at": "2026-10-24T12:35:41.192669+00:00",
+  "base_sha": "22998ff4f7e540f1b0780890b9ea686fcf493906",
+  "branch": "runtime-restore-subscription-fix",
+  "acceptance": false,
+  "environment": {
+    "node": "22.23.3",
+    "platform": "linux-x64",
+    "vscode": "1.142.0",
+    "dependencies": "复用/tmp/dsc335-deps/node_modules，不是本轮npm ci",
+    "native_assets": "/tmp/dsc335-assets；默认build核验原生输入与摘要",
+    "vscode_cache": "/dev/shm/dsc-ci-vscode",
+    "gui_artifacts": "/tmp/rrsf-1024/legacy-supervisor-upgrade"
+  },
+  "checks": [
+    {
+      "command": "node scripts/test/test-runtime-legacy-reconnect.mjs",
+      "scope": "原main上的新增并发失败反例：2 !== 1",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/legacy-before.log",
+      "bytes": 931,
+      "sha256": "b5c494dba4ad7f6d90457ea55559e4de30fe43c8f5661f90a93db10c42c53b3b"
+    },
+    {
+      "command": "node scripts/test/test-runtime-restore-subscription.mjs",
+      "scope": "独立原main worktree；同原订阅在迟到恢复后由true变false",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/socket-late-baseline.log",
+      "bytes": 1314,
+      "sha256": "9cb34aedbeded035b163e55bf04b15269ae408ee1977cebbc01ed6b44eea236a"
+    },
+    {
+      "command": "node scripts/test/test-runtime-legacy-reconnect.mjs",
+      "scope": "初版候选缺少首次断连错误投影：reattaching未结束；已修",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/initial-disconnect-before.log",
+      "bytes": 1243,
+      "sha256": "933ce31f4291b6bde2eb064df006a3809c8d671dc70a0e8a59b9833d08331494"
+    },
+    {
+      "command": "npm run test:runtime-supervisor-protocol",
+      "scope": "完整默认协议链，含本轮并发/失败/失效与真实socket/PTY回归",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/protocol-final.log",
+      "bytes": 22912,
+      "sha256": "603e18883a03ecdef9bacecdc3c8a3fa126a2307ad22a5d00cc5d9031d551d1c"
+    },
+    {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "scope": "首次与协议链并行，原PID等待用例超出原3秒，保留失败",
+      "exit_code": 1,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/host-final.log",
+      "bytes": 56348,
+      "sha256": "dbf48cad4658bccb89d297510d51fe33e7bec884b05027da96d41c94e08407aa"
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_HOST_TEST_FILTER='process exit verification waits' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "scope": "实际filter值为process exit verification waits；1/1",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/host-pid-isolated.log",
+      "bytes": 508,
+      "sha256": "06063634f0571d5e21c1ab42a0b43144e4a10e368619e2bb8fccb848a16e5a97"
+    },
+    {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "scope": "原期限串行完整634/634",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/host-final-sequential.log",
+      "bytes": 56710,
+      "sha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5"
+    },
+    {
+      "command": "npm run typecheck",
+      "scope": "主扩展TypeScript",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/typecheck-final.log",
+      "bytes": 184,
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73"
+    },
+    {
+      "command": "npm run test:canvas-execution-context",
+      "scope": "完整执行上下文回归",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/context-final.log",
+      "bytes": 162,
+      "sha256": "748474edccbd1d1e0619a21f9fbc4fa7879dfd2028261013f0297cfaef6c63fd"
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc335-assets npm run build",
+      "scope": "默认生产build与复用原生资产完整性核验",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/build-final.log",
+      "bytes": 77,
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f"
+    },
+    {
+      "command": "node scripts/smoke/run-vscode-smoke.mjs --scenario legacy-supervisor-upgrade --diagnostic",
+      "scope": "固定1.142.0，原具名场景/Stop30秒；自然GUI，无迟到注入",
+      "exit_code": 0,
+      "log_path": "/tmp/dsc-runtime-restore-evidence/vscode-legacy.log",
+      "bytes": 62490,
+      "sha256": "afa83ea05acf9f70194699d30b668b188b1b66b98a72b75da8a51b93778224e7"
+    }
+  ],
+  "limitations": [
+    "正式CI/复审与最终PR327发布输入另验",
+    "模式切换删除回调独立缺陷未修",
+    "真实socket/PTY测试的snapshot/UI投影边界受控",
+    "GUI为自然回归，未执行新的GUI迟到时序注入",
+    "Host首次3秒超时原因未知；同输入单项及串行全套通过",
+    "GUI日志含watcher ENOSPC警告，场景最终通过",
+    "没有将Linux结果外推所有平台、provider或多root"
+  ],
+  "file_sha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "f83630bcab72507c8828216f92c9d09557e5384fac6bb13e8d45738dc89dee98",
+    "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts": "98aa75a1f2edfcc3e0862637c5739d30399c4c2ed9c4175763ccf175e9cfddea",
+    "package.json": "ccff4f03ca7642102aa25287630426cffcf74c9e9f0b769b9ec42376f7670f3e",
+    "scripts/test/test-canvas-execution-context.mjs": "98769a493c03595199247a7cfe470f9b7bed2b6dbe11f411fe82d54aa1c92b29",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "6a24fae3af941556461836aaf849bcb83b34eb07901d4cea648d91f7e397aaaf",
+    "scripts/test/test-runtime-legacy-reconnect.mjs": "d5215022d4936a3f1729381536428abdfa64d3e4b85ffb8ddc18b64b218b722e",
+    "scripts/test/test-runtime-restore-subscription.mjs": "0dc9ff34b10d83fff0f6cca94300a3705b583cbb3193c1fb080544a13865ec30",
+    "scripts/test/test-terminal-paged-projection.mjs": "c53c8ef472bfb197aba3be562646865abda39919c070250c44915255d6e3ad78"
+  },
+  "unchanged_production_methods": [
+    "cleanupRuntimePersistenceModeSwitch",
+    "leaveSharedCanvasesForModeSwitch",
+    "prepareForHostBoundary",
+    "prepareForHostBoundaryCore",
+    "persistState",
+    "getRuntimeSupervisorClientForBackend",
+    "handleRuntimeSupervisorOutput",
+    "handleRuntimeSupervisorTerminalEvent",
+    "handleRuntimeSupervisorTerminalBatch",
+    "handleRuntimeSupervisorState",
+    "applyCompletedRuntimeSupervisorSnapshot",
+    "queueExecutionStateSync",
+    "flushLiveExecutionState"
+  ]
+}

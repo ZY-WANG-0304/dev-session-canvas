@@ -6,10 +6,14 @@ domains: [协作对象域, 项目状态域, 执行编排域, VSCode 集成域]
 architecture_layers: [共享模型与编排层, 宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/runtime-shared-root-canvas-sync.md, docs/exec-plans/completed/pr319-review-repairs.md, docs/exec-plans/completed/pr319-takeover-coordination.md]
-updated_at: 2026-10-18
+updated_at: 2026-10-24
 ---
 
 # 共享 root 画布同步与模式切换
+
+## 修复接续（2026-10-24）
+
+PR336 按用户选定方案实现逐原绑定结算：删除期间允许必要回调，确认后封闭新更新，等待原保存再清空；未知删除保留原请求，失败继续不重做已完成删除，旧 workspace 保存受模式代次约束。详见 [模式切换结算设计](runtime-mode-switch-settlement.md) 与相应证据。本次保留下面历史输入及当时的“未修”事实；它们不代表当前分支仍未实施，当前正式 CI/最终发布验收也不能被定向通过代替。
 
 ## CI 改造时发现的模式切换回调边界（2026-10-18）
 

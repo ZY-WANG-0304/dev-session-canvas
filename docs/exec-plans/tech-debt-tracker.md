@@ -953,3 +953,23 @@ main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正�
 ## PR335 非真实 TUI 缺口覆盖（2026-10-20）
 
 用户授权先覆盖原十五项中的十一项。source/packaged独立入口、双Host角色回执、原process身份absence、真实几何和全量输出断言已实现，默认regression补登记production owner的Stop故障与sticky unknown合同。152目的地现148 implemented-unverified/4 not-implemented；这不代证完整新输入验收。四个真实TUI场景保留待覆盖，完成信号仍未选定。最低宿主、arm64原样安装、真实systemd/通知/渠道等既有边界继续独立存在，不因本轮关闭。计划见active/smoke-non-tui-gap-coverage.md，结果按实际运行记录。
+
+## 恢复订阅竞态独立修复的验收边界（2026-10-24）
+
+`runtime-restore-subscription-fix` 已实现完整恢复任务共享、实际 RPC 派发前资格及断连代次。原 main 22998ff4 的真实 socket/PTY 对照确认订阅 true→false；修复后同一测试单次/并发订阅、真实 I/O/Stop/终态 ACK 通过。完整协议链、Host 634/634、类型/build 与 VS Code 1.142.0 原旧升级具名场景通过；证据见 `docs/references/runtime-restore-subscription-fix/result.json`，设计与计划同名。正式 CI、复审及合入状态仍需针对新 head 确认，不能称为最终发布验收。
+
+Host 首次全套与协议链并行时，未改的 PR319 原 PID 等待用例超出原 3 秒，单项和随后串行 634/634 均通过；原始失败保留，未确认是否由资源调度引起。若再现，应固定输入核对原子进程与实际等待时间，不延长业务期限来掩盖故障。原生 VS Code 日志还出现 watcher ENOSPC，场景最终通过；本轮未改变系统配置或清理其他工作的进程。两者作为环境/复现 follow-up，不作为本恢复修复的确定性 blocker。
+
+最初恢复修复没有覆盖生产模式切换删除期间迟到回调及失败缓存；用户后续已授权在 PR336 接续实现，见下节及 `runtime-mode-switch-settlement.md`，保留两项证据边界。PR327 必须在所需修复合入后再次 rebase，并对最新正式预合并输入完整验收。本轮 Linux、受控快照/UI、复用依赖/资产和单项自然 GUI 不外推多 root、跨平台或真实 provider 完整验收；历史首败唯一归因缺口保留。
+
+
+## 模式切换结算修复的验收边界（2026-10-24）
+
+PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败阶段继续。旧输入确定失败、当前行为和真实 socket/PTY 回归通过；共享窗口/多 root 及四阶段接管继续沿原保护，定向结果见 `docs/references/runtime-mode-switch-settlement/result.json`。提交后自查补齐首轮 drain 的错误传播：第一次异步等待前登记已接纳回调，旧输入先红、最终第 21 项通过，接续证据为同目录 followup.json。未知删除不得重新派发或清掉责任，真实持久化错误仍明确失败，不能承诺所有存储错误都可自动恢复。
+
+旧 PR336 head 2f219c89 的 CI40096144651 首败为 `source-host(remote-ssh-real-reopen-exit)` editor Canvas ready 45000ms，尚未完成根因归属。新 head 必须取得自己的正式 CI；本轮模式切换局部通过不能证明该 ready 首败已修。Linux 自然 GUI 与受控时序不外推跨平台、真实 provider、多 root GUI 或最终 PR327 预合并门禁。watcher ENOSPC 和历史 Host PID 3 秒等待偶发失败继续按原证据追踪，未通过延长期限或改系统配置绕过。
+
+
+### PR336 review 两项缺口接续（2026-10-24）
+
+4d455028 的 P1（保存失败后成为最后参与者却跳过删除）与 P2（终态投影清除 live 字段后丢失 pending 保存失败）已在本轮修复：每次共享 departure 重验原绑定删除，Promise 登记保留接纳时的完整身份，首轮已知保存失败在派发删除前传播。新增八项默认行为回归，两个旧输入反例均先红，当前 29 项通过。证据见 `docs/references/runtime-mode-switch-settlement/review-fixes.json`。必须针对更新 head 复审和验 CI；旧 head 的本地/GUI 通过不能替代该复审，也不表示 PR327 已可合并。

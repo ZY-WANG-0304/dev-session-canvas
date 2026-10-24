@@ -107,11 +107,8 @@ assert.match(
   /private async applyCompletedRuntimeSupervisorSnapshot\([\s\S]*?terminalHistoryDiscarded: true,[\s\S]*?recentOutput: undefined,[\s\S]*?terminalStream: undefined/u,
   'Runtime 已结束状态不得继续将终端正文写入画板 metadata。'
 );
-assert.match(
-  managerSource,
-  /private async subscribeRuntimeSupervisorTerminalStream\([\s\S]*?if \(!snapshot\.live\) \{\s*return;\s*\}/u,
-  'Host 完成离线终态收敛后不得再订阅已删除的 Supervisor session。'
-);
+// Ended-session subscription admission is exercised against the actual Host method
+// in test-runtime-legacy-reconnect.mjs, including a live-session positive control.
 assert.match(
   managerSource,
   /runtime-supervisor-completed-snapshot'[\s\S]*?requireRootLocalDurability: true[\s\S]*?deleteRuntimeSupervisorSessionStrict/u,
@@ -127,11 +124,8 @@ assert.match(
   /STORAGE_KEYS\.canvasState,[\s\S]*?stripExecutionTerminalRecoveryPayloadsFromCanvasState\(normalizedWorkspaceState\)/u,
   '大体积 terminal recovery payload 只写磁盘快照，不得复制进 workspaceState。'
 );
-assert.match(
-  managerSource,
-  /finally \{\s*options\.onSettled\?\.\(\);\s*\}[\s\S]*?onSettled: \(\) => this\.retireLegacyRuntimeSupervisorClientIfUnused/u,
-  '旧 Supervisor attach 无论成功、失败或被忽略，都必须在 settled 边界重新检查 client 退役条件。'
-);
+// Legacy client retirement after successful, failed or ignored recovery is also
+// verified at the actual shared task boundary in test-runtime-legacy-reconnect.mjs.
 assert.match(
   managerSource,
   /postState: session\.terminalProjectionMode === 'legacy-interactive'[\s\S]*?this\.queueExecutionOutput\([\s\S]*?kind,[\s\S]*?nodeId,[\s\S]*?terminalOutput/u,

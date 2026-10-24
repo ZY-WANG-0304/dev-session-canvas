@@ -28,7 +28,9 @@ PR327 的发布输入 9198cacbee91fc170b82578e353c16a27f3574b8 在源码 restric
 - [x] (2026-10-15) systemd仅传显式smoke标志，startup36/36、旧实现先红、typecheck/build通过。
 - [x] (2026-10-15) 源码入口补齐后55c619ad/run38696319881无过滤完整门禁exit1；完整trusted/restricted通过，首败为旧代Terminal停止30秒仍stopping/live=true。
 - [x] (2026-10-15) 确认并原生复现晚到恢复撤销订阅的生产竞态，历史首败唯一归因仍缺现场。
-- [ ] 实施旧代恢复撤销订阅竞态及生产Runtime mode-switch删除期间迟到callback/缓存失败修复；修复合入后最终PR327真实预合并完整门禁，两项不由CI改造绿色解除。
+- [x] (2026-10-24) 恢复订阅竞态在独立 `runtime-restore-subscription-fix` 分支完成实现及定向验证，计划与证据见同名 ExecPlan/设计；真实 socket/PTY 原 main 先红、修复后绿，Host 634/634、完整协议链和原生旧升级场景通过，CI/复审及合入状态另验。
+- [x] (2026-10-24) PR336 接续实现模式切换原绑定结算、旧保存隔离及安全继续，确定性旧输入先红、当前行为/真实 socket/PTY 通过；设计和验证见 runtime-mode-switch-settlement 执行计划。
+- [ ] 核对 PR336 最新正式 CI/复审；两项修复合入后执行最终 PR327 真实预合并完整门禁，不能由定向绿色解除。
 - [x] (2026-10-15) 核对原工件清单：旧代场景54份文件只有Host/VS Code日志与失败快照，没有原Supervisor registry、PTY进程或内部队列现场。
 - [x] (2026-10-15) 固定55c619ad与原run六资产诊断已完成并取回，真实Stop/30秒保持；活动入口移除。
 - [x] (2026-10-15) 四份原生诊断样本完成：独立旧代三份、默认源码前置顺序一份全部通过；PTY退出2–5ms、Host终态10–22ms；不追认原首败已修复。

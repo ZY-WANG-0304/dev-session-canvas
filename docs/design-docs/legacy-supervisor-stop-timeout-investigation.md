@@ -6,10 +6,12 @@ domains: [执行编排域, VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md]
-updated_at: 2026-10-15
+updated_at: 2026-10-24
 ---
 
 # 旧代 Supervisor Terminal 停止超时调查
+
+2026-10-24 接续：用户要求独立分支解决恢复订阅竞态，本轮方案与实现见 [同一执行会话的完整恢复与订阅责任](runtime-restore-subscription-fix.md)。当前分支的并发任务、真实 socket/PTY 修复前后对照、协议链、Host 634/634、类型/build 与原生 VS Code 旧升级场景已通过；正式 CI/复审及最终发布输入另验。下文“尚未修复/仅定位”描述均属于 2026-10-15 调查时点，历史首败的唯一归因缺口继续保留。模式切换删除回调问题不由这项恢复修复关闭。
 
 ## 问题与证据范围
 

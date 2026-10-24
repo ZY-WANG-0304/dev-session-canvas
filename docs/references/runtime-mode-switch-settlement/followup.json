@@ -1,0 +1,313 @@
+{
+  "collected_at": "2026-10-24T14:42:32.354747+00:00",
+  "parent_sha": "ae5414c2636d43e9e83ec1b5fb68a126a0d3980b",
+  "base_sha": "22998ff4f7e540f1b0780890b9ea686fcf493906",
+  "acceptance": false,
+  "scope": "第一次异步等待前保留原回调责任与保存失败；初版 result.json 历史不变",
+  "environment": "与 result.json 相同：Node22.23.3/Linux x64/VS Code1.142.0，依赖与资产缓存复用；GUI debug roots 为本文件列出的 staged bundle 父目录",
+  "checks": [
+    {
+      "command": "node scripts/test/test-runtime-mode-switch-races.mjs",
+      "exit_code": 1,
+      "scope": "ae5414c2 新增第 21 项在首轮等待丢失原保存失败的断言失败",
+      "path": "/tmp/dsc-mode-switch-evidence/preboundary-before.log",
+      "bytes": 2642,
+      "sha256": "dc272fe9d32f30f30fff8b214255a1c9feaedf3cdea3aeffc7100fca7fd99c95",
+      "excerpt": [
+        "",
+        "    at file:///tmp/dsc-runtime-restore-subscription-fix/scripts/test/test-runtime-mode-switch-races.mjs:535:10 {",
+        "  generatedMessage: false,",
+        "  code: 'ERR_ASSERTION',",
+        "  actual: undefined,",
+        "  expected: Error: Save accepted before the mode boundary failed",
+        "      at file:///tmp/dsc-runtime-restore-subscription-fix/scripts/test/test-runtime-mode-switch-races.mjs:527:19,",
+        "  operator: 'strictEqual',",
+        "  diff: 'simple'",
+        "}",
+        "",
+        "Node.js v22.23.3"
+      ]
+    },
+    {
+      "command": "npm run test:runtime-mode-switch-races",
+      "exit_code": 0,
+      "scope": "修复后 21 项行为及两种真实 socket/PTY 路径通过",
+      "path": "/tmp/dsc-mode-switch-evidence/preboundary-after.log",
+      "bytes": 3395,
+      "sha256": "0f3ec77ee5dada9d6b75914b4979e40fe945f84f9d1064a3523b615811efb7ee",
+      "excerpt": [
+        "",
+        "> dev-session-canvas-workspace@0.26.0 test:runtime-mode-switch-races",
+        "> node scripts/test/test-runtime-mode-switch-races.mjs && node scripts/test/test-runtime-mode-switch-socket.mjs",
+        "",
+        "▲ [WARNING] \"node-pty\" should be marked as external for use with \"require.resolve\" [require-resolve-not-external]",
+        "",
+        "    extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts:240:43:",
+        "      240 │   const nodePtyEntryPath = require.resolve('node-pty');",
+        "          ╵                                            ~~~~~~~~~~",
+        "",
+        "PASS original callback/save during deletion: shared=false, entry=simulateRuntimeReloadForTest",
+        "PASS original callback/save during deletion: shared=false, entry=prepareForDeactivation",
+        "PASS original callback/save during deletion: shared=true, entry=simulateRuntimeReloadForTest",
+        "PASS original callback/save during deletion: shared=true, entry=prepareForDeactivation",
+        "PASS concurrent cleanup and final-save continuation: shared=false",
+        "PASS concurrent cleanup and final-save continuation: shared=true",
+        "PASS unknown delete retains its request and late confirmation allows continuation",
+        "PASS accepted callback save failure remains a cleanup failure",
+        "PASS actual persistence rechecks mode generation before workspace write",
+        "PASS actual batch handler consumes and saves after deletion confirmation",
+        "PASS pending callback respects original deadline and late completion cannot commit",
+        "PASS pending callback respects original deadline and late completion cannot commit",
+        "PASS last page closure settles mode switch from enabled=false",
+        "PASS last page closure settles mode switch from enabled=true",
+        "PASS unknown deletion responsibility survives removed projection",
+        "PASS unknown deletion responsibility survives replaced projection",
+        "PASS permanent exit retains its first failure after configuration changes",
+        "PASS legacy completion joins the original strict deletion finalization",
+        "PASS partial deletion confirmation survives retries without replaying either request",
+        "PASS actual live snapshot waits for its persistence responsibility",
+        "PASS initial callback drain retains an already accepted save failure",
+        "{\"concurrentRestore\":false,\"restoreAcquisitions\":1,\"subscriptionAcquisitions\":1,\"firstRestoreSubscribed\":true,\"subscriptionExistsBeforeStop\":true}",
+        "{\"concurrentRestore\":false,\"actualPtyExit\":{\"exitCode\":0,\"signal\":\"1\"},\"deletionResult\":{\"kind\":\"legacy-acknowledged\"},\"supervisorSessionExists\":false,\"hostNodes\":0,\"pendingCallbacks\":0,\"outcomes\":[{\"batchId\":1,\"revision\":1,\"live\":true,\"outcome\":\"consumed\"},{\"batchId\":2,\"revision\":2,\"outcome\":\"consumed\"},{\"batchId\":3,\"revision\":3,\"outcome\":\"consumed\"},{\"batchId\":4,\"revision\":4,\"outcome\":\"consumed\"},{\"batchId\":5,\"revision\":4,\"live\":true,\"outcome\":\"consumed\"}]}",
+        "{\"concurrentRestore\":true,\"restoreAcquisitions\":1,\"subscriptionAcquisitions\":1,\"firstRestoreSubscribed\":true,\"subscriptionExistsBeforeStop\":true}",
+        "{\"concurrentRestore\":true,\"actualPtyExit\":{\"exitCode\":0,\"signal\":\"1\"},\"deletionResult\":{\"kind\":\"legacy-acknowledged\"},\"supervisorSessionExists\":false,\"hostNodes\":0,\"pendingCallbacks\":0,\"outcomes\":[{\"batchId\":1,\"revision\":1,\"live\":true,\"outcome\":\"consumed\"},{\"batchId\":2,\"revision\":2,\"outcome\":\"consumed\"},{\"batchId\":3,\"revision\":3,\"outcome\":\"consumed\"},{\"batchId\":4,\"revision\":5,\"outcome\":\"consumed\"},{\"batchId\":5,\"revision\":5,\"live\":true,\"outcome\":\"consumed\"}]}",
+        "actual Host mode-switch settlement with real socket/PTY and strict deletion passed"
+      ]
+    },
+    {
+      "command": "npm run test:runtime-supervisor-protocol",
+      "exit_code": 0,
+      "scope": "最终完整协议链",
+      "path": "/tmp/dsc-mode-switch-evidence/protocol-early-capture.log",
+      "bytes": 26490,
+      "sha256": "d548ed4da999c5f4ff9ec0bc7f7e447a537b670fc15173d0c3b324a7a9607e1c",
+      "excerpt": [
+        "Host credit: 97 ordered Terminal events; Agent and input/resize progressed during stalled consumption",
+        "Host credit: bounded journal context reused across pages and released on replacement/disconnect",
+        "Host credit: replacement, cancellation and disconnect release only their own cursor",
+        "Host credit: active cursor pins real compaction; disconnected stale cursor is typed rejection; retained cursor replays",
+        "Host credit: steady output consumes without repeated state snapshots; completion still publishes state",
+        "Host credit: absent hello capability preserves legacy subscription delivery",
+        "runtime Host output credit: real socket backpressure, controls, tail ordering and lifecycle passed",
+        "",
+        "> dev-session-canvas-workspace@0.26.0 test:terminal-available-credit",
+        "> node scripts/test/test-terminal-available-credit.mjs",
+        "",
+        "terminal available credit: actual Host coalescing, identity, bootstrap, completion, legacy, reattach and delivery regressions passed"
+      ]
+    },
+    {
+      "command": "node scripts/test/test-host-execution-owner-wiring.mjs",
+      "exit_code": 0,
+      "scope": "最终 Host 634/634",
+      "path": "/tmp/dsc-mode-switch-evidence/host-early-capture.log",
+      "bytes": 56710,
+      "sha256": "72e2f5623353d4e32bafad741cc2afca2d48401531eff0bf8fec77df0d9297e5",
+      "excerpt": [
+        "ok - review PR319 last-participant save failure retains membership and failure result",
+        "ok - review PR319 cleanup drains this Host admitted starts before acquiring root admission",
+        "ok - review PR319 process exit verification waits for original PID even with empty registry",
+        "ok - review PR319 late page save during original process exit cannot recreate the cleared root",
+        "ok - review PR319 deactivation waits for departure even if settings were reverted while cleanup ran",
+        "ok - takeover actual Host before dispatch cancels root deletion and automatic restore preserves original identity",
+        "ok - takeover actual Host after dispatch waits for settlement and cannot restore stale deleted sessions",
+        "ok - takeover actual Host identity does not release exit responsibility or retain failed control clients",
+        "ok - takeover actual Host closed does not release exit responsibility or retain failed control clients",
+        "ok - takeover modern reader disposal releases unpinned control client and preserves confirmed idle successor",
+        "ok - takeover multi-root handoff releases only the taken PID while the other original must exit",
+        "Host execution owner wiring: 634/634 passed (selected 634/634; non-native only)."
+      ]
+    },
+    {
+      "command": "node scripts/test/test-runtime-host-deactivation-integrity.mjs",
+      "exit_code": 0,
+      "scope": "最终退出完整性",
+      "path": "/tmp/dsc-mode-switch-evidence/deactivation-early-capture.log",
+      "bytes": 4474,
+      "sha256": "ecceaaa20d72911a59f816e80d25ed96c579626b130d04ca0d9f63005acee4b3",
+      "excerpt": [
+        "non-root reset strict-failure passed: template-applied",
+        "non-root pending completion observation: {\"mode\":\"state-reset\",\"error\":\"Runtime session updates are still pending. Please try again after they finish.\",\"pendingCallbacks\":1,\"completedNodeRetained\":true,\"savedWithoutCompletedNode\":false,\"notifiedWithoutCompletedNode\":false}",
+        "non-root pending completion observation: {\"mode\":\"template-applied\",\"error\":\"Runtime session updates are still pending. Please try again after they finish.\",\"pendingCallbacks\":1,\"completedNodeRetained\":true,\"savedWithoutCompletedNode\":false,\"notifiedWithoutCompletedNode\":false}",
+        "completed delete real startup observation: {\"kind\":\"terminal\",\"creates\":1,\"originalDeleteStillPending\":true,\"replacementSession\":\"a0b1041d-5f91-49b7-8be2-32b2e6c2f376\",\"replacementSaved\":true}",
+        "finite A6 Host boundary passed: terminal-real-start-during-old-delete",
+        "completed delete real startup observation: {\"kind\":\"agent\",\"creates\":1,\"originalDeleteStillPending\":true,\"replacementSession\":\"cf43e707-5d41-4b5c-a8cf-e854f303b069\",\"replacementSaved\":true}",
+        "finite A6 Host boundary passed: agent-real-start-during-old-delete",
+        "reset/deactivation overlap observation: {\"withOwner\":false,\"events\":[{\"type\":\"persist\",\"reason\":\"execution-boundary\"},{\"type\":\"host/stateUpdated\",\"nodeIds\":[\"terminal-1\"]},{\"type\":\"strict-delete\",\"sessionId\":\"session-1\"},{\"type\":\"deactivation-rejected\",\"error\":\"Host deactivation is unconfirmed because a Runtime mutation is still pending.\"},{\"type\":\"release-delete\"},{\"type\":\"reset-rejected\",\"error\":\"Host permanent boundary has closed canvas mutation admission.\"}],\"lateWrites\":[],\"resetError\":\"Host permanent boundary has closed canvas mutation admission.\",\"deactivationError\":\"Host deactivation is unconfirmed because a Runtime mutation is still pending.\",\"finalNodeIds\":[\"terminal-1\"],\"deletes\":[\"session-1\"]}",
+        "finite A6 Host boundary passed: reset-delete-and-permanent-deactivation",
+        "reset/deactivation overlap observation: {\"withOwner\":true,\"events\":[{\"type\":\"owner-admission-closed\",\"permanent\":false},{\"type\":\"persist\",\"reason\":\"execution-boundary\"},{\"type\":\"host/stateUpdated\",\"nodeIds\":[\"terminal-1\"]},{\"type\":\"strict-delete\",\"sessionId\":\"session-1\"},{\"type\":\"owner-admission-closed\",\"permanent\":true},{\"type\":\"owner-admission-closed\",\"permanent\":true},{\"type\":\"persist\",\"reason\":\"host-deactivation\"},{\"type\":\"persist\",\"reason\":\"execution-boundary\"},{\"type\":\"host/stateUpdated\",\"nodeIds\":[\"terminal-1\"]},{\"type\":\"deactivation-returned\",\"report\":{\"kind\":\"unconfirmed\",\"startedAt\":748.899294,\"deadline\":20748.899294,\"local\":{\"kind\":\"settled\"},\"canvasSnapshot\":{\"kind\":\"unconfirmed\",\"reason\":\"A Runtime mutation was pending when Host deactivation began.\"},\"remoteDetach\":{\"kind\":\"settled\"}},\"nodeIds\":[\"terminal-1\"]},{\"type\":\"release-delete\"},{\"type\":\"reset-rejected\",\"error\":\"Host permanent boundary has closed canvas mutation admission.\"}],\"lateWrites\":[],\"resetError\":\"Host permanent boundary has closed canvas mutation admission.\",\"deactivationError\":null,\"finalNodeIds\":[\"terminal-1\"],\"deletes\":[\"session-1\"]}",
+        "finite A6 Host boundary passed: reset-delete-and-owner-deactivation",
+        "runtime Host deactivation integrity tests passed (flush, admission, stale overwrite, callback tracking, idempotence)"
+      ]
+    },
+    {
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "scope": "最终类型检查",
+      "path": "/tmp/dsc-mode-switch-evidence/typecheck-early-capture.log",
+      "bytes": 184,
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+      "excerpt": [
+        "",
+        "> dev-session-canvas-workspace@0.26.0 typecheck",
+        "> npm run -w extensions/vscode/dev-session-canvas typecheck",
+        "",
+        "",
+        "> dev-session-canvas@0.26.0 typecheck",
+        "> tsc -p ./tsconfig.json --noEmit",
+        ""
+      ]
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/tmp/dsc335-assets npm run build",
+      "exit_code": 0,
+      "scope": "最终生产 build",
+      "path": "/tmp/dsc-mode-switch-evidence/build-early-capture.log",
+      "bytes": 77,
+      "sha256": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f",
+      "excerpt": [
+        "",
+        "> dev-session-canvas-workspace@0.26.0 build",
+        "> node scripts/build/build.mjs",
+        ""
+      ]
+    },
+    {
+      "command": "DEV_SESSION_CANVAS_TAKEOVER_NATIVE=1 DEV_SESSION_CANVAS_HOST_TEST_FILTER='takeover native' node scripts/test/test-host-execution-owner-wiring.mjs",
+      "exit_code": 0,
+      "scope": "最终真实 Supervisor 接管 3/3",
+      "path": "/tmp/dsc-mode-switch-evidence/takeover-native-early-capture.log",
+      "bytes": 1016,
+      "sha256": "be86131f1224e291ce46a2e861cac0239667cf57a80e83f953cae64ee8e91b77",
+      "excerpt": [
+        "",
+        "    extensions/vscode/dev-session-canvas/src/panel/executionSessionBridge.ts:240:43:",
+        "      240 │   const nodePtyEntryPath = require.resolve('node-pty');",
+        "          ╵                                            ~~~~~~~~~~",
+        "",
+        "NATIVE takeover evidence {\"phase\":\"idle\",\"originalPid\":1057374,\"confirmedPid\":1057374,\"successorClientsAfterDispose\":0,\"completed\":true}",
+        "ok - takeover native actual Host and original Supervisor idle",
+        "NATIVE takeover evidence {\"phase\":\"closing\",\"originalPid\":1058297,\"successorClientsAfterDispose\":0,\"completed\":true}",
+        "ok - takeover native actual Host and original Supervisor closing",
+        "NATIVE takeover evidence {\"phase\":\"no-takeover\",\"originalPid\":1058642,\"successorClientsAfterDispose\":0,\"completed\":true}",
+        "ok - takeover native actual Host and original Supervisor no-takeover",
+        "Host execution owner wiring: 3/3 passed (selected 3/637; includes native Supervisor control lifecycle)."
+      ]
+    },
+    {
+      "command": "node scripts/smoke/run-vscode-smoke.mjs --scenario runtime-mode/reload-clear --diagnostic",
+      "exit_code": 0,
+      "scope": "最终原模式切换自然 GUI",
+      "path": "/tmp/dsc-mode-switch-evidence/vscode-mode-early-capture.log",
+      "bytes": 63414,
+      "sha256": "f9d3f8f73156b6e7e609f0b191fbed3e304d87ffcbf6a059a423421595246452",
+      "excerpt": [
+        "[AgentHost] No signed-in session resolved for resource: https://api.github.com/repos",
+        "User data changed",
+        "[File Watcher (node.js)] Failed to watch /tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/user-data/User/settings.json for changes using fs.watch() (Error: ENOSPC: System limit for number of file watchers reached, watch '/tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/user-data/User/settings.json')",
+        "Configuration keys changed in USER target devSessionCanvas.runtimePersistence.enabled",
+        "\u001b[90m[main 2026-10-24T14:39:59.578Z]\u001b[0m User data changed",
+        "\u001b[91m[main 2026-10-24T14:39:59.582Z]\u001b[0m [File Watcher (node.js)] Failed to watch /tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/user-data/User/settings.json for changes using fs.watch() (Error: ENOSPC: System limit for number of file watchers reached, watch '/tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/user-data/User/settings.json')",
+        "\u001b[91m[main 2026-10-24T14:39:59.583Z]\u001b[0m [File Watcher (node.js)] Failed to watch /tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/user-data/User/settings.json for changes using fs.watch() (Error: ENOSPC: System limit for number of file watchers reached, watch '/tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/user-data/User/settings.json')",
+        "[AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false",
+        "\u001b[90m[main 2026-10-24T14:40:29.256Z]\u001b[0m Extension host with pid 974583 exited with code: 0, signal: unknown.",
+        "Exit code:   0",
+        "Runtime 配置重载生效及关闭清理 passed.",
+        "VS Code smoke test passed."
+      ]
+    },
+    {
+      "command": "node scripts/smoke/run-vscode-smoke.mjs --scenario two-window-shared-runtime --diagnostic",
+      "exit_code": 0,
+      "scope": "最终双窗口完整自然 GUI",
+      "path": "/tmp/dsc-mode-switch-evidence/vscode-two-window-early.log",
+      "bytes": 117565,
+      "sha256": "ead5b523bec8bb8f5ae13a6bfb5e9a3474b4f9b0abc5f80ca21753696cea28ab",
+      "excerpt": [
+        "Configuration keys changed in USER target devSessionCanvas.runtimePersistence.enabled",
+        "Configuration keys changed in USER target devSessionCanvas.runtimePersistence.enabled",
+        "Configuration keys changed in USER target devSessionCanvas.runtimePersistence.enabled",
+        "Configuration keys changed in USER target devSessionCanvas.runtimePersistence.enabled",
+        "[two-window-shared-runtime] role=owner completed",
+        "[two-window-shared-runtime] role=attacher completed",
+        "\u001b[90m[main 2026-10-24T14:41:44.522Z]\u001b[0m Extension host with pid 1023648 exited with code: 0, signal: unknown.",
+        "\u001b[90m[main 2026-10-24T14:41:44.526Z]\u001b[0m Extension host with pid 1014421 exited with code: 0, signal: unknown.",
+        "Exit code:   0",
+        "Exit code:   0",
+        "Two-window shared runtime smoke passed.",
+        "VS Code smoke test passed."
+      ]
+    }
+  ],
+  "production_and_test_files": [
+    {
+      "path": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+      "bytes": 1231835,
+      "sha256": "27d4bdc23b2aec180ccc85e32738d7f60671c9d9face01936259c7e4c200b4c3"
+    },
+    {
+      "path": "scripts/test/test-runtime-mode-switch-races.mjs",
+      "bytes": 27072,
+      "sha256": "e0258418ba987001416298ad705de2cf4487f7c5d72a9e80b24d61bcfd94e023"
+    },
+    {
+      "path": "scripts/test/test-runtime-mode-switch-socket.mjs",
+      "bytes": 18089,
+      "sha256": "d0b2cdbc0abfaae61843c1e371ca44f53414ab642d83c246c2eba57f0cc2f1a3"
+    },
+    {
+      "path": "scripts/test/test-runtime-host-deactivation-integrity.mjs",
+      "bytes": 114176,
+      "sha256": "6f009a01730b8104ce88abdf6765dca38cafc999227e218eb07fb7ee5421b58d"
+    },
+    {
+      "path": "package.json",
+      "bytes": 17956,
+      "sha256": "fa71f345f6ccea661db99bbbe715c26b977ace7775f0bcbc6594ad524886eff3"
+    }
+  ],
+  "identical_production_bundle": [
+    {
+      "path": "/tmp/dsc-runtime-restore-subscription-fix/extensions/vscode/dev-session-canvas/dist/extension.js",
+      "bytes": 3478639,
+      "sha256": "ca7843c9026d6465505bdff7f6cbcb28eec2ac6d3bf002aec2cd34c26b219633"
+    },
+    {
+      "path": "/tmp/dsc-mode-vscode-early/runtime-mode/reload-clear/smoke-host/dist/extension.js",
+      "bytes": 3478639,
+      "sha256": "ca7843c9026d6465505bdff7f6cbcb28eec2ac6d3bf002aec2cd34c26b219633"
+    },
+    {
+      "path": "/tmp/dsc-mode-two-window-early/two-window-shared-runtime/smoke-host/dist/extension.js",
+      "bytes": 3478639,
+      "sha256": "ca7843c9026d6465505bdff7f6cbcb28eec2ac6d3bf002aec2cd34c26b219633"
+    }
+  ],
+  "gui_observations": {
+    "attacher-after-owner-detach.json": {
+      "originalSessionId": "341ac055-045a-4a32-b951-9b8a6c2d527c",
+      "originalProcesses": [
+        {
+          "rootPath": "/tmp/dsc-runtime-restore-subscription-fix",
+          "pid": 1018354
+        }
+      ],
+      "peerNodeId": "terminal-6-4df05b7b-3cf6-4e79-a7af-e97c99cda254",
+      "outputAndResizeConfirmed": true
+    },
+    "attacher-last-departure.json": {
+      "supervisorProcessesExited": [
+        {
+          "rootPath": "/tmp/dsc-runtime-restore-subscription-fix",
+          "pid": 1018354
+        }
+      ]
+    }
+  },
+  "ci": "初版 ae5414c2 / CI40103313958 在接续提交前仍运行，最新 head 必须另核；旧 2f219c89 Remote ready 首败不追认已修",
+  "limitations": [
+    "真实 socket/PTY 的快照投影/UI 与保存位置受控；GUI 为自然场景",
+    "不替代跨平台、真实多 root GUI、真实 provider 或 PR327 最新正式预合并验收",
+    "原 20 秒和各业务断言未延长，真实失败/未知责任不抹去"
+  ]
+}
