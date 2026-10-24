@@ -72,7 +72,7 @@ export function githubClient({ repository = process.env.GITHUB_REPOSITORY, token
       catch (error) { if (await this.readTag(tag, deadline) === sha) return; throw error; }
     },
     async createRelease(tag, sha, name, body, deadline) {
-      try { return await mutate('releases', 'POST', { tag_name: tag, target_commitish: sha, name, body, draft: false, prerelease: true }, deadline); }
+      try { return await mutate('releases', 'POST', { tag_name: tag, target_commitish: sha, name, body, draft: false, prerelease: false }, deadline); }
       catch (error) { const lookup = await this.lookupRelease(tag, deadline);
         if (lookup.observation === 'present' && await this.readTag(tag, deadline) === sha) return lookup.release;
         throw error; }

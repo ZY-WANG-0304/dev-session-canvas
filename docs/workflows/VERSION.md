@@ -15,6 +15,7 @@
 - 当前 `Preview` 身份通过主扩展 manifest 中的 `preview: true`、Marketplace 文案与 release notes 表达，而不是通过版本字符串表达。
 - 在真正准备做稳定版承诺之前，默认停留在 `0.x.y`。
 - 当前默认不启用 Marketplace `pre-release` 双轨发布策略；若未来决定启用，需要单独更新本文件与发布流程文档。
+- GitHub Release 延续普通发布类别：创建时明确 `prerelease: false`，完成交付及渠道恢复只更新发布正文，保持该类别。产品公开 `Preview` 身份不改变 GitHub Release 类别，也不代表稳定版承诺。
 - 模板市场生产服务部署不复用插件 SemVer；服务部署使用 `docs/workflows/SERVICE_DEPLOY.md` 定义的独立 deploy tag。
 
 ## 命名格式

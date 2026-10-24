@@ -11,7 +11,7 @@ import { collectGitHubProvenance } from '../gates/github-provenance.mjs';
 import { githubClient } from '../release/release-github.mjs';
 import { recoverReleaseState, appendReleaseState, saveReleaseState } from '../release/release-state.mjs';
 
-async function fixture(t) {
+async function fixture(t, { githubRequests = false, loseCreateResponse = false } = {}) {
   const f = await releaseFixture();
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-release-delivery-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -51,6 +51,26 @@ async function fixture(t) {
     updateNotes: async () => { calls.push('notes'); },
     deleteTriggerTag: async () => { calls.push('delete'); return { status: 'passed', trigger: 'deleted' }; }
   };
+  const requests = [];
+  let releaseState = null;
+  if (githubRequests) {
+    const actual = githubClient({ repository: f.context.repository, apiURL: 'http://127.0.0.1',
+      request: async (url, options) => {
+        const method = options.method ?? 'GET';
+        const body = options.body ? JSON.parse(options.body.toString()) : null;
+        requests.push({ method, path: url.pathname, body });
+        if (method === 'POST' && url.pathname === '/repos/test/repo/releases') {
+          releaseState = { id: release.id, ...body };
+          if (loseCreateResponse) throw new Error('Creation response lost');
+        } else if (method === 'GET' && url.pathname === `/repos/test/repo/releases/tags/${f.context.finalTag}`) {
+          if (!releaseState) throw Object.assign(new Error('Not found'), { status: 404 });
+        } else if (method === 'PATCH' && url.pathname === `/repos/test/repo/releases/${release.id}`) {
+          assert(releaseState); Object.assign(releaseState, body);
+        } else assert.fail(`Unexpected GitHub request: ${method} ${url.pathname}`);
+        return Buffer.from(JSON.stringify(releaseState));
+      } });
+    for (const name of ['lookupRelease', 'createRelease', 'updateNotes']) client[name] = actual[name];
+  }
   const prepared = path.join(root, 'prepared');
   await prepareRelease({ context: f.context, input, output: prepared, client });
   const addArtifact = async (stem, jobName, files) => {
@@ -69,10 +89,38 @@ async function fixture(t) {
   await addArtifact('prepared-release', 'Release prepare-release', preparedFiles);
   for (const target of ['open-vsx', 'visual-studio']) await addArtifact(`marketplace-result-${target}`,
     `Release publish-${target}`, { 'channel-partial.json': JSON.stringify(f.partial(target)) });
-  return { f, root, input, prepared, remote, calls, jobs, artifacts, archives, client, addArtifact };
+  return { f, root, input, prepared, remote, calls, jobs, artifacts, archives, client, addArtifact, requests, releaseState: () => structuredClone(releaseState) };
 }
 const runFinalize = (f, directory = 'final') => finalizeRelease({ context: f.f.context, prepared: f.prepared,
   output: path.join(f.root, directory), client: f.client, renderNotes: manifest => `status=${manifest.status}\n` });
+
+for (const loseCreateResponse of [false, true]) {
+  test(`GitHub creation keeps ordinary Release classification with lost response=${loseCreateResponse}`, async t => {
+    const f = await fixture(t, { githubRequests: true, loseCreateResponse });
+    const creates = f.requests.filter(request => request.method === 'POST');
+    assert.equal(creates.length, 1, 'Lost creation response must not duplicate the Release');
+    assert.deepEqual(creates[0].body, {
+      tag_name: f.f.context.finalTag, target_commitish: f.f.context.releaseSHA,
+      name: `Dev Session Canvas v${f.f.context.version}`,
+      body: `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${f.f.context.releaseSHA}`,
+      draft: false, prerelease: false
+    });
+    assert.equal(f.releaseState().prerelease, false);
+  });
+}
+for (const mode of ['release-tag', 'channel-retry']) {
+  test(`GitHub ${mode} completion preserves ordinary Release classification`, async t => {
+    const f = await fixture(t, { githubRequests: true });
+    if (mode === 'channel-retry') f.f.context = { ...f.f.context, mode, existingReleaseID: 42 };
+    f.requests.length = 0;
+    const result = await runFinalize(f);
+    assert.equal(result.completion.status, 'complete');
+    assert.equal(result.cleanup.status, 'passed');
+    assert.deepEqual(f.requests, [{ method: 'PATCH', path: '/repos/test/repo/releases/42', body: { body: 'status=complete\n' } }]);
+    assert.equal(f.releaseState().prerelease, false);
+    assert.equal(f.releaseState().draft, false);
+  });
+}
 
 test('finalize binds real artifact ZIPs and updates notes before deleting the trigger', async t => {
   const f = await fixture(t); f.calls.length = 0;

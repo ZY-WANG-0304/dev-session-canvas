@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-23
+updated_at: 2026-10-24
 ---
 
 # CI与发布门禁重设计
@@ -20,6 +20,12 @@ updated_at: 2026-10-23
 研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。设计研究时未改workflow与发布脚本；2026-10-18起按本文实施，落点及真实验证边界见[已完成实施计划](../exec-plans/completed/release-gate-implementation.md)。实现、回归、根因与文档继续集中PR335，不另建诊断、验证或文档PR。
 
 ## 正式方案
+
+### GitHub Release 类别（2026-10-24 review 修正）
+
+按用户确认延续历史 `prerelease: false` 策略。`scripts/release/release-github.mjs` 的 `githubClient.createRelease` 创建普通非草稿 Release，初始正文如实标记渠道交付进行中；`release-delivery.mjs` 的 `finalizeRelease` 在发布与 `channel-retry` 两种模式下继续通过 `updateNotes` 仅更新正文，不改变发布类别。创建响应丢失时查询同 tag/SHA 的原 Release，不重复创建。此次不改历史远端 Release，不强制设置 GitHub Latest，也不改变产品 Preview 或 Marketplace 通道策略。
+
+请求合同使用实际 `githubClient`，仅替换 HTTP transport，覆盖正常创建、创建响应丢失后的查询恢复，以及 `release-tag` / `channel-retry` 完成时的 PATCH；与现有验包、状态链和清理测试共用实际 prepare/finalize 编排。测试不执行真实外部发布。Node22.23.3下，修复前新增四项合同全部失败；修复后发布完成/恢复合同33/33通过，publish-tag-release准备回归通过。原日志摘要见[验证结果](../references/github-release-classification/results.json)，新head完整CI另行验收。
 
 ### Linux 字体准备范围（2026-10-23）
 

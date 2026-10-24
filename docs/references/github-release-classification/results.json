@@ -1,0 +1,28 @@
+{
+  "base": "6c030da4d3600b5afa644fa7b1a708ebd9be6a2c",
+  "node": "22.23.3",
+  "before": {
+    "newContractsFailed": 4
+  },
+  "after": {
+    "releaseDeliveryAndCompletionPassed": 33,
+    "failed": 0,
+    "skipped": 0,
+    "publishTagRelease": "passed"
+  },
+  "logs": {
+    "before.log": {
+      "sha256": "42e33acf5f2887260c54352c1e6544eda092fe982b959879a7ed79143d5613a2",
+      "bytes": 5309
+    },
+    "after.log": {
+      "sha256": "5f300b047eb1a2ed1b7e3afb0fdad7ff3c3161b239205169a7f876b27aaeb245",
+      "bytes": 7236
+    },
+    "prepare.log": {
+      "sha256": "d29d94738b151ac1852019458348340e4701b9cbd5d301603781caf91b3c9ea7",
+      "bytes": 110
+    }
+  },
+  "scope": "本地真实客户端请求合同，HTTP transport及远端资产为夹具；未操作真实GitHub Release，不替代最新head完整CI"
+}
