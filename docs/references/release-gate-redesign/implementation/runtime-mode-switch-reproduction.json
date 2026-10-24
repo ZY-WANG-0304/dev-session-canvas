@@ -1,0 +1,107 @@
+{
+  "acceptance": false,
+  "status": "reproduced-production-mode-switch-path",
+  "results": [
+    {
+      "shared": false,
+      "entry": "simulateRuntimeReloadForTest",
+      "firstError": "Runtime session updates are still pending. Please try again after they finish.",
+      "repeatedError": "Runtime session updates are still pending. Please try again after they finish.",
+      "admission": true,
+      "nodes": 1,
+      "bindings": 1,
+      "pendingCallbacks": 0,
+      "events": [
+        {
+          "stage": "delete-original-sessions",
+          "ids": [
+            "session-1"
+          ],
+          "admission": true
+        },
+        {
+          "stage": "state-callback-admitted-during-delete",
+          "pending": 1
+        }
+      ],
+      "scope": "Production CanvasPanelManager methods; controlled store and delete continuation; no real PTY or Electron; acceptance false"
+    },
+    {
+      "shared": false,
+      "entry": "prepareForDeactivation",
+      "firstError": "Runtime session updates are still pending. Please try again after they finish.",
+      "repeatedError": "Runtime session updates are still pending. Please try again after they finish.",
+      "admission": true,
+      "nodes": 1,
+      "bindings": 1,
+      "pendingCallbacks": 0,
+      "events": [
+        {
+          "stage": "delete-original-sessions",
+          "ids": [
+            "session-1"
+          ],
+          "admission": true
+        },
+        {
+          "stage": "state-callback-admitted-during-delete",
+          "pending": 1
+        }
+      ],
+      "scope": "Production CanvasPanelManager methods; controlled store and delete continuation; no real PTY or Electron; acceptance false"
+    },
+    {
+      "shared": true,
+      "entry": "simulateRuntimeReloadForTest",
+      "firstError": "Runtime session updates are still pending. Please try again after they finish.",
+      "repeatedError": "Runtime session updates are still pending. Please try again after they finish.",
+      "admission": true,
+      "nodes": 1,
+      "bindings": 1,
+      "pendingCallbacks": 0,
+      "events": [
+        {
+          "stage": "delete-original-sessions",
+          "ids": [
+            "session-1"
+          ],
+          "admission": true
+        },
+        {
+          "stage": "state-callback-admitted-during-delete",
+          "pending": 1
+        }
+      ],
+      "scope": "Production CanvasPanelManager methods; controlled store and delete continuation; no real PTY or Electron; acceptance false"
+    },
+    {
+      "shared": true,
+      "entry": "prepareForDeactivation",
+      "firstError": "Runtime session updates are still pending. Please try again after they finish.",
+      "repeatedError": "Runtime session updates are still pending. Please try again after they finish.",
+      "admission": true,
+      "nodes": 1,
+      "bindings": 1,
+      "pendingCallbacks": 0,
+      "events": [
+        {
+          "stage": "delete-original-sessions",
+          "ids": [
+            "session-1"
+          ],
+          "admission": true
+        },
+        {
+          "stage": "state-callback-admitted-during-delete",
+          "pending": 1
+        }
+      ],
+      "scope": "Production CanvasPanelManager methods; controlled store and delete continuation; no real PTY or Electron; acceptance false"
+    }
+  ],
+  "sourceInputSHA": "a62e5d7e44c9a39c23534e16452eff49a92d87d6",
+  "reproductionSHA256": "f7c4eb74259d7e9f71381038354efb6f36c40a3101a2e1a3f0a16a703e0fdf05",
+  "productionFile": "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts",
+  "productionFileSHA256": "deca17ae00666a1e6b7f1402cf0445f240a191ebd49d1794dc3481dd3271da96",
+  "trigger": "One controlled state callback is admitted during strict deletion after the initial callback snapshot drain; the callback is held until the boundary first rejects."
+}

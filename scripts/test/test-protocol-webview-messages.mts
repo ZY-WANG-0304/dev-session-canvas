@@ -1863,4 +1863,17 @@ for (const field of ['terminalFitCols', 'terminalFitRows', 'terminalProjectionPe
   }
 }
 
+const fileEntryProbe = structuredClone(resizeProbe);
+fileEntryProbe.payload.snapshot.nodes[0].fileEntries = [{ filePath: '/workspace/original.ts',
+  x: 120, y: 40, width: 80, height: 24, disabled: false, clickable: true }];
+assert.ok(parseWebviewMessage(fileEntryProbe), 'Actual file hit-target observations survive Host parsing.');
+for (const invalid of [null, {}, [{ filePath: '', x: 0, y: 0, width: 20, height: 24, disabled: false, clickable: true }],
+  [{ filePath: '/workspace/original.ts', x: NaN, y: 0, width: 20, height: 24, disabled: false, clickable: true }],
+  [{ filePath: '/workspace/original.ts', x: 0, y: 0, width: 20, height: 24, disabled: 'false', clickable: true }],
+  [{ filePath: '/workspace/original.ts', x: 0, y: 0, width: 20, height: 24, disabled: false }]]) {
+  const malformed = structuredClone(fileEntryProbe);
+  malformed.payload.snapshot.nodes[0].fileEntries = invalid;
+  assert.equal(parseWebviewMessage(malformed), null, 'Incomplete hit-target observations cannot authorize file clicks.');
+}
+
 console.log('protocol webview message tests passed');

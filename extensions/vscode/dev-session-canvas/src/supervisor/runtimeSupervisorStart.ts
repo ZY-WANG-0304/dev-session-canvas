@@ -18,6 +18,7 @@ const execFileAsync = promisify(execFile);
 export const SYSTEMD_COMMAND_TIMEOUT_MS = 4000;
 const TEST_SYSTEMCTL_SHIM_ENV = 'DEV_SESSION_CANVAS_TEST_SYSTEMCTL_SHIM';
 const TEST_NODE_PATH_ENV = 'DEV_SESSION_CANVAS_TEST_NODE_PATH';
+const SMOKE_TEST_MODE_ENV = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
 const SUPERVISOR_PROCESS_ENV = {
   ELECTRON_RUN_AS_NODE: '1',
   ELECTRON_NO_ATTACH_CONSOLE: '1'
@@ -198,6 +199,8 @@ function renderSystemdUserUnit(params: {
     execArgs.push('--runtime-launch-token', params.runtimeLaunchToken);
   }
 
+  // systemd does not inherit the requesting Host's environment.
+  const testMode = process.env[SMOKE_TEST_MODE_ENV]?.trim().toLowerCase();
   return [
     '[Unit]',
     `Description=Dev Session Canvas Runtime Supervisor (${escapeSystemdValue(params.unitName)})`,
@@ -208,6 +211,8 @@ function renderSystemdUserUnit(params: {
     ...Object.entries(SUPERVISOR_PROCESS_ENV).map(
       ([key, value]) => `Environment=${quoteSystemdExecArg(`${key}=${value}`)}`
     ),
+    ...(testMode === '1' || testMode === 'true'
+      ? [`Environment=${quoteSystemdExecArg(`${SMOKE_TEST_MODE_ENV}=1`)}`] : []),
     // WorkingDirectory is a scalar path, not an ExecStart argument list.
     `WorkingDirectory=${escapeSystemdLiteral(params.backend.paths.storageDir)}`,
     `ExecStart=${execArgs.map((value) => quoteSystemdExecArg(value)).join(' ')}`,

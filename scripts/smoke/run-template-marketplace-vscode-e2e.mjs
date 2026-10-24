@@ -1,5 +1,4 @@
 import net from 'node:net';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,19 +13,13 @@ import {
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
-const debugRoot = process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT?.trim() || path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e');
-const hostTmpRoot =
-  process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_HOST_TMP_ROOT?.trim() ||
-  path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e-host-tmp');
+const debugRoot = process.env.DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT?.trim()
+  || process.env.DEV_SESSION_CANVAS_TEMPLATE_MARKETPLACE_VSCODE_E2E_DEBUG_ROOT?.trim()
+  || path.join(projectRoot, '.debug', 'template-marketplace-vscode-e2e');
 const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');
 const fakeAgentProviderPath = path.join(smokeFixturesDir, 'fake-agent-provider');
 const missingAgentProviderPath = path.join(smokeFixturesDir, 'missing-agent-provider');
 const smokeFixturesPath = `${smokeFixturesDir}${path.delimiter}${process.env.PATH ?? ''}`;
-
-process.env.TMPDIR = hostTmpRoot;
-process.env.TMP = process.env.TMPDIR;
-process.env.TEMP = process.env.TMPDIR;
-fs.mkdirSync(process.env.TMPDIR, { recursive: true });
 
 async function main() {
   if (shouldReRunInsideXvfb()) {

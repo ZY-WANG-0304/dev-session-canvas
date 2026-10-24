@@ -1,0 +1,185 @@
+{
+  "localExecutions": [],
+  "activeSurface": "editor",
+  "configuration": {
+    "linkOpenMode": "editorPreview",
+    "terminalShellPath": "/usr/bin/bash",
+    "terminalShellResolutionSource": "default-shell",
+    "terminalInheritEnv": true,
+    "terminalShellArgs": [],
+    "executionShellEnvPatchSource": "posix-login-shell",
+    "executionShellEnvPatchShellFamily": "posix",
+    "executionShellEnvPatchProbeMode": "interactive-login",
+    "executionShellEnvPatchShellPath": "/usr/bin/bash",
+    "executionShellEnvPatchAppliedKeys": []
+  },
+  "sidebar": {
+    "canvasSurface": "visible",
+    "surfaceLocation": "editor",
+    "configuredSurface": "panel",
+    "runtimePersistenceEnabled": true,
+    "notificationBridgeMode": "system",
+    "enabledAttentionSignals": [
+      "bel",
+      "osc9",
+      "osc777",
+      "agentAbnormalExit",
+      "codexAbnormalOutputText"
+    ],
+    "notificationStrongReminderMode": "both",
+    "agentAbnormalOutputTextNotificationMode": "off",
+    "filesFeatureEnabled": false,
+    "filePresentationMode": "lists",
+    "fileNodeDisplayStyle": "minimal",
+    "fileNodeDisplayMode": "icon-path",
+    "filePathDisplayMode": "basename",
+    "terminalShellConfiguredValue": "default",
+    "terminalShellPath": "/usr/bin/bash",
+    "agentCodexCommand": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo/tests/vscode-smoke/fixtures/fake-agent-provider",
+    "agentClaudeCommand": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo/tests/vscode-smoke/fixtures/missing-agent-provider",
+    "nodeCount": 3,
+    "runningExecutionCount": 0,
+    "workspaceTrusted": true,
+    "creatableKinds": [
+      "agent",
+      "terminal",
+      "note"
+    ],
+    "fileFilters": {
+      "includeGlobs": [],
+      "excludeGlobs": []
+    }
+  },
+  "state": {
+    "version": 1,
+    "updatedAt": "2026-10-15T04:54:00.559Z",
+    "nodes": [
+      {
+        "id": "agent-1-235dd4e0-0c35-46b3-8de3-23621dd499ac",
+        "kind": "agent",
+        "title": "Agent 1",
+        "status": "error",
+        "summary": "Execution start was rejected-before-acquire.",
+        "position": {
+          "x": 120,
+          "y": 100
+        },
+        "size": {
+          "width": 560,
+          "height": 430
+        },
+        "metadata": {
+          "agent": {
+            "backend": "node-pty",
+            "lifecycle": "error",
+            "provider": "codex",
+            "launchPreset": "default",
+            "lastLaunchCommandLine": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "runtimeKind": "pty-cli",
+            "resumeSupported": true,
+            "resumeStrategy": "fake-provider",
+            "shellPath": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "history-restored",
+            "liveSession": false,
+            "lastCols": 92,
+            "lastRows": 28,
+            "attentionPending": false,
+            "lastBackendLabel": "Codex",
+            "lastExitMessage": "Execution start was rejected-before-acquire.",
+            "resumeSessionId": "0be66ee9-a82c-43c8-a925-3200a6687d1e",
+            "resumeStoragePath": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo/.debug/vscode-vsix-smoke/smoke-runtime/user-data/User/workspaceStorage/498f8bf7a2991d570cb8a4dbac2a2b49/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-235dd4e0-0c35-46b3-8de3-23621dd499ac",
+            "lastRuntimeError": "Execution start was rejected-before-acquire."
+          }
+        }
+      },
+      {
+        "id": "terminal-2-3dcfc6c3-78cf-4d62-b885-c1eb0d1720ec",
+        "kind": "terminal",
+        "title": "Terminal 2",
+        "status": "closed",
+        "summary": "Terminal stopped.",
+        "position": {
+          "x": 800,
+          "y": 100
+        },
+        "size": {
+          "width": 540,
+          "height": 420
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "closed",
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/tmp/dev-session-canvas-clean-checkout-k840ba/repo",
+            "persistenceMode": "snapshot-only",
+            "attachmentState": "history-restored",
+            "liveSession": false,
+            "lastCols": 64,
+            "lastRows": 20,
+            "attentionPending": false,
+            "lastExitSignal": "SIGHUP",
+            "lastExitMessage": "Terminal stopped.",
+            "terminalHistoryDiscarded": true
+          }
+        }
+      },
+      {
+        "id": "note-3-74ce86e7-940c-4b79-8b3f-26082092b51a",
+        "kind": "note",
+        "title": "Note 3",
+        "status": "ready",
+        "summary": "Waiting for note content.",
+        "position": {
+          "x": 760,
+          "y": 580
+        },
+        "size": {
+          "width": 380,
+          "height": 400
+        },
+        "metadata": {
+          "note": {
+            "content": ""
+          }
+        }
+      }
+    ],
+    "edges": [],
+    "groups": [],
+    "nextGroupSequence": 1,
+    "fileReferences": [],
+    "suppressedFileActivityEdgeIds": [],
+    "suppressedAutomaticFileArtifactNodeIds": []
+  },
+  "surfaceMode": {
+    "editor": "active",
+    "panel": "standby"
+  },
+  "surfaceReady": {
+    "editor": true,
+    "panel": false
+  },
+  "surfaceLifecycle": {
+    "editor": {
+      "generation": 38,
+      "mode": "active",
+      "ready": true,
+      "bootstrapAck": true,
+      "frameId": "frame-fb7af95e-0921-42e5-a9f6-f0d5b7a024a0",
+      "terminalReadSettlementV1": true,
+      "terminalLocalSettlementV1": true,
+      "terminalLocalOutputCreditV1": true,
+      "terminalAvailableReceiptV1": true,
+      "terminalCurrentStateV1": true
+    },
+    "panel": {
+      "generation": 63,
+      "mode": "standby",
+      "ready": false,
+      "bootstrapAck": false
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "base": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+  "implementation_sha256": {
+    "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718",
+    "tests/vscode-smoke/extension-tests.cjs": "3599b5e380e76e9aebb385d68b01a058e2b0da3add6dda66d8f7dba90af98c66",
+    "scripts/test/test-smoke-runtime-retirement.mjs": "3f6e1e24f87c5d10f57afb26265ebb3db887bc60a3da147ba12f2d41a9127f28",
+    "scripts/test/test-supervisor-execution-owner-wiring.mjs": "f9ff8a6066f295936b8a859f387a292b5f05962ee59edb9fc7fd3a03cca0ba55",
+    "extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts": "d9a9a444a332f2208b4abb0a818070b6763800b5fc211ed40a2feeb647aa90f3",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "deca17ae00666a1e6b7f1402cf0445f240a191ebd49d1794dc3481dd3271da96",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "52b1c8de08b7f631a3d7a218be2c74fd898f0986a10d25ffe99456b8cdd863b3",
+    "package.json": "9869b3f1aefa49b2cec333c718916f83351df5e1e20f6792601311513b4cd371"
+  },
+  "local_validation": {
+    "fixture": "17/17",
+    "supervisor": "136/136",
+    "original_wait_boundary": "36/36",
+    "typecheck": "exit0",
+    "build_with_prior_fixed_assets": "exit0",
+    "old_named_call_negative": "exit1: Old storage must retire before any original start"
+  },
+  "log_sha256": {
+    "retirement-regression-final.log": "a107d3ef2b731b111def4a7e6bdc67b8c1d8115a99a4fc1f8fe9a995da7aa82a",
+    "retirement-old-negative.log": "85b39df61e3562035ca162313488fc336b8e8627e900b6d680296ff41c96dbe5",
+    "retirement-supervisor.log": "7257698ab173e5b1288596467548040ebe13a1248f098e8079064cedfae9a511",
+    "retirement-typecheck.log": "9e07ea2247464a7a81143266a684bf0a1b52f4dafc77baed494a185140dfcb60",
+    "retirement-wait-boundary.log": "b8bf4e9d60f6a70ed1a7b2b3e4c6dd1969c0f4423e846e8e9f0738d1533c8681",
+    "retirement-build.log": "c41e2a07c7ee03c1c3be6e9aec31eb379ed97812ce9adbe95831ed2d4f98e229"
+  },
+  "limitations": [
+    "本地依赖使用锁定安装副本，不是新default npmci。",
+    "本地build复用原固定六资产，不是本轮同ref/run完整门禁。",
+    "原生延迟删除与完整组合发布门禁待运行。"
+  ],
+  "original_log_sha256": {
+    "retirement-regression-final.log": "a107d3ef2b731b111def4a7e6bdc67b8c1d8115a99a4fc1f8fe9a995da7aa82a",
+    "retirement-old-negative.log": "85b39df61e3562035ca162313488fc336b8e8627e900b6d680296ff41c96dbe5",
+    "retirement-supervisor.log": "7257698ab173e5b1288596467548040ebe13a1248f098e8079064cedfae9a511",
+    "retirement-typecheck.log": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+    "retirement-wait-boundary.log": "b8bf4e9d60f6a70ed1a7b2b3e4c6dd1969c0f4423e846e8e9f0738d1533c8681",
+    "retirement-build.log": "d1998884acaf75a7429c0c2399ffb2398d52770dc27aa5880466313ebe6ddb8f"
+  },
+  "logNormalization": "入库日志移除行尾空白和EOF多余空行；原sha保留，语义不变。"
+}

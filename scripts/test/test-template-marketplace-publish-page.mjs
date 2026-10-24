@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { chromium } from 'playwright';
-import { createServer } from 'vite';
+import { createServer, preview } from 'vite';
 import { unzipSync, zipSync } from 'fflate';
 
 const projectRoot = process.cwd();
@@ -51,7 +51,13 @@ const fixtures = createMarketplaceFixtures();
 let signedIn = false;
 const requests = [];
 
-const server = await createServer({
+const builtAssets = process.env.DEV_SESSION_CANVAS_MARKETPLACE_BROWSER_ASSETS;
+if (process.env.DEV_SESSION_CANVAS_GATE_PLAN) assert(builtAssets, 'Formal Marketplace browser must consume frontend-build');
+const server = builtAssets ? await preview({
+  configFile: path.join(appRoot, 'vite.config.ts'), root: appRoot,
+  build: { outDir: path.resolve(builtAssets) },
+  preview: { host: '127.0.0.1', port: 0, strictPort: false }
+}) : await createServer({
   configFile: path.join(appRoot, 'vite.config.ts'),
   root: appRoot,
   server: {
@@ -64,7 +70,7 @@ const server = await createServer({
 let browser;
 
 try {
-  await server.listen();
+  if (!builtAssets) await server.listen();
   const localUrl = server.resolvedUrls?.local?.find((url) => url.startsWith('http://127.0.0.1'));
   assert.ok(localUrl, 'Expected Vite to provide a local URL.');
 
@@ -83,7 +89,8 @@ try {
   console.log('marketplace browser page e2e passed');
 } finally {
   await browser?.close();
-  await server.close();
+  if (builtAssets) await new Promise((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve()));
+  else await server.close();
 }
 
 async function verifyListPage(page, localUrl) {
@@ -181,7 +188,7 @@ async function verifyPublishVersionPage(page, localUrl) {
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Publish a new version' }).waitFor();
   await assertVisibleText(page, 'Signed in as codex-tester');
-  await assertVisibleText(page, 'Target listing');
+  await assertVisibleText(page, 'TARGET LISTING');
   await assertVisibleText(page, 'Review Loop');
   await assertVisibleText(page, 'Current v2');
   await assertVisibleText(page, 'Installed users see an update badge');

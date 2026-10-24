@@ -1,0 +1,1286 @@
+[
+  {
+    "sample": 2,
+    "iteration": 1,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035452747,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035452809,
+      "stage": "wait-success",
+      "elapsedMs": 62,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-1af87957-6ac8-496e-a361-5af3473322cb",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "71710cec994dcc15609a66a9d7a1e9049bc7edde59efd347ca060ad13f504508"
+  },
+  {
+    "sample": 2,
+    "iteration": 2,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035506634,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-9ad51ec3-ff35-4229-a340-40e3c0712e78",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035506634,
+      "stage": "wait-success",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-9ad51ec3-ff35-4229-a340-40e3c0712e78",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "9319a2e45f536a9c9ce0062383406dad8dd9a6e1e8f3554d2b0b7c643c1fbec9"
+  },
+  {
+    "sample": 2,
+    "iteration": 3,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035561336,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035561538,
+      "stage": "wait-success",
+      "elapsedMs": 202,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-9099d5a1-90db-4348-840c-101098c896d0",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "3813e32bbb75e8c32a8eef2b90bbec06c073de1bcffcc0ceb246bff39357e603"
+  },
+  {
+    "sample": 2,
+    "iteration": 4,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035615257,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035615660,
+      "stage": "wait-success",
+      "elapsedMs": 403,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-91754f5f-df67-476f-90e1-98aded45d57d",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "afcbd32d03a5a3980417048596b2e36f0d7865e964deca179cc9aa5bf253a040"
+  },
+  {
+    "sample": 2,
+    "iteration": 5,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035667427,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035667480,
+      "stage": "wait-success",
+      "elapsedMs": 53,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-a675ed8d-5096-40bd-9ba5-7f49cf8a8018",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "69d1ca5c2d5bb16491ecc9703f91f53e658757f21ba6ac67694e12c0f6646fa0"
+  },
+  {
+    "sample": 2,
+    "iteration": 6,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035723146,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035723407,
+      "stage": "wait-success",
+      "elapsedMs": 261,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-f9c180b4-5344-47e9-a94e-d624bd312a64",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "e75fcd56d0b190b60eb8047e5ff04a0f782820c732d18915da942b2859c57285"
+  },
+  {
+    "sample": 3,
+    "iteration": 1,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035458288,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035458491,
+      "stage": "wait-success",
+      "elapsedMs": 203,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-8479c9f8-3b24-435c-b4c7-0d36eba93c12",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "56f86f4e7c9f79831a2836f4fabacf280e234b3efc2bf48b5e4c0d6facffa31d"
+  },
+  {
+    "sample": 3,
+    "iteration": 2,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035511092,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035511395,
+      "stage": "wait-success",
+      "elapsedMs": 303,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-3082995f-fdad-4175-a63e-96435d02e508",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "1a2d3b8f36043d4525a2965236903597b52d1ad35d82fedb9670d32712f451bd"
+  },
+  {
+    "sample": 3,
+    "iteration": 3,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035563741,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035564044,
+      "stage": "wait-success",
+      "elapsedMs": 303,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-43e236ff-59ec-49fc-a786-c909665028d0",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "44262931beef2565a12e8dc9f04fe501d7926c16168bcf574a9694a53e63bd88"
+  },
+  {
+    "sample": 3,
+    "iteration": 4,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035615782,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035615886,
+      "stage": "wait-success",
+      "elapsedMs": 104,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-3fc1a028-97f5-4aee-aef2-6e972f2635e3",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "9ad1cb5f44f0b86db05c0c8b162905dd5344efff288d87561508bf786ba07882"
+  },
+  {
+    "sample": 3,
+    "iteration": 5,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035668247,
+      "stage": "wait-start",
+      "elapsedMs": 1,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035668404,
+      "stage": "wait-success",
+      "elapsedMs": 158,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-bab9601e-eef1-493b-b28d-277b12283ee5",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "144ac1ee92f5c08cc6a780156dc5bb6feb03d20d369c368a259071834c91bf43"
+  },
+  {
+    "sample": 3,
+    "iteration": 6,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035720948,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035721151,
+      "stage": "wait-success",
+      "elapsedMs": 203,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-36a570c4-3138-47b7-baa2-e1658607d136",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "aa830ca10b91b8d08ed21963c21728e4e6d0918d13c453de00ab3327a31e95a6"
+  },
+  {
+    "sample": 4,
+    "iteration": 1,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035445706,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035445756,
+      "stage": "wait-success",
+      "elapsedMs": 50,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-6ef00d3f-efe6-4078-977a-59f186e510ae",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "879e954b22c206ee76fb59a60a54b65b777af84ce983eed6dbf12e8bcb19d9d0"
+  },
+  {
+    "sample": 4,
+    "iteration": 2,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035496811,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035496912,
+      "stage": "wait-success",
+      "elapsedMs": 101,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-f5b20b5c-ed11-4680-b5c6-e7609b9578c1",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "c5f8adfc1f671a4c247dde1d6718b2078617decd749ba022be01cab92ddd5e16"
+  },
+  {
+    "sample": 4,
+    "iteration": 3,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035547132,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035547233,
+      "stage": "wait-success",
+      "elapsedMs": 101,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": true,
+          "frameId": "frame-9aa11a68-680a-4b81-87f4-cfc973a53aa9",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "b3d3479b1c28920d179382ddab7a5d7e5fcb5d31cfab7b105fc0928a7982f287"
+  },
+  {
+    "sample": 4,
+    "iteration": 4,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035597666,
+      "stage": "wait-start",
+      "elapsedMs": 1,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035597768,
+      "stage": "wait-success",
+      "elapsedMs": 103,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-7b39eeec-3d7d-4af7-b5b0-7404ea43d249",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "2b1be5d5efd304fbe16c320f424dcc4b94de9f665f5e1a16d3c60b6c2e687fc9"
+  },
+  {
+    "sample": 4,
+    "iteration": 5,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035648744,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035648847,
+      "stage": "wait-success",
+      "elapsedMs": 103,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-6b6cf9b3-a9d3-433c-9eb7-2af9fe5e487c",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "dd521b107699f7d9592b9d1b6fa66fc6c3edcc4d1b1856236f146f50bea651d4"
+  },
+  {
+    "sample": 4,
+    "iteration": 6,
+    "exit": 0,
+    "complete_restricted_pass": true,
+    "first_editor_wait": {
+      "time": 1792035699173,
+      "stage": "wait-start",
+      "elapsedMs": 0,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": false,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": false,
+          "bootstrapAck": false
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "first_editor_result": {
+      "time": 1792035699325,
+      "stage": "wait-success",
+      "elapsedMs": 152,
+      "target": "editor",
+      "active": "editor",
+      "modes": {
+        "editor": "active"
+      },
+      "ready": {
+        "editor": true,
+        "panel": false
+      },
+      "lifecycle": {
+        "editor": {
+          "generation": 2,
+          "mode": "active",
+          "ready": true,
+          "bootstrapAck": false,
+          "frameId": "frame-37d617b9-8cd9-474e-aedf-e24d15e5dfc5",
+          "terminalReadSettlementV1": true,
+          "terminalLocalSettlementV1": true,
+          "terminalLocalOutputCreditV1": true,
+          "terminalAvailableReceiptV1": true,
+          "terminalCurrentStateV1": true
+        },
+        "panel": {
+          "generation": 0,
+          "ready": false,
+          "bootstrapAck": false
+        }
+      },
+      "editorVisible": true,
+      "editorActive": true
+    },
+    "log_sha256": "cc6356ef632abc492bad7e64cc3165ff0accab83156c9f77e016f18b7b73e494"
+  }
+]

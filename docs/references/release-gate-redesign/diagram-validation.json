@@ -1,0 +1,135 @@
+{
+  "scope": "selected-design-not-implemented-ci",
+  "skill": "fireworks-tech-graph 1.2.0",
+  "diagrams": [
+    {
+      "name": "validation-flow",
+      "check": {
+        "checks": {
+          "collisions": {
+            "details": [],
+            "ok": true
+          },
+          "composition": {
+            "details": [],
+            "ok": true
+          },
+          "geometry": {
+            "details": [],
+            "ok": true
+          },
+          "markers": {
+            "details": [],
+            "ok": true
+          },
+          "xml": {
+            "details": [],
+            "ok": true
+          }
+        },
+        "ok": true
+      },
+      "width": 1800,
+      "height": 1460,
+      "renderer": "cairosvg-2.9.1-existing-local-environment",
+      "visualReview": "passed: original PNG中文完整、箭头/间距/图例/无裁切已逐图查看",
+      "composition": {
+        "bridged_crossings": 0,
+        "max_route_stretch": 1.0,
+        "minimum_container_gutter": null,
+        "minimum_node_gap": 86.0,
+        "shortest_segment": 24.0,
+        "total_bends": 3
+      },
+      "typographyComplete": true,
+      "svgSha256": "a319d82a32fce4458b104bf2e196c15571c66c1ce88048505403d1de01f1c38d",
+      "pngSha256": "27807906f20c0f60f9173d09ce83d25a26cd0a2f92680f68369d926441005102"
+    },
+    {
+      "name": "package-flow",
+      "check": {
+        "checks": {
+          "collisions": {
+            "details": [],
+            "ok": true
+          },
+          "composition": {
+            "details": [],
+            "ok": true
+          },
+          "geometry": {
+            "details": [],
+            "ok": true
+          },
+          "markers": {
+            "details": [],
+            "ok": true
+          },
+          "xml": {
+            "details": [],
+            "ok": true
+          }
+        },
+        "ok": true
+      },
+      "width": 1800,
+      "height": 1714,
+      "renderer": "cairosvg-2.9.1-existing-local-environment",
+      "visualReview": "passed: original PNG中文完整、箭头/间距/图例/无裁切已逐图查看",
+      "composition": {
+        "bridged_crossings": 0,
+        "max_route_stretch": 1.12,
+        "minimum_container_gutter": null,
+        "minimum_node_gap": 96.0,
+        "shortest_segment": 24.0,
+        "total_bends": 4
+      },
+      "typographyComplete": true,
+      "svgSha256": "20f40622f81e963282caded8ddae27b20e02b05d4260347ace3b0b902298a10f",
+      "pngSha256": "ddfc5f5bbbe27fac9f7ffbfb9b98d1ff232735f079191f29306e080901851d5b"
+    },
+    {
+      "name": "publish-flow",
+      "check": {
+        "checks": {
+          "collisions": {
+            "details": [],
+            "ok": true
+          },
+          "composition": {
+            "details": [],
+            "ok": true
+          },
+          "geometry": {
+            "details": [],
+            "ok": true
+          },
+          "markers": {
+            "details": [],
+            "ok": true
+          },
+          "xml": {
+            "details": [],
+            "ok": true
+          }
+        },
+        "ok": true
+      },
+      "width": 1800,
+      "height": 1800,
+      "renderer": "cairosvg-2.9.1-existing-local-environment",
+      "visualReview": "passed: original PNG中文完整、箭头/间距/图例/无裁切已逐图查看",
+      "composition": {
+        "bridged_crossings": 0,
+        "max_route_stretch": 1.0,
+        "minimum_container_gutter": null,
+        "minimum_node_gap": 96.0,
+        "shortest_segment": 20.4,
+        "total_bends": 8
+      },
+      "typographyComplete": true,
+      "svgSha256": "d3ddd7ed38234879b2928d85183a0d717badba83e1c58b1ec7fea0e5f120204c",
+      "pngSha256": "aa89f222b0fda058a6e79323d63724fb36bb558e83772d5f45a69d542491d8fc"
+    }
+  ]
+}

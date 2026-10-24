@@ -4,15 +4,24 @@ import { pathToFileURL } from 'url';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import xtermHeadless from '@xterm/headless';
 import { expect, test } from '@playwright/test';
+import { applyLocalCjkFont } from './fixtures/screenshot-fonts/load.mjs';
 import { transform } from 'esbuild';
 import terminalResize from '../vscode-smoke/terminal-resize.cjs';
+import { prepareInstalledLocalizedStop } from '../../scripts/smoke/installed-ui-observation.mjs';
+import { withinDeadline } from '../../scripts/gates/deadline.mjs';
 
 const { Terminal: HeadlessTerminal } = xtermHeadless;
 const PRIMARY_ACCELERATOR_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-const harnessUrl = pathToFileURL(
+const harnessLocation = pathToFileURL(
   path.join(process.cwd(), 'tests', 'playwright', 'harness', 'webview-harness.html')
-).href;
+);
+if (process.env.DEV_SESSION_CANVAS_BROWSER_ASSETS) {
+  harnessLocation.searchParams.set('bundle', pathToFileURL(
+    `${path.resolve(process.env.DEV_SESSION_CANVAS_BROWSER_ASSETS)}${path.sep}`
+  ).href);
+}
+const harnessUrl = harnessLocation.href;
 const pageDiagnosticsByPage = new WeakMap();
 const TERMINAL_VIEWPORT_ZOOM = 1.6;
 const NODE_FOCUS_ANIMATION_DURATION_MS = 280;
@@ -281,21 +290,6 @@ test.afterEach(async ({ page }, testInfo) => {
 test('webview bundle emits ready and matches the baseline screenshot', async ({ page }) => {
   await openHarness(page);
   await applyWorkbenchTheme(page, 'dark');
-  if (process.platform === 'linux') {
-    // Keep the baseline's CJK glyphs independent of the runner's system fonts.
-    const fontRoot = path.join(process.cwd(), 'tests/playwright/fixtures/screenshot-fonts');
-    const characters = (await fs.readFile(path.join(fontRoot, 'characters.txt'), 'utf8')).trim();
-    const unicodeRange = [...characters].map(character => `U+${character.codePointAt(0).toString(16)}`).join(',');
-    const bytes = await fs.readFile(path.join(fontRoot, 'cjk-regular.woff'));
-    await page.addStyleTag({ content: `@font-face { font-family: 'DSC Screenshot CJK'; font-weight: 400; src: url(data:font/woff;base64,${bytes.toString('base64')}) format('woff'); unicode-range: ${unicodeRange}; }` });
-    await page.evaluate(async text => {
-      const loaded = await document.fonts.load('400 16px "DSC Screenshot CJK"', text);
-      if (loaded.length !== 1) throw new Error('Screenshot CJK font did not load');
-      for (const name of ['--vscode-font-family', '--vscode-editor-font-family']) {
-        document.body.style.setProperty(name, `'DSC Screenshot CJK', 'Segoe UI', sans-serif`);
-      }
-    }, characters);
-  }
   await bootstrap(page, createCanvasScreenshotState());
 
   await expect(nodeById(page, 'agent-1').locator('[data-probe-field="provider"]')).toHaveCount(0);
@@ -990,9 +984,9 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
           titleBlockWidthToken: getComputedStyle(header)
             .getPropertyValue('--pane-gallery-root-running-title-block-width')
             .trim(),
-          titleBlockOpacityToken: getComputedStyle(header)
+          titleBlockOpacityToken: Number(getComputedStyle(header)
             .getPropertyValue('--pane-gallery-root-running-title-block-opacity')
-            .trim(),
+            .trim()),
           titleBlockClipped: getComputedStyle(header).overflow === 'hidden',
           titleBlockTop: getComputedStyle(header, '::after').top,
           titleBlockBottom: getComputedStyle(header, '::after').bottom,
@@ -1010,7 +1004,7 @@ test('pane gallery renders dynamic workspace roots with canvas controls and ligh
       titleBlockAnimationDuration: '3s',
       titleBlockFilter: 'none',
       titleBlockWidthToken: '16px',
-      titleBlockOpacityToken: '0.82',
+      titleBlockOpacityToken: 0.82,
       titleBlockClipped: true,
       titleBlockTop: '0px',
       titleBlockBottom: '0px',
@@ -2284,6 +2278,107 @@ test('minimal file nodes render only the primary label and open the target file 
     nodeId: 'file-src-main',
     filePath: '/workspace/src/main.ts'
   });
+});
+
+for (const fileNodeDisplayStyle of ['minimal', 'card']) {
+  test(`smoke file clicks preserve repeated opens and public dragging in ${fileNodeDisplayStyle} view`, async ({ page }) => {
+    await openHarness(page);
+    await applyWorkbenchTheme(page, 'dark');
+    await bootstrap(page, createFileNodeState(), createRuntimeContext({ fileNodeDisplayStyle }));
+
+    const fileNode = nodeById(page, 'file-src-main');
+    await expect(fileNode.locator('.file-node-action')).toBeVisible();
+    await settleWebview(page, 3);
+
+    for (let click = 0; click < 2; click += 1) {
+      await clearPostedMessages(page);
+      await performTestDomAction(page, {
+        kind: 'clickFileEntry',
+        nodeId: 'file-src-main',
+        filePath: '/workspace/src/main.ts'
+      });
+      expect(pageDiagnosticsByPage.get(page).pageErrors).toEqual([]);
+      const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+      expect(message.payload).toEqual({ nodeId: 'file-src-main', filePath: '/workspace/src/main.ts' });
+      await expect(page.locator('.canvas-shell .react-flow')).toBeVisible();
+    }
+
+    // A smoke click must finish the real drag listener lifecycle. Verify a
+    // subsequent public gesture still moves the file without opening it.
+    const box = await fileNode.locator('.file-node-action').boundingBox();
+    expect(box).not.toBeNull();
+    await clearPostedMessages(page);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    try {
+      await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 80, { steps: 12 });
+    } finally {
+      await page.mouse.up();
+    }
+    const move = await waitForPostedMessageByType(page, 'webview/moveNode');
+    expect(move.payload.id).toBe('file-src-main');
+    expect(move.payload.position.x).not.toBe(720);
+    expect(move.payload.position.y).not.toBe(200);
+    expect(await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages()
+      .filter(entry => entry.type === 'webview/openCanvasFile'))).toEqual([]);
+    expect(pageDiagnosticsByPage.get(page).pageErrors).toEqual([]);
+  });
+}
+
+test('smoke file clicks reject invisible disabled and obstructed targets and emit one complete primary pointer click', async ({ page }) => {
+  await openHarness(page);
+  await bootstrap(page, createFileNodeState(), createRuntimeContext({ fileNodeDisplayStyle: 'minimal' }));
+  const button = nodeById(page, 'file-src-main').locator('.file-node-action');
+  await expect(button).toBeVisible();
+  const action = { kind: 'clickFileEntry', nodeId: 'file-src-main', filePath: '/workspace/src/main.ts' };
+  for (const invalid of ['offscreen', 'disabled', 'obstructed']) {
+    await button.evaluate((target, kind) => {
+      window.__ciOriginalFileStyle = target.getAttribute('style');
+      if (kind === 'offscreen') target.style.transform = 'translateX(10000px)';
+      if (kind === 'disabled') target.disabled = true;
+      if (kind === 'obstructed') {
+        const box = target.getBoundingClientRect(), overlay = document.createElement('div');
+        overlay.id = 'ci-file-hit-obstruction';
+        Object.assign(overlay.style, { position: 'fixed', left: `${box.x}px`, top: `${box.y}px`,
+          width: `${box.width}px`, height: `${box.height}px`, zIndex: '2147483647' });
+        document.body.append(overlay);
+      }
+    }, invalid);
+    await clearPostedMessages(page);
+    const requestId = `invalid-file-click-${invalid}`;
+    await page.evaluate(({ requestId, action }) => window.__devSessionCanvasHarness.dispatchHostMessage({
+      type: 'host/testDomAction', payload: { requestId, action } }), { requestId, action });
+    await expect.poll(() => page.evaluate(requestId => window.__devSessionCanvasHarness.getPostedMessages()
+      .find(message => message.type === 'webview/testDomActionResult' && message.payload.requestId === requestId)?.payload.ok, requestId)).toBe(false);
+    expect(await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages()
+      .filter(message => message.type === 'webview/openCanvasFile'))).toEqual([]);
+    await button.evaluate(target => {
+      if (window.__ciOriginalFileStyle === null) target.removeAttribute('style');
+      else target.setAttribute('style', window.__ciOriginalFileStyle);
+      target.disabled = false; document.getElementById('ci-file-hit-obstruction')?.remove();
+    });
+  }
+  await button.evaluate(target => {
+    window.__ciFileClickEvents = [];
+    // Observe at window capture before d3's real window mouseup listener
+    // legitimately stops propagation to the file button.
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) window.addEventListener(type,
+      event => { if (event.target === target || target.contains(event.target)) window.__ciFileClickEvents.push({
+        type, view: event.view === window, pointerId: event.pointerId, isPrimary: event.isPrimary,
+        pointerType: event.pointerType, button: event.button, buttons: event.buttons }); }, true);
+  });
+  await clearPostedMessages(page);
+  await performTestDomAction(page, action);
+  const events = await page.evaluate(() => window.__ciFileClickEvents);
+  expect(events.map(event => event.type)).toEqual(['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+  expect(events.every(event => event.view && event.button === 0)).toBe(true);
+  expect(events.map(event => event.buttons)).toEqual([1, 1, 0, 0, 0]);
+  expect(events[0].pointerId).toBe(events[2].pointerId);
+  expect(events[0].isPrimary && events[2].isPrimary).toBe(true);
+  expect(events[0].pointerType).toBe('mouse');
+  const message = await waitForPostedMessageByType(page, 'webview/openCanvasFile');
+  expect(message.payload).toEqual({ nodeId: 'file-src-main', filePath: '/workspace/src/main.ts' });
+  expect(pageDiagnosticsByPage.get(page).pageErrors).toEqual([]);
 });
 
 test('card file nodes do not fall back to owner counts when no secondary path label exists', async ({ page }) => {
@@ -8708,6 +8803,112 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .node-overview-title'))
     .toBe('1');
+});
+
+test('installed localized Stop preparation publicly focuses the original overview Terminal before one visible action', async ({ page }) => {
+  await openHarness(page);
+  const state = createDistantOverviewState();
+  await bootstrap(page, state);
+  await page.locator('.react-flow__controls-fitview').click();
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'true');
+  const originalID = 'installed-locale-original';
+  const terminal = createLiveExecutionNodeState('terminal').nodes[0];
+  const original = { ...terminal, id: originalID, title: '原中文 Terminal',
+    position: { x: 7200, y: 9200 } };
+  const evidence = [], deadline = Date.now() + 20000;
+  const result = await prepareInstalledLocalizedStop({ frame: page, deadline,
+    closedTerminalIDs: state.nodes.filter(node => node.kind === 'terminal').map(node => node.id),
+    create: async limit => {
+      expect(limit).toBe(deadline);
+      await bootstrap(page, { ...state, nodes: [...state.nodes, original] });
+      await expect(nodeById(page, originalID).getByRole('button', { name: '停止', exact: true })).toBeHidden();
+    }, record: step => evidence.push(step) });
+  expect(result.nodeID).toBe(originalID);
+  expect(result.deadline).toBe(deadline);
+  expect(evidence.filter(step => ['original-node-bound', 'localized-stop-interactive'].includes(step.phase))
+    .map(step => step.phase)).toEqual(['original-node-bound', 'localized-stop-interactive']);
+  expect(evidence.find(step => step.phase === 'original-node-bound').overview).toBe('true');
+  await expect(page.locator('.canvas-shell')).toHaveAttribute('data-canvas-overview-mode', 'false');
+  await expect(result.stop).toBeVisible();
+  await expect(result.stop).toBeEnabled();
+  const readStops = () => readPostedMessagesByType(page, 'webview/stopExecutionSession');
+  await expect.poll(readStops).toHaveLength(0);
+  await result.stop.click({ timeout: Math.max(1, deadline - Date.now()) });
+  await expect.poll(readStops).toEqual([
+    expect.objectContaining({ payload: expect.objectContaining({ nodeId: originalID }) })
+  ]);
+});
+
+test('installed locale waits for the exact closed Terminal set before one creation in the original deadline', async ({ page }) => {
+  await openHarness(page);
+  const state = createMultiLiveExecutionNodeState('terminal', 2);
+  for (const node of state.nodes) {
+    node.status = 'stopped';
+    node.metadata.terminal.liveSession = false;
+    node.metadata.terminal.lifecycle = 'stopped';
+  }
+  const closedTerminalIDs = state.nodes.map(node => node.id);
+  const originalID = 'installed-locale-after-restore';
+  const original = { ...createLiveExecutionNodeState('terminal').nodes[0], id: originalID };
+  const ids = () => page.locator('[data-node-kind="terminal"][data-node-id]')
+    .evaluateAll(nodes => nodes.map(node => node.getAttribute('data-node-id')));
+  await expect(page.locator('.canvas-shell')).toHaveCount(1);
+  expect(await ids()).toEqual([]);
+  const evidence = [], deadline = Date.now() + 20000;
+  let creates = 0;
+  const result = await prepareInstalledLocalizedStop({ frame: page, closedTerminalIDs, deadline,
+    record: async step => {
+      evidence.push(step);
+      if (step.phase === 'restored-baseline-observation' && step.ids.length === 0) {
+        expect(creates).toBe(0);
+        await bootstrap(page, state);
+      }
+    }, create: async limit => {
+      expect(limit).toBe(deadline);
+      expect(await ids()).toEqual(closedTerminalIDs);
+      creates++;
+      await updateHostState(page, { ...state, nodes: [...state.nodes, original] });
+    } });
+  expect(creates).toBe(1);
+  expect(result.nodeID).toBe(originalID);
+  expect(result.deadline).toBe(deadline);
+  expect(evidence.find(step => step.phase === 'restored-baseline-observation').ids).toEqual([]);
+  expect(evidence.find(step => step.phase === 'restored-baseline-ready').ids).toEqual(closedTerminalIDs);
+  expect(evidence.find(step => step.phase === 'original-node-bound').existing).toEqual(closedTerminalIDs);
+  expect(await ids()).toEqual([...closedTerminalIDs, originalID]);
+  await expect(result.stop).toBeVisible();
+  expect(await readPostedMessagesByType(page, 'webview/stopExecutionSession')).toHaveLength(0);
+  await result.stop.click({ timeout: deadline - Date.now() });
+  await expect.poll(() => readPostedMessagesByType(page, 'webview/stopExecutionSession')).toEqual([
+    expect.objectContaining({ payload: expect.objectContaining({ nodeId: originalID }) })
+  ]);
+});
+
+test('installed locale keeps genuine multiple creations rejected after the original Terminal set restores', async ({ page }) => {
+  await openHarness(page);
+  const state = createMultiLiveExecutionNodeState('terminal', 2);
+  const closedTerminalIDs = state.nodes.map(node => node.id);
+  const extraNodes = ['installed-locale-new-one', 'installed-locale-new-two'].map((id, index) => ({
+    ...createLiveExecutionNodeState('terminal').nodes[0], id, position: { x: 120 + (index + 2) * 620, y: 140 }
+  }));
+  const evidence = [], deadline = Date.now() + 20000;
+  let creates = 0;
+  await expect(prepareInstalledLocalizedStop({ frame: page, closedTerminalIDs, deadline,
+    record: async step => {
+      evidence.push(step);
+      if (step.phase === 'restored-baseline-observation' && step.ids.length === 0) {
+        expect(creates).toBe(0);
+        await bootstrap(page, state);
+      }
+    }, create: async limit => {
+      expect(limit).toBe(deadline); creates++;
+      await updateHostState(page, { ...state, nodes: [...state.nodes, ...extraNodes] });
+    } })).rejects.toThrow('Public creation produced multiple ambiguous Terminal subjects');
+  expect(creates).toBe(1);
+  expect(evidence.at(-1).phase).toBe('post-create-observation');
+  expect(evidence.at(-1).ids).toEqual([...closedTerminalIDs, ...extraNodes.map(node => node.id)]);
+  expect(evidence.some(step => ['original-node-bound', 'localized-stop-interactive'].includes(step.phase))).toBe(false);
+  expect(await readPostedMessagesByType(page, 'webview/stopExecutionSession')).toHaveLength(0);
 });
 
 test('minimap wheel honors the dynamic fit view min zoom', async ({ page }) => {
@@ -16336,6 +16537,7 @@ for (const executionKind of ['agent', 'terminal']) {
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
     await waitForExecutionTerminalReady(page, nodeId);
+    const projectionDeadline = Date.now() + 40_000;
     await dispatchExecutionOutput(page, {
       nodeId,
       kind: executionKind,
@@ -16356,8 +16558,9 @@ for (const executionKind of ['agent', 'terminal']) {
       serializedTerminalState: coveringState
     });
     const terminalRows = nodeById(page, nodeId).locator('.xterm-rows');
-    await expect(terminalRows).toContainText(marker, { timeout: 40_000 });
-    let visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    await expect(terminalRows).toContainText(marker, { timeout: projectionDeadline - Date.now() });
+    let visibleText = (await waitForLocalTerminalProjection(page, nodeId, nextSessionId, projectionDeadline))
+      .terminalVisibleLines.join('\n');
     expect((visibleText.match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
 
     await dispatchExecutionOutput(page, {
@@ -16378,10 +16581,57 @@ for (const executionKind of ['agent', 'terminal']) {
       outputSequence: 3,
       persisted: true
     });
-    await settleWebview(page, 8);
-
-    visibleText = (await readProbeNode(page, nodeId, 0)).terminalVisibleLines.join('\n');
+    visibleText = (await waitForLocalTerminalProjection(page, nodeId, nextSessionId, projectionDeadline))
+      .terminalVisibleLines.join('\n');
     expect((visibleText.match(new RegExp(repeatedMarker, 'gu')) ?? [])).toHaveLength(2);
+  });
+
+  test(`${executionKind} local sequence probe waits for the original projection and rejects a stale session or expired deadline`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`, executionSessionId = `${executionKind}-controlled-local`;
+    const marker = 'ORIGINAL-LOCAL-PROJECTION-ONCE';
+    const coveringState = await createSerializedTerminalStateFromOutput(`${marker}\r\n`);
+    coveringState.outputSequence = 1;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await dispatchExecutionOutput(page, { nodeId, kind: executionKind, chunk: `${marker}\r\n`,
+      executionSessionId, outputStartSequence: 1, outputSequence: 1, persisted: true });
+    await expect(nodeById(page, nodeId).locator('.xterm-rows')).toContainText(marker);
+
+    await holdXtermParser(page);
+    let observation, released = false;
+    try {
+      await dispatchExecutionSnapshot(page, { nodeId, kind: executionKind, output: '',
+        executionSessionId, outputSequence: 1, serializedTerminalState: coveringState });
+      await expect.poll(() => page.evaluate(() => window.__slowSnapshotWrite.pending())).toBe(1);
+      const pending = await readProbeNode(page, nodeId, 0);
+      expect(pending.terminalExecutionSessionId).toBe(executionSessionId);
+      expect(pending.terminalProjectionPending).toBe(true);
+      expect(pending.terminalVisibleLines.join('\n')).not.toContain(marker);
+      await expect(waitForLocalTerminalProjection(page, nodeId, executionSessionId, Date.now() + 150))
+        .rejects.toThrow(/Original local terminal projection.*deadline exhausted/);
+
+      await clearPostedMessages(page);
+      let completed = false;
+      const deadline = Date.now() + 5000;
+      observation = waitForLocalTerminalProjection(page, nodeId, executionSessionId, deadline);
+      void observation.then(() => { completed = true; }, () => { completed = true; });
+      await waitForPostedMessagesByTypeMatch(page, 'webview/testProbeResult', messages => messages.length >= 2);
+      expect(completed).toBe(false, 'A pending original parser must not satisfy the projection observation');
+      await page.evaluate(() => window.__slowSnapshotWrite.release()); released = true;
+      const applied = await observation;
+      expect(applied.terminalExecutionSessionId).toBe(executionSessionId);
+      expect(applied.terminalProjectionPending).toBe(false);
+      expect((applied.terminalVisibleLines.join('\n').match(new RegExp(marker, 'gu')) ?? [])).toHaveLength(1);
+      expect(Date.now()).toBeLessThanOrEqual(deadline);
+      await expect(waitForLocalTerminalProjection(page, nodeId, `${executionSessionId}-stale`, Date.now() + 150))
+        .rejects.toThrow(/Original local terminal projection.*deadline exhausted/);
+      await expect(waitForLocalTerminalProjection(page, nodeId, executionSessionId, Date.now() - 1))
+        .rejects.toThrow(/Original local terminal projection.*deadline exhausted/);
+    } finally {
+      if (!released) await page.evaluate(() => window.__slowSnapshotWrite.release());
+      await observation?.catch(() => {});
+    }
   });
 
   test(`${executionKind} preserves identical text emitted by two distinct authority revisions`, async ({ page }) => {
@@ -17819,6 +18069,7 @@ async function openHarness(page, options = {}) {
   }
 
   await page.goto(harnessUrl);
+  await applyLocalCjkFont(page);
 
   await expect
     .poll(async () => {
@@ -17891,6 +18142,7 @@ async function applyWorkbenchTheme(page, themeName) {
       unsetVars: fixture.unsetVars ?? []
     }
   );
+  await applyLocalCjkFont(page);
   await settleWebview(page, 2);
 }
 
@@ -18111,6 +18363,20 @@ async function requestWebviewProbe(page, delayMs = 0) {
 async function readProbeNode(page, nodeId, delayMs = 0) {
   const snapshot = await requestWebviewProbe(page, delayMs);
   return snapshot.nodes.find((node) => node.nodeId === nodeId) ?? null;
+}
+
+async function waitForLocalTerminalProjection(page, nodeId, executionSessionId, deadline) {
+  return withinDeadline('Original local terminal projection', deadline, async signal => {
+    while (!signal.aborted && Date.now() < deadline) {
+      const node = await readProbeNode(page, nodeId, 0);
+      if (signal.aborted || Date.now() > deadline) break;
+      if (node?.terminalExecutionSessionId === executionSessionId && node.terminalProjectionPending === false) {
+        return node;
+      }
+      await new Promise(resolve => setTimeout(resolve, Math.min(20, Math.max(1, deadline - Date.now()))));
+    }
+    throw new Error('Original local terminal projection deadline exhausted');
+  });
 }
 
 async function readProbeEdge(page, edgeId, delayMs = 0) {

@@ -1,0 +1,52 @@
+[
+  {
+    "timestamp": "2026-10-15T03:37:11.604Z",
+    "kind": "surface/revealRequested",
+    "detail": {
+      "from": "editor",
+      "to": "editor"
+    }
+  },
+  {
+    "timestamp": "2026-10-15T03:37:11.604Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/user-data/User/workspaceStorage/aa8f110e3ecb18157c7f46ef3d0e662e/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/user-data/User/workspaceStorage/aa8f110e3ecb18157c7f46ef3d0e662e/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-15T03:37:11.604Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "1c60f6180797",
+      "nodeCount": 0,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T03:37:11.488Z",
+      "nodeIds": [],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T03:37:11.604Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/user-data/User/workspaceStorage/aa8f110e3ecb18157c7f46ef3d0e662e/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "editor",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/restricted-stage-1/restricted/user-data/User/workspaceStorage/aa8f110e3ecb18157c7f46ef3d0e662e/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-15T03:37:11.604Z",
+      "mode": "immediate",
+      "workspaceStateMode": "full",
+      "reason": "active-surface",
+      "coalescedCount": 0,
+      "stateHash": "1c60f6180797",
+      "nodeCount": 0,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T03:37:11.488Z",
+      "nodeIds": [],
+      "rootGroups": []
+    }
+  }
+]

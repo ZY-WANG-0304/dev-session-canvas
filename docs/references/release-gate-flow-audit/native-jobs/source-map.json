@@ -1,0 +1,763 @@
+{
+  "sourceHead": "84624eaf6e0bdb883fdf215c1d1de5138c930789",
+  "description": "原代码阅读映射，不是六平台重新运行结果",
+  "jobs": [
+    {
+      "target": "linux-x64-glibc",
+      "runner": "ubuntu-24.04",
+      "steps": [
+        {
+          "label": "checkout 固定输入 SHA",
+          "detail": "input_ref（调用方传入）或 github.sha；不持久化凭据",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:68"
+        },
+        {
+          "label": "配置当前 Node 25.6.0",
+          "detail": "architecture=x64；npm cache",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:73"
+        },
+        {
+          "label": "安装锁定依赖",
+          "detail": "npm ci --no-audit --no-fund",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:84"
+        },
+        {
+          "label": "验证分发契约回归",
+          "detail": "test-execution-distribution-assets；合成资产 / mock load",
+          "kind": "verify",
+          "anchor": "scripts/test/test-execution-distribution-assets.mjs:1"
+        },
+        {
+          "label": "验证本次构建身份与输出目录",
+          "detail": "HEAD=输入 SHA；platform / arch=linux-x64-glibc；Node=25.6.0",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:73"
+        },
+        {
+          "label": "固定旧 glibc 构建环境",
+          "detail": "Docker node:16.17.1-buster@SHA256；目标架构，--network none",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:102"
+        },
+        {
+          "label": "验证 headers / 依赖版本与供应源码",
+          "detail": "headers=Node 16.17.1；node-pty=1.2.0-beta.12 / addon-api=7.1.1",
+          "kind": "verify",
+          "anchor": "scripts/build/linux-execution-candidate-assets.mjs:96"
+        },
+        {
+          "label": "补丁后在容器中编译 execution-owner.node",
+          "detail": "g++；C++17 / shared / pthread / N-API 8；记录源文件 hash",
+          "kind": "exec",
+          "anchor": "scripts/build/linux-execution-candidate-assets.mjs:113"
+        },
+        {
+          "label": "验证候选 manifest、实际 ELF 与 ABI 基线",
+          "detail": "ELF64 架构；文件/源码 hash；GLIBC≤2.28 / GLIBCXX≤3.4.22",
+          "kind": "verify",
+          "anchor": "scripts/build/linux-execution-candidate-assets.mjs:57"
+        },
+        {
+          "label": "最小宿主：真实 require 加载同一 addon",
+          "detail": "同一固定容器的 Node 16.17.1；写 minimum-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:144"
+        },
+        {
+          "label": "当前宿主：真实 require 加载同一 addon",
+          "detail": "runner Node 25.6.0；写 current-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:154"
+        },
+        {
+          "label": "验证两次加载使用同一份资产",
+          "detail": "两报告 manifestSha256、binarySha256 必须相同",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:155"
+        },
+        {
+          "label": "归档运行时文件并生成 summary",
+          "detail": "manifest.json + execution-owner.node；archive SHA256 + 输入/构建/两次加载结果",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:158"
+        },
+        {
+          "label": "成功：上传 runtime tar.gz 与 summary",
+          "detail": "execution-native-linux-x64-glibc-<run_id>；保留 14 天",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:90"
+        },
+        {
+          "label": "always：尝试上传当前可用构建 / 加载证据",
+          "detail": "manifest、原生文件、minimum/current-load；无文件只 warn",
+          "kind": "evidence",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:97"
+        }
+      ],
+      "baseline": "另核对 CXXABI≤1.3.9；容器运行沿用 runner 内核，不是旧 Linux 系统全验收。"
+    },
+    {
+      "target": "linux-arm64-glibc",
+      "runner": "ubuntu-24.04-arm",
+      "steps": [
+        {
+          "label": "checkout 固定输入 SHA",
+          "detail": "input_ref（调用方传入）或 github.sha；不持久化凭据",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:68"
+        },
+        {
+          "label": "配置当前 Node 25.6.0",
+          "detail": "architecture=arm64；npm cache",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:73"
+        },
+        {
+          "label": "安装锁定依赖",
+          "detail": "npm ci --no-audit --no-fund",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:84"
+        },
+        {
+          "label": "验证分发契约回归",
+          "detail": "test-execution-distribution-assets；合成资产 / mock load",
+          "kind": "verify",
+          "anchor": "scripts/test/test-execution-distribution-assets.mjs:1"
+        },
+        {
+          "label": "验证本次构建身份与输出目录",
+          "detail": "HEAD=输入 SHA；platform / arch=linux-arm64-glibc；Node=25.6.0",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:73"
+        },
+        {
+          "label": "固定旧 glibc 构建环境",
+          "detail": "Docker node:16.17.1-buster@SHA256；目标架构，--network none",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:102"
+        },
+        {
+          "label": "验证 headers / 依赖版本与供应源码",
+          "detail": "headers=Node 16.17.1；node-pty=1.2.0-beta.12 / addon-api=7.1.1",
+          "kind": "verify",
+          "anchor": "scripts/build/linux-execution-candidate-assets.mjs:96"
+        },
+        {
+          "label": "补丁后在容器中编译 execution-owner.node",
+          "detail": "g++；C++17 / shared / pthread / N-API 8；记录源文件 hash",
+          "kind": "exec",
+          "anchor": "scripts/build/linux-execution-candidate-assets.mjs:113"
+        },
+        {
+          "label": "验证候选 manifest、实际 ELF 与 ABI 基线",
+          "detail": "ELF64 架构；文件/源码 hash；GLIBC≤2.28 / GLIBCXX≤3.4.22",
+          "kind": "verify",
+          "anchor": "scripts/build/linux-execution-candidate-assets.mjs:57"
+        },
+        {
+          "label": "最小宿主：真实 require 加载同一 addon",
+          "detail": "同一固定容器的 Node 16.17.1；写 minimum-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:144"
+        },
+        {
+          "label": "当前宿主：真实 require 加载同一 addon",
+          "detail": "runner Node 25.6.0；写 current-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:154"
+        },
+        {
+          "label": "验证两次加载使用同一份资产",
+          "detail": "两报告 manifestSha256、binarySha256 必须相同",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:155"
+        },
+        {
+          "label": "归档运行时文件并生成 summary",
+          "detail": "manifest.json + execution-owner.node；archive SHA256 + 输入/构建/两次加载结果",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:158"
+        },
+        {
+          "label": "成功：上传 runtime tar.gz 与 summary",
+          "detail": "execution-native-linux-arm64-glibc-<run_id>；保留 14 天",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:90"
+        },
+        {
+          "label": "always：尝试上传当前可用构建 / 加载证据",
+          "detail": "manifest、原生文件、minimum/current-load；无文件只 warn",
+          "kind": "evidence",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:97"
+        }
+      ],
+      "baseline": "另核对 CXXABI≤1.3.9；容器运行沿用 runner 内核，不是旧 Linux 系统全验收。"
+    },
+    {
+      "target": "darwin-x64",
+      "runner": "macos-15-intel",
+      "steps": [
+        {
+          "label": "checkout 固定输入 SHA",
+          "detail": "input_ref（调用方传入）或 github.sha；不持久化凭据",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:68"
+        },
+        {
+          "label": "配置当前 Node 25.6.0",
+          "detail": "architecture=x64；npm cache",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:73"
+        },
+        {
+          "label": "安装锁定依赖",
+          "detail": "npm ci --no-audit --no-fund",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:84"
+        },
+        {
+          "label": "验证分发契约回归",
+          "detail": "test-execution-distribution-assets；合成资产 / mock load",
+          "kind": "verify",
+          "anchor": "scripts/test/test-execution-distribution-assets.mjs:1"
+        },
+        {
+          "label": "验证本次构建身份与输出目录",
+          "detail": "HEAD=输入 SHA；platform / arch=darwin-x64；Node=25.6.0",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:73"
+        },
+        {
+          "label": "下载 Node 25.6.0 headers 并核验 SHA256",
+          "detail": "nodejs.org SHASUMS256.txt 唯一条目匹配，再解包",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:111"
+        },
+        {
+          "label": "验证 headers / 依赖 / 原 pty 与 helper 源码",
+          "detail": "Node/模块 ABI 一致；node-pty / addon-api 固定；源码 hash",
+          "kind": "verify",
+          "anchor": "scripts/build/macos-execution-candidate-assets.mjs:168"
+        },
+        {
+          "label": "补丁并编译 addon 与 spawn-helper",
+          "detail": "xcrun SDK → clang++；目标 x64；-mmacosx-version-min=10.13",
+          "kind": "exec",
+          "anchor": "scripts/build/macos-execution-candidate-assets.mjs:178"
+        },
+        {
+          "label": "下载最小 Node 16.17.1 并核验 SHA256",
+          "detail": "node-v16.17.1-darwin-x64.tar.gz；解包 bin/node",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:134"
+        },
+        {
+          "label": "再次验证候选资产与 Mach-O 声明",
+          "detail": "addon/helper hash、架构/类型；deployment=10.13；helper 可执行",
+          "kind": "verify",
+          "anchor": "scripts/build/macos-execution-candidate-assets.mjs:220"
+        },
+        {
+          "label": "最小宿主：真实 require 加载同一 addon",
+          "detail": "同 macOS runner 的 Node 16.17.1；写 minimum-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:144"
+        },
+        {
+          "label": "当前宿主：真实 require 加载同一 addon",
+          "detail": "runner Node 25.6.0；写 current-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:154"
+        },
+        {
+          "label": "验证两次加载使用同一份资产",
+          "detail": "两报告 manifestSha256、binarySha256 必须相同",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:155"
+        },
+        {
+          "label": "归档运行时文件并生成 summary",
+          "detail": "manifest + execution-owner.node + spawn-helper；archive SHA256 + 输入/构建/两次加载结果",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:158"
+        },
+        {
+          "label": "成功：上传 runtime tar.gz 与 summary",
+          "detail": "execution-native-darwin-x64-<run_id>；保留 14 天",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:90"
+        },
+        {
+          "label": "always：尝试上传当前可用构建 / 加载证据",
+          "detail": "manifest、原生文件、minimum/current-load；无文件只 warn",
+          "kind": "evidence",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:97"
+        }
+      ],
+      "baseline": "deployment 10.13 是编译/文件声明校验；没有启动该旧版 macOS。spawn-helper 未实际启动。"
+    },
+    {
+      "target": "darwin-arm64",
+      "runner": "macos-15",
+      "steps": [
+        {
+          "label": "checkout 固定输入 SHA",
+          "detail": "input_ref（调用方传入）或 github.sha；不持久化凭据",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:68"
+        },
+        {
+          "label": "配置当前 Node 25.6.0",
+          "detail": "architecture=arm64；npm cache",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:73"
+        },
+        {
+          "label": "安装锁定依赖",
+          "detail": "npm ci --no-audit --no-fund",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:84"
+        },
+        {
+          "label": "验证分发契约回归",
+          "detail": "test-execution-distribution-assets；合成资产 / mock load",
+          "kind": "verify",
+          "anchor": "scripts/test/test-execution-distribution-assets.mjs:1"
+        },
+        {
+          "label": "验证本次构建身份与输出目录",
+          "detail": "HEAD=输入 SHA；platform / arch=darwin-arm64；Node=25.6.0",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:73"
+        },
+        {
+          "label": "下载 Node 25.6.0 headers 并核验 SHA256",
+          "detail": "nodejs.org SHASUMS256.txt 唯一条目匹配，再解包",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:111"
+        },
+        {
+          "label": "验证 headers / 依赖 / 原 pty 与 helper 源码",
+          "detail": "Node/模块 ABI 一致；node-pty / addon-api 固定；源码 hash",
+          "kind": "verify",
+          "anchor": "scripts/build/macos-execution-candidate-assets.mjs:168"
+        },
+        {
+          "label": "补丁并编译 addon 与 spawn-helper",
+          "detail": "xcrun SDK → clang++；目标 arm64；-mmacosx-version-min=11.0",
+          "kind": "exec",
+          "anchor": "scripts/build/macos-execution-candidate-assets.mjs:178"
+        },
+        {
+          "label": "下载最小 Node 16.17.1 并核验 SHA256",
+          "detail": "node-v16.17.1-darwin-arm64.tar.gz；解包 bin/node",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:134"
+        },
+        {
+          "label": "再次验证候选资产与 Mach-O 声明",
+          "detail": "addon/helper hash、架构/类型；deployment=11.0；helper 可执行",
+          "kind": "verify",
+          "anchor": "scripts/build/macos-execution-candidate-assets.mjs:220"
+        },
+        {
+          "label": "最小宿主：真实 require 加载同一 addon",
+          "detail": "同 macOS runner 的 Node 16.17.1；写 minimum-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:144"
+        },
+        {
+          "label": "当前宿主：真实 require 加载同一 addon",
+          "detail": "runner Node 25.6.0；写 current-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:154"
+        },
+        {
+          "label": "验证两次加载使用同一份资产",
+          "detail": "两报告 manifestSha256、binarySha256 必须相同",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:155"
+        },
+        {
+          "label": "归档运行时文件并生成 summary",
+          "detail": "manifest + execution-owner.node + spawn-helper；archive SHA256 + 输入/构建/两次加载结果",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:158"
+        },
+        {
+          "label": "成功：上传 runtime tar.gz 与 summary",
+          "detail": "execution-native-darwin-arm64-<run_id>；保留 14 天",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:90"
+        },
+        {
+          "label": "always：尝试上传当前可用构建 / 加载证据",
+          "detail": "manifest、原生文件、minimum/current-load；无文件只 warn",
+          "kind": "evidence",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:97"
+        }
+      ],
+      "baseline": "deployment 11.0 是编译/文件声明校验；没有启动该旧版 macOS。spawn-helper 未实际启动。"
+    },
+    {
+      "target": "win32-x64",
+      "runner": "windows-2025",
+      "steps": [
+        {
+          "label": "Windows checkout 前保留源码字节",
+          "detail": "git config --global core.autocrlf false",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:63"
+        },
+        {
+          "label": "checkout 固定输入 SHA",
+          "detail": "input_ref（调用方传入）或 github.sha；不持久化凭据",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:68"
+        },
+        {
+          "label": "配置当前 Node 25.6.0",
+          "detail": "architecture=x64；npm cache",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:73"
+        },
+        {
+          "label": "配置 MSVC 编译环境",
+          "detail": "ilammy/msvc-dev-cmd；arch=x64",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:79"
+        },
+        {
+          "label": "安装锁定依赖",
+          "detail": "npm ci --no-audit --no-fund",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:84"
+        },
+        {
+          "label": "验证分发契约回归",
+          "detail": "test-execution-distribution-assets；合成资产 / mock load",
+          "kind": "verify",
+          "anchor": "scripts/test/test-execution-distribution-assets.mjs:1"
+        },
+        {
+          "label": "验证本次构建身份与输出目录",
+          "detail": "HEAD=输入 SHA；platform / arch=win32-x64；Node=25.6.0",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:73"
+        },
+        {
+          "label": "下载 headers 与目标 node.lib 并核验 SHA256",
+          "detail": "Node 25.6.0 headers + win-x64/node.lib；供应清单匹配",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:111"
+        },
+        {
+          "label": "验证构建源、hook 与 ConPTY 依赖",
+          "detail": "固定 pty / path_util / headers / delay hook；ConPTY PE 架构",
+          "kind": "verify",
+          "anchor": "scripts/build/windows-execution-candidate-assets.mjs:210"
+        },
+        {
+          "label": "编译 conpty.node 并写入两份 ConPTY 依赖",
+          "detail": "cl.exe /MT / N-API8 /MACHINE:X64 /DELAYLOAD:node.exe",
+          "kind": "exec",
+          "anchor": "scripts/build/windows-execution-candidate-assets.mjs:245"
+        },
+        {
+          "label": "下载最小 Node 16.17.1 并核验 SHA256",
+          "detail": "node-v16.17.1-win-x64.zip；解包 node.exe",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:134"
+        },
+        {
+          "label": "再次验证候选 manifest、PE 与静态 CRT",
+          "detail": "3 份文件 hash/架构/类型；解析 addon 导入表拒绝动态 CRT",
+          "kind": "verify",
+          "anchor": "scripts/build/windows-execution-candidate-assets.mjs:140"
+        },
+        {
+          "label": "最小宿主：真实 require 加载同一 addon",
+          "detail": "同 Windows runner 的 Node 16.17.1；无 Electron 模式；写 minimum-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:144"
+        },
+        {
+          "label": "当前宿主：真实 require 加载同一 addon",
+          "detail": "runner Node 25.6.0；写 current-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:154"
+        },
+        {
+          "label": "验证两次加载使用同一份资产",
+          "detail": "两报告 manifestSha256、binarySha256 必须相同",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:155"
+        },
+        {
+          "label": "归档运行时文件并生成 summary",
+          "detail": "manifest + conpty.node + conpty.dll + OpenConsole.exe；archive SHA256 + 输入/构建/两次加载结果",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:158"
+        },
+        {
+          "label": "成功：上传 runtime tar.gz 与 summary",
+          "detail": "execution-native-win32-x64-<run_id>；保留 14 天",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:90"
+        },
+        {
+          "label": "always：尝试上传当前可用构建 / 加载证据",
+          "detail": "manifest、原生文件、minimum/current-load；无文件只 warn",
+          "kind": "evidence",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:97"
+        }
+      ],
+      "baseline": "minimumBuild=17763 是 manifest 契约；未启动旧 Windows，也没有实际创建 ConPTY 会话。"
+    },
+    {
+      "target": "win32-arm64",
+      "runner": "windows-11-arm",
+      "steps": [
+        {
+          "label": "Windows checkout 前保留源码字节",
+          "detail": "git config --global core.autocrlf false",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:63"
+        },
+        {
+          "label": "checkout 固定输入 SHA",
+          "detail": "input_ref（调用方传入）或 github.sha；不持久化凭据",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:68"
+        },
+        {
+          "label": "配置当前 Node 25.6.0",
+          "detail": "architecture=arm64；npm cache",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:73"
+        },
+        {
+          "label": "配置 MSVC 编译环境",
+          "detail": "ilammy/msvc-dev-cmd；arch=amd64_arm64",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:79"
+        },
+        {
+          "label": "安装锁定依赖",
+          "detail": "npm ci --no-audit --no-fund",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:84"
+        },
+        {
+          "label": "验证分发契约回归",
+          "detail": "test-execution-distribution-assets；合成资产 / mock load",
+          "kind": "verify",
+          "anchor": "scripts/test/test-execution-distribution-assets.mjs:1"
+        },
+        {
+          "label": "验证本次构建身份与输出目录",
+          "detail": "HEAD=输入 SHA；platform / arch=win32-arm64；Node=25.6.0",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:73"
+        },
+        {
+          "label": "下载 headers 与目标 node.lib 并核验 SHA256",
+          "detail": "Node 25.6.0 headers + win-arm64/node.lib；供应清单匹配",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:111"
+        },
+        {
+          "label": "验证构建源、hook 与 ConPTY 依赖",
+          "detail": "固定 pty / path_util / headers / delay hook；ConPTY PE 架构",
+          "kind": "verify",
+          "anchor": "scripts/build/windows-execution-candidate-assets.mjs:210"
+        },
+        {
+          "label": "编译 conpty.node 并写入两份 ConPTY 依赖",
+          "detail": "cl.exe /MT / N-API8 /MACHINE:ARM64 /DELAYLOAD:node.exe",
+          "kind": "exec",
+          "anchor": "scripts/build/windows-execution-candidate-assets.mjs:245"
+        },
+        {
+          "label": "下载最小 Electron 22.3.14 并核验 SHA256",
+          "detail": "electron-v22.3.14-win32-arm64.zip；解包 electron.exe",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:125"
+        },
+        {
+          "label": "再次验证候选 manifest、PE 与静态 CRT",
+          "detail": "3 份文件 hash/架构/类型；解析 addon 导入表拒绝动态 CRT",
+          "kind": "verify",
+          "anchor": "scripts/build/windows-execution-candidate-assets.mjs:140"
+        },
+        {
+          "label": "最小宿主：真实 require 加载同一 addon",
+          "detail": "Electron 22.3.14 / 内嵌 Node 16.17.1；RUN_AS_NODE=1；写 minimum-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:144"
+        },
+        {
+          "label": "当前宿主：真实 require 加载同一 addon",
+          "detail": "runner Node 25.6.0；写 current-load.json",
+          "kind": "load",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:154"
+        },
+        {
+          "label": "验证两次加载使用同一份资产",
+          "detail": "两报告 manifestSha256、binarySha256 必须相同",
+          "kind": "verify",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:155"
+        },
+        {
+          "label": "归档运行时文件并生成 summary",
+          "detail": "manifest + conpty.node + conpty.dll + OpenConsole.exe；archive SHA256 + 输入/构建/两次加载结果",
+          "kind": "exec",
+          "anchor": "scripts/build/build-execution-distribution-assets.mjs:158"
+        },
+        {
+          "label": "成功：上传 runtime tar.gz 与 summary",
+          "detail": "execution-native-win32-arm64-<run_id>；保留 14 天",
+          "kind": "exec",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:90"
+        },
+        {
+          "label": "always：尝试上传当前可用构建 / 加载证据",
+          "detail": "manifest、原生文件、minimum/current-load；无文件只 warn",
+          "kind": "evidence",
+          "anchor": ".github/workflows/runtime-execution-assets.yml:97"
+        }
+      ],
+      "baseline": "minimumBuild=17763 是 manifest 契约；未启动旧 Windows，也没有实际创建 ConPTY 会话。"
+    }
+  ],
+  "sourceSha256": {
+    ".github/workflows/runtime-execution-assets.yml": "db38e9e3abc0fca3b373f2b509925e037cdf2ef0a133a9f8ae6865f3198e7f16",
+    "scripts/build/build-execution-distribution-assets.mjs": "e7efbc59a1202b1757d909ea1e3ede1730e345fd87572862640dcbf31a120809",
+    "scripts/build/check-execution-native-load.cjs": "636da141c9ddff44aa073000fc5dbc54a2e01ccde1d9c45af16c078f17b18ade",
+    "scripts/build/linux-execution-candidate-assets.mjs": "0e651081574b18c18e0df195c0f142b960d67954cec3bee7e402fde8a8fe5516",
+    "scripts/build/macos-execution-candidate-assets.mjs": "58b0f802bf8efae0e9bfbbb431948538ccda696a7a98a4a9758533dfab1e71ff",
+    "scripts/build/windows-execution-candidate-assets.mjs": "1c0a3773f981c3c63fa3b632b08d5e2966175bbb8dfa8a3b9600bf00ef8e74bc",
+    "scripts/build/linux-execution-elf.mjs": "19d5532e1ba85e4010ad3d211e2ff75b6ac7eb22e1e4caa1b41d95f8c0d490d3",
+    "scripts/test/test-execution-distribution-assets.mjs": "9ebe8b18f6fc7626f36ee623ba593a92a252bb6fa067c845962c6a2ba32861fb",
+    "scripts/build/linux-execution-provider-patch.mjs": "1fd8e45ab617f2b5807dac443e88aa4fdd03986ec30e6235a59424071aa1ee8f",
+    "scripts/build/macos-execution-provider-patch.mjs": "ddea3f3400332a197910dd7fd0441ccf6bf6d340f43ac8cc6159c9404e0e2fa0",
+    "scripts/build/windows-execution-provider-patch.mjs": "40d3e33dd6c88660402da1fafd8c47dd46d68147ee89fd3d16f1f06fc562d1a8"
+  },
+  "workflowJob": {
+    "strategy": {
+      "fail-fast": false,
+      "matrix": {
+        "asset": [
+          {
+            "target": "linux-x64-glibc",
+            "runner": "ubuntu-24.04",
+            "arch": "x64"
+          },
+          {
+            "target": "linux-arm64-glibc",
+            "runner": "ubuntu-24.04-arm",
+            "arch": "arm64"
+          },
+          {
+            "target": "darwin-x64",
+            "runner": "macos-15-intel",
+            "arch": "x64"
+          },
+          {
+            "target": "darwin-arm64",
+            "runner": "macos-15",
+            "arch": "arm64"
+          },
+          {
+            "target": "win32-x64",
+            "runner": "windows-2025",
+            "arch": "x64",
+            "compilerArch": "x64"
+          },
+          {
+            "target": "win32-arm64",
+            "runner": "windows-11-arm",
+            "arch": "arm64",
+            "compilerArch": "amd64_arm64"
+          }
+        ],
+        "exclude": "${{ inputs.windows_only && fromJSON('[ {\"asset\":{\"target\":\"linux-x64-glibc\",\"runner\":\"ubuntu-24.04\",\"arch\":\"x64\"}}, {\"asset\":{\"target\":\"linux-arm64-glibc\",\"runner\":\"ubuntu-24.04-arm\",\"arch\":\"arm64\"}}, {\"asset\":{\"target\":\"darwin-x64\",\"runner\":\"macos-15-intel\",\"arch\":\"x64\"}}, {\"asset\":{\"target\":\"darwin-arm64\",\"runner\":\"macos-15\",\"arch\":\"arm64\"}} ]') || fromJSON('[]') }}"
+      }
+    },
+    "runs-on": "${{ matrix.asset.runner }}",
+    "timeout-minutes": 20,
+    "env": {
+      "DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA": "${{ inputs.input_ref || github.sha }}"
+    },
+    "steps": [
+      {
+        "name": "Preserve source bytes on Windows checkout",
+        "if": "runner.os == 'Windows'",
+        "shell": "pwsh",
+        "run": "git config --global core.autocrlf false"
+      },
+      {
+        "name": "Checkout fixed asset input",
+        "uses": "actions/checkout@v4",
+        "with": {
+          "persist-credentials": false,
+          "ref": "${{ inputs.input_ref || github.sha }}"
+        }
+      },
+      {
+        "name": "Setup actual target Node",
+        "uses": "actions/setup-node@v4",
+        "with": {
+          "node-version": "25.6.0",
+          "architecture": "${{ matrix.asset.arch }}",
+          "cache": "npm"
+        }
+      },
+      {
+        "name": "Setup target compiler",
+        "if": "runner.os == 'Windows'",
+        "uses": "ilammy/msvc-dev-cmd@v1",
+        "with": {
+          "arch": "${{ matrix.asset.compilerArch }}"
+        }
+      },
+      {
+        "name": "Install locked build dependencies",
+        "run": "npm ci --no-audit --no-fund"
+      },
+      {
+        "name": "Check bounded distribution contract",
+        "run": "node scripts/test/test-execution-distribution-assets.mjs"
+      },
+      {
+        "name": "Build and load the same native asset in minimum and current hosts",
+        "run": "node scripts/build/build-execution-distribution-assets.mjs --target=${{ matrix.asset.target }} --output=\"${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}\" --artifacts=\"${{ github.workspace }}/execution-asset-artifacts\""
+      },
+      {
+        "name": "Upload runtime files and finite load summary",
+        "uses": "actions/upload-artifact@v4",
+        "with": {
+          "name": "execution-native-${{ matrix.asset.target }}-${{ github.run_id }}",
+          "overwrite": true,
+          "path": "execution-asset-artifacts/",
+          "if-no-files-found": "error",
+          "retention-days": 14
+        }
+      },
+      {
+        "name": "Preserve available build and load evidence",
+        "if": "always()",
+        "uses": "actions/upload-artifact@v4",
+        "with": {
+          "name": "execution-native-evidence-${{ matrix.asset.target }}-${{ github.run_id }}-${{ github.run_attempt }}",
+          "path": "${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/manifest.json\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/execution-owner.node\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/spawn-helper\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/conpty.node\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/conpty/conpty.dll\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}/conpty/OpenConsole.exe\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}-inputs-*/minimum-load.json\n${{ runner.temp }}/execution-assets/${{ matrix.asset.target }}-inputs-*/current-load.json\n",
+          "if-no-files-found": "warn",
+          "retention-days": 14
+        }
+      }
+    ]
+  }
+}

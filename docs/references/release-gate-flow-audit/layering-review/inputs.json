@@ -1,0 +1,61 @@
+{
+  "inputHead": "0100abf07a6bb09ef36a12b32d989ad0c7e759aa",
+  "remoteMain": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+  "observedAt": "2026-10-17T11:40:50.617996+00:00",
+  "scope": "read-only-process-review-no-product-or-release-acceptance",
+  "sourceSha256": {
+    "package.json": "9869b3f1aefa49b2cec333c718916f83351df5e1e20f6792601311513b4cd371",
+    "extensions/vscode/dev-session-canvas/package.json": "76b91bb098caddeb59d1a2acdf2bd158362d3829cb8fc38279dafb6c4c2db316",
+    "extensions/vscode/dev-session-canvas-notifier/package.json": "45b38cc694d888df763aa5c30a032c8931904af4ad9836182d70260321a1003a",
+    ".github/workflows/release-preflight.yml": "2987f87b36cb713ac1359e58f84782484e0090d2dd0c5b858cea2b1cc4cbbad3",
+    ".github/workflows/publish-marketplace-release.yml": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c",
+    ".github/workflows/runtime-execution-assets.yml": "db38e9e3abc0fca3b373f2b509925e037cdf2ef0a133a9f8ae6865f3198e7f16",
+    ".github/workflows/runtime-production-acceptance.yml": "3558d01f989bb8821e4bfb7a4dad2e7b941e2099bf215093c84bf6fa664cb39d",
+    "scripts/release/release-preflight.mjs": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802",
+    "scripts/release/run-clean-checkout-vsix-validation.mjs": "ea36a568a51f75d13627f4d17ff5c501dac43f9becdc9ac0d2eb31838430e789",
+    "scripts/release/publish-tag-release.mjs": "da122f3cfba99d2e8f9b2a67c53baf3aea43f85ad48336d067bfe117f703d591",
+    "scripts/release/publish-marketplaces.mjs": "cddb22d4db47a1a65e5a886e65590c863cbab511aafdd782aa2e127b4c592207",
+    "scripts/release/package-vsix.mjs": "c0908d4ec3652d2e54411ae5e179ae21e17d632b7305a6a890e6f28e84e93488",
+    "scripts/release/write-github-release-notes.mjs": "9e6dc259bf9e3f07a12ed80f280e4c0bc4c685352a2fb757558fda282f784c10",
+    "scripts/build/build-execution-distribution-assets.mjs": "e7efbc59a1202b1757d909ea1e3ede1730e345fd87572862640dcbf31a120809",
+    "scripts/build/check-execution-native-load.cjs": "636da141c9ddff44aa073000fc5dbc54a2e01ccde1d9c45af16c078f17b18ade",
+    "scripts/build/assemble-execution-distribution-assets.mjs": "0b17fdaef0a1bf9f50edb596024f0593a874448cbb902deda9ed7b99cd64da7b",
+    "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "07015a10d0046c2a9018d9171c8ee09aa672cbeda8a095c00015f73505685d1d",
+    "scripts/smoke/vscode-smoke-runner.mjs": "cc482a109444558c56d53b84d36ba4c47edeb342f497af7908ad97a0d95a9307",
+    "scripts/shared/playwright-environment.mjs": "61de423ad509f0101f7a406793eaadd5a8b044400f8f143d508770357bc8a76b",
+    "scripts/test/run-playwright-webview.mjs": "90533210eae9bbc0efd7b8949506aba55d7c7b24beacfd6bdea251097906608f",
+    "playwright.config.mjs": "6432478f04b5f6799c910ba743b0a68aa625d2aa54a91cf947ae0691271185fd",
+    "tests/playwright/webview-harness.spec.mjs": "187afbcb8d8480b42ddf0c884362f889d2d8fe26b44ceb821a023dec6b7606cc",
+    "scripts/test/test-publish-marketplace-workflow.mjs": "2f5066f11fa9f148e9478ca441d4d231768c46b6505c779cc5b8096cafade8cb",
+    "scripts/test/test-release-preflight-workflow.mjs": "1265aa7179964bd0b33f7ca51681180cb727f604491ba676a761d82b89b1abc3"
+  },
+  "filesDifferingFromMain": [
+    "package.json",
+    "scripts/smoke/run-vscode-smoke.mjs"
+  ],
+  "githubPolicy": [
+    {
+      "endpoint": "repos/ZY-WANG-0304/dev-session-canvas/branches/main/protection",
+      "exitCode": 1,
+      "response": {
+        "message": "Branch not protected",
+        "documentation_url": "https://docs.github.com/rest/branches/branch-protection#get-branch-protection",
+        "status": "404"
+      },
+      "stderr": "gh: Branch not protected (HTTP 404)"
+    },
+    {
+      "endpoint": "repos/ZY-WANG-0304/dev-session-canvas/rulesets?includes_parents=true",
+      "exitCode": 0,
+      "response": [],
+      "stderr": ""
+    },
+    {
+      "endpoint": "repos/ZY-WANG-0304/dev-session-canvas/rules/branches/main",
+      "exitCode": 0,
+      "response": [],
+      "stderr": ""
+    }
+  ]
+}

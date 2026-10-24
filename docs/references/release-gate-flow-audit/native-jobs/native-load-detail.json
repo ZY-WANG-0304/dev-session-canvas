@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1400,
+  "height": 1600,
+  "title": "最小 / 当前宿主都执行一次的加载验证",
+  "subtitle": "check-execution-native-load.cjs · 原生 require 为真实动作，导出函数仅检查类型",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif"
+  },
+  "nodes": [
+    {
+      "id": "load-0",
+      "kind": "rect",
+      "x": 180,
+      "y": 160,
+      "width": 1040,
+      "height": 112,
+      "label": "01  接收已验证的资产绝对路径",
+      "sublabel": "manifest.json 必须 schemaVersion=2",
+      "title_size": 22,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "load-1",
+      "kind": "rect",
+      "x": 180,
+      "y": 328,
+      "width": 1040,
+      "height": 112,
+      "label": "02  验证运行进程和目标完全匹配",
+      "sublabel": "process.platform / arch、精确 Node 版本、Electron 版本或 null",
+      "title_size": 22,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "load-2",
+      "kind": "rect",
+      "x": 180,
+      "y": 496,
+      "width": 1040,
+      "height": 112,
+      "label": "03  验证 N-API 契约",
+      "sublabel": "要求 N-API=8、实际≥8；manifest.verification.productValidated=false",
+      "title_size": 22,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "load-3",
+      "kind": "rect",
+      "x": 180,
+      "y": 664,
+      "width": 1040,
+      "height": 112,
+      "label": "04  逐个核对资产 SHA256",
+      "sublabel": "binary、helper、dependencies 与 manifest 记录一致",
+      "title_size": 22,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "load-4",
+      "kind": "rect",
+      "x": 180,
+      "y": 832,
+      "width": 1040,
+      "height": 112,
+      "label": "05  真实 require 加载目标 .node",
+      "sublabel": "Linux/macOS: execution-owner.node；Windows: conpty.node",
+      "title_size": 22,
+      "fill": "#faf5ff",
+      "stroke": "#d8b4fe",
+      "flat": true
+    },
+    {
+      "id": "load-5",
+      "kind": "rect",
+      "x": 180,
+      "y": 1000,
+      "width": 1040,
+      "height": 112,
+      "label": "06  核对导出名称与类型",
+      "sublabel": "Object.keys(addon) 等于 manifest.exports；每项必须 function",
+      "title_size": 22,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "load-6",
+      "kind": "rect",
+      "x": 180,
+      "y": 1168,
+      "width": 1040,
+      "height": 112,
+      "label": "07  写当前这次宿主加载报告",
+      "sublabel": "OS/runtime、manifest/binary hash；nativeLoaded=true",
+      "title_size": 22,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "load-7",
+      "kind": "rect",
+      "x": 180,
+      "y": 1336,
+      "width": 1040,
+      "height": 112,
+      "label": "08  不调用执行 API",
+      "sublabel": "没有 fork/start/read/write/resize/stop；productValidated=false",
+      "title_size": 22,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "load-0",
+      "target": "load-1",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "load-1",
+      "target": "load-2",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "load-2",
+      "target": "load-3",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "load-3",
+      "target": "load-4",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "load-4",
+      "target": "load-5",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "load-5",
+      "target": "load-6",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "load-6",
+      "target": "load-7",
+      "color": "#2563eb",
+      "source_port": "bottom",
+      "target_port": "top"
+    }
+  ]
+}

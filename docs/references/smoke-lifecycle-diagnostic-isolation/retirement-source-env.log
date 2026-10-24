@@ -1,0 +1,6 @@
+
+> dev-session-canvas-workspace@0.26.0 test:vscode-smoke-runner-env
+> node scripts/test/test-vscode-smoke-runner-env.mjs
+
+Exit code:   0
+vscode smoke runner env sanitization passed

@@ -1206,6 +1206,7 @@ interface RuntimeSupervisorRegistryForTest {
 interface RuntimeSupervisorRegistryEntryForTest {
   runtimeStoragePath: string;
   registryPath?: string;
+  socketPath?: string;
   exists: boolean;
   registry?: unknown;
   error?: string;
@@ -5026,33 +5027,55 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       throw new Error('runWebviewLifecycleRaceDiagnosticsForTest 仅在测试模式下可用。');
     }
 
+    const diagnostic = this.createWebviewLifecycleRaceDiagnosticManager();
+    return diagnostic.runIsolatedWebviewLifecycleRaceDiagnosticsForTest();
+  }
+
+  private createWebviewLifecycleRaceDiagnosticManager(): CanvasPanelManager {
+    // No production constructor, shallow manager copy or fallback to the live manager:
+    // fake renders own every queue, reader and request they can invalidate.
+    const diagnostic: CanvasPanelManager = Object.create(CanvasPanelManager.prototype);
+    const runtime = cloneJsonValue(this.getRuntimeContext());
+    Object.assign(diagnostic, {
+      context: { extensionMode: vscode.ExtensionMode.Test },
+      state: createEmptyCanvasState(new Date().toISOString()),
+      activeSurface: 'panel',
+      canvasTemplateInitialized: true,
+      surfaceMode: {},
+      surfaceReady: { editor: false, panel: false },
+      surfaceLifecycle: {
+        editor: { generation: 0, ready: false, bootstrapAck: false },
+        panel: { generation: 0, ready: false, bootstrapAck: false }
+      },
+      surfaceMessageWebview: {},
+      renderedWebviewLifecycle: new WeakMap<vscode.Webview, WebviewLifecycleIdentity>(),
+      pendingBootstrapHostMessages: {},
+      pendingWebviewProbeRequests: new Map<string, PendingWebviewProbeRequest>(),
+      pendingWebviewDomActionRequests: new Map<string, PendingWebviewDomActionRequest>(),
+      pendingWorkspaceRootFocusReplay: {},
+      pendingVisibilityRestore: { editor: false, panel: false },
+      pendingVisibilityRestoreFocus: {},
+      lastVisibleCanvasCenterBySurface: {},
+      diagnosticHostMessages: [],
+      testHostMessages: [],
+      testDiagnosticEvents: [],
+      terminalReadRelay: new RuntimeTerminalReadRelay(),
+      terminalAvailableNotifications: new TerminalAvailableNotifications(),
+      nonNativeHostExecutions: new Map<string, NonNativeHostExecution>(),
+      // Only payload/data boundaries are supplied. The protocol, bootstrap,
+      // promotion, delivery gating and request matching use the real methods.
+      getWebviewOptions: () => ({}),
+      prepareCanvasStateForWebview: () => cloneJsonValue(diagnostic.state),
+      getRuntimeContext: () => cloneJsonValue({ ...runtime, surfaceLocation: 'panel' }),
+      notifySidebarStateChanged: () => undefined,
+      getCanvasTemplateCatalog: async (): Promise<CanvasTemplateCatalog> => ({ templates: [], issues: [] }),
+      reconcileDefaultCanvasTemplateId: async () => undefined
+    });
+    return diagnostic;
+  }
+
+  private async runIsolatedWebviewLifecycleRaceDiagnosticsForTest(): Promise<CanvasWebviewLifecycleRaceDiagnostics> {
     const surface: CanvasSurfaceLocation = 'panel';
-    if (
-      Array.from(this.pendingWebviewProbeRequests.values()).some((request) => request.surface === surface) ||
-      Array.from(this.pendingWebviewDomActionRequests.values()).some((request) => request.surface === surface)
-    ) {
-      throw new Error('测试命令 devSessionCanvas.__test.runWebviewLifecycleRaceDiagnostics 需要目标 surface 没有未完成 Webview 请求。');
-    }
-
-    const previousActiveSurface = this.activeSurface;
-    const previousSurfaceMode = { ...this.surfaceMode };
-    const previousSurfaceReady = { ...this.surfaceReady };
-    const previousSurfaceLifecycle = cloneJsonValue(this.surfaceLifecycle);
-    const previousSurfaceMessageWebview = { ...this.surfaceMessageWebview };
-    const previousPendingBootstrapHostMessages = {
-      editor: this.pendingBootstrapHostMessages.editor?.slice(),
-      panel: this.pendingBootstrapHostMessages.panel?.slice()
-    };
-    const previousPanelView = this.panelView;
-    const previousCanvasTemplateInitialized = this.canvasTemplateInitialized;
-    const previousPanelCenter = this.lastVisibleCanvasCenterBySurface.panel
-      ? { ...this.lastVisibleCanvasCenterBySurface.panel }
-      : undefined;
-    const hadPreviousPanelCenter = this.lastVisibleCanvasCenterBySurface.panel !== undefined;
-    const previousDiagnosticHostMessages = this.diagnosticHostMessages.slice();
-    const previousTestHostMessages = this.testHostMessages.slice();
-    const previousTestDiagnosticEvents = this.testDiagnosticEvents.slice();
-
     const oldFrame = this.createLifecycleRaceFakeWebview('old');
     const competingFrame = this.createLifecycleRaceFakeWebview('competing');
     const diagnosticPanelView = {
@@ -5386,27 +5409,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       };
     } finally {
       this.clearPendingWorkspaceRootFocusReplay();
+      // These maps belong only to the diagnostic object, including on failure.
+      for (const requests of [this.pendingWebviewProbeRequests, this.pendingWebviewDomActionRequests]) {
+        for (const request of requests.values()) clearTimeout(request.timeout);
+        requests.clear();
+      }
+      this.clearPendingBootstrapHostMessages(surface);
+      this.clearTerminalAvailableNotifications();
+      this.terminalReadRelay.closeMatching(() => true);
       this.renderedWebviewLifecycle.delete(oldFrame.webview);
       this.renderedWebviewLifecycle.delete(competingFrame.webview);
-      this.activeSurface = previousActiveSurface;
-      this.restoreSurfaceLifecycleStateForTest('editor', previousSurfaceMode, previousSurfaceReady, previousSurfaceLifecycle);
-      this.restoreSurfaceLifecycleStateForTest('panel', previousSurfaceMode, previousSurfaceReady, previousSurfaceLifecycle);
-      this.restoreSurfaceMessageWebviewForTest('editor', previousSurfaceMessageWebview.editor);
-      this.restoreSurfaceMessageWebviewForTest('panel', previousSurfaceMessageWebview.panel);
-      if (this.panelView === diagnosticPanelView) {
-        this.panelView = previousPanelView;
-      }
-      this.restorePendingBootstrapHostMessagesForTest('editor', previousPendingBootstrapHostMessages.editor);
-      this.restorePendingBootstrapHostMessagesForTest('panel', previousPendingBootstrapHostMessages.panel);
-      this.canvasTemplateInitialized = previousCanvasTemplateInitialized;
-      if (hadPreviousPanelCenter) {
-        this.lastVisibleCanvasCenterBySurface.panel = previousPanelCenter!;
-      } else {
-        delete this.lastVisibleCanvasCenterBySurface.panel;
-      }
-      this.diagnosticHostMessages.splice(0, this.diagnosticHostMessages.length, ...previousDiagnosticHostMessages);
-      this.testHostMessages.splice(0, this.testHostMessages.length, ...previousTestHostMessages);
-      this.testDiagnosticEvents.splice(0, this.testDiagnosticEvents.length, ...previousTestDiagnosticEvents);
+      delete this.surfaceMessageWebview.panel;
+      this.panelView = undefined;
     }
   }
 
@@ -5495,43 +5509,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     return false;
-  }
-
-  private restoreSurfaceLifecycleStateForTest(
-    surface: CanvasSurfaceLocation,
-    previousSurfaceMode: Partial<Record<CanvasSurfaceLocation, CanvasSurfaceMode>>,
-    previousSurfaceReady: Record<CanvasSurfaceLocation, boolean>,
-    previousSurfaceLifecycle: Record<CanvasSurfaceLocation, CanvasSurfaceLifecycleState>
-  ): void {
-    if (previousSurfaceMode[surface]) {
-      this.surfaceMode[surface] = previousSurfaceMode[surface];
-    } else {
-      delete this.surfaceMode[surface];
-    }
-    this.surfaceReady[surface] = previousSurfaceReady[surface];
-    this.surfaceLifecycle[surface] = { ...previousSurfaceLifecycle[surface] };
-  }
-
-  private restoreSurfaceMessageWebviewForTest(
-    surface: CanvasSurfaceLocation,
-    webview: vscode.Webview | undefined
-  ): void {
-    if (webview) {
-      this.surfaceMessageWebview[surface] = webview;
-    } else {
-      delete this.surfaceMessageWebview[surface];
-    }
-  }
-
-  private restorePendingBootstrapHostMessagesForTest(
-    surface: CanvasSurfaceLocation,
-    messages: HostToWebviewMessage[] | undefined
-  ): void {
-    if (messages) {
-      this.pendingBootstrapHostMessages[surface] = messages.slice();
-    } else {
-      delete this.pendingBootstrapHostMessages[surface];
-    }
   }
 
   public async deserializeWebviewPanel(
@@ -10923,14 +10900,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): RuntimeSupervisorRegistryEntryForTest {
     const normalizedRuntimeStoragePath = this.resolveRuntimeStoragePath(runtimeStoragePath);
     try {
-      const registryPath = this.getRuntimeHostBackend(
+      const { registryPath, socketPath } = this.getRuntimeHostBackend(
         backendKind,
         normalizedRuntimeStoragePath
-      ).paths.registryPath;
+      ).paths;
       if (!fs.existsSync(registryPath)) {
         return {
           runtimeStoragePath: normalizedRuntimeStoragePath,
           registryPath,
+          socketPath,
           exists: false
         };
       }
@@ -10938,6 +10916,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return {
         runtimeStoragePath: normalizedRuntimeStoragePath,
         registryPath,
+        socketPath,
         exists: true,
         registry: JSON.parse(fs.readFileSync(registryPath, 'utf8')) as unknown
       };

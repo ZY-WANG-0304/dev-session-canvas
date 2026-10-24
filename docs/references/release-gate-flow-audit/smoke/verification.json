@@ -1,0 +1,136 @@
+{
+  "ok": true,
+  "scope": "静态源码、顺序、图工件与文档链接核对；不是产品或发布验收",
+  "inputHead": "9aaa05b0bd7f8b8571d874291fd44c12bc1a83dc",
+  "sourceFiles": 16,
+  "sourceDefault": [
+    "local-execution-flow",
+    "owned-canvas-reconciliation",
+    "snapshot-only-manual-recovery",
+    "local-surface-cutover",
+    "local-preparation-failure",
+    "local-links-and-stop",
+    "local-pty-robustness",
+    "runtime-checkpoint-refresh",
+    "trusted",
+    "restricted",
+    "legacy-supervisor-upgrade",
+    "real-reopen",
+    "multi-root-real-reopen",
+    "single-to-multi-root-real-reopen",
+    "two-window-shared-runtime",
+    "systemd-user-real-reopen",
+    "systemd-fallback-real-reopen",
+    "remote-ssh-real-reopen-exit",
+    "remote-ssh-real-reopen-retain"
+  ],
+  "focusedOnly": [
+    "runtime-legacy-reconnect",
+    "linux-runtime-report-unavailable",
+    "runtime-completed-no-history"
+  ],
+  "packagedDefault": [
+    "owned-canvas-reconciliation",
+    "local-execution-flow",
+    "snapshot-only-manual-recovery",
+    "local-surface-cutover",
+    "local-pty-robustness",
+    "local-preparation-failure",
+    "local-links-and-stop",
+    "trusted"
+  ],
+  "directAwaitCalls": {
+    "runTrustedSmoke": 109,
+    "runRestrictedSmoke": 38
+  },
+  "diagrams": {
+    "entry-scenarios": {
+      "width": 2400,
+      "height": 2438,
+      "sha256": {
+        "json": "7048c340dff67729ac16c7a5b7fb764e037df22004192fc33f86b547e6c75963",
+        "svg": "dabf97a7ad5af29ec1e04e48a61abfbe0738a5346bac55706f6b2c383c3bdd3f",
+        "png": "d4ca0469cff9633c339ef133893945684bf51bbddc781f77597b684c4d45e42f",
+        "layout.json": "49bef6b1492743f09dc9382408604c1a1c490e23cd43b796ed5ae2b5759f3da0"
+      }
+    },
+    "single-host": {
+      "width": 2400,
+      "height": 2562,
+      "sha256": {
+        "json": "29ea56cfcf32a9ee0f9b80780fbe48bf415c0c6f0570ce871f6772590c30e332",
+        "svg": "8aa1977d4da64bcf81d372f7681d72ee99591d2d991a8d8a3128468a13038ff3",
+        "png": "d7fd7925fc7a52b4ae39eba3783fea52f33ad388215e05744eccf770ddebf822",
+        "layout.json": "df5ffdc4d20b17f4048b889ee3f49e5c1997f691e2193b4efe9a8670460f64b2"
+      }
+    },
+    "trusted-restricted": {
+      "width": 2400,
+      "height": 2488,
+      "sha256": {
+        "json": "d81733019d33e71253fba8bd7b0e75206a32ccbb3df1562e5f3fa1df747a3da5",
+        "svg": "1adef0cd7577ebd5e3dfd48c1d97349941685013c4e9086b67d4c7a2e57469e9",
+        "png": "482d2dfe369f39d7263392ce0d808fd3f68aab2be8af3566016e18ae5b08b440",
+        "layout.json": "e3a2dc90e67bd3d4e9768b3982ec8595ad4eae58d68372a7d4ba4df38f926eef"
+      }
+    },
+    "real-reopen": {
+      "width": 2400,
+      "height": 2788,
+      "sha256": {
+        "json": "fd20422c05c1b86a61ff8179bbba60ef5036954a730db452cf9fe988a7b3b3b2",
+        "svg": "7adfa06cf6d47ed9fd862edb82e9ee7f0c6cac5e019a5935a1d85bb3a5b7d0a6",
+        "png": "28024bdd8cc5819add4d4df73e41a34aaae044d05b081a79bf4d0e8517ef84f3",
+        "layout.json": "6416e9384a87343a24cc6eb58bb5fcc9c3393ed7b669192cec6b37458b7c201b"
+      }
+    },
+    "two-window": {
+      "width": 2400,
+      "height": 2175,
+      "sha256": {
+        "json": "6a45faabff5a953d534e4c37f070b5f4689b6f58c47de31fb1210d62c6446eb6",
+        "svg": "fcd3424b8cbb11e0b443bb89574493cd662a77760b949c2a662ba399fbeda635",
+        "png": "4287024b30b1ca99d9eeb2f8ce0ccb022931d86a95b89e7b56e4cc937bf041de",
+        "layout.json": "1ea5673ddc4cea10b38474a94bdc3d46118ac425942bc657f01e439e0ac1cbe8"
+      }
+    },
+    "legacy-resize": {
+      "width": 2400,
+      "height": 2812,
+      "sha256": {
+        "json": "87e95731dcd185074be705a247bb43c2f63ef222fd6d81efcdb054a5b686ce9a",
+        "svg": "51573f49c7c9bd90fb5c0874a9a557f3fa474fc61eb7b5df2d23719a70706f9d",
+        "png": "240027c0e71914aa2d3d83d24be294690a33866d37af0bc421cd323d6fcc79a5",
+        "layout.json": "753ad3890d5677216cdcd9c74b36ff9cfc2eaee3611ff38ebec916c12787e5e5"
+      }
+    }
+  },
+  "readmeLinks": [
+    "../../../design-docs/smoke-scenario-boundaries.md",
+    "../smoke-redesign/README.md",
+    "entry-scenarios.svg",
+    "entry-scenarios.png",
+    "single-host.svg",
+    "single-host.png",
+    "trusted-restricted.svg",
+    "trusted-restricted.png",
+    "real-reopen.svg",
+    "real-reopen.png",
+    "two-window.svg",
+    "two-window.png",
+    "legacy-resize.svg",
+    "legacy-resize.png",
+    "source-map.json",
+    "../../../exec-plans/tech-debt-tracker.md#2026-10-17smoke-的-fake-agent-状态断言不能代证真实-tui-回合完成待验证",
+    "../../../design-docs/agent-running-state-detection.md",
+    "../../../product-specs/runtime-persistence-modes.md#7-验收标准",
+    "../../../exec-plans/completed/snapshot-only-manual-reload-recovery.md",
+    "../../../design-docs/legacy-supervisor-stop-timeout-investigation.md",
+    "validation.json",
+    "visual-review.json",
+    "generate.py",
+    "verify.py",
+    "verification.json"
+  ],
+  "visualReview": "独立 view_image 记录的 hash 已核对；此脚本不会自动完成视觉检查"
+}

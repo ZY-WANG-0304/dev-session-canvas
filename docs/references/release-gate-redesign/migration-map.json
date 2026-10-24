@@ -1,0 +1,1833 @@
+{
+  "scope": "design-migration-not-implemented",
+  "topLevel": [
+    {
+      "ordinal": 1,
+      "script": "typecheck",
+      "currentCommand": "npm run -w extensions/vscode/dev-session-canvas typecheck",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 2,
+      "script": "test:common-dependencies",
+      "currentCommand": "node scripts/test/test-common-dependencies.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 3,
+      "script": "test:marketplace",
+      "currentCommand": "npm run typecheck:marketplace && npm run test:marketplace-shared && npm run test:marketplace-api && npm run test:marketplace-web && npm run test:marketplace-production-config && npm run test:marketplace-vscode-preview-preflight && npm run test:marketplace-e2e",
+      "destinationJobs": [
+        "regression",
+        "marketplace-browser",
+        "marketplace-host"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 4,
+      "script": "test:smoke-marketplace-publish",
+      "currentCommand": "node scripts/test/test-smoke-marketplace-publish.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 5,
+      "script": "test:workspace-relative-paths",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-workspace-relative-paths.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 6,
+      "script": "test:canvas-execution-context",
+      "currentCommand": "node scripts/test/test-canvas-execution-context.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 7,
+      "script": "test:extension-storage-paths",
+      "currentCommand": "node scripts/test/test-extension-storage-paths.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 8,
+      "script": "test:runtime-supervisor-paths",
+      "currentCommand": "node scripts/test/test-runtime-supervisor-paths.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 9,
+      "script": "test:terminal-session-journal",
+      "currentCommand": "node scripts/test/test-terminal-session-journal.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 10,
+      "script": "test:execution-terminal-title",
+      "currentCommand": "node scripts/test/test-execution-terminal-title.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 11,
+      "script": "test:runtime-supervisor-protocol",
+      "currentCommand": "npm run test:runtime-supervisor-request-timeout && npm run test:runtime-legacy-reconnect && node scripts/test/test-runtime-supervisor-protocol.mjs && npm run test:runtime-checkpoint-refresh && npm run test:terminal-paged-projection && npm run test:runtime-completed-history && npm run test:runtime-paged-completion && npm run test:runtime-host-output-credit",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 12,
+      "script": "test:protocol-webview-messages",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-protocol-webview-messages.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 13,
+      "script": "test:webview-lifecycle-diagnostics",
+      "currentCommand": "node scripts/test/test-webview-lifecycle-diagnostics.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 14,
+      "script": "test:smoke-lifecycle-isolation",
+      "currentCommand": "node scripts/test/test-smoke-lifecycle-isolation.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 15,
+      "script": "test:agent-cli-resolver",
+      "currentCommand": "node scripts/test/test-agent-cli-resolver.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 16,
+      "script": "test:agent-cli-selection",
+      "currentCommand": "node scripts/test/test-agent-cli-selection.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 17,
+      "script": "test:agent-settings-files",
+      "currentCommand": "node scripts/test/test-agent-settings-files.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 18,
+      "script": "test:shell-environment-resolver",
+      "currentCommand": "node scripts/test/test-shell-environment-resolver.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 19,
+      "script": "test:execution-session-bridge",
+      "currentCommand": "node scripts/test/test-execution-session-bridge.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 20,
+      "script": "test:execution-output-scheduler",
+      "currentCommand": "node scripts/test/test-execution-output-scheduler.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 21,
+      "script": "test:execution-output-sequence",
+      "currentCommand": "node scripts/test/test-execution-output-sequence.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 22,
+      "script": "test:extension-manifest",
+      "currentCommand": "node scripts/test/test-extension-manifest.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 23,
+      "script": "test:ui-copy-localization",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-ui-copy-localization.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 24,
+      "script": "test:package-vsix-command",
+      "currentCommand": "node scripts/test/test-package-vsix-command.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 25,
+      "script": "test:package-vsix-file-list",
+      "currentCommand": "npm run build && npm run build:notifier && node scripts/test/test-package-vsix-file-list.mjs",
+      "destinationJobs": [
+        "package-clean"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 26,
+      "script": "test:publish-marketplaces",
+      "currentCommand": "node scripts/test/test-publish-marketplaces.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 27,
+      "script": "test:publish-marketplace-workflow",
+      "currentCommand": "node scripts/test/test-publish-marketplace-workflow.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 28,
+      "script": "test:marketplace-production-deploy-workflow",
+      "currentCommand": "node scripts/test/test-template-marketplace-production-deploy-workflow.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 29,
+      "script": "test:sidebar-codicon-bundle",
+      "currentCommand": "node scripts/test/test-sidebar-codicon-bundle.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 30,
+      "script": "test:webview-build-xterm-entry",
+      "currentCommand": "node scripts/test/test-webview-build-xterm-entry.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 31,
+      "script": "test:sidebar-list-colors",
+      "currentCommand": "node scripts/test/test-sidebar-list-color-tokens.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 32,
+      "script": "test:theme-color-tokens",
+      "currentCommand": "node scripts/test/test-theme-color-tokens.mjs && node --no-warnings --experimental-transform-types scripts/test/test-canvas-node-status-presentation.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 33,
+      "script": "test:activitybar-badges",
+      "currentCommand": "node scripts/test/run-playwright-node.mjs scripts/test/test-activitybar-badge-geometry.mjs",
+      "destinationJobs": [
+        "webview-function"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 34,
+      "script": "test:avatar",
+      "currentCommand": "node scripts/test/run-playwright-node.mjs scripts/test/test-avatar-safe-area.mjs",
+      "destinationJobs": [
+        "webview-function"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 35,
+      "script": "test:note-markdown-links",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-note-markdown-links.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 36,
+      "script": "test:note-markdown-source-map",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-note-markdown-source-map.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 37,
+      "script": "test:note-markdown-file-association",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-note-markdown-file-association.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 38,
+      "script": "test:note-body-indent",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-note-body-indent.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 39,
+      "script": "test:note-markdown-checklists",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-note-markdown-checklists.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 40,
+      "script": "test:note-markdown-front-matter",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-note-markdown-front-matter.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 41,
+      "script": "test:execution-terminal-links",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-execution-terminal-links.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 42,
+      "script": "test:execution-terminal-native-helpers",
+      "currentCommand": "node scripts/test/test-execution-terminal-native-helpers.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 43,
+      "script": "test:terminal-shell-configuration",
+      "currentCommand": "node scripts/test/test-terminal-shell-configuration.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 44,
+      "script": "test:serialized-terminal-state-tracker",
+      "currentCommand": "node scripts/test/test-serialized-terminal-state-tracker.mjs && node scripts/test/test-completed-snapshot-resize-integrity.mjs && npm run test:terminal-current-state",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 45,
+      "script": "test:execution-terminal-line-context-tracker",
+      "currentCommand": "node scripts/test/test-execution-terminal-line-context-tracker.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 46,
+      "script": "test:execution-attention-signals",
+      "currentCommand": "node scripts/test/test-execution-attention-signals.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 47,
+      "script": "test:execution-terminal-clipboard",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-execution-terminal-clipboard.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 48,
+      "script": "test:agent-launch-presets",
+      "currentCommand": "node scripts/test/test-agent-launch-presets.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 49,
+      "script": "test:git-worktrees",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-git-worktrees.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 50,
+      "script": "test:canvas-node-placement",
+      "currentCommand": "node --no-warnings --experimental-transform-types scripts/test/test-canvas-node-placement.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 51,
+      "script": "test:canvas-templates",
+      "currentCommand": "node scripts/test/test-canvas-templates.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 52,
+      "script": "test:canvas-node-groups",
+      "currentCommand": "node scripts/test/test-canvas-node-groups.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 53,
+      "script": "test:canvas-layout-arrangement",
+      "currentCommand": "node scripts/test/test-canvas-layout-arrangement.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 54,
+      "script": "test:shared-root-canvas",
+      "currentCommand": "node scripts/test/test-shared-root-canvas-store.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 55,
+      "script": "test:canvas-multi-root-composition",
+      "currentCommand": "node scripts/test/test-canvas-multi-root-composition.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 56,
+      "script": "test:sidebar-node-list",
+      "currentCommand": "node scripts/test/run-playwright-node.mjs scripts/test/test-sidebar-node-list.mjs",
+      "destinationJobs": [
+        "webview-function"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 57,
+      "script": "test:sidebar-session-history",
+      "currentCommand": "node scripts/test/test-sidebar-session-history.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 58,
+      "script": "test:attention-protocol",
+      "currentCommand": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/attention-protocol.test.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 59,
+      "script": "test:notifier-source",
+      "currentCommand": "node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/platformNotification.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarRichText.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarStatus.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarLocalization.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/sidebarViewSource.test.mts",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 60,
+      "script": "test:debug-launch-config",
+      "currentCommand": "node scripts/test/test-debug-launch-config.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 61,
+      "script": "test:smoke-reset-fixture",
+      "currentCommand": "node scripts/test/test-smoke-reset-fixture.mjs && node scripts/test/test-smoke-template-reset.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 62,
+      "script": "test:smoke-execution-output",
+      "currentCommand": "node scripts/test/test-smoke-execution-output.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 63,
+      "script": "test:smoke-runtime-retirement",
+      "currentCommand": "node scripts/test/test-smoke-runtime-retirement.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 64,
+      "script": "test:smoke-terminal-history",
+      "currentCommand": "node scripts/test/test-smoke-terminal-history.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 65,
+      "script": "test:smoke-terminal-resize",
+      "currentCommand": "node scripts/test/test-smoke-terminal-resize.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 66,
+      "script": "test:smoke-remote-host",
+      "currentCommand": "node scripts/test/test-smoke-remote-host.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 67,
+      "script": "test:smoke-remote-host-isolation",
+      "currentCommand": "node scripts/test/test-smoke-remote-host-isolation.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 68,
+      "script": "test:smoke-wait-boundary",
+      "currentCommand": "node scripts/test/test-smoke-wait-boundary.mjs",
+      "destinationJobs": [
+        "regression"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 69,
+      "script": "test:smoke",
+      "currentCommand": "npm run build && npm run build:notifier && node scripts/smoke/run-vscode-smoke.mjs",
+      "destinationJobs": [
+        "source-host"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    },
+    {
+      "ordinal": 70,
+      "script": "test:webview",
+      "currentCommand": "npm run build && node scripts/test/run-playwright-webview.mjs",
+      "destinationJobs": [
+        "webview-function",
+        "webview-visual"
+      ],
+      "migrationRule": "保留内部所有具名检查与断言；build入口改为显式消费所属层产物"
+    }
+  ],
+  "marketplaceBranches": [
+    {
+      "script": "typecheck:marketplace",
+      "destinationJob": "regression"
+    },
+    {
+      "script": "test:marketplace-shared",
+      "destinationJob": "regression"
+    },
+    {
+      "script": "test:marketplace-api",
+      "destinationJob": "regression"
+    },
+    {
+      "script": "test:marketplace-web",
+      "destinationJob": "regression"
+    },
+    {
+      "script": "test:marketplace-production-config",
+      "destinationJob": "regression"
+    },
+    {
+      "script": "test:marketplace-vscode-preview-preflight",
+      "destinationJob": "regression"
+    },
+    {
+      "script": "test:marketplace-browser-e2e",
+      "destinationJob": "marketplace-browser"
+    },
+    {
+      "script": "test:marketplace-vscode-fixture-e2e",
+      "destinationJob": "marketplace-host"
+    }
+  ],
+  "additionalNamedChecks": [
+    {
+      "script": "typecheck:notifier",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:notifier-smoke",
+      "destinationJobs": [
+        "source-host",
+        "installed-pair"
+      ]
+    },
+    {
+      "script": "test:notifier-locale-smoke",
+      "destinationJobs": [
+        "source-host",
+        "installed-pair"
+      ]
+    },
+    {
+      "script": "test:publish-tag-release",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:vscode-smoke-runner-env",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:runtime-root-ownership",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:runtime-root-preparation",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:runtime-supervisor-startup-profile",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:runtime-supervisor-namespace",
+      "destinationJobs": [
+        "regression"
+      ]
+    },
+    {
+      "script": "test:execution-native-assets",
+      "destinationJobs": [
+        "regression"
+      ]
+    }
+  ],
+  "smokeRoutes": [
+    {
+      "currentScenario": "local-execution-flow",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/live-snapshot",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "execution-exit/natural-zero",
+        "execution-restart/after-natural",
+        "execution-start/duplicate",
+        "execution-stop/agent",
+        "execution-io/terminal-line",
+        "execution-stop/terminal",
+        "surface-continuity/completed-reflow",
+        "execution-start/auto-start",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "owned-canvas-reconciliation",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "execution-start/auto-start",
+        "canvas-reconcile/reread",
+        "canvas-reconcile/root-remap",
+        "canvas-reconcile/remove-root",
+        "host-boundary-local/interrupt-and-flush",
+        "host-boundary-local/explicit-new-start",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "snapshot-only-manual-recovery",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "host-boundary-local/interrupt-and-flush",
+        "agent-resume-context/manual-resume",
+        "execution-exit/resumed-nonzero",
+        "host-boundary-local/manual-terminal-start",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-surface-cutover",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "surface-continuity/cutover",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-preparation-failure",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "execution-start/missing-cli",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-links-and-stop",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "terminal-resource-drop/first-resource",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/missing-fallback",
+        "terminal-links/url-and-osc8",
+        "terminal-links/opener-error",
+        "execution-stop/codex-queued-exit",
+        "execution-stop/claude-graceful",
+        "agent-resume-context/claude-explicit-id",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-pty-robustness",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "execution-io/bounded-burst",
+        "execution-exit/nonzero",
+        "execution-restart/after-error",
+        "execution-stop/agent",
+        "execution-restart/after-stop",
+        "execution-concurrency/agent-terminal",
+        "output-pressure/flood-fairness",
+        "output-pressure/ctrl-c-retains-session",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "runtime-checkpoint-refresh",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-projection/checkpoint-current-state",
+        "runtime-projection/completed-no-history",
+        "runtime-projection/completed-page-reopen",
+        "runtime-projection/legacy-completed-migration",
+        "canvas-entry/first-template"
+      ],
+      "context": "runtime环境；保留原模式/binding/分页状态，等价前不移除专用fixture"
+    },
+    {
+      "currentScenario": "trusted",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host",
+        "packaged-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "agent-resume-context/claude-explicit-id",
+        "agent-resume-context/claude-hint",
+        "agent-resume-context/claude-locator",
+        "agent-resume-context/codex-hint",
+        "agent-resume-context/codex-locator",
+        "agent-resume-context/manual-resume",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "canvas-entry/default-surface-reload",
+        "canvas-entry/surface-sidebar",
+        "canvas-entry/trusted-templates",
+        "canvas-nodes/create-open-surface",
+        "canvas-nodes/create-preset-intent",
+        "canvas-nodes/create-quickpick",
+        "canvas-nodes/create-selected-mode",
+        "canvas-nodes/dom-delete",
+        "canvas-nodes/dom-edit",
+        "canvas-nodes/empty-group-delete",
+        "canvas-nodes/explorer-create",
+        "canvas-nodes/layout",
+        "canvas-nodes/legacy-filter",
+        "canvas-nodes/manual-edge",
+        "canvas-nodes/nested-group-delete",
+        "canvas-nodes/note-host-update",
+        "canvas-nodes/post-delete-state",
+        "canvas-nodes/saved-size",
+        "canvas-notes/checklist",
+        "canvas-notes/file-links",
+        "canvas-notes/markdown-association",
+        "canvas-protocol/missing-node",
+        "canvas-protocol/pending-fault",
+        "canvas-protocol/real-probe",
+        "canvas-protocol/standby",
+        "canvas-protocol/unknown-message",
+        "canvas-reconcile/completed-state",
+        "canvas-sidebar/node-list",
+        "canvas-sidebar/node-quickpick",
+        "canvas-sidebar/node-ui",
+        "execution-concurrency/agent-terminal",
+        "execution-config/cli-cache",
+        "execution-config/default-provider",
+        "execution-config/default-root",
+        "execution-config/detected-shell",
+        "execution-config/relative-shell",
+        "execution-config/scrollback",
+        "execution-config/stopped-shell",
+        "execution-config/workspace-shell",
+        "execution-exit/natural-zero",
+        "execution-exit/nonzero",
+        "execution-exit/resumed-nonzero",
+        "execution-file-activity/read-exit-drain",
+        "execution-file-activity/views",
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/bounded-burst",
+        "execution-io/live-snapshot",
+        "execution-io/terminal-line",
+        "execution-notifications/abnormal",
+        "execution-notifications/attention",
+        "execution-notifications/bridge-migration",
+        "execution-restart/after-error",
+        "execution-restart/after-natural",
+        "execution-restart/after-stop",
+        "execution-start/auto-start",
+        "execution-start/duplicate",
+        "execution-start/invalid-launch",
+        "execution-start/missing-cli",
+        "execution-stop/agent",
+        "execution-stop/claude-graceful",
+        "execution-stop/codex-queued-exit",
+        "execution-stop/terminal",
+        "host-boundary-local/interrupt-and-flush",
+        "host-boundary-local/manual-terminal-start",
+        "host-boundary-local/recent-state-flush",
+        "output-pressure/ctrl-c-retains-session",
+        "output-pressure/flood-fairness",
+        "runtime-mode/reload-clear",
+        "runtime-projection/completed-no-history",
+        "runtime-recovery/binding-failure",
+        "runtime-recovery/exit-classification",
+        "runtime-recovery/immediate-boundary",
+        "runtime-recovery/live-persistence",
+        "runtime-recovery/no-stale-resume",
+        "session-history/branch-rejection",
+        "session-history/claude-branch",
+        "session-history/codex-branch",
+        "session-history/doubleclick",
+        "session-history/fork-ui",
+        "session-history/restore",
+        "session-history/search",
+        "surface-continuity/completed-reflow",
+        "surface-continuity/cutover",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/missing-fallback",
+        "terminal-links/opener-error",
+        "terminal-links/url-and-osc8",
+        "terminal-resource-drop/first-resource",
+        "terminal-view/editor-viewport",
+        "terminal-view/local-scrollback",
+        "terminal-view/panel-viewport",
+        "terminal-view/runtime-scrollback",
+        "terminal-view/workbench-theme",
+        "canvas-protocol/lifecycle-race",
+        "canvas-entry/first-template"
+      ],
+      "context": "拆独有领域与证据消费者；逐项映射，不先删除重复调用"
+    },
+    {
+      "currentScenario": "restricted",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "restricted-workspace/diagnostics",
+        "restricted-workspace/entry",
+        "restricted-workspace/execution-actions",
+        "restricted-workspace/history-delete",
+        "restricted-workspace/history-disabled",
+        "restricted-workspace/mode",
+        "restricted-workspace/quickpick-agent",
+        "restricted-workspace/quickpick-terminal",
+        "restricted-workspace/reconnect",
+        "restricted-workspace/templates",
+        "restricted-workspace/webview-create",
+        "canvas-protocol/lifecycle-race",
+        "canvas-entry/first-template"
+      ],
+      "context": "受限，无真实执行；独立seed与拒绝契约"
+    },
+    {
+      "currentScenario": "legacy-supervisor-upgrade",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "supervisor-upgrade/generation-continuity"
+      ],
+      "context": "保留三代上下文及因果步骤；普通Stop/resize不可替代"
+    },
+    {
+      "currentScenario": "real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/local"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "multi-root-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/multi-root"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "single-to-multi-root-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/single-to-multi-root"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "two-window-shared-runtime",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "shared-runtime-windows/owner-attacher"
+      ],
+      "context": "保留跨窗口握手；最后空root重开不是原session恢复"
+    },
+    {
+      "currentScenario": "systemd-user-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/systemd-user"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "systemd-fallback-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/systemd-fallback"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "remote-ssh-real-reopen-exit",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/ssh-host-exit"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "remote-ssh-real-reopen-retain",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "sourceFocusedOnly": false,
+      "defaultJobs": [
+        "source-host"
+      ],
+      "diagnosticJob": null,
+      "caseTargets": [
+        "runtime-reopen/ssh-host-retain"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "runtime-legacy-reconnect",
+      "sourceDefault": false,
+      "packagedDefault": false,
+      "sourceFocusedOnly": true,
+      "defaultJobs": [],
+      "diagnosticJob": "source-host",
+      "caseTargets": [
+        "runtime-recovery/legacy-binding",
+        "runtime-recovery/legacy-no-auto-resume",
+        "canvas-entry/first-template"
+      ],
+      "context": "runtime环境；保留原模式/binding/分页状态，等价前不移除专用fixture"
+    },
+    {
+      "currentScenario": "linux-runtime-report-unavailable",
+      "sourceDefault": false,
+      "packagedDefault": false,
+      "sourceFocusedOnly": true,
+      "defaultJobs": [],
+      "diagnosticJob": "source-host",
+      "caseTargets": [
+        "runtime-compatibility/report-unavailable"
+      ],
+      "context": "preActivation独立Host；focused-only"
+    },
+    {
+      "currentScenario": "runtime-completed-no-history",
+      "sourceDefault": false,
+      "packagedDefault": false,
+      "sourceFocusedOnly": true,
+      "defaultJobs": [],
+      "diagnosticJob": "source-host",
+      "caseTargets": [
+        "runtime-projection/completed-no-history",
+        "canvas-entry/first-template"
+      ],
+      "context": "runtime环境；保留原模式/binding/分页状态，等价前不移除专用fixture"
+    }
+  ],
+  "caseCatalog": [
+    {
+      "id": "execution-start/auto-start",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-start/duplicate",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-start/missing-cli",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-start/invalid-launch",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-io/agent-line",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-io/agent-partial",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-io/terminal-line",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-io/live-snapshot",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-io/bounded-burst",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-state-fixture/burst-prompt",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-state-fixture/sleep",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-state-fixture/spinner",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-exit/natural-zero",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-exit/nonzero",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-exit/resumed-nonzero",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-stop/agent",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-stop/terminal",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-stop/codex-queued-exit",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-stop/claude-graceful",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-restart/after-natural",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-restart/after-error",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-restart/after-stop",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-reconcile/reread",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-reconcile/root-remap",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-reconcile/remove-root",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "surface-continuity/cutover",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "surface-continuity/completed-reflow",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "surface-continuity/live-page-remount",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "host-boundary-local/interrupt-and-flush",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "host-boundary-local/manual-terminal-start",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "host-boundary-local/explicit-new-start",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "host-boundary-local/recent-state-flush",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "host-boundary-local/preserve-terminal-state",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "host-boundary-local/new-host-manual-recovery",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "agent-tui/input-during-work",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "agent-tui/answer-with-footer",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "agent-tui/tool-network-silence",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "agent-tui/turn-completion-redraw",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "execution-exit/native-crash",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "execution-exit/terminal-natural",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "execution-exit/terminal-error",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "execution-restart/terminal-after-exit",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "execution-stop/unresponsive",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "execution-resize/live-geometry",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "output-pressure/resize",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "output-pressure/full-integrity",
+      "status": "proposed-gap"
+    },
+    {
+      "id": "agent-resume-context/manual-resume",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-resume-context/claude-explicit-id",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-links/file-position",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-links/image",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-links/cwd-and-multiline",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-links/missing-fallback",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-links/url-and-osc8",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-links/opener-error",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-resource-drop/first-resource",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-concurrency/agent-terminal",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "output-pressure/flood-fairness",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "output-pressure/ctrl-c-retains-session",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-projection/checkpoint-current-state",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-projection/completed-no-history",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-projection/completed-page-reopen",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-projection/legacy-completed-migration",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/legacy-binding",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/legacy-no-auto-resume",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-compatibility/report-unavailable",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-entry/first-template",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-entry/surface-sidebar",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-protocol/unknown-message",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-protocol/missing-node",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-protocol/lifecycle-race",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/note-host-update",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/post-delete-state",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/entry",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/webview-create",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/quickpick-terminal",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/quickpick-agent",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/execution-actions",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "supervisor-upgrade/generation-continuity",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/local",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/multi-root",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/single-to-multi-root",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/systemd-user",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/systemd-fallback",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/ssh-host-exit",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-reopen/ssh-host-retain",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "shared-runtime-windows/owner-attacher",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-entry/trusted-templates",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-resume-context/codex-locator",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-resume-context/claude-locator",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-resume-context/codex-hint",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "agent-resume-context/claude-hint",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/cli-cache",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/default-provider",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/scrollback",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/stopped-shell",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/detected-shell",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/workspace-shell",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-entry/default-surface-reload",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/create-quickpick",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/default-root",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-config/relative-shell",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/explorer-create",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/create-open-surface",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/create-selected-mode",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/create-preset-intent",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/legacy-filter",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/empty-group-delete",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/nested-group-delete",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/layout",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-sidebar/node-list",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-sidebar/node-quickpick",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-sidebar/node-ui",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-protocol/real-probe",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/dom-edit",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-notes/checklist",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-notes/file-links",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-notes/markdown-association",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/saved-size",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-notifications/bridge-migration",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-notifications/attention",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-notifications/abnormal",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-view/local-scrollback",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-view/editor-viewport",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-view/panel-viewport",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-view/workbench-theme",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-reconcile/completed-state",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-protocol/standby",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-protocol/pending-fault",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/live-persistence",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "terminal-view/runtime-scrollback",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/binding-failure",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/no-stale-resume",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/exit-classification",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-recovery/immediate-boundary",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/dom-delete",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "canvas-nodes/manual-edge",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-file-activity/views",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "execution-file-activity/read-exit-drain",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "runtime-mode/reload-clear",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/restore",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/fork-ui",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/codex-branch",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/claude-branch",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/branch-rejection",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/search",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "session-history/doubleclick",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/templates",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/diagnostics",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/reconnect",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/history-delete",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/mode",
+      "status": "existing-to-migrate"
+    },
+    {
+      "id": "restricted-workspace/history-disabled",
+      "status": "existing-to-migrate"
+    }
+  ],
+  "limitations": [
+    "静态迁移不代替helper内部断言review",
+    "137现有目的地与15新增待验不是已实现case",
+    "focused诊断不自动计入默认完整通过",
+    "未运行产品/CI/渠道"
+  ]
+}

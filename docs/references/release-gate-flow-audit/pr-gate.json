@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1600,
+  "height": 1380,
+  "title": "01  发布 PR 的 CI 门禁",
+  "subtitle": "当前实际流程 · main 6e708c6b / 修复 dc165186 · PR327 的 0.26.1 发布契约",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "title_size": 30,
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "event",
+      "x": 70,
+      "y": 150,
+      "width": 660,
+      "height": 104,
+      "kind": "rect",
+      "label": "PR 打开 / 更新 / 转为可 review",
+      "sublabel": "opened · reopened · synchronize · ready_for_review",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "draft",
+      "x": 980,
+      "y": 150,
+      "width": 550,
+      "height": 104,
+      "kind": "rect",
+      "label": "草稿 PR：不执行门禁",
+      "sublabel": "PR327 当前仍为 draft",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "resolve",
+      "x": 70,
+      "y": 330,
+      "width": 660,
+      "height": 104,
+      "kind": "rect",
+      "label": "非草稿：固定预合并 SHA",
+      "sublabel": "checkout PR merge result · resolve 上限 5 分钟",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "contract",
+      "x": 70,
+      "y": 510,
+      "width": 660,
+      "height": 104,
+      "kind": "rect",
+      "label": "本次 diff 是否修改发布契约？",
+      "sublabel": "docs/release-contracts/vX.Y.Z.md",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "skip",
+      "x": 980,
+      "y": 420,
+      "width": 550,
+      "height": 104,
+      "kind": "rect",
+      "label": "0 个契约：成功跳过完整验证",
+      "sublabel": "普通 PR 不会因此自动执行 npm test",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "multiple",
+      "x": 980,
+      "y": 600,
+      "width": 550,
+      "height": 104,
+      "kind": "rect",
+      "label": "多个契约：失败并中断",
+      "sublabel": "删掉唯一契约也会在静态检查失败",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "assets",
+      "x": 70,
+      "y": 690,
+      "width": 660,
+      "height": 104,
+      "kind": "rect",
+      "label": "1 个契约：并行构建六平台原生资产",
+      "sublabel": "Linux glibc / macOS / Windows × x64 / arm64",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "assetfailure",
+      "x": 980,
+      "y": 780,
+      "width": 550,
+      "height": 104,
+      "kind": "rect",
+      "label": "任一资产或前置失败：Verify 失败",
+      "sublabel": "always 检查 prerequisites，避免伪跳过",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "verify",
+      "x": 70,
+      "y": 870,
+      "width": 660,
+      "height": 104,
+      "kind": "rect",
+      "label": "同 SHA / 同 run 装配 → release:verify",
+      "sublabel": "Ubuntu 22.04 · Node 22 · Chromium · 90 分钟",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "fail",
+      "x": 980,
+      "y": 960,
+      "width": 550,
+      "height": 104,
+      "kind": "rect",
+      "label": "任一测试失败：停止后续验证",
+      "sublabel": "当前缺少 verify 失败现场的 always 上传",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "review",
+      "x": 70,
+      "y": 1050,
+      "width": 660,
+      "height": 104,
+      "kind": "rect",
+      "label": "完整验证与 review 通过 → 人工正常合并",
+      "sublabel": "合并前复查 main；rebase / 输入变化须固定新 SHA 重跑",
+      "title_size": 21,
+      "fill": "#faf5ff",
+      "stroke": "#d8b4fe",
+      "flat": true
+    },
+    {
+      "id": "unenforced",
+      "x": 980,
+      "y": 1140,
+      "width": 550,
+      "height": 104,
+      "kind": "rect",
+      "label": "GitHub 未强制 required check",
+      "sublabel": "main protection=404；effective rules=[]",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "tag",
+      "x": 70,
+      "y": 1230,
+      "width": 660,
+      "height": 80,
+      "kind": "rect",
+      "label": "合入 main 后，人工创建 publish/vX.Y.Z",
+      "sublabel": "进入图 03：最终 tag 输入再次完整验证",
+      "title_size": 21,
+      "fill": "#faf5ff",
+      "stroke": "#d8b4fe",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "event",
+      "target": "draft",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "draft",
+      "color": "#dc2626"
+    },
+    {
+      "source": "event",
+      "target": "resolve",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "非草稿",
+      "color": "#2563eb"
+    },
+    {
+      "source": "resolve",
+      "target": "contract",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "contract",
+      "target": "skip",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "0 个",
+      "color": "#dc2626"
+    },
+    {
+      "source": "contract",
+      "target": "multiple",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "多个",
+      "color": "#dc2626"
+    },
+    {
+      "source": "contract",
+      "target": "assets",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "1 个",
+      "color": "#2563eb"
+    },
+    {
+      "source": "assets",
+      "target": "assetfailure",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "失败",
+      "color": "#dc2626"
+    },
+    {
+      "source": "assets",
+      "target": "verify",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "全成功",
+      "color": "#2563eb"
+    },
+    {
+      "source": "verify",
+      "target": "fail",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "失败",
+      "color": "#dc2626"
+    },
+    {
+      "source": "verify",
+      "target": "review",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "通过",
+      "color": "#16a34a"
+    },
+    {
+      "source": "review",
+      "target": "tag",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#9333ea"
+    }
+  ],
+  "legend": [
+    {
+      "label": "自动执行",
+      "color": "#2563eb"
+    },
+    {
+      "label": "失败 / 跳过",
+      "color": "#dc2626"
+    },
+    {
+      "label": "满足验收",
+      "color": "#16a34a"
+    },
+    {
+      "label": "人工协作",
+      "color": "#9333ea"
+    }
+  ],
+  "legend_x": 60,
+  "legend_y": 1332,
+  "legend_orientation": "horizontal"
+}

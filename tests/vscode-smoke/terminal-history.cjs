@@ -90,4 +90,20 @@ async function restoreTerminalHistory(history) {
   }
 }
 
-module.exports = { collectTerminalHistory, restoreTerminalHistory };
+async function restoreSavedTerminal(saved, cols, rows) {
+  assert.equal(saved?.format, 'xterm-serialize-v1');
+  assert.equal(typeof saved.data, 'string');
+  const terminal = new Terminal({ cols, rows, scrollback: 10000, allowProposedApi: true });
+  try {
+    await new Promise(resolve => terminal.write(saved.data, resolve));
+    const lines = [];
+    for (let index = 0; index < terminal.buffer.active.length; index++) {
+      const line = terminal.buffer.active.getLine(index);
+      const text = line.translateToString(!terminal.buffer.active.getLine(index + 1)?.isWrapped);
+      if (line.isWrapped && lines.length) lines[lines.length - 1] += text;
+      else lines.push(text);
+    }
+    return { lines, cols: terminal.cols, rows: terminal.rows };
+  } finally { terminal.dispose(); }
+}
+module.exports = { collectTerminalHistory, restoreTerminalHistory, restoreSavedTerminal };

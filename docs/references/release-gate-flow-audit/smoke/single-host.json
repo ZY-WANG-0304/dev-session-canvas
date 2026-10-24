@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1920,
+  "height": 2050,
+  "title": "Smoke 02：一个普通场景的Host运行与验证责任",
+  "subtitle": "蓝=执行，绿=断言，紫=等待，红=失败；右侧取证发生在异常路径，注记不是测试步骤",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "main-0",
+      "kind": "rect",
+      "x": 50,
+      "y": 150,
+      "width": 1120,
+      "height": 115,
+      "label": "01  prepareRuntime：建立私有环境",
+      "sublabel": "重建HOME/user-data/extensions/XDG/runtime/TMP/artifacts；写场景配置",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "main-1",
+      "kind": "rect",
+      "x": 50,
+      "y": 325,
+      "width": 1120,
+      "height": 115,
+      "label": "02  stage源码或packaged承载与测试suite",
+      "sublabel": "复制主dist/运行依赖；stageSmokeTestSuite；使用extensionTestsPath",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "main-2",
+      "kind": "rect",
+      "x": 50,
+      "y": 500,
+      "width": 1120,
+      "height": 115,
+      "label": "03  选择实际VS Code宿主 → 构造启动参数",
+      "sublabel": "显式/已安装→缓存→下载stable；trace、私有目录、开发扩展与trust设置",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "main-3",
+      "kind": "rect",
+      "x": 50,
+      "y": 675,
+      "width": 1120,
+      "height": 115,
+      "label": "04  启动真实VS Code测试进程",
+      "sublabel": "过滤VSCODE_/Electron模式及敏感env；透传stdout/stderr；等待进程退出",
+      "title_size": 21,
+      "fill": "#faf5ff",
+      "stroke": "#d8b4fe",
+      "flat": true
+    },
+    {
+      "id": "main-4",
+      "kind": "rect",
+      "x": 50,
+      "y": 850,
+      "width": 1120,
+      "height": 115,
+      "label": "05  Host内module.run：激活扩展和命令",
+      "sublabel": "activateVisibleExtension → open editor → 等待测试命令 → 首开模板 → reset",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "main-5",
+      "kind": "rect",
+      "x": 50,
+      "y": 1025,
+      "width": 1120,
+      "height": 115,
+      "label": "06  按scenario进入断言链",
+      "sublabel": "命令或测试消息进入原生产处理；DOM动作进入真实Webview；每项await串行",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "main-6",
+      "kind": "rect",
+      "x": 50,
+      "y": 1200,
+      "width": 1120,
+      "height": 115,
+      "label": "07  核对三类观测，满足条件才继续",
+      "sublabel": "Host snapshot / messages / diagnostics；页面probe；必要时原Supervisor RPC",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "main-7",
+      "kind": "rect",
+      "x": 50,
+      "y": 1375,
+      "width": 1120,
+      "height": 115,
+      "label": "08  extension-tests尾部检查owned resize失败",
+      "sublabel": "仅trusted和7个local场景执行该断言；专门suite有自己的结尾",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "main-8",
+      "kind": "rect",
+      "x": 50,
+      "y": 1550,
+      "width": 1120,
+      "height": 115,
+      "label": "09  suite返回 → VS Code测试进程exit0",
+      "sublabel": "runner按exit/close和退出码判定；普通spawn没有整场进程deadline",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "main-9",
+      "kind": "rect",
+      "x": 50,
+      "y": 1725,
+      "width": 1120,
+      "height": 115,
+      "label": "10  所有场景成功 → 外层命令返回",
+      "sublabel": "源码/packaged普通入口catch设exitCode=1；不自动重跑",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "channels",
+      "kind": "rect",
+      "x": 1370,
+      "y": 150,
+      "width": 500,
+      "height": 115,
+      "label": "触发与观测是不同责任",
+      "sublabel": "测试命令/DOM动作 → 产品；probe/RPC → 结果",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "identities",
+      "kind": "rect",
+      "x": 1370,
+      "y": 500,
+      "width": 500,
+      "height": 115,
+      "label": "身份检查随具名用例执行",
+      "sublabel": "原node/session/storage/owner/PID，防替换后假通过",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    },
+    {
+      "id": "fail",
+      "kind": "rect",
+      "x": 1370,
+      "y": 1200,
+      "width": 500,
+      "height": 115,
+      "label": "断言或suite抛错：先取证",
+      "sublabel": "错误、快照、消息、诊断、last probe；各suite不同",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "logs",
+      "kind": "rect",
+      "x": 1370,
+      "y": 1375,
+      "width": 500,
+      "height": 115,
+      "label": "测试进程失败：runner复制日志",
+      "sublabel": "user-data/logs最新目录 → artifacts/vscode-logs",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "outer",
+      "kind": "rect",
+      "x": 1370,
+      "y": 1550,
+      "width": 500,
+      "height": 115,
+      "label": "外层抛错：停止后续场景",
+      "sublabel": "专门场景才有finally清理；现场当前仅留runner",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "main-0",
+      "target": "main-1",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-1",
+      "target": "main-2",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-2",
+      "target": "main-3",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-3",
+      "target": "main-4",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-4",
+      "target": "main-5",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-5",
+      "target": "main-6",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-6",
+      "target": "main-7",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-7",
+      "target": "main-8",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-8",
+      "target": "main-9",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "main-6",
+      "target": "fail",
+      "label": "失败",
+      "source_port": "right",
+      "target_port": "left",
+      "color": "#dc2626"
+    },
+    {
+      "source": "fail",
+      "target": "logs",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#dc2626"
+    },
+    {
+      "source": "logs",
+      "target": "outer",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#dc2626"
+    }
+  ]
+}

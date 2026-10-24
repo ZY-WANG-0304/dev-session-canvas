@@ -1,0 +1,200 @@
+[
+  {
+    "timestamp": "2026-10-15T07:22:10.649Z",
+    "kind": "execution/stopRequested",
+    "detail": {
+      "kind": "terminal",
+      "nodeId": "previous-generation-stream-terminal",
+      "sessionId": "dd00a348-d787-4cdb-a206-4fec1f587f80"
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:10.656Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "panel",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-15T07:22:10.656Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "execution-stop",
+      "coalescedCount": 0,
+      "stateHash": "662d00bae3b4",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:10.649Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:10.657Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "panel",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-15T07:22:10.656Z",
+      "mode": "immediate",
+      "workspaceStateMode": "skip",
+      "reason": "execution-stop",
+      "coalescedCount": 0,
+      "stateHash": "662d00bae3b4",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:10.649Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:10.657Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "panel",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+      "mode": "immediate",
+      "reason": "execution-stop",
+      "coalescedCount": 0,
+      "stateHash": "662d00bae3b4",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:10.649Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:10.667Z",
+    "kind": "runtime/terminalAppliedRevisionAccepted",
+    "detail": {
+      "surface": "panel",
+      "nodeId": "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b",
+      "kind": "terminal",
+      "sessionId": "873fefd8-ae8e-4345-a99d-5ff2efcc1b69",
+      "authorityId": "6f625607-21f0-43be-b49a-54e3d8a088e4",
+      "revision": 2,
+      "receivedRevision": 2,
+      "lagRevisions": 0
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:12.893Z",
+    "kind": "state/persistDeferred",
+    "detail": {
+      "reason": "live-execution-state",
+      "delayMs": 1500,
+      "coalescedCount": 0,
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "stateHash": "548c3d64733b",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:12.893Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:14.393Z",
+    "kind": "state/persistQueued",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "panel",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+      "snapshotWrittenAt": "2026-10-15T07:22:14.393Z",
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "reason": "live-execution-state:timer",
+      "coalescedCount": 0,
+      "stateHash": "548c3d64733b",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:12.893Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:14.394Z",
+    "kind": "state/persistWritten",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "panel",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+      "writtenAt": "2026-10-15T07:22:14.393Z",
+      "mode": "deferred",
+      "workspaceStateMode": "skip",
+      "reason": "live-execution-state:timer",
+      "coalescedCount": 0,
+      "stateHash": "548c3d64733b",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:12.893Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:22:14.394Z",
+    "kind": "state/workspaceStateSkipped",
+    "detail": {
+      "snapshotPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/canvas-state.json",
+      "activeSurface": "panel",
+      "writePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+      "mode": "deferred",
+      "reason": "live-execution-state:timer",
+      "coalescedCount": 0,
+      "stateHash": "548c3d64733b",
+      "nodeCount": 4,
+      "groupCount": 0,
+      "rootGroupCount": 0,
+      "updatedAt": "2026-10-15T07:22:12.893Z",
+      "nodeIds": [
+        "legacy-upgrade-agent",
+        "legacy-upgrade-terminal",
+        "previous-generation-stream-terminal",
+        "terminal-1-f0862659-7ee5-484f-9025-56abf1ad842b"
+      ],
+      "rootGroups": []
+    }
+  }
+]

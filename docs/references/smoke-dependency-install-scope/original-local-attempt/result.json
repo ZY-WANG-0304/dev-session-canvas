@@ -1,0 +1,32 @@
+{
+  "inputSHA": "9d741c68ca4a90fbba186a7d565132772e9c55c3",
+  "headSHA": "0d29481a622518032668c9f63988140e74b2a70d",
+  "command": [
+    "node",
+    "scripts/gates/run-infrastructure.mjs",
+    "--kind",
+    "install",
+    "--output",
+    "/tmp/pr335-npm-retry-dh_gey74/evidence/gate-results",
+    "--",
+    "npm",
+    "ci",
+    "--no-audit",
+    "--no-fund"
+  ],
+  "platform": "Linux-5.19.17-saturnv01-x86_64-with-glibc2.35",
+  "node": "v22.23.3",
+  "npm": "10.9.9",
+  "registry": "https://registry.npmjs.org/",
+  "freshCache": true,
+  "proxyVariablesPresent": [
+    "no_proxy",
+    "NO_PROXY",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "ALL_PROXY"
+  ],
+  "lockSHA256": "8abaf58c22555f568470919ab26d5ba866af1099ecfb7cca29900af903c13a1b",
+  "exitCode": 1,
+  "elapsedSeconds": 605.14
+}

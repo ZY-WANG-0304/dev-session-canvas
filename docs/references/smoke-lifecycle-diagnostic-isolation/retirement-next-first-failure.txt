@@ -1,0 +1,3 @@
+AssertionError [ERR_ASSERTION]: Timed out waiting for legacy upgrade state.
+	at waitForSnapshot (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/smoke-host/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs:878:10)
+	at async Object.run (/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/smoke-host/tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs:334:55)

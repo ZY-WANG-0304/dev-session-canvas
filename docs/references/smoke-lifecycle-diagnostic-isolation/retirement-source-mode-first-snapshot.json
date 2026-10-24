@@ -1,0 +1,138 @@
+{
+  "activeSurface": "editor",
+  "state": {
+    "version": 1,
+    "updatedAt": "2026-10-15T06:39:13.142Z",
+    "nodes": [
+      {
+        "id": "agent-1-872fd383-c333-4063-86ec-014480e298b8",
+        "kind": "agent",
+        "title": "Agent 1",
+        "status": "starting",
+        "summary": "[fake-agent] ready pid=11731 session=781856e9-71e5-4464-ad4d-5a632d94801f",
+        "position": {
+          "x": 120,
+          "y": 100
+        },
+        "size": {
+          "width": 560,
+          "height": 430
+        },
+        "metadata": {
+          "agent": {
+            "backend": "node-pty",
+            "lifecycle": "starting",
+            "provider": "codex",
+            "launchPreset": "default",
+            "lastLaunchCommandLine": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "runtimeKind": "pty-cli",
+            "resumeSupported": true,
+            "resumeStrategy": "fake-provider",
+            "shellPath": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+            "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/trusted/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/8e023bb53d05e0a38e6aeef4b2d1a8fa0f273e6776d83bf1da66bd12db3a4863/dab2015f5741ae2432030ae68cbfb843a0ce013877d4311a183cd0d861c231e8/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+            "runtimeOwner": {
+              "schema": 1,
+              "environmentKey": "8e023bb53d05e0a38e6aeef4b2d1a8fa0f273e6776d83bf1da66bd12db3a4863",
+              "userStorageScopeKey": "ec691eb99a98108705795ed59539c1822e845859cfe87de62e105c0f5961f95b",
+              "root": {
+                "kind": "folder",
+                "pathPolicy": "canvas-path-v1",
+                "normalizedPath": "/home/runner/work/dev-session-canvas/dev-session-canvas"
+              },
+              "generation": "terminal-root-owner-linux-v1"
+            },
+            "liveSession": true,
+            "lastCols": 67,
+            "lastRows": 21,
+            "attentionPending": false,
+            "lastBackendLabel": "Codex",
+            "outputSequence": 1,
+            "recentOutput": "[fake-agent] ready pid=11731 session=781856e9-71e5-4464-ad4d-5a632d94801f",
+            "resumeSessionId": "781856e9-71e5-4464-ad4d-5a632d94801f",
+            "resumeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/trusted/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-872fd383-c333-4063-86ec-014480e298b8",
+            "terminalProjectionMode": "terminal-stream-v1",
+            "runtimeSessionId": "d576ed10-595e-4ca0-be27-b020bdbfd95e"
+          }
+        }
+      },
+      {
+        "id": "terminal-2-600e4c30-b07f-4adf-adab-c584049246c5",
+        "kind": "terminal",
+        "title": "Terminal 2",
+        "status": "live",
+        "summary": "\u001b[?2004hrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$",
+        "position": {
+          "x": 800,
+          "y": 100
+        },
+        "size": {
+          "width": 540,
+          "height": 420
+        },
+        "metadata": {
+          "terminal": {
+            "backend": "node-pty",
+            "lifecycle": "live",
+            "shellPath": "/usr/bin/bash",
+            "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+            "persistenceMode": "live-runtime",
+            "attachmentState": "attached-live",
+            "runtimeBackend": "legacy-detached",
+            "runtimeGuarantee": "best-effort",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/trusted/user-data/User/globalStorage/devsessioncanvas.dev-session-canvas/runtime-roots-v1/8e023bb53d05e0a38e6aeef4b2d1a8fa0f273e6776d83bf1da66bd12db3a4863/dab2015f5741ae2432030ae68cbfb843a0ce013877d4311a183cd0d861c231e8/runtime-supervisor-generations/terminal-root-owner-linux-v1",
+            "runtimeOwner": {
+              "schema": 1,
+              "environmentKey": "8e023bb53d05e0a38e6aeef4b2d1a8fa0f273e6776d83bf1da66bd12db3a4863",
+              "userStorageScopeKey": "ec691eb99a98108705795ed59539c1822e845859cfe87de62e105c0f5961f95b",
+              "root": {
+                "kind": "folder",
+                "pathPolicy": "canvas-path-v1",
+                "normalizedPath": "/home/runner/work/dev-session-canvas/dev-session-canvas"
+              },
+              "generation": "terminal-root-owner-linux-v1"
+            },
+            "liveSession": true,
+            "lastCols": 64,
+            "lastRows": 20,
+            "attentionPending": false,
+            "outputSequence": 1,
+            "recentOutput": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$",
+            "terminalProjectionMode": "terminal-stream-v1",
+            "runtimeSessionId": "0bde1587-934c-414a-873d-99565a46d9b3"
+          }
+        }
+      },
+      {
+        "id": "note-3-f03f40cc-d7aa-4f15-b292-c010e1b3859d",
+        "kind": "note",
+        "title": "Note 3",
+        "status": "ready",
+        "summary": "Waiting for note content.",
+        "position": {
+          "x": 760,
+          "y": 580
+        },
+        "size": {
+          "width": 380,
+          "height": 400
+        },
+        "metadata": {
+          "note": {
+            "content": ""
+          }
+        }
+      }
+    ],
+    "edges": [],
+    "groups": [],
+    "nextGroupSequence": 1,
+    "fileReferences": [],
+    "suppressedFileActivityEdgeIds": [],
+    "suppressedAutomaticFileArtifactNodeIds": []
+  }
+}

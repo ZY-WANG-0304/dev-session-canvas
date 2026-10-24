@@ -1,0 +1,387 @@
+{
+  "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+  "timeOrigin": 1792053869963,
+  "events": [
+    {
+      "at": 1792053869963,
+      "role": "host",
+      "pid": 2555,
+      "stage": "stop-rpc-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "storage": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/5e5f8096a940e3250f4791271d48e086/devsessioncanvas.dev-session-canvas/previous-generation-stream"
+    },
+    {
+      "at": 1792053869964,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "stopSession-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": true,
+      "lifecycle": "live",
+      "stopRequested": false,
+      "sequence": 6,
+      "processPid": 2732,
+      "proc": {
+        "stat": "2732 (bash) S 2690 2732 2732 34818 2732 4194304 402 146 0 0 0 0 0 0 20 0 1 0 38204 8228864 1024 18446744073709551615 94289086660608 94289087573869 140729129127152 0 0 0 0 3686404 1266761467 1 0 0 17 0 0 0 0 0 0 94289087818384 94289087866448 94289891012608 140729129129999 140729129130009 140729129130009 140729129140206 0\n",
+        "status": [
+          "Name:\tbash",
+          "State:\tS (sleeping)",
+          "Pid:\t2732",
+          "PPid:\t2690",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": false,
+        "readable": true,
+        "fd": 28
+      },
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 2,
+          "appliedStateVersion": 2
+        }
+      ]
+    },
+    {
+      "at": 1792053869964,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "pty-kill-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 6,
+      "processPid": 2732,
+      "proc": {
+        "stat": "2732 (bash) S 2690 2732 2732 34818 2732 4194304 402 146 0 0 0 0 0 0 20 0 1 0 38204 8228864 1024 18446744073709551615 94289086660608 94289087573869 140729129127152 0 0 0 0 3686404 1266761467 1 0 0 17 0 0 0 0 0 0 94289087818384 94289087866448 94289891012608 140729129129999 140729129130009 140729129130009 140729129140206 0\n",
+        "status": [
+          "Name:\tbash",
+          "State:\tS (sleeping)",
+          "Pid:\t2732",
+          "PPid:\t2690",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": false,
+        "readable": true,
+        "fd": 28
+      }
+    },
+    {
+      "at": 1792053869964,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "pty-kill-returned",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 6,
+      "processPid": 2732,
+      "proc": {
+        "stat": "2732 (bash) R 2690 2732 2732 34818 2732 4194304 402 146 0 0 0 0 0 0 20 0 1 0 38204 8228864 1024 18446744073709551615 94289086660608 94289087573869 140729129127152 0 0 0 0 3686404 1266761467 0 0 0 17 2 0 0 0 0 0 94289087818384 94289087866448 94289891012608 140729129129999 140729129130009 140729129130009 140729129140206 0\n",
+        "status": [
+          "Name:\tbash",
+          "State:\tR (running)",
+          "Pid:\t2732",
+          "PPid:\t2690",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": false,
+        "readable": true,
+        "fd": 28
+      }
+    },
+    {
+      "at": 1792053869966,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "pty-onExit",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 7,
+      "processPid": 2732,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      },
+      "exitCode": 0,
+      "signal": "1"
+    },
+    {
+      "at": 1792053869966,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "finalizeSession-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 7,
+      "processPid": 2732,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      },
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 3,
+          "appliedStateVersion": 2,
+          "inFlight": {
+            "batchId": 4,
+            "revision": 6,
+            "stateVersion": 3,
+            "completed": false,
+            "error": false
+          }
+        }
+      ]
+    },
+    {
+      "at": 1792053869967,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "finalizeSession-returned",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 7,
+      "processPid": 2732,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      }
+    },
+    {
+      "at": 1792053869977,
+      "role": "host",
+      "pid": 2555,
+      "stage": "state-received",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 6,
+      "storage": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/5e5f8096a940e3250f4791271d48e086/devsessioncanvas.dev-session-canvas/previous-generation-stream"
+    },
+    {
+      "at": 1792053869979,
+      "role": "host",
+      "pid": 2555,
+      "stage": "handleRuntimeSupervisorTerminalBatch-returned",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "nodeId": "previous-generation-stream-terminal",
+      "result": "consumed",
+      "state": {
+        "present": true,
+        "paged": true,
+        "healthy": true,
+        "sequence": 6
+      }
+    },
+    {
+      "at": 1792053869979,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "ackTerminalBatch-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 7,
+      "processPid": 2732,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      },
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 4,
+          "appliedStateVersion": 2,
+          "inFlight": {
+            "batchId": 4,
+            "revision": 6,
+            "stateVersion": 3,
+            "completed": false,
+            "error": false
+          }
+        }
+      ],
+      "params": {
+        "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+        "authorityId": "0daa9526-24f0-4f19-8b78-096682296295",
+        "subscriptionId": "b6f3efdf-e5be-48ec-a1e0-230ba19e3039",
+        "batchId": 4,
+        "outcome": "consumed"
+      }
+    },
+    {
+      "at": 1792053869985,
+      "role": "host",
+      "pid": 2555,
+      "stage": "state-received",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 7,
+      "storage": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/5e5f8096a940e3250f4791271d48e086/devsessioncanvas.dev-session-canvas/previous-generation-stream"
+    },
+    {
+      "at": 1792053869991,
+      "role": "host",
+      "pid": 2555,
+      "stage": "handleRuntimeSupervisorTerminalBatch-returned",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "nodeId": "previous-generation-stream-terminal",
+      "result": "consumed",
+      "state": {
+        "present": false
+      }
+    },
+    {
+      "at": 1792053869991,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "ackTerminalBatch-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 7,
+      "processPid": 2732,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      },
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 6,
+          "stateVersion": 4,
+          "appliedStateVersion": 3,
+          "inFlight": {
+            "batchId": 5,
+            "revision": 7,
+            "stateVersion": 4,
+            "completed": true,
+            "error": false
+          }
+        }
+      ],
+      "params": {
+        "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+        "authorityId": "0daa9526-24f0-4f19-8b78-096682296295",
+        "subscriptionId": "b6f3efdf-e5be-48ec-a1e0-230ba19e3039",
+        "batchId": 5,
+        "outcome": "consumed"
+      }
+    },
+    {
+      "at": 1792053869991,
+      "role": "supervisor",
+      "supervisorPid": 2690,
+      "stage": "cancelHostOutput-enter",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 7,
+      "processPid": 2732,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      },
+      "subscribers": [
+        "terminal-host-credit"
+      ],
+      "credit": [
+        {
+          "appliedRevision": 7,
+          "stateVersion": 4,
+          "appliedStateVersion": 4
+        }
+      ]
+    }
+  ]
+}

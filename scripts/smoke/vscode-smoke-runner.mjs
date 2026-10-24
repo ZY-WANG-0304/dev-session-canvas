@@ -1,10 +1,17 @@
 import os from 'os';
+import assert from 'node:assert/strict';
 import path from 'path';
 import { execFile, spawn, spawnSync } from 'child_process';
-import { existsSync, statSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import esbuild from 'esbuild';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { runProcess,retireProcessGroup } from '../gates/process.mjs';
+import { environmentPolicy, infrastructureBudgets } from '../gates/catalog.mjs';
+import { withinDeadline } from '../gates/deadline.mjs';
 
 const BLOCKED_VSCODE_ENV_PREFIXES = ['VSCODE_'];
 const BLOCKED_VSCODE_ENV_KEYS = new Set(['ELECTRON_RUN_AS_NODE']);
@@ -59,25 +66,34 @@ export async function runVSCodeScenario(options) {
 
 export async function launchPreparedVSCodeScenario(options) {
   const runtime = options.runtime;
-  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot));
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot,
+    { evidenceDir: runtime.artifactsDir }));
+  // Source and packaged file-entry tests share the same native input driver.
+  const nativeFileInput = options.extensionTestsEnv?.DEV_SESSION_CANVAS_SMOKE_SCENARIO === 'execution-file-activity/views';
+  const nativeInputEnv = nativeFileInput ? {
+    DEV_SESSION_CANVAS_SMOKE_PLAYWRIGHT: createRequire(path.join(options.projectRoot, 'package.json')).resolve('playwright')
+  } : {};
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
     folderUri: options.folderUri,
     remoteAuthority: options.remoteAuthority,
     extensionDevelopmentPath: options.extensionDevelopmentPath,
     extensionTestsPath: options.extensionTestsPath,
+    extensionHostEnv: options.extensionHostEnv,
     userDataDir: runtime.userDataDir,
     extensionsDir: runtime.extensionsDir,
     disableWorkspaceTrust: options.disableWorkspaceTrust ?? true,
     disableExtensions: options.disableExtensions ?? true,
     profileName: options.profileName,
-    extraLaunchArgs: options.extraLaunchArgs ?? []
+    extraLaunchArgs: [...(options.extraLaunchArgs ?? []),
+      ...(nativeFileInput ? ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0'] : [])]
   });
 
   try {
     await launchVSCodeTestProcess(vscodeExecutablePath, args, {
       ...runtime.environment,
-      ...(options.extensionTestsEnv ?? {})
+      ...(options.extensionTestsEnv ?? {}),
+      ...nativeInputEnv
     });
   } catch (error) {
     await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
@@ -85,18 +101,22 @@ export async function launchPreparedVSCodeScenario(options) {
     throw error;
   }
 
+  await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
+
   return runtime;
 }
 
 export async function spawnPreparedVSCodeScenario(options) {
   const runtime = options.runtime;
-  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot));
+  const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot,
+    { evidenceDir: runtime.artifactsDir }));
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
     folderUri: options.folderUri,
     remoteAuthority: options.remoteAuthority,
     extensionDevelopmentPath: options.extensionDevelopmentPath,
     extensionTestsPath: options.extensionTestsPath,
+    extensionHostEnv: options.extensionHostEnv,
     userDataDir: runtime.userDataDir,
     extensionsDir: runtime.extensionsDir,
     disableWorkspaceTrust: options.disableWorkspaceTrust ?? true,
@@ -111,7 +131,9 @@ export async function spawnPreparedVSCodeScenario(options) {
   });
   return {
     ...handle,
-    completed: handle.completed.catch(async (error) => {
+    completed: handle.completed.then(async value => {
+      await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir); return value;
+    }).catch(async (error) => {
       await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);
       console.error(`Smoke test artifacts saved to ${runtime.artifactsDir}`);
       throw error;
@@ -128,12 +150,50 @@ export function resolveVSCodeSmokeDebugRoot(projectRoot) {
   return path.join(projectRoot, '.debug', 'vscode-smoke');
 }
 
+export function resolveSmokeRuntimePaths(options, { platform = process.platform, temporaryRoot = os.tmpdir(),
+  fallbackRoot = '/tmp', runtimeNonce = process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE } = {}) {
+  const debugRoot = options.debugRoot;
+  const requestedRuntimeName = options.runtimeDirName ?? 'dsc-vscode-smoke-runtime';
+  const limit = platform === 'darwin' ? 103 : 107;
+  const unix = platform !== 'win32';
+  const runtimeSocket = directory => path.join(directory, 'state', 'dsc', 'rh', '0'.repeat(24), 's.sock');
+  const mainSocket = directory => path.join(directory, '1.14-main.sock');
+  const agentSocket = directory => path.join(directory, `vscode-ah-${'a'.repeat(12)}`, `${'b'.repeat(22)}.sock`);
+  const fits = file => Buffer.byteLength(file) <= limit;
+  const longSocket = runtimeSocket(path.join(temporaryRoot, requestedRuntimeName));
+  // Case IDs can be long. Keep the real systemd and VS Code IPC observations
+  // within the OS socket limit, and isolate concurrent formal run/attempts.
+  // Shared-window setup passes the same name and nonce to both participants.
+  const hashedName = `dsc-${createHash('sha256').update(`${requestedRuntimeName}\0${runtimeNonce ?? ''}`).digest('hex').slice(0, 16)}`;
+  let runtimeName = runtimeNonce || !fits(longSocket)
+    ? hashedName
+    : requestedRuntimeName;
+  const resolve = root => {
+    const runtimeDir = path.join(root, runtimeName);
+    let userDataDir = path.join(options.userDataInRuntimeDir ? runtimeDir : debugRoot, 'user-data');
+    if (unix && !fits(mainSocket(userDataDir))) {
+      // Distinct window fixtures can intentionally share the runtime while
+      // still requiring separate user-data and extension Host identities.
+      const windowID = createHash('sha256').update(`${path.resolve(debugRoot)}\0${runtimeNonce ?? requestedRuntimeName}`)
+        .digest('hex').slice(0, 12);
+      userDataDir = path.join(root, `dsc-ud-${windowID}`);
+    }
+    const tmpDir = path.join(unix ? runtimeDir : debugRoot, 'tmp');
+    return { runtimeDir, userDataDir, tmpDir };
+  };
+  let paths = resolve(temporaryRoot);
+  const valid = paths => [runtimeSocket(paths.runtimeDir), mainSocket(paths.userDataDir), agentSocket(paths.tmpDir)].every(fits);
+  if (unix && !valid(paths)) { runtimeName = hashedName; paths = resolve(temporaryRoot); }
+  if (unix && !valid(paths)) paths = resolve(fallbackRoot);
+  assert(!unix || valid(paths), `Private ${platform} smoke socket paths exceed the ${limit}-byte OS socket budget`);
+  return paths;
+}
+
 export async function prepareRuntime(options) {
   const debugRoot = options.debugRoot;
-  const runtimeDir = path.join(os.tmpdir(), options.runtimeDirName ?? 'dsc-vscode-smoke-runtime');
+  const { runtimeDir, userDataDir, tmpDir } = resolveSmokeRuntimePaths(options);
   // With no XDG_RUNTIME_DIR, VSCode puts its Unix IPC socket under user-data.
   // Keep that path short for the real missing-bus fixture without changing its bus environment.
-  const userDataDir = path.join(options.userDataInRuntimeDir ? runtimeDir : debugRoot, 'user-data');
   const extensionsDir = path.join(debugRoot, 'extensions');
   const homeDir = path.join(debugRoot, 'home');
   const configDir = path.join(debugRoot, 'config');
@@ -141,13 +201,13 @@ export async function prepareRuntime(options) {
   const appDataDir = path.join(debugRoot, 'appdata');
   const localAppDataDir = path.join(debugRoot, 'local-appdata');
   const stateDir = path.join(runtimeDir, 'state');
-  const tmpDir = path.join(debugRoot, 'tmp');
   const artifactsDir = path.join(debugRoot, 'artifacts');
 
   await fs.rm(debugRoot, { recursive: true, force: true });
   await fs.rm(runtimeDir, { recursive: true, force: true });
+  await fs.rm(userDataDir, { recursive: true, force: true });
   await fs.mkdir(runtimeDir, { recursive: true, mode: 0o700 });
-  await fs.mkdir(userDataDir, { recursive: true });
+  await fs.mkdir(userDataDir, { recursive: true, mode: 0o700 });
   await fs.mkdir(path.join(userDataDir, 'User'), { recursive: true });
   await fs.mkdir(extensionsDir, { recursive: true });
   await fs.mkdir(homeDir, { recursive: true });
@@ -162,6 +222,20 @@ export async function prepareRuntime(options) {
 
   if (options.userSettings) {
     await writeUserSettings(userDataDir, options.userSettings);
+  }
+
+  await snapshotSmokeUserSettings(userDataDir, artifactsDir);
+  if (process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS) {
+    const nonce = process.env.DEV_SESSION_CANVAS_GATE_RUN_NONCE;
+    assert(nonce, 'A formal runtime must retain its original run identity');
+    const registration = { schemaVersion: 1, nonce, platform: process.platform, temporaryRoot: os.tmpdir(),
+      options: { debugRoot: path.resolve(debugRoot), runtimeDirName: options.runtimeDirName,
+        userDataInRuntimeDir: options.userDataInRuntimeDir === true },
+      paths: { runtimeDir, userDataDir, tmpDir }, artifactsDir: path.resolve(artifactsDir) };
+    const key = createHash('sha256').update(registration.options.debugRoot).digest('hex').slice(0, 16);
+    const directory = process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS;
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, `smoke-runtime-${key}.json`), `${JSON.stringify(registration, null, 2)}\n`, { flag: 'wx' });
   }
 
   return {
@@ -188,6 +262,10 @@ export async function prepareRuntime(options) {
       TEMP: tmpDir,
       MESA_SHADER_CACHE_DIR: path.join(cacheDir, 'mesa'),
       DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR: artifactsDir,
+      DEV_SESSION_CANVAS_SMOKE_USER_DATA_DIR: userDataDir,
+      ...(process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS?{
+        DEV_SESSION_CANVAS_GATE_STORAGE_ROOT:options.gateStorageRoot??debugRoot,
+        DEV_SESSION_CANVAS_GATE_STORAGE_ROOTS:JSON.stringify([options.gateStorageRoot??debugRoot,runtimeDir,userDataDir])}:{}),
       ...(options.extensionTestsEnv ?? {})
     }
   };
@@ -260,6 +338,10 @@ export async function buildHistoricalRuntimeSupervisorFixture(options) {
   await fs.mkdir(path.dirname(options.outfile), { recursive: true });
   await esbuild.build({
     entryPoints: [path.join(sourceRoot, 'src', 'supervisor', 'runtimeSupervisorMain.ts')],
+    // This historical fixture lives in the evidence directory, outside the
+    // repository's dependency ancestry. Bundle its real declared imports from
+    // the locked checkout instead of making them unresolved externals.
+    nodePaths: [path.join(options.projectRoot, 'node_modules')],
     bundle: true,
     external: ['node-pty'],
     format: 'cjs',
@@ -289,11 +371,24 @@ export async function stageSmokeTestSuite(options) {
     format: 'cjs',
     outfile: path.join(targetRoot, 'terminal-history.cjs')
   });
+  await esbuild.build({
+    entryPoints: [path.join(options.projectRoot, 'scripts/smoke/smoke-catalog.mjs')],
+    bundle: true, platform: 'node', target: 'node22', format: 'esm',
+    outfile: path.join(targetRoot, 'smoke-catalog.mjs')
+  });
+  if (process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS) {
+    const tests = (await fs.readdir(targetRoot)).filter(name => name.endsWith('-tests.cjs'));
+    for (const testFile of tests) {
+      await fs.writeFile(path.join(targetRoot, `gate-${testFile}`),
+        `exports.run = () => require('./gate-host-entry.cjs').runWrapped(${JSON.stringify(testFile)});\n`);
+    }
+  }
   return targetRoot;
 }
 
 export function resolveStagedSmokeTestPath(targetRoot, testFileName) {
-  return path.join(targetRoot, STAGED_SMOKE_TESTS_ROOT, testFileName);
+  return path.join(targetRoot, STAGED_SMOKE_TESTS_ROOT,
+    process.env.DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS ? `gate-${testFileName}` : testFileName);
 }
 
 export async function stageBundledExtension(options) {
@@ -346,25 +441,108 @@ export async function writeUserSettings(userDataDir, userSettings) {
 }
 
 export async function snapshotVSCodeLogs(userDataDir, artifactsDir) {
+  await snapshotSmokeUserSettings(userDataDir, artifactsDir);
   const logsRoot = path.join(userDataDir, 'logs');
-  const entries = await fs.readdir(logsRoot, { withFileTypes: true }).catch(() => []);
-  const latestDir = entries
+  const entries = await fs.readdir(logsRoot, { withFileTypes: true }).catch(error => {
+    if (error.code === 'ENOENT') return []; throw error;
+  });
+  const sessions = entries
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .sort()
-    .pop();
-
-  if (!latestDir) {
-    return;
+    .sort();
+  for (const session of sessions) {
+    const sourceDir = path.join(logsRoot, session);
+    const targetDir = path.join(artifactsDir, 'vscode-logs', session);
+    await fs.mkdir(path.dirname(targetDir), { recursive: true });
+    await fs.cp(sourceDir, targetDir, { recursive: true });
   }
-
-  const sourceDir = path.join(logsRoot, latestDir);
-  const targetDir = path.join(artifactsDir, 'vscode-logs');
-  await fs.rm(targetDir, { recursive: true, force: true });
-  await fs.cp(sourceDir, targetDir, { recursive: true });
 }
 
-export async function ensureVSCodeExecutable(projectRoot) {
+async function snapshotSmokeUserSettings(userDataDir, artifactsDir) {
+  const settings = await fs.readFile(path.join(userDataDir, 'User', 'settings.json')).catch(error => {
+    if (error.code === 'ENOENT') return null; throw error;
+  });
+  if (settings !== null) {
+    await fs.mkdir(artifactsDir, { recursive: true });
+    await fs.writeFile(path.join(artifactsDir, 'user-settings.json'), settings);
+  }
+}
+
+export async function retireFormalSmokeRuntimes(directory, nonce, { contract, fixtureRoot, deadline }) {
+  const { collectHostEvidence } = await import('./host-evidence.mjs');
+  // Keep real reopen state until every original Host and fixture has finished.
+  const hosts = await collectHostEvidence(directory, nonce, { contract, requireActions: false, deadline });
+  const records = [];
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile() && /^smoke-runtime-[a-f0-9]{16}\.json$/u.test(entry.name))
+      records.push(JSON.parse(await fs.readFile(path.join(directory, entry.name), 'utf8')));
+  }
+  assert(records.length, 'Formal Host runtime paths were never registered');
+  const root = path.resolve(fixtureRoot);
+  // Validate the complete set before deleting any member. A changed nonce,
+  // profile or temporary root cannot authorize retirement of another fixture.
+  for (const record of records) {
+    assert.equal(record.schemaVersion, 1); assert.equal(record.nonce, nonce);
+    assert.equal(record.platform, process.platform); assert.equal(record.temporaryRoot, os.tmpdir());
+    assert(record.options.debugRoot === root || record.options.debugRoot.startsWith(`${root}${path.sep}`),
+      'Registered runtime is outside the original fixture scene');
+    assert.equal(record.artifactsDir, path.join(record.options.debugRoot, 'artifacts'));
+    assert.deepEqual(record.paths, resolveSmokeRuntimePaths(record.options, { runtimeNonce: nonce }),
+      'Registered runtime paths differ from the original private resolution');
+  }
+  const result = { schemaVersion: 1, nonce, hosts: hosts.results.length, exits: hosts.exits,
+    status: 'running', retired: [], failures: [] };
+  try {
+    await withinDeadline('Original private smoke directory retirement', deadline, async signal => {
+      for (const record of records) {
+        signal.throwIfAborted(); await snapshotVSCodeLogs(record.paths.userDataDir, record.artifactsDir);
+      }
+      const paths = new Set();
+      for (const record of records) {
+        paths.add(record.paths.runtimeDir);
+        const profile = record.paths.userDataDir;
+        if (!profile.startsWith(`${root}${path.sep}`) && !profile.startsWith(`${record.paths.runtimeDir}${path.sep}`)) paths.add(profile);
+      }
+      for (const directory of paths) {
+        signal.throwIfAborted(); await fs.rm(directory, { recursive: true, force: true }); result.retired.push(directory);
+      }
+    });
+    result.status = 'passed';
+  } catch (error) {
+    result.status = 'failed'; result.failures.push({ reason: error.message }); throw error;
+  } finally {
+    result.completedAt = new Date().toISOString();
+    await fs.writeFile(path.join(directory, 'smoke-runtime-retirement.json'), `${JSON.stringify(result, null, 2)}\n`, { flag: 'wx' });
+  }
+  return result;
+}
+
+export async function ensureVSCodeExecutable(projectRoot, { evidenceDir = resolveVSCodeSmokeDebugRoot(projectRoot) } = {}) {
+  if (process.env.DEV_SESSION_CANVAS_GATE_PLAN || process.env.DEV_SESSION_CANVAS_VSCODE_VERSION) {
+    const version = process.env.DEV_SESSION_CANVAS_VSCODE_VERSION || environmentPolicy.vscode;
+    if (version !== environmentPolicy.vscode && process.env.DEV_SESSION_CANVAS_GATE_PLAN) {
+      throw new Error('Formal gate refuses a non-plan VS Code version');
+    }
+    const cache=resolveVSCodeTestCachePath(projectRoot);await fs.mkdir(cache,{recursive:true});
+    const output=path.join(cache,`download-${process.pid}-${Date.now()}.txt`);
+    const deadline=Math.min(Date.now()+infrastructureBudgets.download,
+      Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE)||Infinity);
+    await fs.mkdir(evidenceDir,{recursive:true});
+    const evidence=path.join(evidenceDir,`host-download-${process.pid}-${Date.now()}.json`);
+    let downloaded;
+    try {
+      const observed=await runProcess(process.execPath,[fileURLToPath(new URL('./download-vscode.mjs',import.meta.url)),
+        '--version',version,'--cache',cache,'--output',output,'--deadline',String(deadline),'--evidence',evidence],{deadline,
+        logPath:output.replace('.txt','.log')});
+      if(observed.status!=='passed')throw new Error(`Fixed VS Code download failed: ${JSON.stringify(observed)}`);
+      downloaded=(await fs.readFile(output,'utf8')).trim();
+    }finally{await fs.rm(output,{force:true});}
+    const executable = normalizeVSCodeExecutablePath(downloaded);
+    const appRoot = await resolveVSCodeAppRoot(executable);
+    const product = JSON.parse(await fs.readFile(path.join(appRoot, 'package.json'), 'utf8'));
+    if (product.version !== version) throw new Error(`Downloaded host version differs: ${product.version}`);
+    return executable;
+  }
   const preferredInstalledPath = findPreferredInstalledVSCodeExecutablePath();
   if (preferredInstalledPath) {
     return preferredInstalledPath;
@@ -380,6 +558,19 @@ export async function ensureVSCodeExecutable(projectRoot) {
     cachePath: resolveVSCodeTestCachePath(projectRoot)
   });
   return normalizeVSCodeExecutablePath(downloadResult);
+}
+
+export async function resolveVSCodeAppRoot(executable,platform=process.platform) {
+  if(platform==='darwin')return path.resolve(path.dirname(executable),'../Resources/app');
+  const root=path.dirname(executable);
+  const direct=path.join(root,'resources','app');
+  if(existsSync(path.join(direct,'package.json')))return direct;
+  if(platform==='win32') {
+    const entries=await fs.readdir(root,{withFileTypes:true});
+    const matches=entries.filter(entry=>entry.isDirectory()&&existsSync(path.join(root,entry.name,'resources','app','package.json')));
+    if(matches.length===1)return path.join(root,matches[0].name,'resources','app');
+  }
+  throw new Error('Fixed VS Code application manifest is missing or ambiguous');
 }
 
 export async function findExistingVSCodeExecutablePath(projectRoot) {
@@ -418,13 +609,17 @@ export function buildVSCodeArgs(options, platform = process.platform) {
   }
 
   args.push(
-    '--log=trace',
+    '--log=debug',
     `--user-data-dir=${options.userDataDir}`,
     `--extensions-dir=${options.extensionsDir}`,
     '--no-sandbox',
     '--disable-gpu-sandbox',
     ...resolveVSCodeSmokeStabilityArgs(platform),
     '--password-store=basic',
+    // A detached upstream crash reporter is outside the product execution
+    // contract and can inherit logs after Code exits. Keep this fixture
+    // subsystem disabled at launch; original Host/resource checks stay strict.
+    '--disable-crash-reporter',
     ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
     '--disable-updates',
     '--skip-welcome',
@@ -435,7 +630,14 @@ export function buildVSCodeArgs(options, platform = process.platform) {
     args.push(`--profile=${options.profileName}`);
   }
 
-  args.push(...options.extraLaunchArgs);
+  if (options.extensionHostEnv) {
+    assert(options.remoteAuthority, 'Explicit remote Host environment requires its declared authority');
+    // VS Code forwards this launch environment to the selected remote Host.
+    // sshd SetEnv alone only proves the transport shell, not that Host.
+    args.push(`--extensionEnvironment=${JSON.stringify(options.extensionHostEnv)}`);
+  }
+
+  args.push(...(options.extraLaunchArgs??[]));
 
   if (options.disableWorkspaceTrust) {
     args.push('--disable-workspace-trust');
@@ -470,19 +672,28 @@ function resolveVSCodeTestCachePath(projectRoot) {
   return path.join(projectRoot, '.vscode-test');
 }
 
-function resolveVSCodeExecutablePath(installDir) {
-  if (process.platform === 'win32') {
+function resolveVSCodeExecutablePath(installDir, platform = process.platform) {
+  if (platform === 'win32') {
     return path.join(installDir, 'Code.exe');
   }
 
-  if (process.platform === 'darwin') {
-    return path.join(installDir, 'Visual Studio Code.app', 'Contents', 'MacOS', 'Electron');
+  if (platform === 'darwin') {
+    return resolveDarwinVSCodeExecutable(path.join(installDir, 'Visual Studio Code.app', 'Contents'));
   }
 
   return path.join(installDir, 'code');
 }
 
-function normalizeVSCodeExecutablePath(downloadResult) {
+function resolveDarwinVSCodeExecutable(contents) {
+  const plist = readFileSync(path.join(contents, 'Info.plist'), 'utf8');
+  const match = plist.match(/<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/u);
+  assert(match && /^[A-Za-z0-9 _-]+$/u.test(match[1]), 'VS Code app must declare a valid executable in Info.plist');
+  const executable = path.join(contents, 'MacOS', match[1]);
+  assert(statSync(executable).isFile(), 'Declared VS Code executable must be a regular file');
+  return executable;
+}
+
+export function normalizeVSCodeExecutablePath(downloadResult, platform = process.platform) {
   if (existsSync(downloadResult)) {
     try {
       if (!statSync(downloadResult).isDirectory()) {
@@ -493,7 +704,11 @@ function normalizeVSCodeExecutablePath(downloadResult) {
     }
   }
 
-  return resolveVSCodeExecutablePath(downloadResult);
+  if (platform === 'darwin' && path.basename(path.dirname(downloadResult)) === 'MacOS'
+    && path.basename(path.resolve(path.dirname(downloadResult), '..')) === 'Contents') {
+    return resolveDarwinVSCodeExecutable(path.resolve(path.dirname(downloadResult), '..'));
+  }
+  return resolveVSCodeExecutablePath(downloadResult, platform);
 }
 
 function findPreferredInstalledVSCodeExecutablePath() {
@@ -528,38 +743,49 @@ async function launchVSCodeTestProcess(executablePath, args, extensionTestsEnv) 
   await handle.completed;
 }
 
-function spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
+export function spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
   const fullEnv = buildVSCodeChildEnv(extensionTestsEnv);
 
   // The Windows CLI detaches Code.exe; observe the actual test process instead.
   const child = spawn(executablePath, args, {
     env: fullEnv,
-    shell: false
+    shell: false,detached:process.platform!=='win32'
   });
 
   child.stdout.on('data', (chunk) => process.stdout.write(chunk));
   child.stderr.on('data', (chunk) => process.stderr.write(chunk));
 
+  const absoluteDeadline = Number(process.env.DEV_SESSION_CANVAS_GATE_EXIT_DEADLINE
+    ?? process.env.DEV_SESSION_CANVAS_GATE_CLEANUP_DEADLINE ?? process.env.DEV_SESSION_CANVAS_GATE_DEADLINE);
+  let ceilingTimer;
+  let timedOut=false,drainTimer,drainTimedOut=false,termination;
+  const retire=()=>{termination??=retireProcessGroup(child.pid);return termination;};
+  if (Number.isFinite(absoluteDeadline) && absoluteDeadline > 0) {
+    ceilingTimer = setTimeout(() => {
+      timedOut=true;retire();
+    }, Math.max(1, absoluteDeadline - Date.now()));
+  }
   const completed = new Promise((resolve, reject) => {
     child.on('error', (error) => {
       reject(error);
     });
 
     let finished = false;
-    const finalize = (code, signal) => {
+    const finalize = async (code, signal) => {
       if (finished) {
         return;
       }
 
       finished = true;
-      child.stdout.destroy();
-      child.stderr.destroy();
+      clearTimeout(ceilingTimer);
+      clearTimeout(drainTimer);
+      const cleanup=termination?await termination:null;
       console.log(`Exit code:   ${code ?? signal}`);
 
-      if (code !== 0) {
+      if (code !== 0||signal||timedOut||drainTimedOut||cleanup?.status==='failed') {
         reject(
           new Error(
-            signal ? `Test run terminated with signal ${signal}.` : `Test run failed with code ${code}.`
+            `Test run failed: code=${code} signal=${signal} deadline=${timedOut} drain=${drainTimedOut} cleanup=${cleanup?.status??'owning-task-observed'}`
           )
         );
         return;
@@ -569,16 +795,21 @@ function spawnVSCodeTestProcess(executablePath, args, extensionTestsEnv) {
     };
 
     child.on('close', finalize);
-    child.on('exit', finalize);
+    child.on('exit',(code,signal)=>{
+      // Keep draining tail output. An inherited pipe can outlive Electron, so
+      // a bounded drain reports failure instead of destroying it immediately.
+      drainTimer=setTimeout(()=>{drainTimedOut=true;child.stdout.destroy();child.stderr.destroy();retire();
+        finalize(code,signal);},infrastructureBudgets.hostExit);
+    });
   });
 
   return {
     child,
     completed,
     kill: (signal = 'SIGTERM') => {
-      if (!child.killed) {
-        child.kill(signal);
-      }
+      if(process.platform!=='win32'&&child.pid) {
+        try{process.kill(-child.pid,signal);}catch(error){if(error.code!=='ESRCH')throw error;}
+      }else if(!child.killed)child.kill(signal);
     }
   };
 }
@@ -597,6 +828,15 @@ export async function installVSCodeExtensions(options) {
     args.push('--install-extension', extensionId);
   }
   args.push('--force');
+  if (options.excludePackDependencies) args.push('--do-not-include-pack-dependencies');
+
+  if (process.env.DEV_SESSION_CANVAS_GATE_DEADLINE) {
+    const deadline = Math.min(Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE), Date.now() + infrastructureBudgets.install);
+    const observed = await runProcess(cliPath, args, { deadline,
+      env: buildVSCodeChildEnv(options.environment ?? {}) });
+    assert.equal(observed.status, 'passed', `Required VS Code fixture extension install failed: ${JSON.stringify(observed)}`);
+    return;
+  }
 
   await new Promise((resolve, reject) => {
     const child = spawn(cliPath, args, {

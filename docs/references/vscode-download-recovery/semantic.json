@@ -1,0 +1,65 @@
+[
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768656326,
+    "status": "running",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768626326,
+        "deadline": 1792768656326,
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768656326,
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768626326,
+        "deadline": 1792768656326,
+        "status": "failed",
+        "completedAt": 1792768626432,
+        "transient": false,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 285160,
+          "error": null,
+          "exited": true,
+          "residualGroup": false,
+          "observedResidualGroup": false,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "caught",
+        "workerError": {
+          "name": "Error",
+          "message": "Checksum mismatch",
+          "code": null,
+          "timeout": false,
+          "stack": "Error: Checksum mismatch\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:9:29)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": null,
+          "message": "Checksum mismatch"
+        }
+      }
+    ]
+  }
+]

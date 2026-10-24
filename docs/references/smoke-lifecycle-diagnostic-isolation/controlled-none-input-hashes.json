@@ -1,0 +1,10 @@
+{
+  "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": {
+    "original_sha256": "8fbec5e34a567f06d73e39e2cedf014172cc4afa49bde7212133b7dada5649b7",
+    "control_sha256": "39238dda596404552d1260dbaefb6d69372698a064c070490fd3b2252de036a2"
+  },
+  "tests/vscode-smoke/extension-tests.cjs": {
+    "original_sha256": "8f24a95f440b710bd738225a0e64a5091259a7d02ccf473fac4113d748602e05",
+    "control_sha256": "9a72fbc846db48b876e26f8cd2644e7aab86e5d96078a00884ddac236d8deed1"
+  }
+}

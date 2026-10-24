@@ -169,6 +169,19 @@ while IFS= read -r line; do
     claude_session_confirmed=1
   fi
 
+  # Faults are external execution behavior, never a replacement product Stop.
+  if [[ "$line" == ignore-interrupt ]]; then
+    trap 'echo "${prefix} ignored signal INT"' INT
+    echo "${prefix} interrupt ignored pid=$$"
+    print_prompt
+    continue
+  fi
+
+  if [[ "$line" == native-crash ]]; then
+    echo "${prefix} native crash pid=$$"
+    kill -KILL "$$"
+  fi
+
   if [[ "$line" == exit\ * ]]; then
     exit_code="${line#exit }"
     echo "${prefix} exiting with code ${exit_code}"

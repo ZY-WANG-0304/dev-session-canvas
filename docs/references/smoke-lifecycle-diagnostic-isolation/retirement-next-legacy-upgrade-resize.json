@@ -1,0 +1,990 @@
+{
+  "targets": [
+    {
+      "phase": "before-resize",
+      "time": 1792048929277,
+      "expectedNodes": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "kind": "agent",
+          "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+          "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 560,
+            "height": 430
+          },
+          "visibleMarker": "LEGACY_UPGRADE_AGENT_READY",
+          "markers": [
+            "LEGACY_UPGRADE_AGENT_READY",
+            "LEGACY_HOST_AGENT_INPUT_REACHED_PTY"
+          ]
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "kind": "terminal",
+          "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+          "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 560,
+            "height": 430
+          },
+          "visibleMarker": "LEGACY_UPGRADE_TERMINAL_READY",
+          "markers": [
+            "LEGACY_UPGRADE_TERMINAL_READY",
+            "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+            "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": "after-resize",
+      "time": 1792048929418,
+      "expectedNodes": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "kind": "agent",
+          "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+          "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 680,
+            "height": 520
+          },
+          "visibleMarker": "LEGACY_UPGRADE_AGENT_READY",
+          "markers": [
+            "LEGACY_UPGRADE_AGENT_READY",
+            "LEGACY_HOST_AGENT_INPUT_REACHED_PTY"
+          ]
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "kind": "terminal",
+          "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+          "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas",
+          "size": {
+            "width": 700,
+            "height": 540
+          },
+          "visibleMarker": "LEGACY_UPGRADE_TERMINAL_READY",
+          "markers": [
+            "LEGACY_UPGRADE_TERMINAL_READY",
+            "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+            "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY"
+          ]
+        }
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "time": 1792048929409,
+      "nodeId": "legacy-upgrade-agent",
+      "size": {
+        "width": 680,
+        "height": 520
+      }
+    },
+    {
+      "time": 1792048929413,
+      "nodeId": "legacy-upgrade-terminal",
+      "size": {
+        "width": 700,
+        "height": 540
+      }
+    }
+  ],
+  "samples": [
+    {
+      "phase": "before-resize",
+      "time": 1792048929304,
+      "elapsedMs": 27,
+      "observations": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "hostSize": {
+            "width": 560,
+            "height": 430
+          },
+          "binding": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 560,
+            "height": 430,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 67,
+            "fitRows": 21,
+            "pending": false,
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293"
+          },
+          "session": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "kind": "agent",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_AGENT_READY",
+                true
+              ],
+              [
+                "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "hostSize": {
+            "width": 560,
+            "height": 430
+          },
+          "binding": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 560,
+            "height": 430,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 67,
+            "fitRows": 21,
+            "pending": false,
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599"
+          },
+          "session": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "kind": "terminal",
+            "live": true,
+            "cols": 92,
+            "rows": 28,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_TERMINAL_READY",
+                true
+              ],
+              [
+                "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                true
+              ],
+              [
+                "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": false
+        }
+      ]
+    },
+    {
+      "phase": "before-resize",
+      "time": 1792048929409,
+      "elapsedMs": 132,
+      "observations": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "hostSize": {
+            "width": 560,
+            "height": 430
+          },
+          "binding": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 560,
+            "height": 430,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 67,
+            "fitRows": 21,
+            "pending": false,
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293"
+          },
+          "session": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "kind": "agent",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_AGENT_READY",
+                true
+              ],
+              [
+                "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "hostSize": {
+            "width": 560,
+            "height": 430
+          },
+          "binding": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 560,
+            "height": 430,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 67,
+            "fitRows": 21,
+            "pending": false,
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599"
+          },
+          "session": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "kind": "terminal",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_TERMINAL_READY",
+                true
+              ],
+              [
+                "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                true
+              ],
+              [
+                "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        }
+      ]
+    },
+    {
+      "phase": "after-resize",
+      "time": 1792048929436,
+      "elapsedMs": 18,
+      "observations": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "hostSize": {
+            "width": 680,
+            "height": 520
+          },
+          "binding": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 680,
+            "height": 520,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 82,
+            "fitRows": 27,
+            "pending": false,
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293"
+          },
+          "session": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "kind": "agent",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_AGENT_READY",
+                true
+              ],
+              [
+                "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": false,
+          "matches": false
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "hostSize": {
+            "width": 700,
+            "height": 540
+          },
+          "binding": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 700,
+            "height": 540,
+            "cols": 67,
+            "rows": 21,
+            "fitCols": 85,
+            "fitRows": 28,
+            "pending": false,
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599"
+          },
+          "session": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "kind": "terminal",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_TERMINAL_READY",
+                true
+              ],
+              [
+                "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                true
+              ],
+              [
+                "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": false,
+          "matches": false
+        }
+      ]
+    },
+    {
+      "phase": "after-resize",
+      "time": 1792048929545,
+      "elapsedMs": 127,
+      "observations": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "hostSize": {
+            "width": 680,
+            "height": 520
+          },
+          "binding": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 680,
+            "height": 520,
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27,
+            "pending": false,
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293"
+          },
+          "session": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "kind": "agent",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_AGENT_READY",
+                true
+              ],
+              [
+                "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": false
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "hostSize": {
+            "width": 700,
+            "height": 540
+          },
+          "binding": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 700,
+            "height": 540,
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28,
+            "pending": false,
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599"
+          },
+          "session": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "kind": "terminal",
+            "live": true,
+            "cols": 67,
+            "rows": 21,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_TERMINAL_READY",
+                true
+              ],
+              [
+                "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                true
+              ],
+              [
+                "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": false
+        }
+      ]
+    },
+    {
+      "phase": "after-resize",
+      "time": 1792048929650,
+      "elapsedMs": 232,
+      "observations": [
+        {
+          "nodeId": "legacy-upgrade-agent",
+          "hostSize": {
+            "width": 680,
+            "height": 520
+          },
+          "binding": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 680,
+            "height": 520,
+            "cols": 82,
+            "rows": 27,
+            "fitCols": 82,
+            "fitRows": 27,
+            "pending": false,
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293"
+          },
+          "session": {
+            "sessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+            "kind": "agent",
+            "live": true,
+            "cols": 82,
+            "rows": 27,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_AGENT_READY",
+                true
+              ],
+              [
+                "LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        },
+        {
+          "nodeId": "legacy-upgrade-terminal",
+          "hostSize": {
+            "width": 700,
+            "height": 540
+          },
+          "binding": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas"
+          },
+          "page": {
+            "width": 700,
+            "height": 540,
+            "cols": 85,
+            "rows": 28,
+            "fitCols": 85,
+            "fitRows": 28,
+            "pending": false,
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599"
+          },
+          "session": {
+            "sessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+            "kind": "terminal",
+            "live": true,
+            "cols": 85,
+            "rows": 28,
+            "markers": [
+              [
+                "LEGACY_UPGRADE_TERMINAL_READY",
+                true
+              ],
+              [
+                "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+                true
+              ],
+              [
+                "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+                true
+              ]
+            ]
+          },
+          "changed": true,
+          "matches": true
+        }
+      ]
+    }
+  ],
+  "baseline": {
+    "documentTitle": "Dev Session Canvas",
+    "hasDocumentFocus": true,
+    "hasCanvasShell": true,
+    "hasReactFlow": true,
+    "toastMessage": null,
+    "executionLinkTooltipText": null,
+    "nodeCount": 3,
+    "nodes": [
+      {
+        "nodeId": "legacy-upgrade-agent",
+        "kind": "agent",
+        "chromeTitle": "Legacy Supervisor Agent",
+        "chromeContext": "dev-session-canvas/",
+        "chromeSubtitle": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+        "statusText": "Running",
+        "attentionIndicatorVisible": false,
+        "attentionIndicatorFlashing": false,
+        "minimapVisible": true,
+        "minimapAttentionFlashing": false,
+        "minimapAttentionSizePulsing": false,
+        "selected": false,
+        "renderedWidth": 560,
+        "renderedHeight": 430,
+        "titleInputValue": "Legacy Supervisor Agent",
+        "terminalSelectionText": "",
+        "terminalCols": 67,
+        "terminalRows": 21,
+        "terminalFitCols": 67,
+        "terminalFitRows": 21,
+        "terminalProjectionPending": false,
+        "terminalExecutionSessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+        "terminalCursorX": 2,
+        "terminalCursorY": 3,
+        "terminalViewportY": 0,
+        "terminalVisibleLines": [
+          "[fake-agent] ready pid=13012 session=session-13012",
+          "LEGACY_UPGRADE_AGENT_READY",
+          "> [fake-agent] LEGACY_UPGRADE_AGENT_READY",
+          "> ",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "terminalTextareaLeft": 15.0435,
+        "terminalTextareaTop": 45,
+        "terminalMouseTrackingMode": "none",
+        "terminalBufferType": "normal",
+        "terminalHasFocus": false,
+        "terminalTheme": {
+          "background": "#191a1b",
+          "foreground": "#cccccc",
+          "cursor": "#bfbfbf",
+          "selectionBackground": "rgba(57, 148, 188, 0.2)",
+          "ansiBlue": "#2472c8",
+          "ansiBrightWhite": "#e5e5e5"
+        }
+      },
+      {
+        "nodeId": "legacy-upgrade-terminal",
+        "kind": "terminal",
+        "chromeTitle": "Legacy Supervisor Terminal",
+        "chromeContext": "dev-session-canvas/",
+        "chromeSubtitle": "/bin/bash",
+        "statusText": "Live",
+        "attentionIndicatorVisible": false,
+        "attentionIndicatorFlashing": false,
+        "minimapVisible": true,
+        "minimapAttentionFlashing": false,
+        "minimapAttentionSizePulsing": false,
+        "selected": false,
+        "renderedWidth": 560,
+        "renderedHeight": 430,
+        "titleInputValue": "Legacy Supervisor Terminal",
+        "terminalSelectionText": "",
+        "terminalCols": 67,
+        "terminalRows": 21,
+        "terminalFitCols": 67,
+        "terminalFitRows": 21,
+        "terminalProjectionPending": false,
+        "terminalExecutionSessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+        "terminalCursorX": 11,
+        "terminalCursorY": 11,
+        "terminalViewportY": 0,
+        "terminalVisibleLines": [
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessi",
+          "on-canvas$ printf '\\033[31mLEGACY_UPGRADE_TERMINAL_READY\\033[0m\\n'",
+          "LEGACY_UPGRADE_TERMINAL_READY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessp",
+          "rintf 'LEGACY_WEBVIEW_INPUT_REACHED_PTY\\n'",
+          "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessi",
+          "on-canvas$ printf 'LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY\\n'",
+          "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessi",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessi",
+          "on-canvas$ ",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "terminalTextareaLeft": 82.7463,
+        "terminalTextareaTop": 165,
+        "terminalMouseTrackingMode": "none",
+        "terminalBufferType": "normal",
+        "terminalHasFocus": false,
+        "terminalTheme": {
+          "background": "#191a1b",
+          "foreground": "#cccccc",
+          "cursor": "#bfbfbf",
+          "selectionBackground": "rgba(57, 148, 188, 0.2)",
+          "ansiBlue": "#2472c8",
+          "ansiBrightWhite": "#e5e5e5"
+        }
+      },
+      {
+        "nodeId": "previous-generation-stream-terminal",
+        "kind": "terminal",
+        "chromeTitle": "Previous Generation Stream Terminal",
+        "chromeContext": "dev-session-canvas/",
+        "chromeSubtitle": "/bin/bash",
+        "statusText": "Live",
+        "attentionIndicatorVisible": false,
+        "attentionIndicatorFlashing": false,
+        "minimapVisible": true,
+        "minimapAttentionFlashing": false,
+        "minimapAttentionSizePulsing": false,
+        "selected": false,
+        "renderedWidth": 560,
+        "renderedHeight": 430,
+        "titleInputValue": "Previous Generation Stream Terminal",
+        "terminalSelectionText": "",
+        "terminalCols": 92,
+        "terminalRows": 28,
+        "terminalFitCols": 67,
+        "terminalFitRows": 21,
+        "terminalProjectionPending": false,
+        "terminalExecutionSessionId": "dd00a348-d787-4cdb-a206-4fec1f587f80",
+        "terminalCursorX": 78,
+        "terminalCursorY": 3,
+        "terminalViewportY": 0,
+        "terminalVisibleLines": [
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[3",
+          "1mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'",
+          "PREVIOUS_GENERATION_STREAM_READY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ ",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "terminalTextareaLeft": 586.696,
+        "terminalTextareaTop": 45,
+        "terminalMouseTrackingMode": "none",
+        "terminalBufferType": "normal",
+        "terminalHasFocus": false,
+        "terminalTheme": {
+          "background": "#191a1b",
+          "foreground": "#cccccc",
+          "cursor": "#bfbfbf",
+          "selectionBackground": "rgba(57, 148, 188, 0.2)",
+          "ansiBlue": "#2472c8",
+          "ansiBrightWhite": "#e5e5e5"
+        }
+      }
+    ],
+    "edgeCount": 0,
+    "edges": [],
+    "groupCount": 0,
+    "groups": [],
+    "selectedGroupIds": []
+  },
+  "result": {
+    "documentTitle": "Dev Session Canvas",
+    "hasDocumentFocus": true,
+    "hasCanvasShell": true,
+    "hasReactFlow": true,
+    "toastMessage": null,
+    "executionLinkTooltipText": null,
+    "nodeCount": 3,
+    "nodes": [
+      {
+        "nodeId": "legacy-upgrade-agent",
+        "kind": "agent",
+        "chromeTitle": "Legacy Supervisor Agent",
+        "chromeContext": "dev-session-canvas/",
+        "chromeSubtitle": "/home/runner/work/dev-session-canvas/dev-session-canvas/tests/vscode-smoke/fixtures/fake-agent-provider",
+        "statusText": "Waiting for input",
+        "attentionIndicatorVisible": false,
+        "attentionIndicatorFlashing": false,
+        "minimapVisible": true,
+        "minimapAttentionFlashing": false,
+        "minimapAttentionSizePulsing": false,
+        "selected": false,
+        "renderedWidth": 680,
+        "renderedHeight": 520,
+        "titleInputValue": "Legacy Supervisor Agent",
+        "terminalSelectionText": "",
+        "terminalCols": 82,
+        "terminalRows": 27,
+        "terminalFitCols": 82,
+        "terminalFitRows": 27,
+        "terminalProjectionPending": false,
+        "terminalExecutionSessionId": "68e8c0a7-94fd-4757-b956-edd6f9428293",
+        "terminalCursorX": 2,
+        "terminalCursorY": 5,
+        "terminalViewportY": 0,
+        "terminalVisibleLines": [
+          "[fake-agent] ready pid=13012 session=session-13012",
+          "LEGACY_UPGRADE_AGENT_READY",
+          "> [fake-agent] LEGACY_UPGRADE_AGENT_READY",
+          "> LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+          "[fake-agent] LEGACY_HOST_AGENT_INPUT_REACHED_PTY",
+          "> ",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "terminalTextareaLeft": 15.0488,
+        "terminalTextareaTop": 75,
+        "terminalMouseTrackingMode": "none",
+        "terminalBufferType": "normal",
+        "terminalHasFocus": false,
+        "terminalTheme": {
+          "background": "#191a1b",
+          "foreground": "#cccccc",
+          "cursor": "#bfbfbf",
+          "selectionBackground": "rgba(57, 148, 188, 0.2)",
+          "ansiBlue": "#2472c8",
+          "ansiBrightWhite": "#e5e5e5"
+        }
+      },
+      {
+        "nodeId": "legacy-upgrade-terminal",
+        "kind": "terminal",
+        "chromeTitle": "Legacy Supervisor Terminal",
+        "chromeContext": "dev-session-canvas/",
+        "chromeSubtitle": "/bin/bash",
+        "statusText": "Live",
+        "attentionIndicatorVisible": false,
+        "attentionIndicatorFlashing": false,
+        "minimapVisible": true,
+        "minimapAttentionFlashing": false,
+        "minimapAttentionSizePulsing": false,
+        "selected": false,
+        "renderedWidth": 700,
+        "renderedHeight": 540,
+        "titleInputValue": "Legacy Supervisor Terminal",
+        "terminalSelectionText": "",
+        "terminalCols": 85,
+        "terminalRows": 28,
+        "terminalFitCols": 85,
+        "terminalFitRows": 28,
+        "terminalProjectionPending": false,
+        "terminalExecutionSessionId": "eaee8eba-23ad-42d9-a36c-7f54afcc0599",
+        "terminalCursorX": 11,
+        "terminalCursorY": 11,
+        "terminalViewportY": 0,
+        "terminalVisibleLines": [
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf ",
+          "'\\033[31mLEGACY_UPGRADE_TERMINAL_READY\\033[0m\\n'",
+          "LEGACY_UPGRADE_TERMINAL_READY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessprintf 'LEGACY_WEBV",
+          "IEW_INPUT_REACHED_PTY\\n'",
+          "LEGACY_WEBVIEW_INPUT_REACHED_PTY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf ",
+          "'LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY\\n'",
+          "LEGACY_HOST_TERMINAL_INPUT_REACHED_PTY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessi",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-sessi",
+          "on-canvas$ ",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "terminalTextareaLeft": 82.7463,
+        "terminalTextareaTop": 165,
+        "terminalMouseTrackingMode": "none",
+        "terminalBufferType": "normal",
+        "terminalHasFocus": false,
+        "terminalTheme": {
+          "background": "#191a1b",
+          "foreground": "#cccccc",
+          "cursor": "#bfbfbf",
+          "selectionBackground": "rgba(57, 148, 188, 0.2)",
+          "ansiBlue": "#2472c8",
+          "ansiBrightWhite": "#e5e5e5"
+        }
+      },
+      {
+        "nodeId": "previous-generation-stream-terminal",
+        "kind": "terminal",
+        "chromeTitle": "Previous Generation Stream Terminal",
+        "chromeContext": "dev-session-canvas/",
+        "chromeSubtitle": "/bin/bash",
+        "statusText": "Live",
+        "attentionIndicatorVisible": false,
+        "attentionIndicatorFlashing": false,
+        "minimapVisible": true,
+        "minimapAttentionFlashing": false,
+        "minimapAttentionSizePulsing": false,
+        "selected": false,
+        "renderedWidth": 560,
+        "renderedHeight": 430,
+        "titleInputValue": "Previous Generation Stream Terminal",
+        "terminalSelectionText": "",
+        "terminalCols": 92,
+        "terminalRows": 28,
+        "terminalFitCols": 67,
+        "terminalFitRows": 21,
+        "terminalProjectionPending": false,
+        "terminalExecutionSessionId": "dd00a348-d787-4cdb-a206-4fec1f587f80",
+        "terminalCursorX": 78,
+        "terminalCursorY": 3,
+        "terminalViewportY": 0,
+        "terminalVisibleLines": [
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[3",
+          "1mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'",
+          "PREVIOUS_GENERATION_STREAM_READY",
+          "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ ",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "terminalTextareaLeft": 586.696,
+        "terminalTextareaTop": 45,
+        "terminalMouseTrackingMode": "none",
+        "terminalBufferType": "normal",
+        "terminalHasFocus": false,
+        "terminalTheme": {
+          "background": "#191a1b",
+          "foreground": "#cccccc",
+          "cursor": "#bfbfbf",
+          "selectionBackground": "rgba(57, 148, 188, 0.2)",
+          "ansiBlue": "#2472c8",
+          "ansiBrightWhite": "#e5e5e5"
+        }
+      }
+    ],
+    "edgeCount": 0,
+    "edges": [],
+    "groupCount": 0,
+    "groups": [],
+    "selectedGroupIds": []
+  }
+}

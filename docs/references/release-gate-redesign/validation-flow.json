@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1800,
+  "height": 1460,
+  "title": "01  验证依赖与范围",
+  "subtitle": "已选定设计 · 未实施CI · 普通PR按分类选层；发布PR与最终tag各跑完整范围",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "title_size": 30,
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "resolve",
+      "x": 650,
+      "y": 140,
+      "width": 1090,
+      "height": 104,
+      "kind": "rect",
+      "label": "resolve：冻结完整SHA、模式与必跑任务",
+      "sublabel": "正式入口拒绝filter/skip；计划绑定目录、环境和预算摘要",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "base",
+      "x": 60,
+      "y": 340,
+      "width": 500,
+      "height": 150,
+      "kind": "rect",
+      "label": "基础层独立执行",
+      "sublabel": "regression / browser build / Webview功能与视觉 / Marketplace浏览器",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "contract",
+      "x": 650,
+      "y": 340,
+      "width": 1090,
+      "height": 104,
+      "kind": "rect",
+      "label": "input-contract：静态输入与版本契约",
+      "sublabel": "不等待六平台资产；版本/契约分类不一致拒绝",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "native",
+      "x": 650,
+      "y": 530,
+      "width": 1090,
+      "height": 104,
+      "kind": "rect",
+      "label": "native-assets：六目标构建与load",
+      "sublabel": "真实PTY操作单独记结果；load可用不等于操作通过",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "build",
+      "x": 650,
+      "y": 720,
+      "width": 1090,
+      "height": 104,
+      "kind": "rect",
+      "label": "独立构建：source-build 与 package-clean",
+      "sublabel": "分别消费同run六资产；development主/notifier 与 干净production双包",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "host",
+      "x": 650,
+      "y": 910,
+      "width": 1090,
+      "height": 104,
+      "kind": "rect",
+      "label": "独立验收：源码Host 与 双包Host/安装",
+      "sublabel": "source-host / marketplace-host；packaged-host / 三x64 installed-pair",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "aggregate",
+      "x": 650,
+      "y": 1120,
+      "width": 1090,
+      "height": 104,
+      "kind": "rect",
+      "label": "verify-result：always聚合所有计划任务",
+      "sublabel": "逐case / 实际job / 包身份；同时核六目标操作，不只核load",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "output",
+      "x": 650,
+      "y": 1310,
+      "width": 1090,
+      "height": 80,
+      "kind": "rect",
+      "label": "发布PR只用于review；最终tag通过才可交付",
+      "sublabel": "基础 / 功能 / 产物取并集；完整模式另要求六目标操作；诊断永不生成完整回执",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "failure",
+      "x": 60,
+      "y": 720,
+      "width": 500,
+      "height": 120,
+      "kind": "rect",
+      "label": "独立失败保留现场",
+      "sublabel": "同级job继续；依赖项not-run；同Host清理未知即停止本组",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "resolve",
+      "target": "base",
+      "label": "",
+      "source_port": "left",
+      "target_port": "right",
+      "color": "#2563eb"
+    },
+    {
+      "source": "resolve",
+      "target": "contract",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "contract",
+      "target": "native",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "native",
+      "target": "build",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "build",
+      "target": "host",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "host",
+      "target": "aggregate",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#2563eb"
+    },
+    {
+      "source": "base",
+      "target": "aggregate",
+      "label": "",
+      "source_port": "right",
+      "target_port": "left",
+      "color": "#2563eb"
+    },
+    {
+      "source": "aggregate",
+      "target": "output",
+      "label": "",
+      "source_port": "bottom",
+      "target_port": "top",
+      "color": "#16a34a"
+    }
+  ],
+  "legend": [
+    {
+      "label": "验证 / 输入依赖",
+      "color": "#2563eb"
+    },
+    {
+      "label": "同批产物 / 完成",
+      "color": "#16a34a"
+    },
+    {
+      "label": "失败 / 未完成",
+      "color": "#dc2626"
+    },
+    {
+      "label": "恢复 / 可deferred",
+      "color": "#9333ea"
+    }
+  ],
+  "legend_x": 60,
+  "legend_y": 1416,
+  "legend_orientation": "horizontal"
+}

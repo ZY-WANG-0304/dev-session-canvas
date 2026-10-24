@@ -1,0 +1,84 @@
+name: Release Validation
+on:
+  workflow_call:
+    inputs:
+      input_sha:
+        type: string
+        required: true
+      base_sha:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      mode:
+        type: string
+        required: true
+      trigger_tag:
+        type: string
+        required: true
+    outputs:
+      accepted:
+        value: ${{ jobs.full.outputs.accepted || jobs.recovery.outputs.accepted }}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  full:
+    if: ${{ inputs.mode == 'release-tag' }}
+    uses: ./.github/workflows/ci-validation.yml
+    with:
+      input_sha: ${{ inputs.input_sha }}
+      base_sha: ${{ inputs.base_sha }}
+      head_sha: ${{ inputs.input_sha }}
+      mode: release-tag
+      version: ${{ inputs.version }}
+      trigger_tag: ${{ inputs.trigger_tag }}
+  recovery:
+    name: Release verify-recovery
+    if: ${{ inputs.mode == 'channel-retry' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    outputs:
+      accepted: ${{ steps.verify.outputs.accepted }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.input_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked verifier dependencies
+        run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output recovery-evidence -- npm ci --no-audit --no-fund
+        timeout-minutes: 10
+      - name: Download frozen release context
+        uses: actions/download-artifact@v4
+        with:
+          name: release-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release-context
+      - name: Verify original accepted pair and producer
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/publish-tag-release.mjs --phase verify-recovery --context release-context/release-context.json --output recovered-release
+      - name: Upload recovered original batch
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovered-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: recovered-release
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Preserve recovery evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            recovered-release/release-failure.json
+            recovery-evidence
+          if-no-files-found: warn

@@ -1,0 +1,431 @@
+[
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768640109,
+    "status": "running",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768610109,
+        "deadline": 1792768640109,
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768640109,
+    "status": "retrying",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768610109,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768615258,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 279920,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768640109,
+    "status": "running",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768610109,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768615258,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 279920,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      },
+      {
+        "attempt": 2,
+        "version": "1.142.0",
+        "startedAt": 1792768615509,
+        "deadline": 1792768640109,
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768640109,
+    "status": "retrying",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768610109,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768615258,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 279920,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      },
+      {
+        "attempt": 2,
+        "version": "1.142.0",
+        "startedAt": 1792768615509,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768620671,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 281672,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768640109,
+    "status": "running",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768610109,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768615258,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 279920,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      },
+      {
+        "attempt": 2,
+        "version": "1.142.0",
+        "startedAt": 1792768615509,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768620671,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 281672,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      },
+      {
+        "attempt": 3,
+        "version": "1.142.0",
+        "startedAt": 1792768621172,
+        "deadline": 1792768640109,
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "schemaVersion": 1,
+    "version": "1.142.0",
+    "deadline": 1792768640109,
+    "status": "failed",
+    "attempts": [
+      {
+        "attempt": 1,
+        "version": "1.142.0",
+        "startedAt": 1792768610109,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768615258,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 279920,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      },
+      {
+        "attempt": 2,
+        "version": "1.142.0",
+        "startedAt": 1792768615509,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768620671,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 281672,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      },
+      {
+        "attempt": 3,
+        "version": "1.142.0",
+        "startedAt": 1792768621172,
+        "deadline": 1792768640109,
+        "status": "failed",
+        "completedAt": 1792768626325,
+        "transient": true,
+        "process": {
+          "code": 1,
+          "signal": null,
+          "timedOut": false,
+          "cancelled": false,
+          "pid": 283327,
+          "error": null,
+          "exited": true,
+          "residualGroup": true,
+          "observedResidualGroup": true,
+          "drainTimedOut": false,
+          "cleanup": {
+            "status": "passed",
+            "boundary": "original-process-group",
+            "observed": "absent"
+          },
+          "status": "failed"
+        },
+        "source": "unhandledRejection",
+        "workerError": {
+          "name": "Error",
+          "message": "controlled reset",
+          "code": "ECONNRESET",
+          "timeout": false,
+          "stack": "Error: controlled reset\n    at downloadAndUnzipVSCode (file:///tmp/dsc335-worker-reverify/mock.mjs:13:31)\n    at file:///tmp/dsc335-deps/scripts/smoke/download-vscode-attempt.mjs:62:28\n    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)"
+        },
+        "error": {
+          "name": "Error",
+          "code": "ECONNRESET",
+          "message": "controlled reset"
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": {
+    "original_sha256": "72ea704a0ba40115239167a99f9d6771e2924851b881689bea23acf40b9e4135",
+    "probe_sha256": "9bfa23cf97a73a54035fc972d48881331a18d9b049d53a3ed5641102acb0ee4c"
+  },
+  "extensions/vscode/dev-session-canvas/src/panel/getWebviewHtml.ts": {
+    "original_sha256": "08feb7695918296afb00d3c0ef50c739b45f8eacb299974fdf24dea9bdca2555",
+    "probe_sha256": "d4372a35bcface5643e4e84274bd74019dc3e465dc3811644667ecc583d6ca9d"
+  },
+  "extensions/vscode/dev-session-canvas/src/webview/main.tsx": {
+    "original_sha256": "4c4adf18d66436a0e681a0c064510053e12ea6b288804ed7080c9063ad5d977d",
+    "probe_sha256": "fec48eb440f7c965d223c3d84bea3c35e5cce176617faae05d0fbf55faa66edb"
+  },
+  "tests/vscode-smoke/extension-tests.cjs": {
+    "original_sha256": "8f24a95f440b710bd738225a0e64a5091259a7d02ccf473fac4113d748602e05",
+    "probe_sha256": "cca422736e9cede51398043ead558de217a80d2d0344822eabc5c401eac754fa"
+  }
+}

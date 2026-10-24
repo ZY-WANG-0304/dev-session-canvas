@@ -907,7 +907,11 @@ try {
   const extensionSource = await readFile('extensions/vscode/dev-session-canvas/src/extension.ts', 'utf8');
   const rootPackageManifest = JSON.parse(await readFile('package.json', 'utf8'));
   const packageManifest = JSON.parse(await readFile('extensions/vscode/dev-session-canvas/package.json', 'utf8'));
-  assert.match(rootPackageManifest.scripts.test, /npm run test:marketplace/u);
+  assert.match(rootPackageManifest.scripts.test, /scripts\/gates\/run-local\.mjs --full/u);
+  const { regressionScripts } = await import('../gates/catalog.mjs');
+  for (const script of ['typecheck:marketplace', 'test:marketplace-shared', 'test:marketplace-api', 'test:marketplace-web']) {
+    assert(regressionScripts.includes(script), `Default test plan lost Marketplace check ${script}`);
+  }
   assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run typecheck:marketplace/u);
   assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run test:marketplace-shared/u);
   assert.match(rootPackageManifest.scripts['test:marketplace'], /npm run test:marketplace-api/u);

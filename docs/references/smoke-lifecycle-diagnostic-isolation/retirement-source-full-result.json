@@ -1,0 +1,98 @@
+{
+  "input": "55c619ad70dbec74a7f9ffab17bf3dc547bd6913",
+  "fix": "6613d1dca14f40d8f94dcf3da2c8bc6521459ea6",
+  "release": "8313fc725c18c28c51c04cc5f4aa5bd9121f290a",
+  "run": 38696319881,
+  "fullJob": 116295616027,
+  "exit": 1,
+  "command": "npm run release:verify -- --version 0.26.1",
+  "noScenarioFilter": true,
+  "passed": [
+    "same-ref/run six platform native assets",
+    "18/18 retirement regression",
+    "original source trusted complete",
+    "original source restricted complete",
+    "runtime checkpoint projection and preceding local scenarios"
+  ],
+  "firstFailure": {
+    "scenario": "legacy-supervisor-upgrade",
+    "call": "legacy-supervisor-upgrade-tests.cjs:334 -> waitForSnapshot",
+    "error": "Timed out waiting for legacy upgrade state",
+    "timeoutMs": 30000,
+    "node": {
+      "id": "previous-generation-stream-terminal",
+      "kind": "terminal",
+      "title": "Previous Generation Stream Terminal",
+      "status": "stopping",
+      "summary": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$",
+      "position": {
+        "x": 1360,
+        "y": 100
+      },
+      "size": {
+        "width": 560,
+        "height": 430
+      },
+      "metadata": {
+        "terminal": {
+          "backend": "node-pty",
+          "lifecycle": "stopping",
+          "shellPath": "/bin/bash",
+          "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas",
+          "persistenceMode": "live-runtime",
+          "attachmentState": "attached-live",
+          "terminalProjectionMode": "terminal-stream-v1",
+          "runtimeBackend": "legacy-detached",
+          "runtimeGuarantee": "best-effort",
+          "runtimeStoragePath": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/370db5f8ec9ca5d9bf89588f8f8cc730/devsessioncanvas.dev-session-canvas/previous-generation-stream",
+          "liveSession": true,
+          "runtimeSessionId": "dd00a348-d787-4cdb-a206-4fec1f587f80",
+          "lastCols": 67,
+          "lastRows": 21,
+          "attentionPending": false,
+          "outputSequence": 5,
+          "recentOutput": "runner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$ printf '\\033[31mPREVIOUS_GENERATION_STREAM_READY\\033[0m\\n'\nPREVIOUS_GENERATION_STREAM_READY\nrunner@runnervmk1d70:/home/runner/work/dev-session-canvas/dev-session-canvas$"
+        }
+      }
+    },
+    "diagnostics": "original stopRequested present; no original completion in retained diagnostic array",
+    "rootCause": "未确认；不能仅凭stopping/live=true归为夹具或产品回归。",
+    "fixtureChangedInPR": false
+  },
+  "notReached": [
+    "later reopen/systemd/SSH scenarios",
+    "full Webview suite",
+    "clean-checkout VSIX gate in this full invocation"
+  ],
+  "artifact": {
+    "id": 11954338074,
+    "bytes": 4027382,
+    "zipSha256": "959f86699bd07ed43f7fd68858d7347aa4c86204ca4d059780eb579569ea99e5",
+    "zipCRC": "passed",
+    "tar": "fully extracted and inspected",
+    "archivedBytes": 53770223,
+    "inventoryFiles": 337,
+    "totalLimitOmissions": 0
+  },
+  "otherEvidence": {
+    "nativeDelayedTrustedRun": 38694282830,
+    "nativeDelayedTrustedExit": 0,
+    "helperElapsedMs": 645,
+    "scope": "original retirement helper unchanged across latest source-entry mode fix; this is not the full invocation packaged stage"
+  },
+  "implementation_sha256": {
+    "extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol.ts": "d9a9a444a332f2208b4abb0a818070b6763800b5fc211ed40a2feeb647aa90f3",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "deca17ae00666a1e6b7f1402cf0445f240a191ebd49d1794dc3481dd3271da96",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "52b1c8de08b7f631a3d7a218be2c74fd898f0986a10d25ffe99456b8cdd863b3",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorStart.ts": "1c0f5ca7941ab012a2feff1aa71c0aa4c6348b0c9863b5d4a6777d856e12264a",
+    "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718",
+    "tests/vscode-smoke/extension-tests.cjs": "3599b5e380e76e9aebb385d68b01a058e2b0da3add6dda66d8f7dba90af98c66",
+    "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd"
+  },
+  "temporaryEntrypointsRemoved": {
+    "firstBranch": "5e81cf2a",
+    "secondBranch": "e287e25a",
+    "thirdBranch": "135334eb"
+  },
+  "releasePR327": "head and draft preserved; merge/tag/publish not performed"
+}

@@ -1,0 +1,470 @@
+{
+  "entry-scenarios": {
+    "validate": {
+      "edges": 15,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 20,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/smoke/entry-scenarios.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/smoke/entry-scenarios.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 418794,
+      "fallback_notes": [],
+      "height": 2438,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/smoke/entry-scenarios.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "single-host": {
+    "validate": {
+      "edges": 12,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 15,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/smoke/single-host.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/smoke/single-host.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 380196,
+      "fallback_notes": [],
+      "height": 2562,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/smoke/single-host.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "trusted-restricted": {
+    "validate": {
+      "edges": 14,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 19,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/smoke/trusted-restricted.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/smoke/trusted-restricted.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 393555,
+      "fallback_notes": [],
+      "height": 2488,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/smoke/trusted-restricted.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "real-reopen": {
+    "validate": {
+      "edges": 19,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 23,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/smoke/real-reopen.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/smoke/real-reopen.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 483606,
+      "fallback_notes": [],
+      "height": 2788,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/smoke/real-reopen.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "two-window": {
+    "validate": {
+      "edges": 14,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 18,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/smoke/two-window.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/smoke/two-window.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 307050,
+      "fallback_notes": [],
+      "height": 2175,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/smoke/two-window.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  },
+  "legacy-resize": {
+    "validate": {
+      "edges": 15,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 21,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/smoke/legacy-resize.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/smoke/legacy-resize.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 492734,
+      "fallback_notes": [],
+      "height": 2812,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/smoke/legacy-resize.png",
+      "renderer": "cairosvg",
+      "width": 2400
+    }
+  }
+}

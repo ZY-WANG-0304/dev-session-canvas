@@ -53,7 +53,7 @@ export function assertProductionExecutionPackage(dist) {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const { values } = parseArgs({ args, options: { 'development-comparison': { type: 'boolean' } } });
+  const { values } = parseArgs({ args, options: { 'development-comparison': { type: 'boolean' }, output: { type: 'string' } } });
   const packageJsonPath = path.join(mainExtensionRoot, 'package.json');
   const vsceEntry = resolveVsceEntry(projectRoot);
   const gitValidationRoot =
@@ -125,8 +125,10 @@ export async function main(args = process.argv.slice(2)) {
       const packaged = readFileSync(path.join(stagePackageRoot, vsixFilename));
       const normalized = await ensureCandidateHelperPermissions(packaged,
         { required: values['development-comparison'] !== true });
-      writeFileSync(path.join(projectRoot, vsixFilename), normalized);
-      console.log(`已生成 ${path.join(projectRoot, vsixFilename)}`);
+      const outputPath = values.output ? path.resolve(values.output) : path.join(projectRoot, vsixFilename);
+      mkdirSync(path.dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, normalized, values.output ? { flag: 'wx' } : undefined);
+      console.log(`已生成 ${outputPath}`);
     }
 
     return result.status === null ? 1 : result.status;
@@ -415,8 +417,10 @@ function assertMainPackageInputsExist() {
   }
 }
 
-export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath, { developmentComparison = false } = {}) {
-  if (!developmentComparison) assertProductionExecutionPackage(path.join(mainExtensionRoot, 'dist'));
+export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath, {
+  developmentComparison = false, dist = path.join(mainExtensionRoot, 'dist')
+} = {}) {
+  if (!developmentComparison) assertProductionExecutionPackage(dist);
   const stagedPackageJson = JSON.parse(JSON.stringify(packageJson));
   delete stagedPackageJson.scripts;
   stagedPackageJson.dependencies = packageJson.dependencies?.['node-pty']
@@ -446,7 +450,7 @@ export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath,
     path.join(mainExtensionRoot, '.vscodeignore'),
     path.join(stagePackageRoot, '.vscodeignore')
   );
-  cpSync(path.join(mainExtensionRoot, 'dist'), path.join(stagePackageRoot, 'dist'), { recursive: true });
+  cpSync(dist, path.join(stagePackageRoot, 'dist'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'l10n'), path.join(stagePackageRoot, 'l10n'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'resources'), path.join(stagePackageRoot, 'resources'), { recursive: true });

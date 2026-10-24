@@ -1,0 +1,2897 @@
+{
+  "schemaVersion": 1,
+  "scope": "implementation-traceability-not-execution-acceptance",
+  "designMap": "docs/references/release-gate-flow-audit/smoke-redesign/coverage-map.json",
+  "assertionBaseline": "3fbae6a9e6a7883f65751938d9960caf4e3acf57",
+  "cases": [
+    {
+      "id": "execution-start/auto-start",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-start/auto-start",
+          "step": "business",
+          "helper": "runIndependentAutoStart",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-start/duplicate",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-start/duplicate",
+          "step": "business",
+          "helper": "runIndependentDuplicate",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-start/missing-cli",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-start/missing-cli",
+          "step": "business",
+          "helper": "runIndependentMissingCLI",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-start/invalid-launch",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-start/invalid-launch",
+          "step": "business",
+          "helper": "runIndependentInvalidLaunch",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-io/agent-line",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-io/agent-line",
+          "step": "business",
+          "helper": "runIndependentAgentLine",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-io/agent-partial",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-io/agent-partial",
+          "step": "business",
+          "helper": "runIndependentAgentPartial",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-io/terminal-line",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-io/terminal-line",
+          "step": "business",
+          "helper": "runIndependentTerminalLine",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-io/live-snapshot",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-io/live-snapshot",
+          "step": "business",
+          "helper": "runIndependentAgentSnapshot",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-io/bounded-burst",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-io/bounded-burst",
+          "step": "business",
+          "helper": "runIndependentAgentBurst",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-state-fixture/burst-prompt",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-state-fixture/burst-prompt",
+          "step": "business",
+          "helper": "runIndependentAgentPrompt",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-state-fixture/sleep",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-state-fixture/sleep",
+          "step": "business",
+          "helper": "runIndependentAgentSleep",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-state-fixture/spinner",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-state-fixture/spinner",
+          "step": "business",
+          "helper": "runIndependentAgentSpinner",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-exit/natural-zero",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/natural-zero",
+          "step": "business",
+          "helper": "runIndependentNaturalExit",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-exit/nonzero",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/nonzero",
+          "step": "business",
+          "helper": "runIndependentNonzeroExit",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-exit/resumed-nonzero",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "snapshot-only-manual-recovery",
+          "step": "resumed-nonzero",
+          "helper": "verifyRuntimeReloadRecovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-stop/agent",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-stop/agent",
+          "step": "business",
+          "helper": "runIndependentAgentStop",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-stop/terminal",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-stop/terminal",
+          "step": "business",
+          "helper": "runIndependentTerminalStop",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-stop/codex-queued-exit",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-stop/codex-queued-exit",
+          "step": "business",
+          "helper": "runIndependentCodexStopRace",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-stop/claude-graceful",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-stop/claude-graceful",
+          "step": "business",
+          "helper": "runIndependentClaudeStop",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-restart/after-natural",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-restart/after-natural",
+          "step": "business",
+          "helper": "runIndependentRestartNatural",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-restart/after-error",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-restart/after-error",
+          "step": "business",
+          "helper": "runIndependentRestartError",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-restart/after-stop",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-restart/after-stop",
+          "step": "business",
+          "helper": "runIndependentRestartStop",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-reconcile/reread",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "owned-canvas-reconciliation",
+          "step": "reread",
+          "helper": "verifyOwnedCanvasReconciliation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-reconcile/root-remap",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "owned-canvas-reconciliation",
+          "step": "root-remap",
+          "helper": "verifyOwnedCanvasReconciliation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-reconcile/remove-root",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "owned-canvas-reconciliation",
+          "step": "remove-root",
+          "helper": "verifyOwnedCanvasReconciliation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "surface-continuity/cutover",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "surface-continuity/cutover",
+          "step": "business",
+          "helper": "runIndependentCutover",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "surface-continuity/completed-reflow",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "surface-continuity/completed-reflow",
+          "step": "business",
+          "helper": "runIndependentCompletedReflow",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "surface-continuity/live-page-remount",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "surface-continuity/live-page-remount",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentLivePageRemount",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "host-boundary-local/interrupt-and-flush",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "snapshot-only-manual-recovery",
+          "step": "interrupt-and-flush",
+          "helper": "verifyRuntimeReloadRecovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        },
+        {
+          "suite": "owned-canvas-reconciliation",
+          "step": "host-boundary",
+          "helper": "verifyOwnedCanvasReconciliation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "host-boundary-local/manual-terminal-start",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "snapshot-only-manual-recovery",
+          "step": "manual-terminal-start",
+          "helper": "verifyRuntimeReloadRecovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "host-boundary-local/explicit-new-start",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "owned-canvas-reconciliation",
+          "step": "explicit-start",
+          "helper": "verifyOwnedCanvasReconciliation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "host-boundary-local/recent-state-flush",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "host-boundary-local/recent-state-flush",
+          "step": "business",
+          "helper": "runIndependentRecentStateFlush",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "host-boundary-local/preserve-terminal-state",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "host-boundary-local/preserve-terminal-state",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "setup"
+        },
+        {
+          "suite": "host-boundary-local/preserve-terminal-state",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "host-boundary-local/new-host-manual-recovery",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "host-boundary-local/new-host-manual-recovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "setup"
+        },
+        {
+          "suite": "host-boundary-local/new-host-manual-recovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentHostBoundary",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "agent-tui/input-during-work",
+      "status": "not-implemented",
+      "destinations": [],
+      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+    },
+    {
+      "id": "agent-tui/answer-with-footer",
+      "status": "not-implemented",
+      "destinations": [],
+      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+    },
+    {
+      "id": "agent-tui/tool-network-silence",
+      "status": "not-implemented",
+      "destinations": [],
+      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+    },
+    {
+      "id": "agent-tui/turn-completion-redraw",
+      "status": "not-implemented",
+      "destinations": [],
+      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+    },
+    {
+      "id": "execution-exit/native-crash",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/native-crash",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentNativeCrash",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "execution-exit/terminal-natural",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/terminal-natural",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentTerminalNatural",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "execution-exit/terminal-error",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-exit/terminal-error",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentTerminalError",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "execution-restart/terminal-after-exit",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-restart/terminal-after-exit",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentTerminalRestart",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "execution-stop/unresponsive",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-stop/unresponsive",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentUnresponsiveStop",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "execution-resize/live-geometry",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-resize/live-geometry",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentLiveGeometry",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "output-pressure/resize",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "output-pressure/resize",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentPressureResize",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "output-pressure/full-integrity",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "output-pressure/full-integrity",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "helper": "runIndependentOutputIntegrity",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "新目标已登记实际入口，静态映射不证明运行验收。"
+    },
+    {
+      "id": "agent-resume-context/manual-resume",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "snapshot-only-manual-recovery",
+          "step": "manual-resume",
+          "helper": "verifyRuntimeReloadRecovery",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-resume-context/claude-explicit-id",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-resume-context/claude-explicit-id",
+          "step": "business",
+          "helper": "runIndependentClaudeResumeId",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-links/file-position",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-links/file-position",
+          "step": "business",
+          "helper": "runIndependentFileLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-links/image",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-links/image",
+          "step": "business",
+          "helper": "runIndependentImageLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-links/cwd-and-multiline",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-links/cwd-and-multiline",
+          "step": "business",
+          "helper": "runIndependentCwdLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-links/missing-fallback",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-links/missing-fallback",
+          "step": "business",
+          "helper": "runIndependentMissingLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-links/url-and-osc8",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-links/url-and-osc8",
+          "step": "business",
+          "helper": "runIndependentUrlLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-links/opener-error",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-links/opener-error",
+          "step": "business",
+          "helper": "runIndependentRejectedLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-resource-drop/first-resource",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-resource-drop/first-resource",
+          "step": "business",
+          "helper": "runIndependentResourceDrop",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-concurrency/agent-terminal",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-concurrency/agent-terminal",
+          "step": "business",
+          "helper": "runIndependentConcurrency",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "output-pressure/flood-fairness",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "output-pressure/flood-fairness",
+          "step": "business",
+          "helper": "runIndependentFloodFairness",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "output-pressure/ctrl-c-retains-session",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "output-pressure/ctrl-c-retains-session",
+          "step": "business",
+          "helper": "runIndependentFloodCtrlC",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-projection/checkpoint-current-state",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-checkpoint-refresh",
+          "step": "initial-current-state",
+          "helper": "runRuntimeCheckpointRefreshSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        },
+        {
+          "suite": "runtime-checkpoint-refresh",
+          "step": "reload-current-state",
+          "helper": "runRuntimeCheckpointRefreshSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-projection/completed-no-history",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-projection/completed-no-history",
+          "step": "business",
+          "helper": "runIndependentRuntimeCompleted",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-projection/completed-page-reopen",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-checkpoint-refresh",
+          "step": "completed-page-reopen",
+          "helper": "runRuntimeCheckpointRefreshSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-projection/legacy-completed-migration",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-checkpoint-refresh",
+          "step": "legacy-completed-migration",
+          "helper": "runRuntimeCheckpointRefreshSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/legacy-binding",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-legacy-reconnect",
+          "step": null,
+          "helper": "verifyLiveRuntimeReconnectFailurePreservesBinding",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": true
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/legacy-no-auto-resume",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-legacy-reconnect",
+          "step": null,
+          "helper": "verifyHistoryRestoredIgnoresStaleAutomaticResume",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": true
+        }
+      ]
+    },
+    {
+      "id": "runtime-compatibility/report-unavailable",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "linux-runtime-report-unavailable",
+          "step": null,
+          "helper": "run",
+          "file": "tests/vscode-smoke/runtime-compatibility-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": true
+        }
+      ]
+    },
+    {
+      "id": "canvas-entry/first-template",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-entry/first-template",
+          "step": "business",
+          "helper": "verifyFirstOpenDefaultTemplate",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-entry/surface-sidebar",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-entry/surface-sidebar",
+          "step": "business",
+          "helper": "runIndependentSurfaceSidebar",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-protocol/unknown-message",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-protocol/unknown-message",
+          "step": "business",
+          "helper": "runIndependentUnknownMessage",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-protocol/missing-node",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-protocol/missing-node",
+          "step": "business",
+          "helper": "runIndependentMissingNode",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-protocol/lifecycle-race",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-protocol/isolated-lifecycle",
+          "step": "business",
+          "helper": "verifyWebviewLifecycleRaceDiagnostics",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        },
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyWebviewLifecycleRaceDiagnostics",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/note-host-update",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/note-host-update",
+          "step": "business",
+          "helper": "runIndependentNoteHostUpdate",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/post-delete-state",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/dom-delete",
+          "step": "business",
+          "helper": "runIndependentDomDelete",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/entry",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "runRestrictedSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/webview-create",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "runRestrictedSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/quickpick-terminal",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "runRestrictedSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/quickpick-agent",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "runRestrictedSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/execution-actions",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "runRestrictedSmoke",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "supervisor-upgrade/generation-continuity",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "legacy-supervisor-upgrade",
+          "step": "old-generation-retirement",
+          "helper": "runGenerationContinuity",
+          "file": "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/local",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "real-reopen",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/multi-root",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "multi-root-real-reopen",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/single-to-multi-root",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "single-to-multi-root-real-reopen",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/systemd-user",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "systemd-user-real-reopen",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/systemd-fallback",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "systemd-fallback-real-reopen",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/ssh-host-exit",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "remote-ssh-real-reopen-exit",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "runtime-reopen/ssh-host-retain",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "remote-ssh-real-reopen-retain",
+          "step": "reconnect-and-content",
+          "helper": "runVerifyPhase",
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "verify"
+        }
+      ]
+    },
+    {
+      "id": "shared-runtime-windows/owner-attacher",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "two-window-shared-runtime",
+          "step": "shared-stop",
+          "helper": "runOwnerWindow",
+          "file": "tests/vscode-smoke/two-window-shared-runtime-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "owner"
+        },
+        {
+          "suite": "two-window-shared-runtime",
+          "step": "shared-stop",
+          "helper": "runAttacherWindow",
+          "file": "tests/vscode-smoke/two-window-shared-runtime-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false,
+          "role": "attacher"
+        }
+      ]
+    },
+    {
+      "id": "canvas-entry/trusted-templates",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-entry/trusted-templates",
+          "step": "business",
+          "helper": "verifyCanvasTemplatesTrusted",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-resume-context/codex-locator",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-resume-context/codex-locator",
+          "step": "business",
+          "helper": "verifyCodexSessionIdLocator",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-resume-context/claude-locator",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-resume-context/claude-locator",
+          "step": "business",
+          "helper": "verifyClaudeSessionIdLocator",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-resume-context/codex-hint",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-resume-context/codex-hint",
+          "step": "business",
+          "helper": "verifyCodexResumeCommandHintParser",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "agent-resume-context/claude-hint",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-resume-context/claude-hint",
+          "step": "business",
+          "helper": "verifyClaudeResumeCommandHintParser",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/cli-cache",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/cli-cache",
+          "step": "business",
+          "helper": "verifyAgentCliCacheIsolation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/default-provider",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/default-provider",
+          "step": "business",
+          "helper": "verifyRuntimeContextRefreshesDefaultAgentProvider",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/scrollback",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/scrollback",
+          "step": "business",
+          "helper": "verifyRuntimeContextRefreshesTerminalScrollback",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/stopped-shell",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/stopped-shell",
+          "step": "business",
+          "helper": "verifyTerminalShellPathRefreshesStoppedTerminalNode",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/detected-shell",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/detected-shell",
+          "step": "business",
+          "helper": "verifySelectTerminalShellCommandPersistsExactDetectedPath",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/workspace-shell",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/workspace-shell",
+          "step": "business",
+          "helper": "verifySelectTerminalShellCommandUpdatesWorkspaceOverride",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-entry/default-surface-reload",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-entry/default-surface-reload",
+          "step": "business",
+          "helper": "verifyDefaultSurfaceRequiresReload",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/create-quickpick",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/create-quickpick",
+          "step": "business",
+          "helper": "verifyCreateNodeCommandQuickPick",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/default-root",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/default-root",
+          "step": "business",
+          "helper": "verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-config/relative-shell",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-config/relative-shell",
+          "step": "business",
+          "helper": "verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/explorer-create",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/explorer-create",
+          "step": "business",
+          "helper": "verifyExplorerResourceExecutionNodeCreation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/create-open-surface",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/create-open-surface",
+          "step": "business",
+          "helper": "verifyCreateNodeCommandUsesOpenCanvasSurface",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/create-selected-mode",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/create-selected-mode",
+          "step": "business",
+          "helper": "verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/create-preset-intent",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/create-preset-intent",
+          "step": "business",
+          "helper": "verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/legacy-filter",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/legacy-filter",
+          "step": "business",
+          "helper": "verifyPersistedStateFiltersLegacyTaskNodes",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/empty-group-delete",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/empty-group-delete",
+          "step": "business",
+          "helper": "verifyEmptyGroupDeletionSkipsConfirmation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/nested-group-delete",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/nested-group-delete",
+          "step": "business",
+          "helper": "verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/layout",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/layout",
+          "step": "business",
+          "helper": "verifyCanvasLayoutArrangementPersists",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-sidebar/node-list",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-sidebar/node-list",
+          "step": "business",
+          "helper": "runIndependentSidebarList",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-sidebar/node-quickpick",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-sidebar/node-quickpick",
+          "step": "business",
+          "helper": "runIndependentSidebarQuickPick",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-sidebar/node-ui",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-sidebar/node-ui",
+          "step": "business",
+          "helper": "runIndependentSidebarUI",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-protocol/real-probe",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-protocol/real-probe",
+          "step": "business",
+          "helper": "runIndependentRealProbe",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/dom-edit",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/dom-edit",
+          "step": "business",
+          "helper": "runIndependentDomEdit",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-notes/checklist",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-notes/checklist",
+          "step": "business",
+          "helper": "runIndependentChecklist",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-notes/file-links",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-notes/file-links",
+          "step": "business",
+          "helper": "runIndependentNoteFileLink",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-notes/markdown-association",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-notes/markdown-association",
+          "step": "business",
+          "helper": "verifyNoteMarkdownFileAssociation",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/saved-size",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/saved-size",
+          "step": "business",
+          "helper": "runIndependentSavedSize",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-notifications/bridge-migration",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-notifications/bridge-migration",
+          "step": "business",
+          "helper": "verifyLegacyAttentionNotificationBridgeMigration",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-notifications/attention",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-notifications/attention",
+          "step": "business",
+          "helper": "runIndependentAttention",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-notifications/abnormal",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-notifications/abnormal",
+          "step": "business",
+          "helper": "verifyAgentAbnormalInterruptionNotifications",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-view/local-scrollback",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-view/local-scrollback",
+          "step": "business",
+          "helper": "runIndependentLocalScrollback",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-view/editor-viewport",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-view/editor-viewport",
+          "step": "business",
+          "helper": "runIndependentEditorViewport",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-view/panel-viewport",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-view/panel-viewport",
+          "step": "business",
+          "helper": "runIndependentPanelViewport",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-view/workbench-theme",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-view/workbench-theme",
+          "step": "business",
+          "helper": "runIndependentTheme",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-reconcile/completed-state",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-reconcile/completed-state",
+          "step": "business",
+          "helper": "runIndependentCompletedState",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-protocol/standby",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-protocol/standby",
+          "step": "business",
+          "helper": "runIndependentStandby",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-protocol/pending-fault",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-protocol/pending-fault",
+          "step": "business",
+          "helper": "runIndependentPendingFault",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/live-persistence",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-recovery/live-persistence",
+          "step": "business",
+          "helper": "runIndependentLivePersistence",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "terminal-view/runtime-scrollback",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "terminal-view/runtime-scrollback",
+          "step": "business",
+          "helper": "runIndependentRuntimeScrollback",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/binding-failure",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-recovery/binding-failure",
+          "step": "business",
+          "helper": "runIndependentBindingFailure",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/no-stale-resume",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-recovery/no-stale-resume",
+          "step": "business",
+          "helper": "runIndependentNoStaleResume",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/exit-classification",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-recovery/exit-classification",
+          "step": "business",
+          "helper": "runIndependentRuntimeExit",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-recovery/immediate-boundary",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-recovery/immediate-boundary",
+          "step": "business",
+          "helper": "runIndependentImmediateBoundary",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/dom-delete",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/dom-delete",
+          "step": "business",
+          "helper": "runIndependentDomDelete",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/manual-edge",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/manual-edge",
+          "step": "business",
+          "helper": "runIndependentManualEdge",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-file-activity/views",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-file-activity/views",
+          "step": "business",
+          "helper": "verifyFileActivityViewsAndOpenFiles",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "execution-file-activity/read-exit-drain",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "execution-file-activity/read-exit-drain",
+          "step": "business",
+          "helper": "verifyReadExitFileActivityDrain",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "runtime-mode/reload-clear",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "runtime-mode/reload-clear",
+          "step": "business",
+          "helper": "verifyRuntimePersistenceRequiresReloadAndClearsState",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/restore",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/restore",
+          "step": "business",
+          "helper": "verifySidebarSessionHistoryRestore",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/fork-ui",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/fork-ui",
+          "step": "business",
+          "helper": "verifySidebarSessionHistoryForkActionUi",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/codex-branch",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/codex-branch",
+          "step": "business",
+          "helper": "verifyCodexAgentBranchFromCurrentNode",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/claude-branch",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/claude-branch",
+          "step": "business",
+          "helper": "verifyClaudeAgentBranchFromCurrentNode",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/branch-rejection",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/branch-rejection",
+          "step": "business",
+          "helper": "verifyAgentBranchRejectsUnsupportedSources",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/search",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/search",
+          "step": "business",
+          "helper": "verifySidebarSessionHistorySearchByTitleUi",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "session-history/doubleclick",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "session-history/doubleclick",
+          "step": "business",
+          "helper": "verifySidebarSessionHistoryDoubleClickUi",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/templates",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyCanvasTemplatesRestricted",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/diagnostics",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyRestrictedDiagnostics",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/reconnect",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyRestrictedLiveRuntimeReconnectBlocked",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/history-delete",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/mode",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "restricted-workspace/history-disabled",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "restricted",
+          "step": null,
+          "helper": "verifyRestrictedSessionHistoryRestoreIsDisabled",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": false,
+          "diagnosticOnly": false
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "legacyRoute": "local-execution-flow",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/live-snapshot",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "execution-exit/natural-zero",
+        "execution-restart/after-natural",
+        "execution-start/duplicate",
+        "execution-stop/agent",
+        "execution-io/terminal-line",
+        "execution-stop/terminal",
+        "surface-continuity/completed-reflow",
+        "execution-start/auto-start",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "owned-canvas-reconciliation",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "execution-start/auto-start",
+        "owned-canvas-reconciliation",
+        "snapshot-only-manual-recovery",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "snapshot-only-manual-recovery",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "snapshot-only-manual-recovery",
+        "owned-canvas-reconciliation",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "local-surface-cutover",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "surface-continuity/cutover",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "local-preparation-failure",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "execution-start/missing-cli",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "local-links-and-stop",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "terminal-resource-drop/first-resource",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/missing-fallback",
+        "terminal-links/url-and-osc8",
+        "terminal-links/opener-error",
+        "execution-stop/codex-queued-exit",
+        "execution-stop/claude-graceful",
+        "agent-resume-context/claude-explicit-id",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "local-pty-robustness",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "execution-io/bounded-burst",
+        "execution-exit/nonzero",
+        "execution-restart/after-error",
+        "execution-stop/agent",
+        "execution-restart/after-stop",
+        "execution-concurrency/agent-terminal",
+        "output-pressure/flood-fairness",
+        "output-pressure/ctrl-c-retains-session",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "runtime-checkpoint-refresh",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "runtime-checkpoint-refresh",
+        "runtime-projection/completed-no-history",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "trusted",
+      "sourceDefault": true,
+      "packagedDefault": true,
+      "diagnosticOnly": false,
+      "destinations": [
+        "agent-resume-context/claude-explicit-id",
+        "agent-resume-context/claude-hint",
+        "agent-resume-context/claude-locator",
+        "agent-resume-context/codex-hint",
+        "agent-resume-context/codex-locator",
+        "snapshot-only-manual-recovery",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "canvas-entry/default-surface-reload",
+        "canvas-entry/surface-sidebar",
+        "canvas-entry/trusted-templates",
+        "canvas-nodes/create-open-surface",
+        "canvas-nodes/create-preset-intent",
+        "canvas-nodes/create-quickpick",
+        "canvas-nodes/create-selected-mode",
+        "canvas-nodes/dom-delete",
+        "canvas-nodes/dom-edit",
+        "canvas-nodes/empty-group-delete",
+        "canvas-nodes/explorer-create",
+        "canvas-nodes/layout",
+        "canvas-nodes/legacy-filter",
+        "canvas-nodes/manual-edge",
+        "canvas-nodes/nested-group-delete",
+        "canvas-nodes/note-host-update",
+        "canvas-nodes/saved-size",
+        "canvas-notes/checklist",
+        "canvas-notes/file-links",
+        "canvas-notes/markdown-association",
+        "canvas-protocol/missing-node",
+        "canvas-protocol/pending-fault",
+        "canvas-protocol/real-probe",
+        "canvas-protocol/standby",
+        "canvas-protocol/unknown-message",
+        "canvas-reconcile/completed-state",
+        "canvas-sidebar/node-list",
+        "canvas-sidebar/node-quickpick",
+        "canvas-sidebar/node-ui",
+        "execution-concurrency/agent-terminal",
+        "execution-config/cli-cache",
+        "execution-config/default-provider",
+        "execution-config/default-root",
+        "execution-config/detected-shell",
+        "execution-config/relative-shell",
+        "execution-config/scrollback",
+        "execution-config/stopped-shell",
+        "execution-config/workspace-shell",
+        "execution-exit/natural-zero",
+        "execution-exit/nonzero",
+        "execution-file-activity/read-exit-drain",
+        "execution-file-activity/views",
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/bounded-burst",
+        "execution-io/live-snapshot",
+        "execution-io/terminal-line",
+        "execution-notifications/abnormal",
+        "execution-notifications/attention",
+        "execution-notifications/bridge-migration",
+        "execution-restart/after-error",
+        "execution-restart/after-natural",
+        "execution-restart/after-stop",
+        "execution-start/auto-start",
+        "execution-start/duplicate",
+        "execution-start/invalid-launch",
+        "execution-start/missing-cli",
+        "execution-stop/agent",
+        "execution-stop/claude-graceful",
+        "execution-stop/codex-queued-exit",
+        "execution-stop/terminal",
+        "owned-canvas-reconciliation",
+        "host-boundary-local/recent-state-flush",
+        "output-pressure/ctrl-c-retains-session",
+        "output-pressure/flood-fairness",
+        "runtime-mode/reload-clear",
+        "runtime-projection/completed-no-history",
+        "runtime-recovery/binding-failure",
+        "runtime-recovery/exit-classification",
+        "runtime-recovery/immediate-boundary",
+        "runtime-recovery/live-persistence",
+        "runtime-recovery/no-stale-resume",
+        "session-history/branch-rejection",
+        "session-history/claude-branch",
+        "session-history/codex-branch",
+        "session-history/doubleclick",
+        "session-history/fork-ui",
+        "session-history/restore",
+        "session-history/search",
+        "surface-continuity/completed-reflow",
+        "surface-continuity/cutover",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/missing-fallback",
+        "terminal-links/opener-error",
+        "terminal-links/url-and-osc8",
+        "terminal-resource-drop/first-resource",
+        "terminal-view/editor-viewport",
+        "terminal-view/local-scrollback",
+        "terminal-view/panel-viewport",
+        "terminal-view/runtime-scrollback",
+        "terminal-view/workbench-theme",
+        "canvas-protocol/isolated-lifecycle",
+        "restricted",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "restricted",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "restricted",
+        "canvas-protocol/isolated-lifecycle",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "legacy-supervisor-upgrade",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "legacy-supervisor-upgrade"
+      ]
+    },
+    {
+      "legacyRoute": "real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "real-reopen"
+      ]
+    },
+    {
+      "legacyRoute": "multi-root-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "multi-root-real-reopen"
+      ]
+    },
+    {
+      "legacyRoute": "single-to-multi-root-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "single-to-multi-root-real-reopen"
+      ]
+    },
+    {
+      "legacyRoute": "two-window-shared-runtime",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "two-window-shared-runtime"
+      ]
+    },
+    {
+      "legacyRoute": "systemd-user-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "systemd-user-real-reopen"
+      ]
+    },
+    {
+      "legacyRoute": "systemd-fallback-real-reopen",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "systemd-fallback-real-reopen"
+      ]
+    },
+    {
+      "legacyRoute": "remote-ssh-real-reopen-exit",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "remote-ssh-real-reopen-exit"
+      ]
+    },
+    {
+      "legacyRoute": "remote-ssh-real-reopen-retain",
+      "sourceDefault": true,
+      "packagedDefault": false,
+      "diagnosticOnly": false,
+      "destinations": [
+        "remote-ssh-real-reopen-retain"
+      ]
+    },
+    {
+      "legacyRoute": "runtime-legacy-reconnect",
+      "sourceDefault": false,
+      "packagedDefault": false,
+      "diagnosticOnly": true,
+      "destinations": [
+        "runtime-legacy-reconnect",
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "legacyRoute": "linux-runtime-report-unavailable",
+      "sourceDefault": false,
+      "packagedDefault": false,
+      "diagnosticOnly": true,
+      "destinations": [
+        "linux-runtime-report-unavailable"
+      ]
+    },
+    {
+      "legacyRoute": "runtime-completed-no-history",
+      "sourceDefault": false,
+      "packagedDefault": false,
+      "diagnosticOnly": true,
+      "destinations": [
+        "runtime-projection/completed-no-history",
+        "canvas-entry/first-template"
+      ]
+    }
+  ],
+  "assertionReview": [
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "runTrustedSmoke",
+        "line": 1346,
+        "text": "assert.ok( hostMessages.some( (message) => message.type === 'host/error' && message.payload.message === UNKNOWN_WEBVIEW_MESSAGE_ERROR ) )"
+      },
+      "replacement": {
+        "suite": "canvas-protocol/unknown-message",
+        "helper": "runIndependentUnknownMessage",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "Host 错误、toast 出现/消退与空画布"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "runTrustedSmoke",
+        "line": 1389,
+        "text": "assert.deepStrictEqual( snapshot.state.nodes.map((node) => node.kind).sort(), ['agent', 'note', 'terminal'] )"
+      },
+      "replacement": {
+        "suite": "canvas-sidebar/node-list",
+        "helper": "prepareIndependentStoppedBase",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "所有三节点夹具明确只含 Agent、Terminal、Note"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "runTrustedSmoke",
+        "line": 1423,
+        "text": "assert.strictEqual(findNodeById(snapshot, noteNode.id).title, 'Host Smoke Note')"
+      },
+      "replacement": {
+        "suite": "canvas-nodes/note-host-update",
+        "helper": "runIndependentNoteHostUpdate",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 Note 标题、正文、位置"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "runTrustedSmoke",
+        "line": 1424,
+        "text": "assert.strictEqual( findNodeById(snapshot, noteNode.id).metadata.note.content, 'Exercise the real webview-to-host update path.' )"
+      },
+      "replacement": {
+        "suite": "canvas-nodes/note-host-update",
+        "helper": "runIndependentNoteHostUpdate",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 Note 正文与位置"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "runTrustedSmoke",
+        "line": 1428,
+        "text": "assert.deepStrictEqual(findNodeById(snapshot, noteNode.id).position, { x: 680, y: 260 })"
+      },
+      "replacement": {
+        "suite": "canvas-nodes/note-host-update",
+        "helper": "runIndependentNoteHostUpdate",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 Note 位置"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "runTrustedSmoke",
+        "line": 1495,
+        "text": "assert.strictEqual(snapshot.state.nodes.some((node) => node.id === runtimePersistenceNodes.noteNode.id), false)"
+      },
+      "replacement": {
+        "suite": "canvas-nodes/dom-delete",
+        "helper": "runIndependentDomDelete",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "本 case 自建 Note 删除、两个原执行节点精确集合"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyPtyRobustness",
+        "line": 9161,
+        "text": "assert.notStrictEqual(second.execution.executionSessionId, first.execution.executionSessionId)"
+      },
+      "replacement": {
+        "suite": "execution-restart/after-error",
+        "helper": "verifyAgentRestartAfterRetirement",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "新 Start 与本 case 原 retired 执行身份不同"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyPtyRobustness",
+        "line": 9174,
+        "text": "assert.notStrictEqual(concurrentAgent.execution.executionSessionId, second.execution.executionSessionId)"
+      },
+      "replacement": {
+        "suite": "execution-concurrency/agent-terminal",
+        "helper": "verifyExecutionConcurrency",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "两个新执行与本 case 已退役 Agent/Terminal 身份及彼此不同，必跑比较"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyPersistenceAndRecovery",
+        "line": 9747,
+        "text": "assert.strictEqual(findNodeById(snapshot, agentNodeId).status, 'stopped')"
+      },
+      "replacement": {
+        "suite": "canvas-reconcile/completed-state",
+        "helper": "verifyPersistenceAndRecovery",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 stopped Agent 状态保留；helper 仍实际被调用"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyPersistenceAndRecovery",
+        "line": 9748,
+        "text": "assert.strictEqual(findNodeById(snapshot, terminalNodeId).status, 'closed')"
+      },
+      "replacement": {
+        "suite": "canvas-reconcile/completed-state",
+        "helper": "verifyPersistenceAndRecovery",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 closed Terminal 状态保留；helper 仍实际被调用"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState",
+        "line": 11566,
+        "text": "assert.strictEqual(snapshot.state.nodes.length, 0)"
+      },
+      "replacement": {
+        "suite": "restricted",
+        "helper": "verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 helper 两次清空状态断言保留；重复调用收敛不降低语义"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState",
+        "line": 11658,
+        "text": "assert.strictEqual(snapshot.state.nodes.length, 0)"
+      },
+      "replacement": {
+        "suite": "restricted",
+        "helper": "verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "原 helper 两次清空状态断言保留；重复调用收敛不降低语义"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyTrustedDiagnostics",
+        "line": 13567,
+        "text": "assert.ok(evidence?.agent?.started && evidence.agent.saved && evidence.agent.reader && evidence.agent.exit, 'Expected verified Agent start, exit, final save and reader evidence from verifyAgentExecutionFlow.')"
+      },
+      "replacement": {
+        "suite": "execution-exit/natural-zero",
+        "helper": "assertVerifiedAgentEvidence",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "本次原 Agent started、save、reader、单次 exit 证据"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyTrustedDiagnostics",
+        "line": 13569,
+        "text": "assert.strictEqual(evidence.agent.exitCode, 0)"
+      },
+      "replacement": {
+        "suite": "execution-exit/natural-zero",
+        "helper": "assertVerifiedAgentEvidence",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "本次原 Agent exitCode=0"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyTrustedDiagnostics",
+        "line": 13570,
+        "text": "assert.ok(evidence?.terminal?.started && evidence.terminal.liveSnapshot, 'Expected verified Terminal start and live snapshot evidence from verifyTerminalExecutionFlow.')"
+      },
+      "replacement": {
+        "suite": "execution-io/terminal-line",
+        "helper": "assertVerifiedTerminalEvidence",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "本次原 Terminal started 与 live snapshot"
+    },
+    {
+      "original": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "helper": "verifyTrustedDiagnostics",
+        "line": 13572,
+        "text": "assert.ok(evidence?.preparation?.failure && evidence.preparation.persistence, 'Expected verified missing-CLI failure evidence from verifyMissingAgentCliFailure.')"
+      },
+      "replacement": {
+        "suite": "execution-start/missing-cli",
+        "helper": "assertVerifiedPreparationEvidence",
+        "file": "tests/vscode-smoke/extension-tests.cjs"
+      },
+      "reason": "本次真实 preparation 失败与持久化结算"
+    }
+  ],
+  "limits": [
+    "映射不能产生通过回执，实际 case/step 必须由 Host 执行证据核对。",
+    "102 个独立 case 与有限因果组合覆盖137个既有设计目的地；152不是实际执行数量。",
+    "旧 source focused 3 项保持 diagnostic-only；15 个新增目标明确未实施。"
+  ]
+}

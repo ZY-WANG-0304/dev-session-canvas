@@ -1,0 +1,108 @@
+{
+  "acceptance": false,
+  "scope": "本地修复诊断；不代替更新后 PR head 的完整 Actions 验收",
+  "testSourceBase": "40d78cdcccd612d1b3ae541df075bc8adbe263ea",
+  "productInputSHA": "9aca2af73a2005f6b1d3926272bfab681ee22214",
+  "originalCIRun": "39977098326",
+  "artifacts": {
+    "source": 12511614054,
+    "candidate": 12511718726,
+    "plan": 12511533083,
+    "failure": 12512986530
+  },
+  "evidenceRoot": "/tmp/dsc-native-fix-dperbt73",
+  "results": {
+    "sourceHost": {
+      "scenario": "execution-file-activity/views",
+      "status": "passed",
+      "verifiedProductFiles": 102,
+      "trustedClicks": 4,
+      "panelRegressionDocumentFocusBeforeClick": false
+    },
+    "packagedHost": {
+      "scenario": "execution-file-activity/views",
+      "status": "passed",
+      "trustedClicks": 4,
+      "panelRegressionDocumentFocusBeforeClick": false,
+      "instrumentationVerified": true,
+      "originalPackageReceiptVerifiedBeforeAndAfter": true,
+      "diagnosticAdapter": "保留原 plan 与 package receipt 验包；仅临时入口允许 cached VSCode override 且不执行旧 frozen-plan 对新测试适配器的一致性声明；正式入口未变"
+    },
+    "gateContracts": {
+      "node": "25.6.0",
+      "passed": 122,
+      "failed": 0
+    },
+    "targetedContracts": {
+      "node": "22.23.3",
+      "passed": 3,
+      "failed": 0
+    },
+    "budgets": {
+      "suiteCount": 134,
+      "suiteSetUnchanged": true,
+      "budgetChanges": []
+    },
+    "remainingOwnedVSCodeProcesses": 0
+  },
+  "packageSHA256": {
+    "main.vsix": "087f107b5a5a7c83bdbc023a1d844884af6bd56c90d9e839e1ed59f111e0eacd",
+    "notifier.vsix": "484641d2cc7c3c5ce825ab10db0e3c2fec5e07e2df061ddf42a4e64411218f02"
+  },
+  "adapterSHA256": {
+    "scripts/smoke/vscode-smoke-runner.mjs": "6dbdb47137576a8e03fcdf95cc1579f48e78ebe08c1a35892c9ab3935620d25b",
+    "tests/vscode-smoke/extension-tests.cjs": "c7f2b0eecb04f99e6ed0f9085954455f0fb63b786be254ce78c1b7152cf11293",
+    "tests/vscode-smoke/native-file-click.cjs": "8359f2e32a9922dc05310dfa7807ef3a53e019e4b7f512cb94661b215d0eb3c6",
+    "scripts/test/test-gate-contracts.mjs": "28435ff7e782ade62cb772be2bebc4048d057aa86cacf9f05fc35fea604c9780",
+    "scripts/gates/build-smoke-budget.mjs": "fb05815dc0e2ba4f4f0b83d21e58e81e63feb3be82b5ceaab273d94c868eda72",
+    "scripts/smoke/smoke-budget-inventory.json": "eff0e23e710a9418c0347de11fed00b0a1d1c29d89985b70ca3cdb5172bb8f85"
+  },
+  "logs": {
+    "source.log": {
+      "sha256": "525a69979b1e9d4afcfea01d51a19d738cd224bd39de9f18cf1563c8f223927a",
+      "bytes": 67421
+    },
+    "source-2.log": {
+      "sha256": "e4cecdeb524e73f52739234d5892e2ccfd681f669f81c54b1d92117ef99d5a0f",
+      "bytes": 67699
+    },
+    "source-3.log": {
+      "sha256": "634b2fc23d1e0da0f6c450048d324666b638488f049fcdacac52421aa0c7b3e1",
+      "bytes": 66604
+    },
+    "source-4.log": {
+      "sha256": "2640809d819084486672429fd85474dd4f80fb60e9b1b6ded4ab2200bc8a654d",
+      "bytes": 282142
+    },
+    "source-5.log": {
+      "sha256": "4fd3640452f11cd00ec804fbbc2ea037a71d26b2f9985d4e89e9d9c275ecfd97",
+      "bytes": 150989
+    },
+    "packaged.log": {
+      "sha256": "2ac4e815cb45e708c487f62db959af8c3ec1a08a73c10de20ad5451b8a9ca6e1",
+      "bytes": 150803
+    },
+    "node22-contracts.log": {
+      "sha256": "e034f06d2620b72b572bdf7660f3520204f546723a7e495248c3890fc5475d4e",
+      "bytes": 930
+    },
+    "all-contracts.log": {
+      "sha256": "d47e110c26484d13ef50e8e2c912744adcc66ebac5e1448d3fb6f47109c155e0",
+      "bytes": 11867
+    },
+    "budget-comparison.json": {
+      "sha256": "25cb58406121d72bec66e021792b286b37cb2559d853b2f984fb889d5785b163",
+      "bytes": 75
+    },
+    "packaged-run/instrumentation-receipt.json": {
+      "sha256": "2ea3893a94b9ce6ac3eaa973809641ba57946407fb36097a98d00d0cb2512f73",
+      "bytes": 70737
+    }
+  },
+  "limitations": [
+    "原 CI 自然夺焦时序缺失，受控复现不代证历史完整因果。",
+    "本机存在 ENOSPC watcher 警告；未修改系统限制。",
+    "source/source-2/source-3/source-4 保留适配器晚连接失败与诊断；创建 Webview 前连接的 source-5 与 packaged 通过。",
+    "尚未推送或触发新 head 的 Actions 完整验收。"
+  ]
+}

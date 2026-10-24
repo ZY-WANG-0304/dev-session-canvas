@@ -10,10 +10,14 @@ import { PassThrough } from 'node:stream';
 import {
   buildVSCodeArgs,
   buildVSCodeChildEnv,
+  normalizeVSCodeExecutablePath,
   prepareRuntime,
+  resolveVSCodeAppRoot,
   resolveVSCodeSmokeDebugRoot,
   spawnPreparedVSCodeScenario
 } from '../smoke/vscode-smoke-runner.mjs';
+import { resolveSmokeRuntimePaths } from '../smoke/vscode-smoke-runner.mjs';
+import { buildRemoteHostEnvironment } from '../smoke/vscode-remote-ssh-fixture.mjs';
 
 const originalElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
 const originalVscodeIpcHookCli = process.env.VSCODE_IPC_HOOK_CLI;
@@ -58,13 +62,14 @@ try {
     assert.deepStrictEqual(buildVSCodeArgs(argsOptions, platform), [
       argsOptions.workspacePath,
       '--disable-extensions',
-      '--log=trace',
+      '--log=debug',
       `--user-data-dir=${argsOptions.userDataDir}`,
       `--extensions-dir=${argsOptions.extensionsDir}`,
       '--no-sandbox',
       '--disable-gpu-sandbox',
       ...(platform === 'linux' ? ['--disable-gpu', '--disable-dev-shm-usage'] : []),
       '--password-store=basic',
+      '--disable-crash-reporter',
       ...(platform === 'darwin' ? ['--use-inmemory-secretstorage'] : []),
       '--disable-updates',
       '--skip-welcome',
@@ -75,6 +80,51 @@ try {
     ], `${platform} smoke launch arguments`);
   }
   assert.deepStrictEqual(buildVSCodeArgs(argsOptions), buildVSCodeArgs(argsOptions, process.platform));
+
+  const darwinDownload = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-official-darwin-entry-'));
+  try {
+    const contents = path.join(darwinDownload, 'Visual Studio Code.app', 'Contents');
+    await fs.mkdir(path.join(contents, 'MacOS'), { recursive: true });
+    await fs.mkdir(path.join(contents, 'Resources', 'app'), { recursive: true });
+    await fs.writeFile(path.join(contents, 'Resources', 'app', 'package.json'), '{"version":"1.142.0"}');
+    const staleLibraryPath = path.join(contents, 'MacOS', 'Electron');
+    const actual = path.join(contents, 'MacOS', 'Code');
+    await fs.writeFile(path.join(contents, 'Info.plist'),
+      '<?xml version="1.0"?><plist><dict><key>CFBundleExecutable</key><string>Code</string></dict></plist>');
+    await fs.writeFile(actual, 'Official current executable name; fixture is not executed.', { mode: 0o755 });
+    assert.equal(normalizeVSCodeExecutablePath(staleLibraryPath, 'darwin'), actual,
+      'The pinned download library old Electron path must resolve the executable declared by this same app');
+    assert.equal(normalizeVSCodeExecutablePath(darwinDownload, 'darwin'), actual);
+    assert.equal(await resolveVSCodeAppRoot(actual, 'darwin'), path.join(contents, 'Resources', 'app'));
+    for (const invalid of ['../Code', 'UnknownMissingEntry']) {
+      await fs.writeFile(path.join(contents, 'Info.plist'),
+        `<plist><dict><key>CFBundleExecutable</key><string>${invalid}</string></dict></plist>`);
+      assert.throws(() => normalizeVSCodeExecutablePath(staleLibraryPath, 'darwin'), /valid executable|ENOENT/u);
+    }
+    await fs.writeFile(path.join(contents, 'Info.plist'), '<plist><dict></dict></plist>');
+    assert.throws(() => normalizeVSCodeExecutablePath(staleLibraryPath, 'darwin'), /declare a valid executable/u);
+  } finally { await fs.rm(darwinDownload, { recursive: true, force: true }); }
+
+  const remoteOptions = { remoteHomeDir: '/private/remote-home', remoteConfigDir: '/private/config',
+    remoteCacheDir: '/private/cache', remoteDataDir: '/private/data', remoteRuntimeDir: '/private/runtime',
+    remoteTmpDir: '/private/tmp', remoteAgentDir: '/private/agent', gateStorageRoot: '/private/fixture',
+    smokeTestMode: true, realReopenControlFile: '/private/control.json' };
+  const remoteEnv = buildRemoteHostEnvironment(remoteOptions, {
+    DEV_SESSION_CANVAS_GATE_HOST_RECEIPTS: '/private/receipts', DEV_SESSION_CANVAS_GATE_RUN_NONCE: 'original',
+    DEV_SESSION_CANVAS_GATE_CASE_ID: 'remote-ssh-real-reopen-exit', DEV_SESSION_CANVAS_GATE_DEADLINE: '100',
+    DEV_SESSION_CANVAS_GATE_CLEANUP_DEADLINE: '160', GH_TOKEN: 'must-not-forward', HOME: '/user-home'
+  });
+  assert.equal(remoteEnv.HOME, remoteOptions.remoteHomeDir);
+  assert.equal(remoteEnv.XDG_STATE_HOME, path.join(remoteOptions.remoteRuntimeDir, 'state'));
+  assert.equal(remoteEnv.GH_TOKEN, undefined);
+  assert.equal(remoteEnv.DEV_SESSION_CANVAS_GATE_RUN_NONCE, 'original');
+  assert.equal(remoteEnv.DEV_SESSION_CANVAS_SMOKE_TEST_MODE, '1');
+  assert.deepEqual(JSON.parse(remoteEnv.DEV_SESSION_CANVAS_GATE_STORAGE_ROOTS), ['/private/fixture', '/private/runtime']);
+  const remoteArgs = buildVSCodeArgs({ ...argsOptions, remoteAuthority: 'ssh-remote+fixture', extensionHostEnv: remoteEnv });
+  const forwarded = remoteArgs.find(arg => arg.startsWith('--extensionEnvironment='));
+  assert.deepEqual(JSON.parse(forwarded.slice('--extensionEnvironment='.length)), remoteEnv);
+  assert.throws(() => buildVSCodeArgs({ ...argsOptions, extensionHostEnv: remoteEnv }), /declared authority/);
+  assert.equal(buildRemoteHostEnvironment({ ...remoteOptions, smokeTestMode: false }, {}).DEV_SESSION_CANVAS_SMOKE_TEST_MODE, undefined);
 
   const launchRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-original-vscode-process-'));
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
@@ -104,10 +154,13 @@ try {
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(finished, false, 'Acceptance cannot finish before the original Code process exits');
     child.emit('exit', 0, null);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(finished, false, 'Original process exit must still drain its tail output');
+    child.stdout.end(); child.stderr.end(); child.emit('close', 0, null);
     await completed;
     assert.equal(finished, true);
   } finally {
-    child?.emit('exit', 0, null);
+    child?.emit('close', 0, null);
     childProcess.spawn = originalSpawn;
     syncBuiltinESMExports();
     Object.defineProperty(process, 'platform', originalPlatform);
@@ -124,10 +177,32 @@ try {
     assert.strictEqual(runtime.environment.USERPROFILE, path.join(debugRoot, 'home'));
     assert.strictEqual(runtime.environment.APPDATA, path.join(debugRoot, 'appdata'));
     assert.strictEqual(runtime.environment.LOCALAPPDATA, path.join(debugRoot, 'local-appdata'));
-    assert.strictEqual(runtime.environment.TMP, path.join(debugRoot, 'tmp'));
-    assert.strictEqual(runtime.environment.TEMP, path.join(debugRoot, 'tmp'));
+    const expectedTmp = process.platform === 'win32' ? path.join(debugRoot, 'tmp') : path.join(runtime.runtimeDir, 'tmp');
+    assert.strictEqual(runtime.environment.TMP, expectedTmp);
+    assert.strictEqual(runtime.environment.TEMP, expectedTmp);
   } finally {
     await fs.rm(debugRoot, { recursive: true, force: true });
+  }
+
+  // macOS's system TMPDIR itself may exceed the Unix socket budget. Exercise
+  // actual full suffixes, not only the short case-name/hash prefix.
+  for (const platform of ['darwin', 'linux']) {
+    const paths = resolveSmokeRuntimePaths({ debugRoot: `/evidence/${'deep/'.repeat(35)}`,
+      runtimeDirName: 'installed-pair', userDataInRuntimeDir: true },
+    { platform, temporaryRoot: `/private/${'long/'.repeat(30)}`, runtimeNonce: 'original-run' });
+    const limit = platform === 'darwin' ? 103 : 107;
+    assert(paths.runtimeDir.startsWith('/tmp/dsc-'));
+    for (const socket of [path.join(paths.userDataDir, '1.14-main.sock'),
+      path.join(paths.tmpDir, 'vscode-ah-', 'a'.repeat(12), 'b'.repeat(22) + '.sock'),
+      path.join(paths.runtimeDir, 'state', 'dsc', 'rh', '0'.repeat(24), 's.sock')])
+      assert(Buffer.byteLength(socket) <= limit, `${platform} fixture socket must fit the actual OS budget: ${socket}`);
+    assert.throws(() => resolveSmokeRuntimePaths({ debugRoot: '/evidence', runtimeDirName: 'installed-pair',
+      userDataInRuntimeDir: true }, { platform, temporaryRoot: '/long'.repeat(40), fallbackRoot: '/long'.repeat(40) }),
+    /socket.*(limit|budget)/iu, 'No runnable socket path must fail before the Host starts');
+    const prefixOnly = resolveSmokeRuntimePaths({ debugRoot: '/evidence',
+      runtimeDirName: 'dsc-file-inspect-' + 'a'.repeat(36) }, { platform, temporaryRoot: '/tmp', runtimeNonce: '' });
+    assert(Buffer.byteLength(path.join(prefixOnly.tmpDir, `vscode-ah-${'a'.repeat(12)}`, `${'b'.repeat(22)}.sock`)) <= limit,
+      'A runtime name that fits the product socket may still need hashing for the full host agent socket');
   }
 
   const longRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-long-userdata-'));
@@ -142,9 +217,30 @@ try {
     assert.ok(Buffer.byteLength(path.join(shortRuntime.userDataDir, '1.14-main.sock')) <= 107);
     assert.deepStrictEqual(JSON.parse(await fs.readFile(path.join(shortRuntime.userDataDir, 'User', 'settings.json'), 'utf8')),
       { 'security.workspace.trust.enabled': false }, 'Runtime cleanup must precede relocated user-data creation');
+    const owner = await prepareRuntime({ debugRoot: path.join(nestedDebugRoot, 'owner'),
+      runtimeDirName: `dsc-shared-${process.pid}`, userSettings: { role: 'owner' } });
+    const attacher = await prepareRuntime({ debugRoot: path.join(nestedDebugRoot, 'attacher'),
+      runtimeDirName: `dsc-shared-${process.pid}`, userSettings: { role: 'attacher' } });
+    try {
+      assert.equal(owner.runtimeDir, attacher.runtimeDir);
+      assert.notEqual(owner.userDataDir, attacher.userDataDir);
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(owner.userDataDir, 'User', 'settings.json'), 'utf8')),
+        { role: 'owner' }, 'Second shared-window preparation must preserve the original private profile');
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(attacher.userDataDir, 'User', 'settings.json'), 'utf8')),
+        { role: 'attacher' });
+    } finally {
+      await fs.rm(owner.runtimeDir, { recursive: true, force: true });
+      await fs.rm(owner.userDataDir, { recursive: true, force: true });
+      await fs.rm(attacher.userDataDir, { recursive: true, force: true });
+    }
     const fullEnv = buildVSCodeChildEnv({ ...shortRuntime.environment, DBUS_SESSION_BUS_ADDRESS: '', XDG_RUNTIME_DIR: '' });
     assert.strictEqual(fullEnv.DBUS_SESSION_BUS_ADDRESS, '');
     assert.strictEqual(fullEnv.XDG_RUNTIME_DIR, '');
+    const namedRuntime = await prepareRuntime({ debugRoot: path.join(longRoot, 'named'),
+      runtimeDirName: `dsc-${'x'.repeat(180)}` });
+    const systemdSocket = path.join(namedRuntime.environment.XDG_STATE_HOME, 'dsc', 'rh', '0'.repeat(24), 's.sock');
+    assert(Buffer.byteLength(systemdSocket) <= 107, 'Named cases must preserve real systemd control-path observation');
+    await fs.rm(namedRuntime.runtimeDir, { recursive: true, force: true });
     if (process.platform === 'linux') {
       const net = await import('node:net');
       const socket = path.join(shortRuntime.userDataDir, '1.14-main.sock');

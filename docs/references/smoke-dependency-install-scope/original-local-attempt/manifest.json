@@ -1,0 +1,28 @@
+[
+  {
+    "file": "console.log",
+    "source": "/tmp/pr335-npm-retry-dh_gey74/evidence/console.log",
+    "sha256": "61bad703f76a50bbc85604e888843ab6a909cd400f09deaaa52bf2e986f3b267",
+    "bytes": 148901,
+    "archive": "console.log.gz"
+  },
+  {
+    "file": "result.json",
+    "source": "/tmp/pr335-npm-retry-dh_gey74/evidence/result.json",
+    "sha256": "5648c579527e6c1fa49405bbb06cdd779292c20a9e2a9a51398b287726f0fd7f",
+    "bytes": 781
+  },
+  {
+    "file": "install.json",
+    "source": "/tmp/pr335-npm-retry-dh_gey74/evidence/gate-results/infrastructure/install.json",
+    "sha256": "b2f51fb59d50b17c12291946266b4cecbded296d7fc80e7613f226ca449e224f",
+    "bytes": 516
+  },
+  {
+    "file": "npm-debug.log",
+    "source": "/tmp/pr335-npm-retry-dh_gey74/evidence/npm-debug/2026-10-22T16_05_41_055Z-debug-0.log",
+    "sha256": "4b7bde3a716ebd490ee4ede36ed48b13b3d12863dd79f06f996d8972a30d8490",
+    "bytes": 284032,
+    "archive": "npm-debug.log.gz"
+  }
+]

@@ -1,0 +1,73 @@
+{
+  "mode": "before",
+  "smoke_exit": 0,
+  "causal_assertions": "passed",
+  "gates": [
+    {
+      "time": 1792036167688,
+      "stage": "original-editor-ready-before-diagnostic",
+      "snapshot": {
+        "activeSurface": "editor",
+        "surfaceMode": {
+          "editor": "active"
+        },
+        "surfaceReady": {
+          "editor": true,
+          "panel": false
+        },
+        "surfaceLifecycle": {
+          "editor": {
+            "generation": 2,
+            "mode": "active",
+            "ready": true,
+            "bootstrapAck": true,
+            "frameId": "frame-f0499dad-adf7-4acc-a8d8-b1938dde896a",
+            "terminalReadSettlementV1": true,
+            "terminalLocalSettlementV1": true,
+            "terminalLocalOutputCreditV1": true,
+            "terminalAvailableReceiptV1": true,
+            "terminalCurrentStateV1": true
+          },
+          "panel": {
+            "generation": 0,
+            "ready": false,
+            "bootstrapAck": false
+          }
+        }
+      }
+    },
+    {
+      "time": 1792036167804,
+      "stage": "after-diagnostic-preserved-ready",
+      "snapshot": {
+        "activeSurface": "editor",
+        "surfaceMode": {
+          "editor": "active"
+        },
+        "surfaceReady": {
+          "editor": true,
+          "panel": false
+        },
+        "surfaceLifecycle": {
+          "editor": {
+            "generation": 2,
+            "mode": "active",
+            "ready": true,
+            "bootstrapAck": true,
+            "frameId": "frame-f0499dad-adf7-4acc-a8d8-b1938dde896a",
+            "terminalReadSettlementV1": true,
+            "terminalLocalSettlementV1": true,
+            "terminalLocalOutputCreditV1": true,
+            "terminalAvailableReceiptV1": true,
+            "terminalCurrentStateV1": true
+          },
+          "panel": {
+            "generation": 0,
+            "ready": false,
+            "bootstrapAck": false
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "nonce": "pr335-gap-host-final-4",
+  "testFile": "extension-tests.cjs",
+  "subjectHash": "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912",
+  "host": {
+    "pid": 3729808,
+    "startTicks": "306207945",
+    "platform": "linux"
+  },
+  "caseID": "host-boundary-local/preserve-terminal-state",
+  "role": "verify",
+  "deadline": 1792438543554,
+  "cleanupDeadline": 1792438603554,
+  "environment": {
+    "vscode": "1.142.0",
+    "node": "24.21.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "steps": [
+    {
+      "caseID": "host-boundary-local/preserve-terminal-state",
+      "id": "fixture",
+      "status": "passed",
+      "phase": "prepare",
+      "startedAt": "2026-10-19T19:29:59.007Z",
+      "deadline": 1792438543554,
+      "completedAt": "2026-10-19T19:29:59.828Z",
+      "evidence": {
+        "control": {
+          "phase": "verify",
+          "stateFile": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/artifacts/snapshot-host-state.json"
+        },
+        "expected": {
+          "host": {
+            "pid": 3727634,
+            "start": "306207413",
+            "state": "S"
+          },
+          "caseID": "host-boundary-local/preserve-terminal-state",
+          "nodes": [
+            {
+              "id": "terminal-1-025d294d-8746-456f-bb28-fd682d49fb8a",
+              "kind": "terminal",
+              "title": "Terminal 1",
+              "status": "closed",
+              "summary": "Session ended with exit code 0.",
+              "position": {
+                "x": 160,
+                "y": 140
+              },
+              "size": {
+                "width": 540,
+                "height": 420
+              },
+              "metadata": {
+                "terminal": {
+                  "backend": "node-pty",
+                  "lifecycle": "closed",
+                  "shellPath": "/usr/bin/bash",
+                  "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "history-restored",
+                  "liveSession": false,
+                  "lastCols": 64,
+                  "lastRows": 20,
+                  "attentionPending": false,
+                  "lastExitCode": 0,
+                  "lastExitMessage": "Session ended with exit code 0.",
+                  "outputSequence": 2,
+                  "recentOutput": "<ERMINAL_EXIT_' 'ad2eadbae66b9bc0'; exit 0\nDSC_TERMINAL_EXIT_ad2eadbae66b9bc0\nexit",
+                  "serializedTerminalState": {
+                    "format": "xterm-serialize-v1",
+                    "data": "<ERMINAL_EXIT_' 'ad2eadbae66b9bc0'; exit 0\r\nDSC_TERMINAL_EXIT_ad2eadbae66b9bc0\r\nexit\u001b[1B\u001b[4D",
+                    "viewportY": 0,
+                    "outputSequence": 2
+                  }
+                }
+              }
+            },
+            {
+              "id": "terminal-2-8931ccae-5c5b-4a23-b115-9081872ca82c",
+              "kind": "terminal",
+              "title": "Terminal 2",
+              "status": "closed",
+              "summary": "Session exited due to signal SIGHUP.",
+              "position": {
+                "x": 820,
+                "y": 140
+              },
+              "size": {
+                "width": 540,
+                "height": 420
+              },
+              "metadata": {
+                "terminal": {
+                  "backend": "node-pty",
+                  "lifecycle": "closed",
+                  "shellPath": "/usr/bin/bash",
+                  "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "history-restored",
+                  "liveSession": false,
+                  "lastCols": 64,
+                  "lastRows": 20,
+                  "attentionPending": false,
+                  "lastExitSignal": "SIGHUP",
+                  "lastExitMessage": "Session exited due to signal SIGHUP.",
+                  "outputSequence": 2,
+                  "recentOutput": "< 'DEV_SESSION_CANVAS_%s_SMOKE\\n' TERMINAL\nDEV_SESSION_CANVAS_TERMINAL_SMOKE\n<t:/dev/shm/dsc-pr335-smoke-gap-coverage$",
+                  "serializedTerminalState": {
+                    "format": "xterm-serialize-v1",
+                    "data": "< 'DEV_SESSION_CANVAS_%s_SMOKE\\n' TERMINAL\r\nDEV_SESSION_CANVAS_TERMINAL_SMOKE\r\n<t:/dev/shm/dsc-pr335-smoke-gap-coverage$ ",
+                    "viewportY": 0,
+                    "outputSequence": 2
+                  }
+                }
+              }
+            }
+          ],
+          "originalProcesses": [],
+          "snapshotPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/canvas-state.json",
+          "markers": {
+            "terminal-1-025d294d-8746-456f-bb28-fd682d49fb8a": "DSC_TERMINAL_EXIT_",
+            "terminal-2-8931ccae-5c5b-4a23-b115-9081872ca82c": "DEV_SESSION_CANVAS_TERMINAL_SMOKE"
+          }
+        }
+      }
+    },
+    {
+      "caseID": "host-boundary-local/preserve-terminal-state",
+      "id": "business",
+      "status": "passed",
+      "phase": "action/assert",
+      "startedAt": "2026-10-19T19:29:59.829Z",
+      "deadline": 1792438543554,
+      "completedAt": "2026-10-19T19:29:59.978Z",
+      "evidence": {
+        "originalHost": {
+          "pid": 3727634,
+          "start": "306207413",
+          "state": "S"
+        },
+        "currentHost": {
+          "pid": 3729808,
+          "start": "306207945",
+          "state": "R"
+        },
+        "manualRecovery": false
+      }
+    },
+    {
+      "caseID": "host-boundary-local/preserve-terminal-state",
+      "id": "owned-resize-errors",
+      "status": "passed",
+      "phase": "assert",
+      "startedAt": "2026-10-19T19:29:59.978Z",
+      "deadline": 1792438543554,
+      "completedAt": "2026-10-19T19:29:59.980Z"
+    }
+  ],
+  "startedAt": "2026-10-19T19:29:58.976Z",
+  "action": "passed",
+  "assert": "passed",
+  "cleanup": "passed",
+  "failures": [],
+  "actionCompletedAt": "2026-10-19T19:29:59.981Z",
+  "cleanupStartedAt": "2026-10-19T19:29:59.982Z",
+  "cleanupEvidence": {
+    "expected": [
+      {
+        "id": "terminal-1-025d294d-8746-456f-bb28-fd682d49fb8a",
+        "kind": "terminal",
+        "session": null
+      },
+      {
+        "id": "terminal-2-8931ccae-5c5b-4a23-b115-9081872ca82c",
+        "kind": "terminal",
+        "session": null
+      }
+    ],
+    "nodes": [
+      "terminal-1-025d294d-8746-456f-bb28-fd682d49fb8a",
+      "terminal-2-8931ccae-5c5b-4a23-b115-9081872ca82c"
+    ],
+    "originalRuntime": {
+      "observedRootSupervisorProcesses": [],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "bindings": [],
+      "registries": {
+        "legacy-detached": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/dev-session-canvas/supervisor-e865d3c83224bae82d1d70e8.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/dev-session-canvas/supervisor-9fec3ba537bb3be90861652a.sock",
+              "exists": false
+            }
+          ]
+        },
+        "systemd-user": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/state/dsc/rh/e865d3c83224bae82d1d70e8/s.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/state/dsc/rh/9fec3ba537bb3be90861652a/s.sock",
+              "exists": false
+            }
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "observedRootSupervisorProcesses": [],
+      "pendingRuntimeSupervisorOperationCount": 0,
+      "bindings": [],
+      "registries": {
+        "legacy-detached": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/dev-session-canvas/supervisor-e865d3c83224bae82d1d70e8.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/dev-session-canvas/supervisor-9fec3ba537bb3be90861652a.sock",
+              "exists": false
+            }
+          ]
+        },
+        "systemd-user": {
+          "exists": false,
+          "registry": {
+            "version": 1,
+            "sessions": []
+          },
+          "entries": [
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/state/dsc/rh/e865d3c83224bae82d1d70e8/s.sock",
+              "exists": false
+            },
+            {
+              "runtimeStoragePath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1",
+              "registryPath": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor/registry.json",
+              "socketPath": "/dev/shm/dsc-40c1b4185defd583/state/dsc/rh/9fec3ba537bb3be90861652a/s.sock",
+              "exists": false
+            }
+          ]
+        }
+      }
+    },
+    "supervisorScope": {
+      "canonicalStorage": "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state",
+      "canonicalRoots": [
+        "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state",
+        "/dev/shm/dsc-40c1b4185defd583",
+        "/dev/shm/dsc-pr335-gap-host-final-4/host-boundary-local/preserve-terminal-state/user-data"
+      ],
+      "processes": [],
+      "absent": []
+    },
+    "supervisors": [],
+    "localRetirement": [],
+    "resetRequired": true
+  },
+  "cleanupCompletedAt": "2026-10-19T19:30:00.043Z",
+  "completedAt": "2026-10-19T19:30:00.043Z"
+}

@@ -1,0 +1,253 @@
+{
+  "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+  "timeOrigin": 1792053189034,
+  "events": [
+    {
+      "at": 1792053189034,
+      "role": "host",
+      "pid": 2486,
+      "stage": "stop-rpc-enter",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "storage": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/5d30c6799387bdbfcc44c73b0414cac3/devsessioncanvas.dev-session-canvas/previous-generation-stream"
+    },
+    {
+      "at": 1792053189035,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "stopSession-enter",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": true,
+      "lifecycle": "live",
+      "stopRequested": false,
+      "sequence": 4,
+      "processPid": 2662,
+      "proc": {
+        "stat": "2662 (bash) S 2619 2662 2662 34818 2662 4194304 406 147 0 0 0 0 0 0 20 0 1 0 9811 8228864 992 18446744073709551615 94655641313280 94655642226541 140725303657536 0 0 0 0 3686404 1266761467 1 0 0 17 0 0 0 0 0 0 94655642471056 94655642519120 94655716089856 140725303662630 140725303662640 140725303662640 140725303672814 0\n",
+        "status": [
+          "Name:\tbash",
+          "State:\tS (sleeping)",
+          "Pid:\t2662",
+          "PPid:\t2619",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": false,
+        "readable": true,
+        "fd": 28
+      }
+    },
+    {
+      "at": 1792053189035,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "pty-kill-enter",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 4,
+      "processPid": 2662,
+      "proc": {
+        "stat": "2662 (bash) S 2619 2662 2662 34818 2662 4194304 406 147 0 0 0 0 0 0 20 0 1 0 9811 8228864 992 18446744073709551615 94655641313280 94655642226541 140725303657536 0 0 0 0 3686404 1266761467 1 0 0 17 0 0 0 0 0 0 94655642471056 94655642519120 94655716089856 140725303662630 140725303662640 140725303662640 140725303672814 0\n",
+        "status": [
+          "Name:\tbash",
+          "State:\tS (sleeping)",
+          "Pid:\t2662",
+          "PPid:\t2619",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": false,
+        "readable": true,
+        "fd": 28
+      }
+    },
+    {
+      "at": 1792053189036,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "pty-kill-returned",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 4,
+      "processPid": 2662,
+      "proc": {
+        "stat": "2662 (bash) R 2619 2662 2662 34818 2662 4194304 406 147 0 0 0 0 0 0 20 0 1 0 9811 8228864 992 18446744073709551615 94655641313280 94655642226541 140725303657536 0 0 0 0 3686404 1266761467 0 0 0 17 0 0 0 0 0 0 94655642471056 94655642519120 94655716089856 140725303662630 140725303662640 140725303662640 140725303672814 0\n",
+        "status": [
+          "Name:\tbash",
+          "State:\tR (running)",
+          "Pid:\t2662",
+          "PPid:\t2619",
+          "SigPnd:\t0000000000000000",
+          "ShdPnd:\t0000000000000000",
+          "SigBlk:\t0000000000000000",
+          "SigIgn:\t0000000000384004",
+          "SigCgt:\t000000004b813efb"
+        ],
+        "fd0": "/dev/pts/2"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": false,
+        "readable": true,
+        "fd": 28
+      }
+    },
+    {
+      "at": 1792053189036,
+      "role": "host",
+      "pid": 2486,
+      "stage": "state-received",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": true,
+      "lifecycle": "stopping",
+      "sequence": 4,
+      "storage": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/5d30c6799387bdbfcc44c73b0414cac3/devsessioncanvas.dev-session-canvas/previous-generation-stream"
+    },
+    {
+      "at": 1792053189037,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "pty-onExit",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 5,
+      "processPid": 2662,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      },
+      "exitCode": 0,
+      "signal": "1"
+    },
+    {
+      "at": 1792053189037,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "finalizeSession-enter",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": true,
+      "lifecycle": "stopping",
+      "stopRequested": true,
+      "sequence": 5,
+      "processPid": 2662,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": true,
+      "owned": false,
+      "finalization": false,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      }
+    },
+    {
+      "at": 1792053189040,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "ackTerminalBatch-enter",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 5,
+      "processPid": 2662,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      }
+    },
+    {
+      "at": 1792053189048,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "finalizeSession-returned",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 5,
+      "processPid": 2662,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      }
+    },
+    {
+      "at": 1792053189051,
+      "role": "host",
+      "pid": 2486,
+      "stage": "state-received",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": false,
+      "lifecycle": "closed",
+      "sequence": 5,
+      "storage": "/home/runner/work/dev-session-canvas/dev-session-canvas/.debug/vscode-smoke/legacy-supervisor-upgrade/user-data/User/workspaceStorage/5d30c6799387bdbfcc44c73b0414cac3/devsessioncanvas.dev-session-canvas/previous-generation-stream"
+    },
+    {
+      "at": 1792053189059,
+      "role": "supervisor",
+      "supervisorPid": 2619,
+      "stage": "ackTerminalBatch-enter",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "live": false,
+      "lifecycle": "closed",
+      "stopRequested": true,
+      "sequence": 5,
+      "processPid": 2662,
+      "proc": {
+        "error": "ENOENT"
+      },
+      "processPresent": false,
+      "owned": false,
+      "finalization": true,
+      "pty": {
+        "destroyed": true,
+        "readable": false
+      }
+    }
+  ]
+}

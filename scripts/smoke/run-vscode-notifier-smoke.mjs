@@ -6,6 +6,7 @@ import {
   launchPreparedVSCodeScenario,
   prepareRuntime,
   resolveStagedSmokeTestPath,
+  resolveVSCodeSmokeDebugRoot,
   runInsideXvfb,
   shouldReRunInsideXvfb
 } from './vscode-smoke-runner.mjs';
@@ -14,7 +15,7 @@ const SMOKE_TEST_MODE_ENV_KEY = 'DEV_SESSION_CANVAS_SMOKE_TEST_MODE';
 
 const projectRoot = process.cwd();
 const currentScriptPath = fileURLToPath(import.meta.url);
-const debugRoot = path.join(projectRoot, '.debug', 'vscode-smoke', 'notifier-companion');
+const debugRoot = path.join(resolveVSCodeSmokeDebugRoot(projectRoot),'notifier-companion');
 const fakeAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'fake-agent-provider');
 const missingAgentProviderPath = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures', 'missing-agent-provider');
 const smokeFixturesDir = path.join(projectRoot, 'tests', 'vscode-smoke', 'fixtures');

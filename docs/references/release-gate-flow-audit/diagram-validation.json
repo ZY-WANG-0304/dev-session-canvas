@@ -1,0 +1,236 @@
+{
+  "pr-gate": {
+    "validate": {
+      "edges": 11,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 13,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/pr-gate.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/pr-gate.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 229908,
+      "fallback_notes": [],
+      "height": 1656,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/pr-gate.png",
+      "renderer": "cairosvg",
+      "width": 1920
+    }
+  },
+  "verify-detail": {
+    "validate": {
+      "edges": 8,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 15,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/verify-detail.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/verify-detail.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 276796,
+      "fallback_notes": [],
+      "height": 1944,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/verify-detail.png",
+      "renderer": "cairosvg",
+      "width": 1920
+    }
+  },
+  "tag-publish": {
+    "validate": {
+      "edges": 11,
+      "input_schema": "v1",
+      "mode": "flowchart",
+      "nodes": 12,
+      "ok": true,
+      "schema_version": 1,
+      "semantics": {
+        "details": {},
+        "ok": true,
+        "profile": "generic",
+        "style": 1,
+        "visual_theme": "Flat Icon"
+      },
+      "style": {
+        "id": 1,
+        "name": "Flat Icon"
+      }
+    },
+    "render": {
+      "ok": true,
+      "palette": {
+        "below_target": [],
+        "minimum_target": 4.5,
+        "ratios": {
+          "section_sub_fill": 4.76,
+          "text_muted": 4.76,
+          "text_primary": 17.74,
+          "text_secondary": 4.83
+        },
+        "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+        "unsupported_tokens": []
+      },
+      "report": "docs/references/release-gate-flow-audit/tag-publish.layout.json",
+      "svg": "docs/references/release-gate-flow-audit/tag-publish.svg",
+      "typography": {
+        "complete_text": true,
+        "hint": null,
+        "metrics": "heuristic widths; inspect the actual rendered font",
+        "truncated": []
+      }
+    },
+    "check": {
+      "checks": {
+        "collisions": {
+          "details": [],
+          "ok": true
+        },
+        "composition": {
+          "details": [],
+          "ok": true
+        },
+        "geometry": {
+          "details": [],
+          "ok": true
+        },
+        "markers": {
+          "details": [],
+          "ok": true
+        },
+        "xml": {
+          "details": [],
+          "ok": true
+        }
+      },
+      "ok": true
+    },
+    "png": {
+      "bytes": 225185,
+      "fallback_notes": [],
+      "height": 1896,
+      "ok": true,
+      "png": "docs/references/release-gate-flow-audit/tag-publish.png",
+      "renderer": "cairosvg",
+      "width": 1920
+    }
+  }
+}

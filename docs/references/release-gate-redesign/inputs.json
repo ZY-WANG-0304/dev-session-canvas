@@ -1,0 +1,19 @@
+{
+  "inputHead": "0abd89e80cc50711ff8a099030399c95d1837dfc",
+  "remoteMain": "6e708c6b93ce4b2b343729c422f59099f4fb42ba",
+  "scope": "design-model-and-diagrams-not-product-acceptance",
+  "sourceSha256": {
+    "package.json": "9869b3f1aefa49b2cec333c718916f83351df5e1e20f6792601311513b4cd371",
+    "package-lock.json": "8abaf58c22555f568470919ab26d5ba866af1099ecfb7cca29900af903c13a1b",
+    "scripts/build/build.mjs": "4be8dd941f2cc25f5c3f01b8961f3cb3ceac69feb3108dd41902cae79fd67aac",
+    ".github/workflows/release-preflight.yml": "2987f87b36cb713ac1359e58f84782484e0090d2dd0c5b858cea2b1cc4cbbad3",
+    ".github/workflows/publish-marketplace-release.yml": "4e65d70ee17de100a237d09098e72bca3f85f7e66544f32a67afa90fe940713c",
+    ".github/workflows/runtime-execution-assets.yml": "db38e9e3abc0fca3b373f2b509925e037cdf2ef0a133a9f8ae6865f3198e7f16",
+    "scripts/release/release-preflight.mjs": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802",
+    "scripts/release/run-clean-checkout-vsix-validation.mjs": "ea36a568a51f75d13627f4d17ff5c501dac43f9becdc9ac0d2eb31838430e789",
+    "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "07015a10d0046c2a9018d9171c8ee09aa672cbeda8a095c00015f73505685d1d",
+    "docs/design-docs/smoke-scenario-boundaries.md": "7d5d01c671f0b08de6f8cd4f55f3607e5a74ff4a406e47a46bd7838777d4a451",
+    "docs/references/release-gate-flow-audit/smoke-redesign/coverage-map.json": "b404acc9f48a53f16e5586a43308be1ba167b96b40d4b6d7d4516b12f92ab25d"
+  }
+}

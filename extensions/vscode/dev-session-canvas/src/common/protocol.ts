@@ -489,6 +489,7 @@ export interface WebviewProbeNodeSnapshot {
   terminalLegacyTranscript?: string;
   titleInputValue?: string;
   bodyValue?: string;
+  fileEntries?: WebviewProbeFileEntrySnapshot[];
   terminalSelectionText?: string;
   terminalCols?: number;
   terminalRows?: number;
@@ -506,6 +507,16 @@ export interface WebviewProbeNodeSnapshot {
   terminalBufferType?: 'normal' | 'alternate';
   terminalHasFocus?: boolean;
   terminalTheme?: WebviewProbeTerminalThemeSnapshot;
+}
+
+export interface WebviewProbeFileEntrySnapshot {
+  filePath: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  disabled: boolean;
+  clickable: boolean;
 }
 
 export interface WebviewProbeTerminalThemeSnapshot {
@@ -3296,6 +3307,10 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     (value.terminalLegacyTranscript === undefined || typeof value.terminalLegacyTranscript === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
+    (value.fileEntries === undefined || (Array.isArray(value.fileEntries) && value.fileEntries.every(entry =>
+      isRecord(entry) && typeof entry.filePath === 'string' && entry.filePath.length > 0 &&
+      ['x', 'y', 'width', 'height'].every(key => typeof entry[key] === 'number' && Number.isFinite(entry[key])) &&
+      typeof entry.disabled === 'boolean' && typeof entry.clickable === 'boolean'))) &&
     (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&
     (value.terminalCols === undefined ||
       (typeof value.terminalCols === 'number' &&

@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import esbuild from 'esbuild';
 import JSZip from 'jszip';
 import { validateCandidateManifest as validateLinuxManifest } from '../build/linux-execution-candidate-assets.mjs';
@@ -12,8 +10,8 @@ import { validateCandidateManifest as validateMacosManifest } from '../build/mac
 import { validateCandidateManifest as validateWindowsManifest } from '../build/windows-execution-candidate-assets.mjs';
 import installedReceipts from '../../tests/vscode-smoke/installed-execution-candidate.cjs';
 import { buildVSCodeChildEnv, stageSmokeTestSuite } from './vscode-smoke-runner.mjs';
+import { runProcess } from '../gates/process.mjs';
 
-const execFileAsync = promisify(execFile);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 const { installedCandidateLayout } = installedReceipts;
@@ -169,6 +167,7 @@ export function installedCandidateInstallCommand({ vscodeExecutablePath, runtime
 }
 
 export async function installCandidateVsix(options) {
+  const deadline = Math.min(options.deadline ?? Infinity, Date.now() + 120000);
   assert.equal(hash(await fs.readFile(options.input.vsixPath)), options.input.vsixSha256,
     'The fixed VSIX must still match the inspected bytes before installation.');
   const windowsLauncher = process.platform === 'win32'
@@ -177,15 +176,24 @@ export async function installCandidateVsix(options) {
   if (process.platform === 'win32') {
     assert((await fs.lstat(command.args[0])).isFile(), 'The Windows launcher CLI entry must be a regular file.');
   }
-  const logPath = path.join(options.runtime.artifactsDir, 'installed-vsix-cli.json');
+  const logPath = path.join(options.runtime.artifactsDir, options.logName ?? 'installed-vsix-cli.json');
+  let stdout = '', stderr = '', observed;
   try {
-    const { stdout, stderr } = await execFileAsync(command.file, command.args, command.options);
+    observed = await runProcess(command.file, command.args, { env: command.options.env,
+      deadline, signal: options.signal, logPath: logPath.replace(/\.json$/, '.process.log'),
+      onLine(line, stream) {
+        if (stream === 'stdout') stdout = (stdout + line + '\n').slice(-command.options.maxBuffer);
+        else stderr = (stderr + line + '\n').slice(-command.options.maxBuffer);
+      } });
+    assert.equal(observed.status, 'passed', `VSIX installation failed: ${JSON.stringify(observed)}`);
+    assert.equal(hash(await fs.readFile(options.input.vsixPath)), options.input.vsixSha256,
+      'The fixed VSIX changed during installation.');
     await fs.writeFile(logPath, `${JSON.stringify({ file: command.file, args: command.args,
-      vsixSha256: options.input.vsixSha256, code: 0, stdout, stderr }, null, 2)}\n`, { flag: 'wx' });
+      vsixSha256: options.input.vsixSha256, deadline, ...observed, stdout, stderr }, null, 2)}\n`, { flag: 'wx' });
   } catch (error) {
     await fs.writeFile(logPath, `${JSON.stringify({ file: command.file, args: command.args,
-      vsixSha256: options.input.vsixSha256, code: error.code, signal: error.signal,
-      error: String(error), stdout: error.stdout, stderr: error.stderr }, null, 2)}\n`, { flag: 'wx' });
+      vsixSha256: options.input.vsixSha256, deadline, ...observed,
+      error: String(error), stdout, stderr }, null, 2)}\n`, { flag: 'wx' });
     throw error;
   }
 }

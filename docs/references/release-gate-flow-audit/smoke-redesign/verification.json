@@ -1,0 +1,31 @@
+{
+  "status": "pass",
+  "scope": "static-design-traceability-not-product-acceptance",
+  "productAcceptance": "not-run",
+  "inputHead": "50e201caefb7c7d20ee2818455318fc33d8a2ba9",
+  "sourceHashes": 20,
+  "currentSourceDefault": 19,
+  "currentPackagedDefault": 8,
+  "currentFocusedOnly": 3,
+  "currentRouteMappings": 22,
+  "suiteAwaitCalls": {
+    "runTrustedSmoke": 109,
+    "runRestrictedSmoke": 38
+  },
+  "commonEntryCalls": 10,
+  "localSemanticItems": 58,
+  "proposalCaseIds": 152,
+  "additionalSemanticItems": 4,
+  "existingToMigrateCaseIds": 137,
+  "proposedGapCaseIds": 15,
+  "complexCasesWithSteps": 9,
+  "documentLinksChecked": 8,
+  "command": "python3 docs/references/release-gate-flow-audit/smoke-redesign/verify.py",
+  "limits": [
+    "直接await清单包含嵌套modal回调；不是测试数量或完整断言AST",
+    "语义行按helper范围关联，拆分实现需逐条review内部断言",
+    "相同case多个currentRoutes不证明fixture等价；删除重复前须验证",
+    "现有与拟议default标记为覆盖保留计划，不代表已实施或通过",
+    "proposed-gap不进入新必跑清单；真实TUI/新Host/原生崩溃覆盖仍待验"
+  ]
+}

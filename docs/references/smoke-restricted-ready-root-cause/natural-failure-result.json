@@ -1,0 +1,20 @@
+{
+  "run": 38677150708,
+  "sample": 1,
+  "iteration": 1,
+  "input": "9198cacbee91fc170b82578e353c16a27f3574b8",
+  "workflow_commit": "7f092f3c838fea0a2121d04b79f161788bc96f96",
+  "exit": 1,
+  "artifact": 11946199136,
+  "artifact_bytes": 314164577,
+  "artifact_sha256": "52f5db4e9249d8949d7bbeb790738b85397278aecd25aaf3ef8bce6c5077df24",
+  "log_sha256": "903f9cc5f3ef88aa4fe33480bcbe20712abe23e221e317031595febf20551be0",
+  "real_editor_ready_count": 1,
+  "editor_ready_accepted_while_fake_panel_active": true,
+  "saved_ready_false_restored": true,
+  "same_editor_generation": 2,
+  "timeout_elapsed_ms": 20027,
+  "visible_and_active": true,
+  "no_editor_bootstrap": true,
+  "observation_limit": "stage logging adds scheduling; original CI lacked uploaded Host snapshot"
+}

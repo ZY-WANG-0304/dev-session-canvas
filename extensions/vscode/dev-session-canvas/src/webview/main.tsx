@@ -60,6 +60,7 @@ import type {
   ExecutionPerformanceDiagnosticPayload,
   ExecutionTerminalClipboardDiagnosticPayload,
   WebviewProbeEdgeSnapshot,
+  WebviewProbeFileEntrySnapshot,
   WebviewProbeGroupSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -9168,6 +9169,7 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     terminalLegacyTranscript: readProbeTextOrUndefined(element.querySelector('.terminal-legacy-transcript')),
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
+    fileEntries: Array.from(element.querySelectorAll<HTMLElement>('[data-file-entry-path]')).map(readFileEntryClickObservation),
     ...readProbeExecutionTerminalState(nodeId)
   };
 }
@@ -9604,7 +9606,11 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
       }
       case 'clickFileEntry': {
         const target = queryFileEntryButton(action.nodeId, action.filePath);
-        dispatchSyntheticMouseClick(target);
+        const observation = readFileEntryClickObservation(target);
+        if (!observation.clickable) {
+          throw new Error(`File click requires a visible, enabled hit target: ${JSON.stringify(observation)}`);
+        }
+        dispatchSyntheticMouseClick(target, undefined, true);
         await waitForDomActionFlush();
         break;
       }
@@ -9745,6 +9751,17 @@ function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
   }
 
   return target;
+}
+
+function readFileEntryClickObservation(target: HTMLElement): WebviewProbeFileEntrySnapshot {
+  const box = target.getBoundingClientRect(), x = box.x + box.width / 2, y = box.y + box.height / 2;
+  const canvas = target.closest('.canvas-shell')?.getBoundingClientRect();
+  const hit = target.ownerDocument.elementFromPoint(x, y);
+  const disabled = target instanceof HTMLButtonElement && target.disabled;
+  return { filePath: target.dataset.fileEntryPath ?? '', x: box.x, y: box.y, width: box.width, height: box.height, disabled,
+    clickable: !disabled && box.width > 0 && box.height > 0 && x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight
+      && Boolean(canvas && x >= canvas.left && x < canvas.right && y >= canvas.top && y < canvas.bottom)
+      && Boolean(hit && (hit === target || target.contains(hit))) };
 }
 
 function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputElement {
@@ -9888,19 +9905,24 @@ function setControlledFieldValue(
   descriptor?.set?.call(element, value);
 }
 
-function dispatchSyntheticMouseClick(target: Element, point?: { x: number; y: number }): void {
+function dispatchSyntheticMouseClick(target: Element, point?: { x: number; y: number }, withPrimaryPointer = false): void {
+  const box = target.getBoundingClientRect();
   const eventInit = {
     bubbles: true,
     cancelable: true,
     composed: true,
     button: 0,
-    clientX: point?.x ?? 0,
-    clientY: point?.y ?? 0
+    view: target.ownerDocument.defaultView,
+    clientX: point?.x ?? box.x + box.width / 2,
+    clientY: point?.y ?? box.y + box.height / 2
   };
 
-  target.dispatchEvent(new MouseEvent('mousedown', eventInit));
-  target.dispatchEvent(new MouseEvent('mouseup', eventInit));
-  target.dispatchEvent(new MouseEvent('click', eventInit));
+  const pointerInit: PointerEventInit = { ...eventInit, pointerType: 'mouse', pointerId: 1, isPrimary: true };
+  if (withPrimaryPointer) target.dispatchEvent(new PointerEvent('pointerdown', { ...pointerInit, buttons: 1 }));
+  target.dispatchEvent(new MouseEvent('mousedown', { ...eventInit, buttons: 1 }));
+  if (withPrimaryPointer) target.dispatchEvent(new PointerEvent('pointerup', { ...pointerInit, buttons: 0 }));
+  target.dispatchEvent(new MouseEvent('mouseup', { ...eventInit, buttons: 0 }));
+  target.dispatchEvent(new MouseEvent('click', { ...eventInit, buttons: 0, detail: 1 }));
 }
 
 function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number; y: number }): void {
@@ -9912,8 +9934,11 @@ function dispatchSyntheticMouseDoubleClick(target: Element, point?: { x: number;
       cancelable: true,
       composed: true,
       button: 0,
-      clientX: point?.x ?? 0,
-      clientY: point?.y ?? 0
+      buttons: 0,
+      detail: 2,
+      view: target.ownerDocument.defaultView,
+      clientX: point?.x ?? target.getBoundingClientRect().x + target.getBoundingClientRect().width / 2,
+      clientY: point?.y ?? target.getBoundingClientRect().y + target.getBoundingClientRect().height / 2
     })
   );
 }

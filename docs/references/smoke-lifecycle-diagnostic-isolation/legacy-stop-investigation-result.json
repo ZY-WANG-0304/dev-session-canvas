@@ -1,0 +1,501 @@
+{
+  "input": "55c619ad70dbec74a7f9ffab17bf3dc547bd6913",
+  "assetRun": 38696319881,
+  "diagnosticOnly": true,
+  "historicalFirstFailureRun": 38696319881,
+  "historicalRootCauseConfirmed": false,
+  "originalTimeoutMs": 30000,
+  "historicalArtifactsContainSupervisorOrPTYState": false,
+  "samples": [
+    {
+      "sample": 1,
+      "run": 38706315883,
+      "job": 116326497182,
+      "workflowHead": "99e26f1750ef291a9f7e5a216a227c3e3cae5232",
+      "artifact": 11958108533,
+      "artifactBytes": 298934,
+      "artifactSha256": "675085cc8f9ecb758aacb75ab74724a845dedf5dc828a053e27964d557be2be0",
+      "scenarioExit": 0,
+      "beforeStopExtraRead": true,
+      "scope": "standalone original legacy-supervisor-upgrade",
+      "sessionId": "c4cd1ea5-6778-457d-a3ce-2ba070ecc449",
+      "supervisorPid": 2619,
+      "ptyPid": 2662,
+      "ptyOnExitAfterHostStopMs": 3,
+      "hostClosedAfterHostStopMs": 17,
+      "traceSha256": "5d2175dce66e092cdb86adf2641b7a0769717b578852cd63e0e987dacad4e498",
+      "inventorySha256": "92090acacd5cbd74cada8fe29dfe43530cf1c4694d3307548e8ee0906e37f69d",
+      "timeline": "legacy-stop-sample1-timeline.json",
+      "verification": "complete ZIP CRC and tar; file inventory hashes checked",
+      "vscodeVersion": "1.142.0",
+      "vscodeCommit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+    },
+    {
+      "sample": 2,
+      "run": 38706315883,
+      "job": 116326497349,
+      "workflowHead": "99e26f1750ef291a9f7e5a216a227c3e3cae5232",
+      "artifact": 11958782059,
+      "artifactBytes": 298337,
+      "artifactSha256": "8673fdcc82939c4c220ab8eef6144102d2e93fdb15e433eba255248a68c8a130",
+      "scenarioExit": 0,
+      "beforeStopExtraRead": true,
+      "scope": "standalone original legacy-supervisor-upgrade",
+      "sessionId": "d303aba6-b502-439a-80df-6cd29aaf09bc",
+      "supervisorPid": 2889,
+      "ptyPid": 2931,
+      "ptyOnExitAfterHostStopMs": 2,
+      "hostClosedAfterHostStopMs": 17,
+      "traceSha256": "38a855e1a8274a0c7463e56d7b6a7a6a8c4c724c7f01ece6507af6e47aa27a47",
+      "inventorySha256": "0cd765e8a652feb057d207457faa266eba713c3aed62db78390e418bd61e10ef",
+      "timeline": "legacy-stop-sample2-timeline.json",
+      "verification": "complete ZIP CRC and tar; file inventory hashes checked",
+      "vscodeVersion": "1.142.0",
+      "vscodeCommit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+    },
+    {
+      "sample": 3,
+      "run": 38707714250,
+      "job": 116331155450,
+      "workflowHead": "b49fa519043504b6d3fea14010e0130f13131fea",
+      "artifact": 11959346353,
+      "artifactBytes": 295828,
+      "artifactSha256": "28cad70e66ed64944ffb6b14ef4aa24301960817185dbfc743a744f344af961c",
+      "scenarioExit": 0,
+      "beforeStopExtraRead": false,
+      "scope": "standalone original legacy-supervisor-upgrade",
+      "sessionId": "6efa113a-4617-4bfe-9cca-3c1afa6644ac",
+      "supervisorPid": 2690,
+      "ptyPid": 2732,
+      "ptyOnExitAfterHostStopMs": 3,
+      "hostClosedAfterHostStopMs": 22,
+      "traceSha256": "fed0555e32c4ae0afaac492b3e8070f2eb1eaea40d9b74250f13f91d773863be",
+      "inventorySha256": "b5ec90b473dd072c654f0d38910f2c8aa07aa3475d77b597f4c6bf73801827f1",
+      "timeline": "legacy-stop-sample3-timeline.json",
+      "verification": "complete ZIP CRC and tar; file inventory hashes checked",
+      "vscodeVersion": "1.142.0",
+      "vscodeCommit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+    },
+    {
+      "sample": 4,
+      "run": 38707714250,
+      "job": 116331156083,
+      "workflowHead": "b49fa519043504b6d3fea14010e0130f13131fea",
+      "artifact": 11959791506,
+      "artifactBytes": 3486422,
+      "artifactSha256": "ce7d0c5c1b9c959758ec61d9523ea76d74f757f530ffe3e04fe2c24ae5e6b07e",
+      "scenarioExit": 0,
+      "beforeStopExtraRead": false,
+      "scope": "original default source scenario prefixes through legacy-supervisor-upgrade",
+      "sessionId": "e1111772-e511-4d95-9c6c-ba2122e446a0",
+      "supervisorPid": 7961,
+      "ptyPid": 8003,
+      "ptyOnExitAfterHostStopMs": 5,
+      "hostClosedAfterHostStopMs": 10,
+      "traceSha256": "126d13423dc52cc057d5b9c154112f83f98c1ba219a321575d22784a820df701",
+      "inventorySha256": "f1dc16f673752873af33c8e3bb3b42f8a1e54588e066efa4c879f614e00313c8",
+      "timeline": "legacy-stop-sample4-timeline.json",
+      "verification": "complete ZIP CRC and tar; file inventory hashes checked",
+      "vscodeVersion": "1.142.0",
+      "vscodeCommit": "6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1"
+    }
+  ],
+  "preparationFailures": [
+    {
+      "run": 38705965548,
+      "workflowHead": "b50a289e",
+      "failure": "assemble后复制不存在的platform/manifest.json",
+      "legacyReached": false
+    },
+    {
+      "run": 38709365704,
+      "job": 116336639052,
+      "workflowHead": "5585c3665b7479efa406efb0accad8f539a35e08",
+      "failure": "未安装Playwright Chromium",
+      "legacyReached": false,
+      "jobLogSha256": "e5c0a51308773fe92bcdc1875a768028bbc20e95032849c6fdefdf1ae98841dd"
+    },
+    {
+      "run": 38709406406,
+      "job": 116336772972,
+      "workflowHead": "02cbd5f45d1a3bd217e5a4f21ec6a84d9c2aba6c",
+      "failure": "未恢复原短host TMP环境；VS Code Unix socket路径超限，listen EINVAL",
+      "legacyReached": false,
+      "artifact": 11960162167,
+      "artifactSha256": "b4d7c97dbdc10fa42294a794a5f874799f5770c227177ddddf965d1ffa66b445",
+      "jobLogSha256": "ed9aceffcf245d6cff77f92bc96f2a9989ae10b211a5f73606cbbc7e62b4e26a"
+    },
+    {
+      "run": 38710617988,
+      "job": 116340783409,
+      "workflowHead": "802755273254fc98883130de5072be55750bff82",
+      "failure": "诊断辅助函数未随Host方法抽取进入回归；consumed期待得到cancelled",
+      "legacyReached": false,
+      "artifact": 11960965574,
+      "artifactSha256": "97de5be56c01a166bf0260e3435f434562757e2f42a6fa104388fecd67a9cf6c",
+      "jobLogSha256": "0719c4ee2567744739b6890f1caa1c5c5536577920472db3b0698367b2a7e42f"
+    }
+  ],
+  "bindingControl": {
+    "script": "legacy-stop-binding-control.mjs",
+    "sha256": "d3e6352432b8338dd4ba23b3ace3546319486c6b6f2674f468c07bd93e84db8f",
+    "result": "legacy-stop-binding-control-result.json",
+    "exit": 0,
+    "realSocket": true,
+    "realHostMethods": true,
+    "realJournalAndLineConsumer": true,
+    "processExit": "controlled external process callback; no native PTY",
+    "historicalFailureAttributed": false,
+    "explicitOriginalCursorResubscriptionRecovers": true,
+    "implementationSha256": {
+      "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "deca17ae00666a1e6b7f1402cf0445f240a191ebd49d1794dc3481dd3271da96",
+      "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts": "c0ed4ea5eeb6c370f8b359837365c58cd700d5cd7c4fc3a335a19679acb8e2e4",
+      "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "52b1c8de08b7f631a3d7a218be2c74fd898f0986a10d25ffe99456b8cdd863b3"
+    }
+  },
+  "localVerification": [
+    {
+      "label": "diagnostic wrappers retain original 50 Webview/10 Host batch checks",
+      "exit": 0,
+      "logSha256": "4dba52ab01034c6e8e82e9dec716b87eef65a7ac5ec9f02834c53a03bdde83c4"
+    },
+    {
+      "label": "diagnostic wrappers typecheck",
+      "exit": 0,
+      "logSha256": "247b9b279b7e80792f03d04621c51be984bc95ed5e8e543d430c34a505e99547"
+    },
+    {
+      "label": "existing paged completion/Host credit regressions",
+      "exit": 0,
+      "logSha256": "61eb1634e624db4d19d1e0558dd38895501a63d29fda397079cfed31255305c3"
+    }
+  ],
+  "fullDiagnostic": {
+    "run": 38711507240,
+    "job": 116343740971,
+    "workflowHead": "cfbe052ce7609fe60e501bb839269c0ad12c3b2d",
+    "status": "completed",
+    "command": "npm run release:verify -- --version 0.26.1",
+    "noScenarioFilter": true,
+    "assetReuseIsNotSameNewRunFullReleaseEvidence": true,
+    "conclusion": "success",
+    "exit": 0,
+    "artifact": 11962875317,
+    "artifactBytes": 8132014,
+    "artifactSha256": "5ab5a9fe6753a47ff0fdca67e8cdc0614b489d1cafc0120dfb2221bd81c4f09a",
+    "jobLogSha256": "a0a67b8810f9f872326aac757dba212541ba4941dfb799b4d1436b548afa73b0",
+    "inventorySha256": "c5df716a114a83721d8f2c38b54d73ff4b1c5fb26a9ef1c4071420c107c6790f",
+    "traceSha256": "47d4c7a0f0f2966be4e5786d0851900d6b60adc87b7789bd549f8321d2b81b75",
+    "verification": "ZIP CRC/tar and all 727 inventory entries verified",
+    "commandStartedUTC": "2026-10-15T09:15:27Z",
+    "commandFinishedUTC": "2026-10-15T09:40:12Z",
+    "sessionId": "0abb8889-74e3-45e3-9fca-793f1ae634c7",
+    "ptyOnExitAfterHostStopMs": 5,
+    "hostClosedAfterHostStopMs": 15,
+    "timeline": "legacy-stop-full-diagnostic-timeline.json",
+    "finalPR327ReleaseGate": false
+  },
+  "productionBehaviorChanged": false,
+  "releasePR327Changed": false,
+  "diagnosticInputSha256": {
+    "legacy-stop-probe.py": "2a378a9f7d941921698b27c018bafef99e28a3953b8c7bf30f6d5ae9e9f740a4",
+    "legacy-stop-diagnostic-workflow.yml": "b90911ee543caa9f6c9d4b32daa286a50c34abb97d07494d763b257bf691dddb"
+  },
+  "restoreControl": {
+    "script": "legacy-stop-restore-control.mjs",
+    "sha256": "99be9a6640f2084586de1072ce89ec696ca5d4454e6a02fa98be513a26357526",
+    "result": "legacy-stop-restore-control-result.json",
+    "logSha256": "cd556d084cf62c85f50591df1760842381b17194c60a14a9700640716d9fbc37",
+    "exit": 0,
+    "realSocket": true,
+    "realHostRestoreAndAttachMethods": true,
+    "processExit": "controlled callback; no native PTY",
+    "snapshotApplicationBoundary": "controlled external boundary",
+    "singleRestoreHostClosed": true,
+    "lateRestoreCancelsExistingSubscription": true,
+    "lateRestoreHostRemainsStoppingAfterSupervisorExit": true,
+    "explicitOriginalCursorResubscriptionRecovers": true,
+    "historicalFailureAttributed": false,
+    "implementationSha256": {
+      "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "deca17ae00666a1e6b7f1402cf0445f240a191ebd49d1794dc3481dd3271da96",
+      "extensions/vscode/dev-session-canvas/src/panel/runtimeSupervisorClient.ts": "c0ed4ea5eeb6c370f8b359837365c58cd700d5cd7c4fc3a335a19679acb8e2e4",
+      "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "52b1c8de08b7f631a3d7a218be2c74fd898f0986a10d25ffe99456b8cdd863b3"
+    },
+    "cases": [
+      {
+        "concurrentRestore": false,
+        "firstRestoreSubscribed": true,
+        "subscriptionExistsBeforeStop": true,
+        "ignoredBeforeStop": [],
+        "applyCount": 3,
+        "supervisorLive": false,
+        "hostLive": false,
+        "hostLifecycle": "closed",
+        "outcomes": [
+          {
+            "batchId": 1,
+            "revision": 0,
+            "live": true,
+            "outcome": "consumed"
+          },
+          {
+            "batchId": 2,
+            "revision": 0,
+            "live": false,
+            "outcome": "consumed"
+          }
+        ],
+        "errors": []
+      },
+      {
+        "concurrentRestore": true,
+        "firstRestoreSubscribed": true,
+        "subscriptionExistsBeforeStop": false,
+        "ignoredBeforeStop": [
+          {
+            "name": "execution/operationIgnored",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "node",
+              "stage": "attach",
+              "runtimeSessionId": "late-restore"
+            }
+          }
+        ],
+        "applyCount": 2,
+        "supervisorLive": false,
+        "hostLive": true,
+        "hostLifecycle": "stopping",
+        "outcomes": [
+          {
+            "batchId": 1,
+            "revision": 0,
+            "live": true,
+            "outcome": "consumed"
+          },
+          {
+            "batchId": 1,
+            "revision": 0,
+            "live": false,
+            "outcome": "consumed"
+          }
+        ],
+        "errors": [],
+        "recovery": {
+          "explicitResubscribe": true,
+          "hostLive": false,
+          "hostLifecycle": "closed"
+        }
+      }
+    ]
+  },
+  "nativeRestoreControls": [
+    {
+      "sample": 8,
+      "run": 38715829727,
+      "job": 116358159525,
+      "workflowHead": "c9349193f7d00a63d59190dadd420f60482c5db8",
+      "artifact": 11962987311,
+      "artifactBytes": 295268,
+      "artifactSha256": "da8fc7cf932b4e975ce3b43062898453b878df27a9af93615257f70eda69b9ac",
+      "exit": 0,
+      "sessionId": "f2ead60d-4685-4b88-9b36-623a8427a6fa",
+      "controlActivated": true,
+      "scope": "original complete legacy-supervisor-upgrade; real Stop and original 30000ms",
+      "inventoryFiles": 31,
+      "inventorySha256": "b7bdccd7398f23a786008947bd5007b35cf3addfd72df746b992f6a0ad316156",
+      "traceSha256": "8a867ee7c328356f4d2f54e916c666c3db1ca647d60d360e531f105c0a7495df",
+      "timeline": "legacy-stop-native-late-timeline.json",
+      "ptyOnExitAfterHostStopMs": 6,
+      "stopHadSubscriber": true,
+      "historicalFailureAttributed": false,
+      "verification": "complete ZIP CRC/tar and per-file size/hash inventory verified",
+      "limitation": "control canceled subscription, but subsequent original simulated reload resubscribed and recovered; not a stop-timeout counterexample",
+      "traceLimitReached": false,
+      "hostClosedAfterHostStopMs": 19
+    },
+    {
+      "sample": 9,
+      "run": 38715829727,
+      "job": 116358159735,
+      "workflowHead": "c9349193f7d00a63d59190dadd420f60482c5db8",
+      "artifact": 11963126814,
+      "artifactBytes": 295665,
+      "artifactSha256": "bb9a6f2e839c659604cb55bed109378ffaf35c394d71cca4297642333fbfca56",
+      "exit": 0,
+      "sessionId": "62475bf7-4a7f-41c2-982d-548331e0356e",
+      "controlActivated": false,
+      "scope": "original complete legacy-supervisor-upgrade; real Stop and original 30000ms",
+      "inventoryFiles": 31,
+      "inventorySha256": "5139f03de5d985c3e83800f9a4e08f6660e5f46d788f3fa708a571fb2e712e47",
+      "traceSha256": "e8928423ec47442863d05fcb98c088be45d7d4f8f16cd8fa9cf0f828c41a84e1",
+      "timeline": "legacy-stop-native-natural-timeline.json",
+      "ptyOnExitAfterHostStopMs": 9,
+      "stopHadSubscriber": true,
+      "historicalFailureAttributed": false,
+      "verification": "complete ZIP CRC/tar and per-file size/hash inventory verified",
+      "traceLimitReached": false,
+      "hostClosedAfterHostStopMs": 16
+    },
+    {
+      "sample": 10,
+      "run": 38716971680,
+      "job": 116361935723,
+      "workflowHead": "9927bc2b152dccd22687a610eaf11a2322e925de",
+      "artifact": 11962474067,
+      "artifactBytes": 582217,
+      "artifactSha256": "37e61e4ac46a08e5f6447a53a44051c658eb54cd01eff3d640cf74993e3c08b5",
+      "exit": 1,
+      "sessionId": "ed8b2e85-6f62-4485-88a6-f519abf74163",
+      "controlActivated": true,
+      "scope": "original complete legacy-supervisor-upgrade; real Stop and original 30000ms",
+      "inventoryFiles": 61,
+      "inventorySha256": "ab8d5f8b8c5da350b2c06e43f6f21cfe7d693b1fb8fb8fbf9ff36d4654407be1",
+      "traceSha256": "9afc664899507545aec3a17a611289875c74a0f9a60f16c48d5354c10cc5e4c4",
+      "timeline": "legacy-stop-native-final-late-timeline.json",
+      "ptyOnExitAfterHostStopMs": 12,
+      "stopHadSubscriber": false,
+      "historicalFailureAttributed": false,
+      "verification": "complete ZIP CRC/tar and per-file size/hash inventory verified",
+      "failureStack": "legacy-supervisor-upgrade-tests.cjs:334 -> waitForSnapshot:879",
+      "confirmedNativeRace": true,
+      "hostAtTimeout": {
+        "status": "stopping",
+        "live": true,
+        "outputSequence": 5,
+        "lastRuntimeError": null
+      },
+      "supervisorBeforeCleanup": {
+        "sessionId": "ed8b2e85-6f62-4485-88a6-f519abf74163",
+        "live": false,
+        "lifecycle": "closed",
+        "outputSequence": 8,
+        "lastExitMessage": "Terminal stopped."
+      },
+      "supervisorEvidenceAtMs": 1792058481097,
+      "evidenceBeforeCleanup": true,
+      "lateAttachAfterLastSubscribe": true,
+      "noLaterResubscribeBeforeStop": true,
+      "noHostCompletionAfterStop": true,
+      "traceLimitReached": false,
+      "hostClosedAfterHostStopMs": null
+    },
+    {
+      "sample": 11,
+      "run": 38716971680,
+      "job": 116361935356,
+      "workflowHead": "9927bc2b152dccd22687a610eaf11a2322e925de",
+      "artifact": 11963241500,
+      "artifactBytes": 295305,
+      "artifactSha256": "07b639bee7a5418bf913d0a62c95fc9d39b01845f70efe1aedfcb1c251c0e328",
+      "exit": 0,
+      "sessionId": "243f88c0-dc23-4a9e-8e1a-6da40d17caba",
+      "controlActivated": false,
+      "scope": "original complete legacy-supervisor-upgrade; real Stop and original 30000ms",
+      "inventoryFiles": 31,
+      "inventorySha256": "75e5f588d8540e3bcef74c6c61e9e70f7195a29231f615b13d838e260ef6a886",
+      "traceSha256": "ae33ce712b48399c4bada7274c97db2bed7e472944eb6c144ba130364ab80d9f",
+      "timeline": "legacy-stop-native-final-natural-timeline.json",
+      "ptyOnExitAfterHostStopMs": 14,
+      "stopHadSubscriber": true,
+      "historicalFailureAttributed": false,
+      "verification": "complete ZIP CRC/tar and per-file size/hash inventory verified",
+      "traceLimitReached": false,
+      "hostClosedAfterHostStopMs": 36
+    },
+    {
+      "sample": 12,
+      "run": 38717714670,
+      "job": 116364360892,
+      "workflowHead": "6f9a5ae0ee2dae0260d33d07c741ffab1fe503f9",
+      "artifact": 11963198124,
+      "artifactBytes": 582907,
+      "artifactSha256": "e51201e962f97b979d149c8fca81fadf4a04b0c8fa008d21a4cc218d84746ad7",
+      "exit": 1,
+      "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+      "controlActivated": true,
+      "scope": "repeat original complete legacy smoke, original Stop and 30000ms",
+      "inventoryFiles": 61,
+      "inventorySha256": "ba1e4e7e5f9a4764c224a6bd51d5f20408073d694af07b8af0d11741d37d1ac0",
+      "traceSha256": "2ac5ccfceb418827f49a622f2060e5af63dfb01c4dbcc11b7508f1bc06de41e4",
+      "timeline": "legacy-stop-native-repeat-late-timeline.json",
+      "ptyOnExitAfterHostStopMs": 8,
+      "hostClosedAfterHostStopMs": null,
+      "stopHadSubscriber": false,
+      "traceLimitReached": false,
+      "historicalFailureAttributed": false,
+      "verification": "complete ZIP CRC/tar and all inventory file sizes/hashes verified",
+      "confirmedNativeRace": true,
+      "lateAttachParams": {
+        "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+        "deferSubscription": true,
+        "terminalStreamMode": "paged-until-exit"
+      },
+      "liveMetadataWhenLateRestoreReleased": "attached-live",
+      "hostAtTimeout": {
+        "status": "stopping",
+        "live": true,
+        "outputSequence": 3,
+        "lastRuntimeError": null
+      },
+      "supervisorBeforeCleanup": {
+        "sessionId": "853c09f6-53bc-4d3d-b76b-afef37373f65",
+        "live": false,
+        "lifecycle": "closed",
+        "outputSequence": 6,
+        "lastExitMessage": "Terminal stopped."
+      },
+      "failureStack": "legacy-supervisor-upgrade-tests.cjs:334 -> waitForSnapshot:879",
+      "evidenceBeforeCleanup": true,
+      "noLaterResubscribeBeforeStop": true
+    },
+    {
+      "sample": 13,
+      "run": 38717714670,
+      "job": 116364360728,
+      "workflowHead": "6f9a5ae0ee2dae0260d33d07c741ffab1fe503f9",
+      "artifact": 11963930825,
+      "artifactBytes": 293552,
+      "artifactSha256": "393e169eab59d5a1727109e84d4f95b15ba2335c824b039ce96f601b3a5ca751",
+      "exit": 0,
+      "sessionId": "41fe824b-d51e-43f3-8358-e111ac4b5a73",
+      "controlActivated": false,
+      "scope": "repeat original complete legacy smoke, original Stop and 30000ms",
+      "inventoryFiles": 31,
+      "inventorySha256": "9cd6303c978f28be26760436f4b32a85d4a6275b73dc55a551cf02543de3cc24",
+      "traceSha256": "420aa4091a5e481ca9ef6db020a5e71a56a946994992ea58cc26a1159965e1ac",
+      "timeline": "legacy-stop-native-repeat-natural-timeline.json",
+      "ptyOnExitAfterHostStopMs": 4,
+      "hostClosedAfterHostStopMs": 19,
+      "stopHadSubscriber": true,
+      "traceLimitReached": false,
+      "historicalFailureAttributed": false,
+      "verification": "complete ZIP CRC/tar and all inventory file sizes/hashes verified"
+    }
+  ],
+  "nativeRaceConfirmed": true,
+  "nativeControlInputs": {
+    "legacy-stop-native-control-workflow.yml": "45ce5b34642d924a518f0eeff810818fc137c74e6f3a84a9912aa44709587813",
+    "legacy-stop-native-control-probe.py": "8f4fdfb311425b0db9b8b6a27a41c0e8335b01963f7152ee4c329e2ae1620772",
+    "legacy-stop-native-control-attempt2-workflow.yml": "ee2af3357f58158932eb910bc6a3205959eb10807562f4bd58c6d54061b41868",
+    "legacy-stop-native-control-attempt2-probe.py": "464c26ada12d149940b4128c68149411e6792a0d038cec7b636759a69603eca6",
+    "legacy-stop-native-control-attempt1-workflow.yml": "ed96d6b6b16f6bfca80e0bcdebeaeca708fe8bbe4328fe1747fea6963b054a31",
+    "legacy-stop-native-control-attempt1-probe.py": "1b585443d0201b0f51a368dd02c497d10d591991471d1e13df7cb9a0c3246dbe"
+  },
+  "nativeRepeatConfirmed": true,
+  "activeDiagnosticRemoved": true,
+  "temporaryDependencyLinksRemoved": true,
+  "nativeControlJobLogs": [
+    {
+      "job": 116361935723,
+      "sha256": "8a1c993a8396cc443632f60a60b6a9e1b8f6c653e0a5ed26b49d074e89d6909e"
+    },
+    {
+      "job": 116364360892,
+      "sha256": "27d0174d23b36b33c1d6da8f74e0f37432668e574acf57032aa3e78177141e80"
+    }
+  ],
+  "activeDiagnosticRemovalCommit": "a54cd2fb1cd956fdfea9c8e39d2e037bc356ebad",
+  "documentationVerification": "JSON/Python/YAML/JS syntax, archived hashes, frontmatter/index status and related file links verified; git diff --check passed",
+  "timelineFormat": "curated stage events; full exact traces retained in hash-verified GitHub artifacts"
+}

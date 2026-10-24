@@ -1,0 +1,2176 @@
+{
+  "schemaVersion": 1,
+  "playwrightVersion": "1.59.1",
+  "tests": [
+    {
+      "id": "5c04a7eef1992d216ed9-038fc63c06fac57ad10d",
+      "file": "execution-terminal-selection-links.spec.mjs",
+      "title": "selection redraw respects disabled link underline"
+    },
+    {
+      "id": "5c04a7eef1992d216ed9-058cd6ad40dbd3335eec",
+      "file": "execution-terminal-selection-links.spec.mjs",
+      "title": "active terminal link stays underlined after selection draw and clear"
+    },
+    {
+      "id": "5c04a7eef1992d216ed9-4f98db3cb1d0f6d5f77a",
+      "file": "execution-terminal-selection-links.spec.mjs",
+      "title": "selection link rendering adapter restores the original method on dispose"
+    },
+    {
+      "id": "5c04a7eef1992d216ed9-92972a990625b31dcd0f",
+      "file": "execution-terminal-selection-links.spec.mjs",
+      "title": "selection redraw does not revive a link after the pointer leaves"
+    },
+    {
+      "id": "a03daaf9564243b49609-00ae9ca32e4a922ea077",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent node movement does not resize the provider terminal"
+    },
+    {
+      "id": "a03daaf9564243b49609-0182b7e6b37106a360d6",
+      "file": "webview-harness.spec.mjs",
+      "title": "note body editor reserves blank gutter rows for soft-wrapped lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-01b6b3920f938a6d5989",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects default-path-text after 2 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-01dd50aa56ae0aa889b1",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent mixed hard-wrapped styled paths respect missing-indent"
+    },
+    {
+      "id": "a03daaf9564243b49609-02ac7f531b8bf80b56ed",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent right click keeps xterm textarea aligned under zoomed React Flow"
+    },
+    {
+      "id": "a03daaf9564243b49609-02b0e7e7b71e8c677e98",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click create menu validates custom agent launch commands before creating"
+    },
+    {
+      "id": "a03daaf9564243b49609-031088062d0af4d68800",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal node movement preserves a pending terminal resize"
+    },
+    {
+      "id": "a03daaf9564243b49609-032d9fe9fd63793733f3",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal mixed hard-wrapped styled paths respect style-change"
+    },
+    {
+      "id": "a03daaf9564243b49609-039a20159b64cbda9597",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent start button posts a startExecutionSession message"
+    },
+    {
+      "id": "a03daaf9564243b49609-03bff17f58ebf2b1e021",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent low-confidence word links underline only while the modifier is held"
+    },
+    {
+      "id": "a03daaf9564243b49609-041a2b74d3b7e98d336d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects default-path-text after 2 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-04ba6008c5df700c8a50",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary accepts 4 lines before no-suffix"
+    },
+    {
+      "id": "a03daaf9564243b49609-0688f5a1d3c7ee1bdf4d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal Ctrl+C without terminal selection still reaches the PTY as interrupt"
+    },
+    {
+      "id": "a03daaf9564243b49609-07bc38b8756b6d84f52c",
+      "file": "webview-harness.spec.mjs",
+      "title": "embedded xterm re-reads body theme vars and falls back to workbench surfaces for sparse themes"
+    },
+    {
+      "id": "a03daaf9564243b49609-07f7b716676705fa32df",
+      "file": "webview-harness.spec.mjs",
+      "title": "node group drop applies the host avoidance position after state update"
+    },
+    {
+      "id": "a03daaf9564243b49609-082f9b57e595fdc0402d",
+      "file": "webview-harness.spec.mjs",
+      "title": "clicking a note markdown link posts openNoteLink without entering edit mode"
+    },
+    {
+      "id": "a03daaf9564243b49609-086d26289292b04a98ab",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note overwrites dirty-conflict when draft matches remote content"
+    },
+    {
+      "id": "a03daaf9564243b49609-096b0782da215d87ba9c",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas context menu can request layout arrangement without a completion toast"
+    },
+    {
+      "id": "a03daaf9564243b49609-0a6bb4492cd6546f8c21",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal refreshes negative file link cache while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-0c414d6674e7fee61d41",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent terminal copy shortcut posts the xterm selection"
+    },
+    {
+      "id": "a03daaf9564243b49609-0c4ab8f069775f29ca8e",
+      "file": "webview-harness.spec.mjs",
+      "title": "deleting a note posts deleteNode"
+    },
+    {
+      "id": "a03daaf9564243b49609-0c91e85ecc70252f383a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary accepts 4 lines before closing-paren"
+    },
+    {
+      "id": "a03daaf9564243b49609-0cd4c8f350a10cae37d8",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal styled hard-wrapped file hover underlines all fragments"
+    },
+    {
+      "id": "a03daaf9564243b49609-0e00c1b1bb3a5cd65d1c",
+      "file": "webview-harness.spec.mjs",
+      "title": "multi-root rootGroups template reset requires a root section target"
+    },
+    {
+      "id": "a03daaf9564243b49609-0e545628ccaf7df889b7",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal dragover accepts explorer resources before payload becomes readable"
+    },
+    {
+      "id": "a03daaf9564243b49609-0fbdaac302125d47f7cc",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal resize probe rejects snapshot dimensions until the resized container fits"
+    },
+    {
+      "id": "a03daaf9564243b49609-1012da52dd6eaf8fb922",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent mixed hard-wrapped styled paths respect style-change"
+    },
+    {
+      "id": "a03daaf9564243b49609-1066236d3b0d5de383c0",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed locale keeps genuine multiple creations rejected after the original Terminal set restores"
+    },
+    {
+      "id": "a03daaf9564243b49609-10b9442dfd8ea45ab35b",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimap wheel honors the dynamic fit view min zoom"
+    },
+    {
+      "id": "a03daaf9564243b49609-118d5fcd8ce998dea2a7",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped URL detector does not merge adjacent URL lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-125e5b08a1be0c57466c",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root watermark keeps overview-scale text when the title chrome is width-capped"
+    },
+    {
+      "id": "a03daaf9564243b49609-1272322b5aa1dc98c367",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note persists an edit draft with its base revision"
+    },
+    {
+      "id": "a03daaf9564243b49609-12e93b93d4c8486f696d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal mixed hard-wrapped styled paths respect line-limit"
+    },
+    {
+      "id": "a03daaf9564243b49609-1348f5803ccf04933788",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery lower-left mode control switches layouts and canvas thumbnails"
+    },
+    {
+      "id": "a03daaf9564243b49609-144c13cfecb892db65a3",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery thumbnail rail follows workspace root order after switching active root"
+    },
+    {
+      "id": "a03daaf9564243b49609-14a6d5fc3dbd5c05b22e",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal final snapshot does not replace an existing live backlog"
+    },
+    {
+      "id": "a03daaf9564243b49609-15123116ee67fc8da80b",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent movement abort releases the terminal resize gate"
+    },
+    {
+      "id": "a03daaf9564243b49609-15ae88f624f748fecc35",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click create menu creates the default agent without opening the provider list"
+    },
+    {
+      "id": "a03daaf9564243b49609-16078b8962adc735118a",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking the chrome focus region recenters the node and updates persisted viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-169b00bfd3cf25378fe4",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps a scrolled-back viewport locked across output, spinner redraw, and host refresh"
+    },
+    {
+      "id": "a03daaf9564243b49609-1778e813aebd434ada8e",
+      "file": "webview-harness.spec.mjs",
+      "title": "editing a note body posts updateNoteNode"
+    },
+    {
+      "id": "a03daaf9564243b49609-17ba9f436c884b1c4490",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note bootstrapped with unreadable recoverable draft shows reload recovery only"
+    },
+    {
+      "id": "a03daaf9564243b49609-17c1004fd0d397b122c4",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent terminal paste response survives a delayed host confirmation"
+    },
+    {
+      "id": "a03daaf9564243b49609-19c4ee383049d84fd8e9",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal snapshot restore suppresses programmatic clipboard diagnostics"
+    },
+    {
+      "id": "a03daaf9564243b49609-19ea7f56f8cf248f1537",
+      "file": "webview-harness.spec.mjs",
+      "title": "multi-root rootGroups arrange menu infers the root from the section chrome"
+    },
+    {
+      "id": "a03daaf9564243b49609-1a69c9f1c7f888e6c3b2",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking note preview image falls back to the image markdown source end"
+    },
+    {
+      "id": "a03daaf9564243b49609-1aadc115dd8aef151c9b",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note clears a reverted edit draft before accepting file refresh"
+    },
+    {
+      "id": "a03daaf9564243b49609-1ae83bb788be86e987d3",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent revalidates a hovered negative file link after live output resolves it"
+    },
+    {
+      "id": "a03daaf9564243b49609-1b426c30a1c6ce45b5e0",
+      "file": "webview-harness.spec.mjs",
+      "title": "host-triggered agent creation bypasses stale webview workspace trust gate"
+    },
+    {
+      "id": "a03daaf9564243b49609-1b99763ca25cc453ce70",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent resize probe rejects snapshot dimensions until the resized container fits"
+    },
+    {
+      "id": "a03daaf9564243b49609-1c2909abd3fef0106ced",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note restores a persisted dirty-conflict draft after bootstrap"
+    },
+    {
+      "id": "a03daaf9564243b49609-1d573e309f9789eda23c",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps unresolved file link fallback stable while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-1e283a8f494d4a2461f1",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent refreshes detected negative file link after second live output inside throttle window"
+    },
+    {
+      "id": "a03daaf9564243b49609-1ee450c5216cee792212",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click launch preset descriptions normalize conflicting default launch mode flags"
+    },
+    {
+      "id": "a03daaf9564243b49609-1ef2ddfe962d429f73d4",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal preserves identical text emitted by two distinct authority revisions"
+    },
+    {
+      "id": "a03daaf9564243b49609-1f65a3dc7d4818e9cc9e",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent input flushes snapshot restore clipboard diagnostic suppression"
+    },
+    {
+      "id": "a03daaf9564243b49609-2057ed3a930c92bf279d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent mixed hard-wrapped styled paths respect line-limit"
+    },
+    {
+      "id": "a03daaf9564243b49609-237210e3a63c5b58a4fa",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal does not promote trimmed wrapper or punctuation candidates into file links"
+    },
+    {
+      "id": "a03daaf9564243b49609-244cefa14dffcbaa64fd",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary accepts 2 lines before closing-paren"
+    },
+    {
+      "id": "a03daaf9564243b49609-24718eccebe6b7dd704d",
+      "file": "webview-harness.spec.mjs",
+      "title": "note markdown preview renders task lists, syntax highlighting, and math formulas"
+    },
+    {
+      "id": "a03daaf9564243b49609-25ce710ed7325bc6ea2d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent output drain reaches every live node when many nodes have pending backlog"
+    },
+    {
+      "id": "a03daaf9564243b49609-25e0f267ae2a747f1b7f",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group body blank area selects the group and preserves right-click menu"
+    },
+    {
+      "id": "a03daaf9564243b49609-2639bd779b12467c73d3",
+      "file": "webview-harness.spec.mjs",
+      "title": "ordinary note save-as-markdown action posts saveNoteAsMarkdownFile"
+    },
+    {
+      "id": "a03daaf9564243b49609-26a2f8b5cf8284480c82",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent snapshot restore retains the saved non-bottom viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-27539dec426dbee6e977",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking indented code maps raw code after source indentation"
+    },
+    {
+      "id": "a03daaf9564243b49609-275c302d2bd29909ca26",
+      "file": "webview-harness.spec.mjs",
+      "title": "edge label text color follows the rendered edge color"
+    },
+    {
+      "id": "a03daaf9564243b49609-2765032ab4bba2510b77",
+      "file": "webview-harness.spec.mjs",
+      "title": "suspended Claude Agent legacy state no longer exposes restore actions"
+    },
+    {
+      "id": "a03daaf9564243b49609-299228ee2eb384693e0a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal movement abort releases the terminal resize gate"
+    },
+    {
+      "id": "a03daaf9564243b49609-29d0d2616bb50a86f8b7",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped URL fragments open as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-29d13c9fcf038e1a0504",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps a scrolled-back viewport locked across output, spinner redraw, and host refresh"
+    },
+    {
+      "id": "a03daaf9564243b49609-29f6bc12e0aaaf16608a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps an old Supervisor session interactive with a compatibility notice"
+    },
+    {
+      "id": "a03daaf9564243b49609-2af10fe91dcb11b373c0",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group border stroke stays screen-stable across zoom levels"
+    },
+    {
+      "id": "a03daaf9564243b49609-2b2370c77c16829222d7",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent treats CJK punctuation as a file-link boundary in Chinese prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-2b8917cee96edf9b1c2e",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal file nodes keep a content-fitting minimum size when manually resized"
+    },
+    {
+      "id": "a03daaf9564243b49609-2c6672d0833acfd8bf57",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hydrates checkpoint and journal before applying ordered live terminal events"
+    },
+    {
+      "id": "a03daaf9564243b49609-2c6c63b0ad6077074168",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal right click keeps xterm textarea aligned under zoomed React Flow"
+    },
+    {
+      "id": "a03daaf9564243b49609-2c987b40a0a91126ba0a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal styled hard-wrapped file fragments resolve as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-2cb1abcfdd0d09136c36",
+      "file": "webview-harness.spec.mjs",
+      "title": "node resize auto-pans at the canvas edge and keeps resizing"
+    },
+    {
+      "id": "a03daaf9564243b49609-2db2f39d07a77021e77e",
+      "file": "webview-harness.spec.mjs",
+      "title": "missing associated markdown notes show a warning instead of stale markdown content"
+    },
+    {
+      "id": "a03daaf9564243b49609-2e811c0d78508f4ffe93",
+      "file": "webview-harness.spec.mjs",
+      "title": "note body editing target fills the note frame without an inset editor box"
+    },
+    {
+      "id": "a03daaf9564243b49609-31b4dda4959894dd757e",
+      "file": "webview-harness.spec.mjs",
+      "title": "clicking a quoted note checklist checkbox updates markdown without entering edit mode"
+    },
+    {
+      "id": "a03daaf9564243b49609-36884a81282a683afea9",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent schedules delayed refresh after stale negative refresh is invalidated"
+    },
+    {
+      "id": "a03daaf9564243b49609-36d6f41640041100ca75",
+      "file": "webview-harness.spec.mjs",
+      "title": "file list nodes render entries and open clicked file entries through the host message"
+    },
+    {
+      "id": "a03daaf9564243b49609-370b3bcb79679c6b1355",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped URL detector does not append indented prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-37cfb7dcdd03ab5bb93d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent availability receipts acknowledge notification identity before page consumption"
+    },
+    {
+      "id": "a03daaf9564243b49609-37dc6198d13799d82d5d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps an old Supervisor session interactive with a compatibility notice"
+    },
+    {
+      "id": "a03daaf9564243b49609-37f5a2505ee953a1d418",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal checkpoint restore retains the saved non-bottom viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-3832c607eadc6040232b",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery fits a root the first time it becomes the main thumbnail pane"
+    },
+    {
+      "id": "a03daaf9564243b49609-3991edeb9556ece8662e",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery keeps root headers above canvas content when side thumbnails move to the bottom"
+    },
+    {
+      "id": "a03daaf9564243b49609-3a9aeda1a43425df6168",
+      "file": "webview-harness.spec.mjs",
+      "title": "host-triggered group creation uses current webview selection"
+    },
+    {
+      "id": "a03daaf9564243b49609-3ad0431e083c0c6e31ba",
+      "file": "webview-harness.spec.mjs",
+      "title": "Agent running state moves the titleline back and forth using the Agent node color"
+    },
+    {
+      "id": "a03daaf9564243b49609-3af83e37c3d8077423a9",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal node movement does not resize the provider terminal"
+    },
+    {
+      "id": "a03daaf9564243b49609-3b13849f723c6663b661",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent final snapshot does not replace an existing live backlog"
+    },
+    {
+      "id": "a03daaf9564243b49609-3b97acdcbb2ade9e43f0",
+      "file": "webview-harness.spec.mjs",
+      "title": "paneGallery template reset uses the interactive root pane as target"
+    },
+    {
+      "id": "a03daaf9564243b49609-3b9ec6ec08479ac807e6",
+      "file": "webview-harness.spec.mjs",
+      "title": "host center node request recenters without selecting or acknowledging attention"
+    },
+    {
+      "id": "a03daaf9564243b49609-3d6ea31debc444465ba1",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent terminal paste shortcut requests host clipboard text and routes returned text through xterm"
+    },
+    {
+      "id": "a03daaf9564243b49609-3e28adde9513f9bcf051",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal low-confidence word links underline only while the modifier is held"
+    },
+    {
+      "id": "a03daaf9564243b49609-3eb6042b00ddfb4dbcd4",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent new and resume actions render inline without a dropdown"
+    },
+    {
+      "id": "a03daaf9564243b49609-3ef8e19265bb6019ad9b",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group title reuses regular group title chrome without rename actions"
+    },
+    {
+      "id": "a03daaf9564243b49609-403f3fb4044da4e9d180",
+      "file": "webview-harness.spec.mjs",
+      "title": "note markdown math escapes malformed html and command links"
+    },
+    {
+      "id": "a03daaf9564243b49609-412ffd80360abfb9d599",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group keeps the root path tooltip when its display title is truncated"
+    },
+    {
+      "id": "a03daaf9564243b49609-421253b0a15080f67ad0",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal word links match plain words and unresolved file-like paths as search links"
+    },
+    {
+      "id": "a03daaf9564243b49609-4249e1c664636ca6317f",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps Chinese file paths eligible for exact file links"
+    },
+    {
+      "id": "a03daaf9564243b49609-427425bda2516fdd7fa6",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery host center node promotes thumbnail root to main pane without selecting"
+    },
+    {
+      "id": "a03daaf9564243b49609-43d44f05f297b7b7b43d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal terminal paste shortcut requests host clipboard text and routes returned text through xterm"
+    },
+    {
+      "id": "a03daaf9564243b49609-440a52bf21781acbf332",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking note preview display math falls back to the math markdown source end"
+    },
+    {
+      "id": "a03daaf9564243b49609-444e62af4a6444c60c76",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal file nodes render only the primary label and open the target file through the host message"
+    },
+    {
+      "id": "a03daaf9564243b49609-448eef5eaa5d9412fbeb",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group title and action buttons only counter-scale while zooming out"
+    },
+    {
+      "id": "a03daaf9564243b49609-45d830764b7e1cdd726a",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hides the old runtime compatibility notice after the session ends"
+    },
+    {
+      "id": "a03daaf9564243b49609-46d07a073d03eb5282ab",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking triple emphasis maps after all delimiters"
+    },
+    {
+      "id": "a03daaf9564243b49609-47170bb51255be53034e",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal file list tree view supports explorer-style ordering and collapsible folders"
+    },
+    {
+      "id": "a03daaf9564243b49609-4791c1638024b8ccaa8c",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent falls back to search when lazy file link activation times out"
+    },
+    {
+      "id": "a03daaf9564243b49609-47d48182c21f252ffd19",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent does not promote trimmed wrapper or punctuation candidates into file links"
+    },
+    {
+      "id": "a03daaf9564243b49609-485d281588a98f1632bc",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent dragover accepts explorer resources before payload becomes readable"
+    },
+    {
+      "id": "a03daaf9564243b49609-48ecf5a6b3b4d4883bc5",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown conflict actions respond while the editor keeps focus"
+    },
+    {
+      "id": "a03daaf9564243b49609-48fd7618d8ffe8caed5a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal mixed hard-wrapped styled paths respect continuation"
+    },
+    {
+      "id": "a03daaf9564243b49609-4a4d89a4c651cb89cfcb",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects same-style-outside-window after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-4a930fc3f6dbfea46db4",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking blockquote list continuation text maps after nested quote indentation"
+    },
+    {
+      "id": "a03daaf9564243b49609-4b0648e1eec6f73d37ea",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary accepts 2 lines before prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-4b80b8278044f658050a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal slow paged event write prevents premature fit and settles after its tail"
+    },
+    {
+      "id": "a03daaf9564243b49609-4cf1d9f0cf2dfc920940",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent terminal copy diagnostics expose shortcut, mouse tracking, context menu, and OSC52 state"
+    },
+    {
+      "id": "a03daaf9564243b49609-4e3c89cac55b465ed485",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal snapshot restore keeps configured scrollback history after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-4e6393a8891190f15e03",
+      "file": "webview-harness.spec.mjs",
+      "title": "overview mode none keeps regular node rendering when fit view zooms below the overview threshold"
+    },
+    {
+      "id": "a03daaf9564243b49609-4f70dd394a3c449e6161",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent slow snapshot write prevents premature fit and refits after application"
+    },
+    {
+      "id": "a03daaf9564243b49609-4f83e265262c340807aa",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary accepts 4 lines before no-suffix"
+    },
+    {
+      "id": "a03daaf9564243b49609-4f8dabc8150f33ae617f",
+      "file": "webview-harness.spec.mjs",
+      "title": "note body requires double click to switch from markdown preview to plain text editing"
+    },
+    {
+      "id": "a03daaf9564243b49609-4fef8c9a6c78cf9a5d35",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery thumbnail hit layer blocks execution node attention acknowledgement"
+    },
+    {
+      "id": "a03daaf9564243b49609-505f4e6721ac7958f638",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent styled hard-wrapped non-links are not guessed as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-508138d5b3f546562e06",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note keeps a rejected stale draft after host dirty-conflict"
+    },
+    {
+      "id": "a03daaf9564243b49609-50ac459b0feb3adf0d44",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal delays coalesced negative file link refreshes after live output"
+    },
+    {
+      "id": "a03daaf9564243b49609-51c5bf039ef4197ac7b9",
+      "file": "webview-harness.spec.mjs",
+      "title": "file list nodes expose a delete button that posts deleteNode"
+    },
+    {
+      "id": "a03daaf9564243b49609-51d6e0d4a83e06458a4b",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking group title input keeps the current viewport unchanged"
+    },
+    {
+      "id": "a03daaf9564243b49609-523450db274f125c3c38",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note accepts a file revision change before the draft is edited"
+    },
+    {
+      "id": "a03daaf9564243b49609-527630ac9978780fcae1",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note restores a persisted missing recoverable draft after bootstrap"
+    },
+    {
+      "id": "a03daaf9564243b49609-54407a6158f7c7b255dd",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal xterm selection stays aligned under zoomed React Flow"
+    },
+    {
+      "id": "a03daaf9564243b49609-5537ea1e9d5acee76177",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking note preview blank space falls back to the paragraph markdown source end"
+    },
+    {
+      "id": "a03daaf9564243b49609-56f3b16d91c66da5964d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal batches thousands of contiguous journal events without losing the tail"
+    },
+    {
+      "id": "a03daaf9564243b49609-571f9dbed5d473aa21ef",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal refreshes detected negative file link after second live output inside throttle window"
+    },
+    {
+      "id": "a03daaf9564243b49609-587e1440fbaca476937c",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal styled hard-wrapped code paths keep line and column suffixes"
+    },
+    {
+      "id": "a03daaf9564243b49609-58db25e7f1e57e447ad1",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal snapshot restore still refits after node movement during the shrink grace"
+    },
+    {
+      "id": "a03daaf9564243b49609-5a67a506cc0441f0b443",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects missing-content after 2 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-5aa583cad8bde75a5a7f",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent local output credit follows actual writes and cancels when the page unmounts"
+    },
+    {
+      "id": "a03daaf9564243b49609-5acf6b2db652ddf39e43",
+      "file": "webview-harness.spec.mjs",
+      "title": "smoke file clicks preserve repeated opens and public dragging in card view"
+    },
+    {
+      "id": "a03daaf9564243b49609-5aec25cc2d42a6aec0bd",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking the title input keeps the current viewport unchanged"
+    },
+    {
+      "id": "a03daaf9564243b49609-5b003b5603718676ecb1",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects default-path-text after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-5c384c17cb87b0001809",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal availability receipts acknowledge notification identity before page consumption"
+    },
+    {
+      "id": "a03daaf9564243b49609-5cff8cab753c804ab82d",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group title counter-scales like regular group titles below the content inset cap"
+    },
+    {
+      "id": "a03daaf9564243b49609-5e6fd324e9d283c85eb7",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent applies one authority revision once when output arrives before its covering snapshot"
+    },
+    {
+      "id": "a03daaf9564243b49609-5f6a2840bff11e3c83eb",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery fits the active root when entering thumbnail mode without a main viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-5f6aac5055e0d4899cc3",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent snapshot restore keeps configured scrollback history after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-603ab76892932072946b",
+      "file": "webview-harness.spec.mjs",
+      "title": "returning from note body edit mode restores the preview scroll position"
+    },
+    {
+      "id": "a03daaf9564243b49609-603d4365c9e0eba9d98c",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal revalidates a hovered hard-wrapped negative file link continuation"
+    },
+    {
+      "id": "a03daaf9564243b49609-616bd19e6227459cfd42",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent drag scroll waits for the visual edge under zoomed React Flow"
+    },
+    {
+      "id": "a03daaf9564243b49609-618d44846784c480180c",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal mixed hard-wrapped styled paths respect wide-prefix"
+    },
+    {
+      "id": "a03daaf9564243b49609-6222c61188a7ce7f44ed",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group resize draft is replaced by repaired host geometry after refresh"
+    },
+    {
+      "id": "a03daaf9564243b49609-62c865c2f18122557d47",
+      "file": "webview-harness.spec.mjs",
+      "title": "Claude Agent Ctrl-Z is blocked before execution input reaches the host"
+    },
+    {
+      "id": "a03daaf9564243b49609-6469657e42cef62d9088",
+      "file": "webview-harness.spec.mjs",
+      "title": "fit view includes empty workspace root sections in multi-root canvases"
+    },
+    {
+      "id": "a03daaf9564243b49609-649a9cc77e8d24cfb039",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal terminal copy shortcut posts the xterm selection"
+    },
+    {
+      "id": "a03daaf9564243b49609-65bce97c9919d521753e",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal snapshot restore prefers serialized terminal state after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-66f8b3806edfec460004",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent styled hard-wrapped file fragments resolve as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-67f8394ee577b83afebc",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent styled hard-wrapped file continuations allow trailing prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-688b824122788514584e",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent resume action falls back to start button when no resumable session exists"
+    },
+    {
+      "id": "a03daaf9564243b49609-68a0760c513574c55f56",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note warns when an edited draft sees a file revision change"
+    },
+    {
+      "id": "a03daaf9564243b49609-68e45ba1c5424832e6cf",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking markdown punctuation and entities maps visible text characters"
+    },
+    {
+      "id": "a03daaf9564243b49609-69603c4cb3268a3e4828",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal current-state bootstrap survives page rebuild without historical replay and preserves live parser tail"
+    },
+    {
+      "id": "a03daaf9564243b49609-69ddd07496e30bff713d",
+      "file": "webview-harness.spec.mjs",
+      "title": "dragging a resize handle posts resizeNode and updates the note frame size"
+    },
+    {
+      "id": "a03daaf9564243b49609-6ac2a156eb8d8af93271",
+      "file": "webview-harness.spec.mjs",
+      "title": "manually created nodes recenter without zooming when they already fully fit in view"
+    },
+    {
+      "id": "a03daaf9564243b49609-6c96e5c99b8a2e70c5d0",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal link activation posts parsed file and URL targets"
+    },
+    {
+      "id": "a03daaf9564243b49609-6dfef9e799cdeae05cdb",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent session actions wrap before pushing delete outside compact chrome"
+    },
+    {
+      "id": "a03daaf9564243b49609-6ec40dab36d1e9c637a0",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group resize draft keeps member nodes stationary until release"
+    },
+    {
+      "id": "a03daaf9564243b49609-6ee33d9c11ac3cb394a7",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps file-like words clickable across CJK punctuation boundaries"
+    },
+    {
+      "id": "a03daaf9564243b49609-6f1a91a0edfa854fe924",
+      "file": "webview-harness.spec.mjs",
+      "title": "selected file list nodes scroll their file list without zooming the canvas"
+    },
+    {
+      "id": "a03daaf9564243b49609-6fd26bfd24c4d2c4acc2",
+      "file": "webview-harness.spec.mjs",
+      "title": "IME confirmation Enter does not submit or duplicate the title before explicit commit"
+    },
+    {
+      "id": "a03daaf9564243b49609-6fd6fa0aafd329db7e4f",
+      "file": "webview-harness.spec.mjs",
+      "title": "paneGallery arrange menu defaults to current root and offers workspace scope"
+    },
+    {
+      "id": "a03daaf9564243b49609-706c47c6aaeaeec6b2f4",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent requests only one attach snapshot for an already-live mounted node"
+    },
+    {
+      "id": "a03daaf9564243b49609-70b29d27f8db114f6d14",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal unstyled hard-wrapped file fragments are not guessed as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-70fe2b71fdb90ec6858f",
+      "file": "webview-harness.spec.mjs",
+      "title": "dropping markdown files on the empty canvas posts markdown note resources"
+    },
+    {
+      "id": "a03daaf9564243b49609-71602a870e83256d2ada",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent multiline line-number links prefer file links when shell echo repeats the text"
+    },
+    {
+      "id": "a03daaf9564243b49609-71cceac7ecc6efbac968",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent session actions can start a new session and resume the original session"
+    },
+    {
+      "id": "a03daaf9564243b49609-71d41fe14490435c5d08",
+      "file": "webview-harness.spec.mjs",
+      "title": "embedded xterm theme follows workbench theme changes for agent and terminal nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-72511049bc2e7c51d023",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking a scrolled note preview preserves the edit viewport around the target text"
+    },
+    {
+      "id": "a03daaf9564243b49609-737681facf19f216a4d7",
+      "file": "webview-harness.spec.mjs",
+      "title": "file activity edges expose the same toolbar actions as manual edges"
+    },
+    {
+      "id": "a03daaf9564243b49609-738ea366aeeba3decb47",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent fails closed on a revision gap and rejects malformed recovery payloads"
+    },
+    {
+      "id": "a03daaf9564243b49609-740fe93fa9b577855fc0",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery fit view leaves an empty root viewport unchanged"
+    },
+    {
+      "id": "a03daaf9564243b49609-744cde90f6bf7fb0e57a",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas groups render, rename, and post group actions"
+    },
+    {
+      "id": "a03daaf9564243b49609-74e6376ee55f30c22559",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery prioritizes the newly activated main terminal over stale input priority"
+    },
+    {
+      "id": "a03daaf9564243b49609-752b3e5c58c644a2faa5",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas node body padding follows unified spacing tokens"
+    },
+    {
+      "id": "a03daaf9564243b49609-762ff9d6d3330637b3d4",
+      "file": "webview-harness.spec.mjs",
+      "title": "self loop edges can be created and rendered"
+    },
+    {
+      "id": "a03daaf9564243b49609-766b8cfa33aad1f14279",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent attention final output is not starved behind flooded nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-76f0d805cf555956d456",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent does not synthesize trimmed links from attached CJK prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-7729fc9ffaf595dc0f07",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary accepts 4 lines before prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-77679c86dca609115420",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking ordered list continuation text maps after continuation indentation"
+    },
+    {
+      "id": "a03daaf9564243b49609-78634c399eb08db3d9f0",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent word links match plain words and unresolved file-like paths as search links"
+    },
+    {
+      "id": "a03daaf9564243b49609-78be3a6600ccc422f090",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal slow snapshot write prevents premature fit and refits after application"
+    },
+    {
+      "id": "a03daaf9564243b49609-79b599c2353e5a845314",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group body watermark can be disabled by runtime configuration"
+    },
+    {
+      "id": "a03daaf9564243b49609-79cc80287ec360bc542c",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click create menu blocks custom agent launch when provider default args are invalid"
+    },
+    {
+      "id": "a03daaf9564243b49609-7a1344ef9720a0289de2",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal mixed hard-wrapped styled paths respect prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-7b86854220c921225803",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects different-style after 2 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-7babbed6eccc30111b37",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent snapshot restore suppresses programmatic clipboard diagnostics"
+    },
+    {
+      "id": "a03daaf9564243b49609-7c389df1a86eb21d8aa2",
+      "file": "webview-harness.spec.mjs",
+      "title": "execution terminal multi-touch movement abort > terminal second touch cannot reopen the aborted terminal resize gate"
+    },
+    {
+      "id": "a03daaf9564243b49609-7c849834f15fa62aaaa5",
+      "file": "webview-harness.spec.mjs",
+      "title": "manual edges can be created, selected, edited, and deleted"
+    },
+    {
+      "id": "a03daaf9564243b49609-7cb40d72be8102807e3e",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas renders a shared execution help entry with tooltip text"
+    },
+    {
+      "id": "a03daaf9564243b49609-7d22e905990d7fd54456",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimap viewport contrast stays readable in dark workbench theme"
+    },
+    {
+      "id": "a03daaf9564243b49609-7fc2adc1cb4c602fee17",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal reuses file link resolution while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-80b9eb95edd40f89cfd0",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click create menu refreshes its default agent label after runtime context changes"
+    },
+    {
+      "id": "a03daaf9564243b49609-8105730a4b793e921137",
+      "file": "webview-harness.spec.mjs",
+      "title": "selected nodes move together and share the primary release intent"
+    },
+    {
+      "id": "a03daaf9564243b49609-815501862cb71c7bb1f0",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group body context menu keeps target group after pan and zoom"
+    },
+    {
+      "id": "a03daaf9564243b49609-8249ae5c274bf4c89b7c",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking regular group titlebar blank area focuses the existing group"
+    },
+    {
+      "id": "a03daaf9564243b49609-8439c18db1022e8a6258",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery renders dynamic workspace roots with canvas controls and light labels"
+    },
+    {
+      "id": "a03daaf9564243b49609-846c8dc5488fa15f35cf",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking group body blank area focuses the existing group"
+    },
+    {
+      "id": "a03daaf9564243b49609-84a0eb5f10cdc1424841",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal applies one authority revision once when output arrives before its covering snapshot"
+    },
+    {
+      "id": "a03daaf9564243b49609-851b5acf90a61e7dd93c",
+      "file": "webview-harness.spec.mjs",
+      "title": "multi-root rootGroups template reset accepts nested group inside a root section"
+    },
+    {
+      "id": "a03daaf9564243b49609-857ef107f82fa7ac227d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal applies one local output sequence once when output arrives before its covering snapshot"
+    },
+    {
+      "id": "a03daaf9564243b49609-8653057bf56cd0aa5047",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects missing-content after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-86d623dd73a2ba28e91d",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery overflowing thumbnail rails keep first and last roots reachable"
+    },
+    {
+      "id": "a03daaf9564243b49609-87ab475bb3de0bbdc9e9",
+      "file": "webview-harness.spec.mjs",
+      "title": "smoke file clicks reject invisible disabled and obstructed targets and emit one complete primary pointer click"
+    },
+    {
+      "id": "a03daaf9564243b49609-88476bd0547ea392ad1a",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops"
+    },
+    {
+      "id": "a03daaf9564243b49609-89305238fe13326a058e",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal link activation covers additional URI schemes and OSC 8 hyperlinks"
+    },
+    {
+      "id": "a03daaf9564243b49609-897ba782fa880f559ac7",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking note task text ignores the rendered checkbox spacing"
+    },
+    {
+      "id": "a03daaf9564243b49609-8a1a0d0e70301b0ac90b",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group resize commit survives host refresh and follow-up selection without geometry drift"
+    },
+    {
+      "id": "a03daaf9564243b49609-8bf59f594efc6876e8e0",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent staggers snapshot hydrates and prioritizes the node with recent input"
+    },
+    {
+      "id": "a03daaf9564243b49609-8bfb0231e2bcb35142a9",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary accepts 4 lines before closing-paren"
+    },
+    {
+      "id": "a03daaf9564243b49609-8c80d9f2d6f151d90c81",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking workspace root group titlebar blank area focuses the existing group"
+    },
+    {
+      "id": "a03daaf9564243b49609-8d300fbc6cc603f5835c",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent start message uses the node metadata provider"
+    },
+    {
+      "id": "a03daaf9564243b49609-8e13c6d8bb205412bfc2",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group drag follows the pointer without panning the canvas"
+    },
+    {
+      "id": "a03daaf9564243b49609-8e43e095976e8038e214",
+      "file": "webview-harness.spec.mjs",
+      "title": "host focus group request animates to a workspace root section"
+    },
+    {
+      "id": "a03daaf9564243b49609-8f0797aa033adda98ee5",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent Ctrl+C without terminal selection still reaches the PTY as interrupt"
+    },
+    {
+      "id": "a03daaf9564243b49609-8ffdc5babe48e8844ba5",
+      "file": "webview-harness.spec.mjs",
+      "title": "Agent Fork action posts a branchAgentSession message for supported providers"
+    },
+    {
+      "id": "a03daaf9564243b49609-90bfd157b5c415a2b6b1",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimap shows workspace root sections, user groups, and attention nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-91170bc0b476c7428236",
+      "file": "webview-harness.spec.mjs",
+      "title": "edge toolbar keeps top endpoints and labels unobstructed"
+    },
+    {
+      "id": "a03daaf9564243b49609-921ed713cc243ea3f1d4",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent title chrome keeps a bounded width even when the node grows wider"
+    },
+    {
+      "id": "a03daaf9564243b49609-93565f54ba801cea8c7b",
+      "file": "webview-harness.spec.mjs",
+      "title": "execution terminal multi-touch movement abort > agent second touch cannot reopen the aborted terminal resize gate"
+    },
+    {
+      "id": "a03daaf9564243b49609-935a2bc3ba118d867ab7",
+      "file": "webview-harness.spec.mjs",
+      "title": "forked Agent nodes keep title actions readable before and after launch"
+    },
+    {
+      "id": "a03daaf9564243b49609-93af4a6c8b07f9173d10",
+      "file": "webview-harness.spec.mjs",
+      "title": "file list entries follow VS Code list hover, active selection, and inactive selection colors"
+    },
+    {
+      "id": "a03daaf9564243b49609-9461a6d80f9ce6ea4cc2",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent unstyled hard-wrapped file fragments are not guessed as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-94c519b9c5117e5905ec",
+      "file": "webview-harness.spec.mjs",
+      "title": "note markdown preview hides YAML metadata and exposes a titlebar popover"
+    },
+    {
+      "id": "a03daaf9564243b49609-952b5d052b975e83be0c",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal resolves fallback file links only on activation"
+    },
+    {
+      "id": "a03daaf9564243b49609-955433e41072717146e8",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note editing blocks stale drafts after an external file refresh"
+    },
+    {
+      "id": "a03daaf9564243b49609-968aa3817902fbb00c37",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent reuses file link resolution while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-97ef744bd0e09c6c9bd1",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects missing-content after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-985e0b95d6871ccc6b00",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent link activation posts parsed file and URL targets"
+    },
+    {
+      "id": "a03daaf9564243b49609-986fa55cbb80e1b61f5f",
+      "file": "webview-harness.spec.mjs",
+      "title": "Agent and Terminal render PTY terminal titles without changing static header content"
+    },
+    {
+      "id": "a03daaf9564243b49609-98cb79162c663d2d3f26",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent paste event sends clipboard screenshots to the host and routes returned image path through xterm"
+    },
+    {
+      "id": "a03daaf9564243b49609-99a58d1a673c06f19ef6",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps hovered links active while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-99aa640806f2b99204ab",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery restores the saved main viewport when switching thumbnail roots"
+    },
+    {
+      "id": "a03daaf9564243b49609-9a8316b75f12114d9127",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal staggers snapshot hydrates and prioritizes the node with recent input"
+    },
+    {
+      "id": "a03daaf9564243b49609-9aa4799d821fef255468",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal input flushes snapshot restore clipboard diagnostic suppression"
+    },
+    {
+      "id": "a03daaf9564243b49609-9ae02dc621ac6264d505",
+      "file": "webview-harness.spec.mjs",
+      "title": "file nodes do not add a hover overlay to their clickable surface"
+    },
+    {
+      "id": "a03daaf9564243b49609-9b1946f53a117956c0e5",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal ignores stale pending negative file link resolution after live output"
+    },
+    {
+      "id": "a03daaf9564243b49609-9b289b576dfcab94c29c",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking note preview starts editing at the clicked text position"
+    },
+    {
+      "id": "a03daaf9564243b49609-9b4701022f287a992d23",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking list continuation text maps after continuation indentation"
+    },
+    {
+      "id": "a03daaf9564243b49609-9bd6a0df8c45c381e062",
+      "file": "webview-harness.spec.mjs",
+      "title": "overview mode keeps hidden node controls out of the keyboard focus path"
+    },
+    {
+      "id": "a03daaf9564243b49609-9bdd191c61255c3bba18",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group body drag pans the canvas instead of moving the group"
+    },
+    {
+      "id": "a03daaf9564243b49609-9cdfa7657ae62d91ca7d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent snapshot restore still responds to wheel scrolling after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-9ce87b7e87c27e75d19a",
+      "file": "webview-harness.spec.mjs",
+      "title": "execution node chrome hides runtime diagnostics and keeps agent waiting-input visible"
+    },
+    {
+      "id": "a03daaf9564243b49609-9e7a51a35810c76a9593",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas context menu can create a group from selected peer groups"
+    },
+    {
+      "id": "a03daaf9564243b49609-9e9293edcd564c3deffc",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas zoom keeps group title chrome outside the body boundary"
+    },
+    {
+      "id": "a03daaf9564243b49609-9f36a6f3e6526cb1c377",
+      "file": "webview-harness.spec.mjs",
+      "title": "Agent title action buttons wrap before pushing delete outside compact chrome"
+    },
+    {
+      "id": "a03daaf9564243b49609-9fe5c0ba5fb00861e22e",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note restores a persisted ok recoverable draft after bootstrap"
+    },
+    {
+      "id": "a03daaf9564243b49609-a02ad929650b1cc95232",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal snapshot restore still responds to wheel scrolling after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-a0ec1ce7e056f0d65d9b",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal drag-and-drop forwards the first explorer resource to the host"
+    },
+    {
+      "id": "a03daaf9564243b49609-a10d9493edc6a2f5e108",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas context menu can create an empty group"
+    },
+    {
+      "id": "a03daaf9564243b49609-a162cd88e46ab729258c",
+      "file": "webview-harness.spec.mjs",
+      "title": "fit view keeps a workspace root section visible when it is larger than its nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-a22d1e4d38e7f1ad8ec3",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps hovered links active while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-a2318998c2613414d7a5",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary accepts 2 lines before no-suffix"
+    },
+    {
+      "id": "a03daaf9564243b49609-a2c3cc35b3ad1182a700",
+      "file": "webview-harness.spec.mjs",
+      "title": "clicking a note checklist checkbox updates markdown without entering edit mode"
+    },
+    {
+      "id": "a03daaf9564243b49609-a3ae888677c41db6e0ad",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hides the old runtime compatibility notice after the session ends"
+    },
+    {
+      "id": "a03daaf9564243b49609-a3d56103eaa91d487976",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal paste event ignores image-only clipboards instead of sending image paths to the shell"
+    },
+    {
+      "id": "a03daaf9564243b49609-a3e2b32c9438e2f97f71",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal does not synthesize trimmed links from attached CJK prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-a41164312ec315c0c9ab",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent slow paged event write prevents premature fit and settles after its tail"
+    },
+    {
+      "id": "a03daaf9564243b49609-a421011a1a7f4528f871",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal schedules delayed refresh after stale negative refresh is invalidated"
+    },
+    {
+      "id": "a03daaf9564243b49609-a4f94d8c0cab79427987",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects different-style after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-a56e090861c985fac925",
+      "file": "webview-harness.spec.mjs",
+      "title": "Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent input"
+    },
+    {
+      "id": "a03daaf9564243b49609-a57a0f4a6750cd33ae94",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal terminal handles vi-style alternate screen without blocking input or node controls"
+    },
+    {
+      "id": "a03daaf9564243b49609-a591e26ece365a997345",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal paged recovery handles early remote completion"
+    },
+    {
+      "id": "a03daaf9564243b49609-a593df06099ec9e9e772",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent snapshot restore prefers serialized terminal state after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-a5d870f599fef38abd15",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery fit view centers visible root content instead of the workspace root frame"
+    },
+    {
+      "id": "a03daaf9564243b49609-a5e81a4b2d6fbbd332e3",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal revalidates a hovered negative file link after live output resolves it"
+    },
+    {
+      "id": "a03daaf9564243b49609-a6830cbc03f8569dcdd7",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps a large live backlog lossless without requesting snapshot replacement"
+    },
+    {
+      "id": "a03daaf9564243b49609-a693c94f10d15d950b45",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group selected title chrome keeps nodes inside body while zoomed out"
+    },
+    {
+      "id": "a03daaf9564243b49609-a8830033cd8d28836ffb",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary accepts 2 lines before prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-a8baf58b7c0744cbda62",
+      "file": "webview-harness.spec.mjs",
+      "title": "host focus group request survives a same-generation frame refresh"
+    },
+    {
+      "id": "a03daaf9564243b49609-a98a4356129b03c22db9",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent terminal handles vi-style alternate screen without blocking input or node controls"
+    },
+    {
+      "id": "a03daaf9564243b49609-a99c10013f5f867ca376",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps unresolved file link fallback stable while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-aa42b92d80216a121a8f",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent link activation covers additional URI schemes and OSC 8 hyperlinks"
+    },
+    {
+      "id": "a03daaf9564243b49609-aa6c6bfc78618ac23913",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal does not eagerly resolve fallback-only text during hover or live output"
+    },
+    {
+      "id": "a03daaf9564243b49609-ab094263cc5719772864",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent applies one local output sequence once when output arrives before its covering snapshot"
+    },
+    {
+      "id": "a03daaf9564243b49609-ab29e00921f6543e15d9",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking multiple display math blocks falls back to each math markdown source end"
+    },
+    {
+      "id": "a03daaf9564243b49609-ab9b867828e494994852",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal path-only file nodes fit the label without reserving an empty trailing grid column"
+    },
+    {
+      "id": "a03daaf9564243b49609-ac6b50e0d7fc93be72a6",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent local sequence probe waits for the original projection and rejects a stale session or expired deadline"
+    },
+    {
+      "id": "a03daaf9564243b49609-ad26bc2cf25405cb7dfe",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking markdown-like fenced code maps raw code characters"
+    },
+    {
+      "id": "a03daaf9564243b49609-ad70c815c96c8bdf294e",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps Chinese file paths eligible for exact file links"
+    },
+    {
+      "id": "a03daaf9564243b49609-adaca0e1ac2bdfd2f0ae",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent multiline links do not reuse stale previous-path cache in a new projection"
+    },
+    {
+      "id": "a03daaf9564243b49609-adbd2a9b180924ac33b5",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas context menu can create a group from selected nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-afed0f5c6f562a53ff82",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent styled hard-wrapped file fragments are not joined through prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-b012ba2dc9f64a3b7beb",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent renders an inline execution help trigger beside the subtitle"
+    },
+    {
+      "id": "a03daaf9564243b49609-b09cd9e66642f3262cdf",
+      "file": "webview-harness.spec.mjs",
+      "title": "ordinary note empty placeholder and editor show the 8000 character limit"
+    },
+    {
+      "id": "a03daaf9564243b49609-b1a020fead22beee0964",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery clears transient selection before roots become thumbnails"
+    },
+    {
+      "id": "a03daaf9564243b49609-b248e8138d60927c4714",
+      "file": "webview-harness.spec.mjs",
+      "title": "overview zoom threshold runtime config controls title overview activation"
+    },
+    {
+      "id": "a03daaf9564243b49609-b44de9ca815472ba8900",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent mixed hard-wrapped styled paths respect prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-b47a8f95b6c2487155e0",
+      "file": "webview-harness.spec.mjs",
+      "title": "fit view can zoom below the comfort minimum and enters overview mode for distant nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-b4dec42c370c551bfa86",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas shell spans panel horizontal edges for single-root and multi-root layouts"
+    },
+    {
+      "id": "a03daaf9564243b49609-b55ff6c0850155158552",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal file nodes keep a compact, tight border around the rendered content"
+    },
+    {
+      "id": "a03daaf9564243b49609-b5cefa1f2db186feb281",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown notes render the file path subtitle and open-file action"
+    },
+    {
+      "id": "a03daaf9564243b49609-b638c3af6633b50392c8",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary accepts 2 lines before closing-paren"
+    },
+    {
+      "id": "a03daaf9564243b49609-b69620aaf0282651e150",
+      "file": "webview-harness.spec.mjs",
+      "title": "manually created nodes can zoom to fit before recentering when the node overflows the viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-b87be8da7c452b3b39d6",
+      "file": "webview-harness.spec.mjs",
+      "title": "lifecycle identity acks bootstrap and ignores stale bootstrap frames"
+    },
+    {
+      "id": "a03daaf9564243b49609-b88bf7b9da2828065999",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimap viewport contrast stays readable in light workbench theme"
+    },
+    {
+      "id": "a03daaf9564243b49609-b9f98247b29f1c6b8d5a",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group body context menu can group selected members inside that group"
+    },
+    {
+      "id": "a03daaf9564243b49609-bc211f47f075ef95155d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary accepts 2 lines before no-suffix"
+    },
+    {
+      "id": "a03daaf9564243b49609-bdecaccbc246ba762844",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group body context menu creates objects inside the group"
+    },
+    {
+      "id": "a03daaf9564243b49609-bdf09ac3e4c6325685d9",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal paged recovery handles completion before the first page request"
+    },
+    {
+      "id": "a03daaf9564243b49609-be0f3f048bf1d20c460c",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal sends one final terminal resize after a continuous node resize gesture"
+    },
+    {
+      "id": "a03daaf9564243b49609-be4a0215c2b35d4db6b1",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group resize auto-pans at the canvas edge and keeps member drafts stationary"
+    },
+    {
+      "id": "a03daaf9564243b49609-c0bb75468205f66d7ae8",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas groups do not create document scrollbars when zoomed in"
+    },
+    {
+      "id": "a03daaf9564243b49609-c0cb01cdf8b7c5cd6bcf",
+      "file": "webview-harness.spec.mjs",
+      "title": "incoming host error shows a toast in the harness"
+    },
+    {
+      "id": "a03daaf9564243b49609-c0f74bb8402738aa7151",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed intensity assertion preserves fixed terminal tail and rejects stock serializer loss"
+    },
+    {
+      "id": "a03daaf9564243b49609-c1ef6eefcf83c0e167e1",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed locale waits for the exact closed Terminal set before one creation in the original deadline"
+    },
+    {
+      "id": "a03daaf9564243b49609-c29a583c829d1d33184f",
+      "file": "webview-harness.spec.mjs",
+      "title": "availability receipts work without a terminal controller and ignore stale lifecycle notifications"
+    },
+    {
+      "id": "a03daaf9564243b49609-c2fff19bd670a71d3806",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal terminal paste response survives a delayed host confirmation"
+    },
+    {
+      "id": "a03daaf9564243b49609-c310619bbce9de62be19",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent mixed hard-wrapped styled paths respect wide-prefix"
+    },
+    {
+      "id": "a03daaf9564243b49609-c3de03833ee1c3890181",
+      "file": "webview-harness.spec.mjs",
+      "title": "dragging the top-left resize handle moves the note origin and grows the frame"
+    },
+    {
+      "id": "a03daaf9564243b49609-c41ee72efdbd27f25193",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped URL detector does not append indented prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-c48ab3d325cc80cb0130",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-clicking the empty pane opens a quick-create menu near the pointer"
+    },
+    {
+      "id": "a03daaf9564243b49609-c51efe62a6f86ebc8668",
+      "file": "webview-harness.spec.mjs",
+      "title": "note body editor supports tab indentation and line numbers"
+    },
+    {
+      "id": "a03daaf9564243b49609-c582ccb3799b39ae52a2",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal snapshot restore retains the saved non-bottom viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-c65ce4b5fcee587eaf65",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking malformed display math falls back to the math markdown source end"
+    },
+    {
+      "id": "a03daaf9564243b49609-c6d8bcdec93d513a1ef2",
+      "file": "webview-harness.spec.mjs",
+      "title": "multi-root relative paths stay split by workspace folder in tree view"
+    },
+    {
+      "id": "a03daaf9564243b49609-c7738a12a6f26f7ba57a",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click custom agent launch input ignores IME Enter before composition commits"
+    },
+    {
+      "id": "a03daaf9564243b49609-c941c95e4218408642ae",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal mixed hard-wrapped styled paths respect missing-indent"
+    },
+    {
+      "id": "a03daaf9564243b49609-c98626cb874482df1c4c",
+      "file": "webview-harness.spec.mjs",
+      "title": "selected node resize affordance keeps type-colored edge highlight"
+    },
+    {
+      "id": "a03daaf9564243b49609-c98ef7eda093696f6dde",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent node movement preserves a pending terminal resize"
+    },
+    {
+      "id": "a03daaf9564243b49609-c99755f39025f0ab299f",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects default-path-text after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-c9a7d309a80e0e0b504a",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped URL fragments open as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-c9e5d5cc6ce4010f2e1c",
+      "file": "webview-harness.spec.mjs",
+      "title": "selected node midpoint handles can start connections while resize affordance is visible"
+    },
+    {
+      "id": "a03daaf9564243b49609-ca982309ddf944d56e1a",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent multiline line-number links resolve against the previous path line"
+    },
+    {
+      "id": "a03daaf9564243b49609-cb1130890a9fe5daa1ba",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root groups reject cross-root edge creation and reconnect"
+    },
+    {
+      "id": "a03daaf9564243b49609-cb4725f8439db82e728a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal keeps extensionless fallback paths activation-only with interactive priority"
+    },
+    {
+      "id": "a03daaf9564243b49609-cba0daa0b9b9d784a0dc",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary accepts 4 lines before prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-cc7e78a1b87251e68398",
+      "file": "webview-harness.spec.mjs",
+      "title": "unrelated host errors do not cancel pending manual node centering"
+    },
+    {
+      "id": "a03daaf9564243b49609-ccfdfb6c1885c5ff615a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal local sequence probe waits for the original projection and rejects a stale session or expired deadline"
+    },
+    {
+      "id": "a03daaf9564243b49609-cd55c3819bf8a1aabf90",
+      "file": "webview-harness.spec.mjs",
+      "title": "editing node titles posts updateNodeTitle for agent, terminal, and note"
+    },
+    {
+      "id": "a03daaf9564243b49609-cdce128bc4135eb9397a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects same-style-outside-window after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-cf41e7e5c3be2a7d314e",
+      "file": "webview-harness.spec.mjs",
+      "title": "smoke file clicks preserve repeated opens and public dragging in minimal view"
+    },
+    {
+      "id": "a03daaf9564243b49609-cf55b875aaf728cf934a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal styled hard-wrapped non-links are not guessed as one link"
+    },
+    {
+      "id": "a03daaf9564243b49609-d17e405eb5509eec3b2f",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects different-style after 4 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-d1c0bb5fc7b7393ed027",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking multiline fenced code maps to the clicked source line"
+    },
+    {
+      "id": "a03daaf9564243b49609-d1edcc20d34af0b36b80",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click create menu still shows execution entries in untrusted mode and asks host for reason"
+    },
+    {
+      "id": "a03daaf9564243b49609-d23f502d10788fd678b5",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal consumes paged recovery through ANSI boundaries and drains the final page before exit"
+    },
+    {
+      "id": "a03daaf9564243b49609-d2b4a5bb4793362c83d0",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note bootstrapped with dirty-conflict shows reload recovery only"
+    },
+    {
+      "id": "a03daaf9564243b49609-d2c99e87c0242c45efcd",
+      "file": "webview-harness.spec.mjs",
+      "title": "host-triggered execution node creation echoes cwd into the create request"
+    },
+    {
+      "id": "a03daaf9564243b49609-d3338a44d461e09e2e4c",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent resolves fallback file links only on activation"
+    },
+    {
+      "id": "a03daaf9564243b49609-d37a26267fe63bf9cf3d",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent mixed hard-wrapped styled paths respect continuation"
+    },
+    {
+      "id": "a03daaf9564243b49609-d40a2ac2a17ddc351a63",
+      "file": "webview-harness.spec.mjs",
+      "title": "webview bundle emits ready and matches the baseline screenshot"
+    },
+    {
+      "id": "a03daaf9564243b49609-d445198a6d0986e883df",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal paged recovery handles early remote completion with a disconnected reader"
+    },
+    {
+      "id": "a03daaf9564243b49609-d4f8e0a9acbb3f46cb38",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent preserves identical text emitted by two distinct authority revisions"
+    },
+    {
+      "id": "a03daaf9564243b49609-d5d7160d289217bcffbb",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown reload resolves the edit conflict on first click"
+    },
+    {
+      "id": "a03daaf9564243b49609-d5e55ed0beec2c6ee0dd",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent checkpoint restore retains the saved non-bottom viewport"
+    },
+    {
+      "id": "a03daaf9564243b49609-d757e71c47302a17c469",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent sends one final terminal resize after a continuous node resize gesture"
+    },
+    {
+      "id": "a03daaf9564243b49609-d7f23d0d3c02458f1fb3",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent snapshot restore still refits after node movement during the shrink grace"
+    },
+    {
+      "id": "a03daaf9564243b49609-d83ff84080edfbbe7379",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click custom agent launch input closes before the menu backs out on Escape"
+    },
+    {
+      "id": "a03daaf9564243b49609-d862322044e271887606",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note editor does not apply the ordinary note 8000 character limit"
+    },
+    {
+      "id": "a03daaf9564243b49609-d9564b6e40f7b7134c76",
+      "file": "webview-harness.spec.mjs",
+      "title": "multi-root rootGroups template reset posts target root from root section body"
+    },
+    {
+      "id": "a03daaf9564243b49609-d993f7bf9bf04348c0fd",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent exit preserves buffered tail output without synthetic terminal text"
+    },
+    {
+      "id": "a03daaf9564243b49609-d9a27bf73497a36c5a81",
+      "file": "webview-harness.spec.mjs",
+      "title": "pressing Enter in the title input commits exactly one update and keeps the rendered title aligned"
+    },
+    {
+      "id": "a03daaf9564243b49609-da266d044b0d7e5d0f13",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal icon-path file nodes fit short numeric basenames without premature ellipsis"
+    },
+    {
+      "id": "a03daaf9564243b49609-dacf526dce402bcbb0f8",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal drag scroll waits for the visual edge under zoomed React Flow"
+    },
+    {
+      "id": "a03daaf9564243b49609-daf268429b89ffc31550",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal requests only one attach snapshot for an already-live mounted node"
+    },
+    {
+      "id": "a03daaf9564243b49609-db325828504eb940b5bf",
+      "file": "webview-harness.spec.mjs",
+      "title": "multi-root rootGroups arrange menu defaults to current root and offers workspace scope"
+    },
+    {
+      "id": "a03daaf9564243b49609-db7218ff9945a3a902b2",
+      "file": "webview-harness.spec.mjs",
+      "title": "installed localized Stop preparation publicly focuses the original overview Terminal before one visible action"
+    },
+    {
+      "id": "a03daaf9564243b49609-db979a9603ff0ed95da4",
+      "file": "webview-harness.spec.mjs",
+      "title": "note markdown preview text remains selectable in read mode"
+    },
+    {
+      "id": "a03daaf9564243b49609-dbe50a501fe11eb3fa47",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent ignores stale pending negative file link resolution after live output"
+    },
+    {
+      "id": "a03daaf9564243b49609-df7cd97f5aa429949a33",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal restart action keeps the restart label"
+    },
+    {
+      "id": "a03daaf9564243b49609-dfc65f1731cad88d1969",
+      "file": "webview-harness.spec.mjs",
+      "title": "lifecycle identity rejects missing lifecycle host bootstrap"
+    },
+    {
+      "id": "a03daaf9564243b49609-e0f0fe23fcdd4a301cda",
+      "file": "webview-harness.spec.mjs",
+      "title": "associated markdown note bootstrapped with ok recoverable draft shows reload recovery only"
+    },
+    {
+      "id": "a03daaf9564243b49609-e1023fb1e0da04c560ae",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal treats CJK punctuation as a file-link boundary in Chinese prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-e13beb1c4ce61c9ef649",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps file-like words clickable across CJK punctuation boundaries"
+    },
+    {
+      "id": "a03daaf9564243b49609-e1e4e41b2ba56a91c5ed",
+      "file": "webview-harness.spec.mjs",
+      "title": "workspace root group body renders a tiled non-interactive root name watermark"
+    },
+    {
+      "id": "a03daaf9564243b49609-e287dbddaf1e38b21e0a",
+      "file": "webview-harness.spec.mjs",
+      "title": "pane gallery current-state bootstrap restores a remounted thumbnail root without replay"
+    },
+    {
+      "id": "a03daaf9564243b49609-e2b0459b316c56566b56",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps extensionless fallback paths activation-only with interactive priority"
+    },
+    {
+      "id": "a03daaf9564243b49609-e30cf5d81ae8a1ba96bd",
+      "file": "webview-harness.spec.mjs",
+      "title": "host-triggered group creation reports invalid current webview selection without posting create"
+    },
+    {
+      "id": "a03daaf9564243b49609-e31ba589ef8a9ef0685a",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal restores split ANSI OSC CJK and emoji journal boundaries without raw-tail fallback"
+    },
+    {
+      "id": "a03daaf9564243b49609-e37685dc8ce415fcc3de",
+      "file": "webview-harness.spec.mjs",
+      "title": "card file nodes do not fall back to owner counts when no secondary path label exists"
+    },
+    {
+      "id": "a03daaf9564243b49609-e399201ec8801570b62a",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent current-state bootstrap survives page rebuild without historical replay and preserves live parser tail"
+    },
+    {
+      "id": "a03daaf9564243b49609-e4166cda31e22b9893cd",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal falls back to search when lazy file link activation times out"
+    },
+    {
+      "id": "a03daaf9564243b49609-e42457705c9de0a5d6a7",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent revalidates a hovered hard-wrapped negative file link continuation"
+    },
+    {
+      "id": "a03daaf9564243b49609-e44c68b4234988f51a3e",
+      "file": "webview-harness.spec.mjs",
+      "title": "10-agent live output capacity benchmark stays lossless and keeps input responsive"
+    },
+    {
+      "id": "a03daaf9564243b49609-e73d45b5545ca8b2649e",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hard-wrapped styled path boundary rejects missing-content after 2 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-e848427f27013cb822df",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal multiline line-number links resolve against the previous path line"
+    },
+    {
+      "id": "a03daaf9564243b49609-e86256f1ec6a829092ce",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimap viewport outline remains visible after fitting distant nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-e866aef77cc231ab7bc1",
+      "file": "webview-harness.spec.mjs",
+      "title": "selected file nodes can be deleted with the Delete key"
+    },
+    {
+      "id": "a03daaf9564243b49609-e8d5434aa7f9edfb54de",
+      "file": "webview-harness.spec.mjs",
+      "title": "fit view includes empty user groups alongside nodes"
+    },
+    {
+      "id": "a03daaf9564243b49609-e9ee68f0f294504ef3f6",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal multiline line-number links prefer file links when shell echo repeats the text"
+    },
+    {
+      "id": "a03daaf9564243b49609-eaea3df74bf5fc987f62",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal icon-path file nodes keep a tight right edge around the icon and basename"
+    },
+    {
+      "id": "a03daaf9564243b49609-eb2b7270ff91ed1fe170",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal terminal copy diagnostics expose shortcut, mouse tracking, context menu, and OSC52 state"
+    },
+    {
+      "id": "a03daaf9564243b49609-eb43853711dc21860723",
+      "file": "webview-harness.spec.mjs",
+      "title": "create-scoped host errors cancel the matching pending manual create request"
+    },
+    {
+      "id": "a03daaf9564243b49609-eb7b43213aa17d2df596",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped URL detector does not merge adjacent URL lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-eb9385a3efacd0b34c98",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent title context shows cwd label above title and leaves launch command in subtitle"
+    },
+    {
+      "id": "a03daaf9564243b49609-ed288af80ef1c282d5e6",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal styled hard-wrapped file fragments are not joined through prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-edb2f8257afcafbb76f7",
+      "file": "webview-harness.spec.mjs",
+      "title": "file nodes can be dragged without triggering open file"
+    },
+    {
+      "id": "a03daaf9564243b49609-edd4b3e1d9b2e5ec1cd6",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal styled hard-wrapped file continuations allow trailing prose"
+    },
+    {
+      "id": "a03daaf9564243b49609-ee3cb2a6a6f1ced69cf6",
+      "file": "webview-harness.spec.mjs",
+      "title": "host-triggered manual node creation snapshots existing nodes before resolving autofocus"
+    },
+    {
+      "id": "a03daaf9564243b49609-ee7f1a093adb59c2b847",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent hydrates checkpoint and journal before applying ordered live terminal events"
+    },
+    {
+      "id": "a03daaf9564243b49609-ee8ab5dbe02fe95d131a",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent xterm selection stays aligned under zoomed React Flow"
+    },
+    {
+      "id": "a03daaf9564243b49609-eee5d204737cbabbab41",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent styled hard-wrapped code paths keep line and column suffixes"
+    },
+    {
+      "id": "a03daaf9564243b49609-ef0de581a629350c8741",
+      "file": "webview-harness.spec.mjs",
+      "title": "note checklist updates keep original line numbers when YAML metadata is hidden"
+    },
+    {
+      "id": "a03daaf9564243b49609-ef516ca2719475acb096",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal fails closed on a revision gap and rejects malformed recovery payloads"
+    },
+    {
+      "id": "a03daaf9564243b49609-efde56df0014bad30e76",
+      "file": "webview-harness.spec.mjs",
+      "title": "note markdown preview renders safe images and rewrites local image paths"
+    },
+    {
+      "id": "a03daaf9564243b49609-f088e9f9c08c00a74aaf",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimap remains pannable with the viewport outline overlay"
+    },
+    {
+      "id": "a03daaf9564243b49609-f0a90f1629e284068e03",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent keeps a large live backlog lossless without requesting snapshot replacement"
+    },
+    {
+      "id": "a03daaf9564243b49609-f1082006aeb2bd5dddcf",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent refreshes negative file link cache while live output continues"
+    },
+    {
+      "id": "a03daaf9564243b49609-f1d7eab8746575d5947f",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal hard-wrapped styled path boundary rejects different-style after 2 lines"
+    },
+    {
+      "id": "a03daaf9564243b49609-f2af630fa327e6e79e68",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal renders an inline execution help trigger beside the subtitle"
+    },
+    {
+      "id": "a03daaf9564243b49609-f4475abb37a77b5db175",
+      "file": "webview-harness.spec.mjs",
+      "title": "note markdown unsafe command links do not render clickable hrefs"
+    },
+    {
+      "id": "a03daaf9564243b49609-f544af49519844cbbe1f",
+      "file": "webview-harness.spec.mjs",
+      "title": "note preview and editor scope select-all locally while copy and edit shortcuts still reach the host"
+    },
+    {
+      "id": "a03daaf9564243b49609-f5b3d2e800fd470e49c2",
+      "file": "webview-harness.spec.mjs",
+      "title": "visibility restore does not move focus onto the canvas shell"
+    },
+    {
+      "id": "a03daaf9564243b49609-f61567cdce4ae05a8275",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent drag-and-drop forwards the first explorer resource to the host"
+    },
+    {
+      "id": "a03daaf9564243b49609-f7107bb27ef98502d2ab",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent does not eagerly resolve fallback-only text during hover or live output"
+    },
+    {
+      "id": "a03daaf9564243b49609-f800157312bfe4593b98",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas group title exposes the full title when truncated like node titles"
+    },
+    {
+      "id": "a03daaf9564243b49609-f8cda19535bb1c323ed1",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal local output credit follows actual writes and cancels when the page unmounts"
+    },
+    {
+      "id": "a03daaf9564243b49609-f97bcc98d6544ded3181",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal exit preserves buffered tail output without synthetic terminal text"
+    },
+    {
+      "id": "a03daaf9564243b49609-f98246f549c3e5d4dd2a",
+      "file": "webview-harness.spec.mjs",
+      "title": "edge label IME confirmation does not submit before explicit commit"
+    },
+    {
+      "id": "a03daaf9564243b49609-f994d3308ed880be2302",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas groups resize from all eight directions"
+    },
+    {
+      "id": "a03daaf9564243b49609-fa19b06fa4df6eb1ea26",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal multiline links do not reuse stale previous-path cache in a new projection"
+    },
+    {
+      "id": "a03daaf9564243b49609-fb7a7e43f1958f8e7f01",
+      "file": "webview-harness.spec.mjs",
+      "title": "minimal file list nodes can switch between list and tree views"
+    },
+    {
+      "id": "a03daaf9564243b49609-fba7b4eb9c94eb054e67",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click create menu can drill into agent launch modes and create claude yolo directly"
+    },
+    {
+      "id": "a03daaf9564243b49609-fbebf8152274b1e795e5",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent styled hard-wrapped file hover underlines all fragments"
+    },
+    {
+      "id": "a03daaf9564243b49609-fc72a86daf44cefb4e7f",
+      "file": "webview-harness.spec.mjs",
+      "title": "clicking a note workspace file link posts openNoteLink with the raw relative href"
+    },
+    {
+      "id": "a03daaf9564243b49609-fd78e91b4af08c086d9d",
+      "file": "webview-harness.spec.mjs",
+      "title": "Agent Fork action is hidden outside supported resumable sessions"
+    },
+    {
+      "id": "a03daaf9564243b49609-ff6adf9ca60d3321fc18",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent delays coalesced negative file link refreshes after live output"
+    }
+  ]
+}

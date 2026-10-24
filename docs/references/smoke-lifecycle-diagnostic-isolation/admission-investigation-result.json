@@ -1,0 +1,46 @@
+{
+  "run": 38688776387,
+  "workflow_ref": "31e94d906d9687d0a0e606bd007c5d714a1e57e7",
+  "fixed_source": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "native_assets_run": 38681093813,
+  "environment": "Ubuntu22.04 / Node22 / VS Code1.142.0 / clean-checkout isolated HOME / default npm ci",
+  "samples": [
+    {
+      "control": "natural",
+      "smoke_exit": 0,
+      "causal_assertions": "passed",
+      "artifact": 11952150764,
+      "artifact_bytes": 589825,
+      "artifact_sha256": "d505aea7ca67f75f3a74f9891107db85d0466a008e8faf2cd0cdf9405886e45f",
+      "full_local_archive": "/dev/shm/dsc-lifecycle-fix-evidence/ci/admission-natural-final.zip",
+      "local_verification": "whole ZIP CRC and tar contents verified"
+    },
+    {
+      "control": "hold-deletion",
+      "smoke_exit": 1,
+      "causal_assertions": "passed",
+      "artifact": 11951925831,
+      "artifact_bytes": 987758,
+      "artifact_sha256": "dbd36a8c7c891f9b90d126c277af24a5e83575cb4d6d710eec4f6fe4224e56e1",
+      "full_local_archive": "/dev/shm/dsc-lifecycle-fix-evidence/ci/admission-hold-final.zip",
+      "local_verification": "whole ZIP CRC and tar contents verified"
+    },
+    {
+      "control": "wait-retirement",
+      "smoke_exit": 0,
+      "causal_assertions": "passed",
+      "artifact": 11951316257,
+      "artifact_bytes": 592888,
+      "artifact_sha256": "7b370e6c25690520b12b432e46e375f38efa191d6980b10f261d6b3f6f5725f1",
+      "full_local_archive": "/dev/shm/dsc-lifecycle-fix-evidence/ci/admission-wait-final.zip",
+      "local_verification": "whole ZIP CRC and tar contents verified"
+    }
+  ],
+  "limits": "trusted only with finite Supervisor instrumentation and deletion timing controls; original full gate lacks per-event Supervisor trace; not a full release pass",
+  "original_failure_wait_ms": 15000,
+  "probe_removed_commit": "ea62310d",
+  "local_supervisor_regression": {
+    "passed": "134/134",
+    "sha256": "d3135694da140e37d1d83ab1339b444a82c9ea84bd89294e4b722748f3ea9c27"
+  }
+}

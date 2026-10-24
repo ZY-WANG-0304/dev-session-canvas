@@ -1,0 +1,454 @@
+{
+  "schemaVersion": 1,
+  "nonce": "local-packaged-host-boundary-local--new-host-manual-recovery",
+  "testFile": "extension-tests.cjs",
+  "subjectHash": "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912",
+  "host": {
+    "pid": 3957922,
+    "startTicks": "306281596",
+    "platform": "linux"
+  },
+  "caseID": "host-boundary-local/new-host-manual-recovery",
+  "role": "setup",
+  "deadline": 1792439291789,
+  "cleanupDeadline": 1792439351789,
+  "environment": {
+    "vscode": "1.142.0",
+    "node": "24.21.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "steps": [
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "id": "fixture",
+      "status": "passed",
+      "phase": "prepare",
+      "startedAt": "2026-10-19T19:42:15.695Z",
+      "deadline": 1792439291789,
+      "completedAt": "2026-10-19T19:42:17.440Z",
+      "evidence": {
+        "agent": {
+          "nodeId": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+          "snapshot": {
+            "localExecutions": [
+              {
+                "kind": "agent",
+                "nodeId": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+                "identity": {
+                  "executionId": "de1409fd-2d37-430b-9d2f-fd04b92bf1aa",
+                  "generation": "b4676031-0989-4d3c-b290-d7a4a84d956e"
+                },
+                "retired": false,
+                "persistence": {
+                  "submitted": false
+                }
+              }
+            ],
+            "activeSurface": "editor",
+            "configuration": {
+              "linkOpenMode": "editorPreview",
+              "terminalShellPath": "/usr/bin/bash",
+              "terminalShellResolutionSource": "default-shell",
+              "terminalInheritEnv": true,
+              "terminalShellArgs": [],
+              "executionShellEnvPatchSource": "posix-login-shell",
+              "executionShellEnvPatchShellFamily": "posix",
+              "executionShellEnvPatchProbeMode": "interactive-login",
+              "executionShellEnvPatchShellPath": "/usr/bin/bash",
+              "executionShellEnvPatchAppliedKeys": [
+                "PATH"
+              ]
+            },
+            "sidebar": {
+              "canvasSurface": "visible",
+              "surfaceLocation": "editor",
+              "configuredSurface": "panel",
+              "runtimePersistenceEnabled": false,
+              "notificationBridgeMode": "system",
+              "enabledAttentionSignals": [
+                "bel",
+                "osc9",
+                "osc777",
+                "agentAbnormalExit",
+                "codexAbnormalOutputText"
+              ],
+              "notificationStrongReminderMode": "both",
+              "agentAbnormalOutputTextNotificationMode": "off",
+              "filesFeatureEnabled": false,
+              "filePresentationMode": "lists",
+              "fileNodeDisplayStyle": "minimal",
+              "fileNodeDisplayMode": "icon-path",
+              "filePathDisplayMode": "basename",
+              "terminalShellConfiguredValue": "default",
+              "terminalShellPath": "/usr/bin/bash",
+              "agentCodexCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/fake-agent-provider",
+              "agentClaudeCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/missing-agent-provider",
+              "nodeCount": 1,
+              "runningExecutionCount": 0,
+              "workspaceTrusted": true,
+              "creatableKinds": [
+                "agent",
+                "terminal",
+                "note"
+              ],
+              "fileFilters": {
+                "includeGlobs": [],
+                "excludeGlobs": []
+              }
+            },
+            "state": {
+              "version": 1,
+              "updatedAt": "2026-10-19T19:42:17.156Z",
+              "nodes": [
+                {
+                  "id": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+                  "kind": "agent",
+                  "title": "Agent 1",
+                  "status": "starting",
+                  "summary": "Starting Codex session.",
+                  "position": {
+                    "x": 160,
+                    "y": 140
+                  },
+                  "size": {
+                    "width": 560,
+                    "height": 430
+                  },
+                  "metadata": {
+                    "agent": {
+                      "backend": "node-pty",
+                      "lifecycle": "starting",
+                      "provider": "codex",
+                      "launchPreset": "default",
+                      "runtimeKind": "pty-cli",
+                      "resumeSupported": true,
+                      "resumeStrategy": "fake-provider",
+                      "shellPath": "codex",
+                      "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                      "persistenceMode": "snapshot-only",
+                      "attachmentState": "attached-live",
+                      "liveSession": true,
+                      "lastCols": 66,
+                      "lastRows": 21,
+                      "attentionPending": false,
+                      "lastBackendLabel": "Codex",
+                      "resumeSessionId": "eb4e7312-1e00-46d0-96f1-a3d86e724745",
+                      "resumeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b"
+                    }
+                  }
+                }
+              ],
+              "edges": [],
+              "groups": [],
+              "nextGroupSequence": 1,
+              "fileReferences": [],
+              "suppressedFileActivityEdgeIds": [],
+              "suppressedAutomaticFileArtifactNodeIds": []
+            },
+            "surfaceMode": {
+              "editor": "active"
+            },
+            "surfaceReady": {
+              "editor": true,
+              "panel": false
+            },
+            "surfaceLifecycle": {
+              "editor": {
+                "generation": 2,
+                "mode": "active",
+                "ready": true,
+                "bootstrapAck": true,
+                "frameId": "frame-19e52b10-3df6-468b-b965-fccc4a933614",
+                "terminalReadSettlementV1": true,
+                "terminalLocalSettlementV1": true,
+                "terminalLocalOutputCreditV1": true,
+                "terminalAvailableReceiptV1": true,
+                "terminalCurrentStateV1": true
+              },
+              "panel": {
+                "generation": 0,
+                "ready": false,
+                "bootstrapAck": false
+              }
+            }
+          },
+          "execution": {
+            "kind": "agent",
+            "nodeId": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+            "executionSessionId": "de1409fd-2d37-430b-9d2f-fd04b92bf1aa",
+            "generation": "b4676031-0989-4d3c-b290-d7a4a84d956e"
+          },
+          "started": {
+            "timestamp": "2026-10-19T19:42:17.155Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "agent",
+              "nodeId": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+              "sessionId": "de1409fd-2d37-430b-9d2f-fd04b92bf1aa",
+              "cols": 66,
+              "rows": 21,
+              "shellPath": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/fake-agent-provider",
+              "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+              "launchArgs": [],
+              "provider": "codex",
+              "launchMode": "start",
+              "resumeStrategy": "fake-provider",
+              "resumeSessionId": "eb4e7312-1e00-46d0-96f1-a3d86e724745",
+              "resumeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b"
+            }
+          }
+        },
+        "terminal": {
+          "nodeId": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+          "snapshot": {
+            "localExecutions": [
+              {
+                "kind": "agent",
+                "nodeId": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+                "identity": {
+                  "executionId": "de1409fd-2d37-430b-9d2f-fd04b92bf1aa",
+                  "generation": "b4676031-0989-4d3c-b290-d7a4a84d956e"
+                },
+                "retired": false,
+                "persistence": {
+                  "submitted": false
+                }
+              },
+              {
+                "kind": "terminal",
+                "nodeId": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+                "identity": {
+                  "executionId": "24fb2551-84e6-4753-8a54-1e49d48b703d",
+                  "generation": "08d6f148-df92-4ba7-adc7-9ae52186a921"
+                },
+                "retired": false,
+                "persistence": {
+                  "submitted": false
+                }
+              }
+            ],
+            "activeSurface": "editor",
+            "configuration": {
+              "linkOpenMode": "editorPreview",
+              "terminalShellPath": "/usr/bin/bash",
+              "terminalShellResolutionSource": "default-shell",
+              "terminalInheritEnv": true,
+              "terminalShellArgs": [],
+              "executionShellEnvPatchSource": "posix-login-shell",
+              "executionShellEnvPatchShellFamily": "posix",
+              "executionShellEnvPatchProbeMode": "interactive-login",
+              "executionShellEnvPatchShellPath": "/usr/bin/bash",
+              "executionShellEnvPatchAppliedKeys": [
+                "PATH"
+              ]
+            },
+            "sidebar": {
+              "canvasSurface": "visible",
+              "surfaceLocation": "editor",
+              "configuredSurface": "panel",
+              "runtimePersistenceEnabled": false,
+              "notificationBridgeMode": "system",
+              "enabledAttentionSignals": [
+                "bel",
+                "osc9",
+                "osc777",
+                "agentAbnormalExit",
+                "codexAbnormalOutputText"
+              ],
+              "notificationStrongReminderMode": "both",
+              "agentAbnormalOutputTextNotificationMode": "off",
+              "filesFeatureEnabled": false,
+              "filePresentationMode": "lists",
+              "fileNodeDisplayStyle": "minimal",
+              "fileNodeDisplayMode": "icon-path",
+              "filePathDisplayMode": "basename",
+              "terminalShellConfiguredValue": "default",
+              "terminalShellPath": "/usr/bin/bash",
+              "agentCodexCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/fake-agent-provider",
+              "agentClaudeCommand": "/dev/shm/dsc-pr335-smoke-gap-coverage/tests/vscode-smoke/fixtures/missing-agent-provider",
+              "nodeCount": 2,
+              "runningExecutionCount": 0,
+              "workspaceTrusted": true,
+              "creatableKinds": [
+                "agent",
+                "terminal",
+                "note"
+              ],
+              "fileFilters": {
+                "includeGlobs": [],
+                "excludeGlobs": []
+              }
+            },
+            "state": {
+              "version": 1,
+              "updatedAt": "2026-10-19T19:42:17.424Z",
+              "nodes": [
+                {
+                  "id": "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+                  "kind": "agent",
+                  "title": "Agent 1",
+                  "status": "starting",
+                  "summary": "[fake-agent] ready pid=3958969 session=eb4e7312-1e00-46d0-96f1-a3d86e724745",
+                  "position": {
+                    "x": 160,
+                    "y": 140
+                  },
+                  "size": {
+                    "width": 560,
+                    "height": 430
+                  },
+                  "metadata": {
+                    "agent": {
+                      "backend": "node-pty",
+                      "lifecycle": "starting",
+                      "provider": "codex",
+                      "launchPreset": "default",
+                      "runtimeKind": "pty-cli",
+                      "resumeSupported": true,
+                      "resumeStrategy": "fake-provider",
+                      "shellPath": "codex",
+                      "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                      "persistenceMode": "snapshot-only",
+                      "attachmentState": "attached-live",
+                      "liveSession": true,
+                      "lastCols": 67,
+                      "lastRows": 21,
+                      "attentionPending": false,
+                      "lastBackendLabel": "Codex",
+                      "resumeSessionId": "eb4e7312-1e00-46d0-96f1-a3d86e724745",
+                      "resumeStoragePath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/agent-runtime/agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b"
+                    }
+                  }
+                },
+                {
+                  "id": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+                  "kind": "terminal",
+                  "title": "Terminal 2",
+                  "status": "launching",
+                  "summary": "Starting embedded Terminal.",
+                  "position": {
+                    "x": 780,
+                    "y": 140
+                  },
+                  "size": {
+                    "width": 540,
+                    "height": 420
+                  },
+                  "metadata": {
+                    "terminal": {
+                      "backend": "node-pty",
+                      "lifecycle": "launching",
+                      "shellPath": "/usr/bin/bash",
+                      "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+                      "persistenceMode": "snapshot-only",
+                      "attachmentState": "attached-live",
+                      "liveSession": true,
+                      "lastCols": 64,
+                      "lastRows": 20,
+                      "attentionPending": false
+                    }
+                  }
+                }
+              ],
+              "edges": [],
+              "groups": [],
+              "nextGroupSequence": 1,
+              "fileReferences": [],
+              "suppressedFileActivityEdgeIds": [],
+              "suppressedAutomaticFileArtifactNodeIds": []
+            },
+            "surfaceMode": {
+              "editor": "active"
+            },
+            "surfaceReady": {
+              "editor": true,
+              "panel": false
+            },
+            "surfaceLifecycle": {
+              "editor": {
+                "generation": 2,
+                "mode": "active",
+                "ready": true,
+                "bootstrapAck": true,
+                "frameId": "frame-19e52b10-3df6-468b-b965-fccc4a933614",
+                "terminalReadSettlementV1": true,
+                "terminalLocalSettlementV1": true,
+                "terminalLocalOutputCreditV1": true,
+                "terminalAvailableReceiptV1": true,
+                "terminalCurrentStateV1": true
+              },
+              "panel": {
+                "generation": 0,
+                "ready": false,
+                "bootstrapAck": false
+              }
+            }
+          },
+          "execution": {
+            "kind": "terminal",
+            "nodeId": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+            "executionSessionId": "24fb2551-84e6-4753-8a54-1e49d48b703d",
+            "generation": "08d6f148-df92-4ba7-adc7-9ae52186a921"
+          },
+          "started": {
+            "timestamp": "2026-10-19T19:42:17.424Z",
+            "kind": "execution/started",
+            "detail": {
+              "kind": "terminal",
+              "nodeId": "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e",
+              "sessionId": "24fb2551-84e6-4753-8a54-1e49d48b703d",
+              "cols": 64,
+              "rows": 20,
+              "shellPath": "/usr/bin/bash",
+              "cwd": "/dev/shm/dsc-pr335-smoke-gap-coverage",
+              "launchArgs": []
+            }
+          }
+        },
+        "control": {
+          "phase": "setup",
+          "stateFile": "/dev/shm/dsc-pr335-gap-packaged-local/cases/host-boundary-local/new-host-manual-recovery/artifacts/snapshot-host-state.json"
+        }
+      }
+    },
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "id": "business",
+      "status": "passed",
+      "phase": "action/assert",
+      "startedAt": "2026-10-19T19:42:17.443Z",
+      "deadline": 1792439291789,
+      "completedAt": "2026-10-19T19:42:18.097Z",
+      "evidence": {
+        "originalHost": {
+          "pid": 3957922,
+          "start": "306281596",
+          "state": "S"
+        },
+        "snapshotPath": "/dev/shm/dsc-ud-dd1b2a11730d/User/workspaceStorage/0f250aebc035a33b2afa4895f15cac8a/devsessioncanvas.dev-session-canvas/canvas-state.json",
+        "nodeIDs": [
+          "agent-1-ca089663-5a8d-4420-ab97-c25dd0aa661b",
+          "terminal-2-1132e4d2-6a02-4ea8-b8ae-ecff93b5479e"
+        ]
+      }
+    },
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "id": "owned-resize-errors",
+      "status": "passed",
+      "phase": "assert",
+      "startedAt": "2026-10-19T19:42:18.098Z",
+      "deadline": 1792439291789,
+      "completedAt": "2026-10-19T19:42:18.099Z"
+    }
+  ],
+  "startedAt": "2026-10-19T19:42:15.664Z",
+  "action": "passed",
+  "assert": "passed",
+  "cleanup": "transferred-to-verify",
+  "failures": [],
+  "actionCompletedAt": "2026-10-19T19:42:18.100Z",
+  "phase": "setup",
+  "completedAt": "2026-10-19T19:42:18.101Z"
+}

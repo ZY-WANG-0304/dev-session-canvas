@@ -1,0 +1,1112 @@
+name: CI Validation
+'on':
+  workflow_call:
+    inputs:
+      input_sha:
+        required: true
+        type: string
+      base_sha:
+        required: true
+        type: string
+      head_sha:
+        required: true
+        type: string
+      mode:
+        required: true
+        type: string
+      version:
+        required: false
+        type: string
+        default: ''
+      trigger_tag:
+        required: false
+        type: string
+        default: ''
+    outputs:
+      input_sha:
+        value: ${{ jobs.resolve.outputs.input_sha }}
+      plan_digest:
+        value: ${{ jobs.resolve.outputs.plan_digest }}
+      accepted:
+        value: ${{ jobs.verify-result.outputs.accepted }}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  resolve:
+    name: Gate resolve (default)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      version: ${{ steps.plan.outputs.version }}
+      input_sha: ${{ steps.plan.outputs.input_sha }}
+      functional: ${{ steps.plan.outputs.functional }}
+      artifact: ${{ steps.plan.outputs.artifact }}
+      plan_digest: ${{ steps.plan.outputs.plan_digest }}
+      input_contract: ${{ steps.plan.outputs.input_contract }}
+      regression: ${{ steps.plan.outputs.regression }}
+      frontend_build: ${{ steps.plan.outputs.frontend_build }}
+      webview_function: ${{ steps.plan.outputs.webview_function }}
+      webview_visual: ${{ steps.plan.outputs.webview_visual }}
+      marketplace_browser: ${{ steps.plan.outputs.marketplace_browser }}
+      native_assets: ${{ steps.plan.outputs.native_assets }}
+      source_build: ${{ steps.plan.outputs.source_build }}
+      source_host: ${{ steps.plan.outputs.source_host }}
+      marketplace_host: ${{ steps.plan.outputs.marketplace_host }}
+      package_clean: ${{ steps.plan.outputs.package_clean }}
+      packaged_host: ${{ steps.plan.outputs.packaged_host }}
+      installed_pair: ${{ steps.plan.outputs.installed_pair }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+    - name: Resolve immutable plan
+      id: plan
+      shell: bash
+      env:
+        GATE_MODE: ${{ inputs.mode }}
+        GATE_BASE: ${{ inputs.base_sha }}
+        GATE_HEAD: ${{ inputs.head_sha }}
+        GATE_SHA: ${{ inputs.input_sha }}
+        GATE_VERSION: ${{ inputs.version }}
+        GATE_TRIGGER_TAG: ${{ inputs.trigger_tag }}
+      run: |-
+        set -euo pipefail
+        run_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .head_sha)"
+        args=(--mode "$GATE_MODE" --sha "$GATE_SHA" --base "$GATE_BASE" --head "$GATE_HEAD" --run-head "$run_head" --output gate-plan/gate-plan.json)
+        if [[ -n "$GATE_VERSION" ]]; then args+=(--version "$GATE_VERSION"); fi
+        if [[ -n "$GATE_TRIGGER_TAG" ]]; then args+=(--trigger-tag "$GATE_TRIGGER_TAG"); fi
+        node scripts/gates/resolve-plan.mjs "${args[@]}"
+    - name: Upload plan input
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  input-contract:
+    name: Gate input-contract (${{ matrix.variant }})
+    needs:
+    - resolve
+    if: ${{ always() && needs.resolve.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.input_contract) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job input-contract --variant "${{ matrix.variant }}" --output gate-results
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job input-contract --variant "${{ matrix.variant }}" --output gate-artifacts/input-contract/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-input-contract-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/input-contract/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  regression:
+    name: Gate regression (${{ matrix.variant }})
+    needs:
+    - resolve
+    if: ${{ always() && needs.resolve.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.regression) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install declared regression browser dependency
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job regression --variant "${{ matrix.variant }}" --output gate-results
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job regression --variant "${{ matrix.variant }}" --output gate-artifacts/regression/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-regression-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/regression/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  frontend-build:
+    name: Gate frontend-build (${{ matrix.variant }})
+    needs:
+    - resolve
+    if: ${{ always() && needs.resolve.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.frontend_build) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job frontend-build --variant "${{ matrix.variant }}" --output gate-results
+    - name: Upload browser input
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-transfer-browser-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-transfer/browser-bundle
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job frontend-build --variant "${{ matrix.variant }}" --output gate-artifacts/frontend-build/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-frontend-build-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/frontend-build/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  webview-function:
+    name: Gate webview-function (${{ matrix.variant }})
+    needs:
+    - resolve
+    - frontend-build
+    if: ${{ always() && needs.resolve.result == 'success' && needs.frontend-build.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.webview_function) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original browser bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-browser-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/browser
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job webview-function --variant "${{ matrix.variant }}" --output gate-results --browser-input gate-input/browser
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job webview-function --variant "${{ matrix.variant }}" --output gate-artifacts/webview-function/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-webview-function-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/webview-function/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  webview-visual:
+    name: Gate webview-visual (${{ matrix.variant }})
+    needs:
+    - resolve
+    - frontend-build
+    if: ${{ always() && needs.resolve.result == 'success' && needs.frontend-build.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.webview_visual) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original browser bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-browser-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/browser
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job webview-visual --variant "${{ matrix.variant }}" --output gate-results --browser-input gate-input/browser
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job webview-visual --variant "${{ matrix.variant }}" --output gate-artifacts/webview-visual/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-webview-visual-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/webview-visual/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  marketplace-browser:
+    name: Gate marketplace-browser (${{ matrix.variant }})
+    needs:
+    - resolve
+    - frontend-build
+    if: ${{ always() && needs.resolve.result == 'success' && needs.frontend-build.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.marketplace_browser) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original browser bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-browser-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/browser
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job marketplace-browser --variant "${{ matrix.variant }}" --output gate-results --browser-input gate-input/browser
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job marketplace-browser --variant "${{ matrix.variant }}" --output gate-artifacts/marketplace-browser/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-marketplace-browser-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/marketplace-browser/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  native-assets:
+    name: Gate native-assets (${{ matrix.variant }})
+    needs:
+    - resolve
+    - input-contract
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.input-contract.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.native_assets) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+      DEV_SESSION_CANVAS_EXECUTION_INPUT_SHA: ${{ inputs.input_sha }}
+    steps:
+    - name: Preserve source bytes on Windows
+      if: ${{ runner.os == 'Windows' }}
+      shell: pwsh
+      run: git config --global core.autocrlf false
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup target compiler
+      if: ${{ runner.os == 'Windows' }}
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: ${{ matrix.compilerArch }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 25.6.0
+        architecture: ${{ matrix.arch }}
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Build and load native input
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job native-assets --variant "${{ matrix.variant }}" --output gate-results --assets "${{ runner.temp }}/native-assets/${{
+        matrix.variant }}" --part load
+    - name: Stage immutable load transfer
+      shell: bash
+      run: |-
+        mkdir -p gate-transfer/native-load
+        cp gate-transfer/native-archive/* gate-transfer/native-load/
+        cp "gate-results/native-assets/${{ matrix.variant }}/native-load.task.json" gate-transfer/native-load/
+    - name: Upload load input before operations
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-native-load-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-transfer/native-load
+        if-no-files-found: error
+        retention-days: 14
+    - name: Operate original native provider
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job native-assets --variant "${{ matrix.variant }}" --output gate-results --assets "${{ runner.temp }}/native-assets/${{
+        matrix.variant }}" --part operation
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job native-assets --variant "${{ matrix.variant }}" --output gate-artifacts/native-assets/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-native-assets-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/native-assets/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  source-build:
+    name: Gate source-build (${{ matrix.variant }})
+    needs:
+    - resolve
+    - input-contract
+    - native-assets
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.input-contract.result == 'success' && (needs.native-assets.result ==
+      'success' || needs.native-assets.result == 'failure') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.source_build) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Collect independent native provenance
+      run: node scripts/gates/github-provenance.mjs --plan gate-plan/gate-plan.json --scope native-load --download gate-native --output gate-native-provenance.json
+    - name: Require all six accepted load inputs
+      run: node scripts/gates/check-native-inputs.mjs --plan gate-plan/gate-plan.json --inputs gate-native --provenance gate-native-provenance.json --output gate-input/native
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job source-build --variant "${{ matrix.variant }}" --output gate-results --archives gate-input/native
+    - name: Upload source input
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-transfer-source-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-transfer/source-bundle
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job source-build --variant "${{ matrix.variant }}" --output gate-artifacts/source-build/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-source-build-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/source-build/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  source-host:
+    name: Gate source-host (${{ matrix.variant }})
+    needs:
+    - resolve
+    - source-build
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.source-build.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.source_host) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install declared Remote SSH fixture dependency
+      if: ${{ startsWith(matrix.variant, 'remote-ssh-real-reopen-') }}
+      shell: bash
+      run: |-
+        sudo apt-get install -y openssh-server
+        sudo mkdir -p /run/sshd
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original development bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-source-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/source
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job source-host --variant "${{ matrix.variant }}" --output gate-results --source-input gate-input/source
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job source-host --variant "${{ matrix.variant }}" --output gate-artifacts/source-host/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-source-host-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/source-host/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  marketplace-host:
+    name: Gate marketplace-host (${{ matrix.variant }})
+    needs:
+    - resolve
+    - source-build
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.source-build.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.marketplace_host) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original development bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-source-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/source
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job marketplace-host --variant "${{ matrix.variant }}" --output gate-results --source-input gate-input/source
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job marketplace-host --variant "${{ matrix.variant }}" --output gate-artifacts/marketplace-host/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-marketplace-host-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/marketplace-host/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  package-clean:
+    name: Gate package-clean (${{ matrix.variant }})
+    needs:
+    - resolve
+    - input-contract
+    - native-assets
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.artifact == 'true' && needs.input-contract.result == 'success' && (needs.native-assets.result == 'success'
+      || needs.native-assets.result == 'failure') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.package_clean) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Collect independent native provenance
+      run: node scripts/gates/github-provenance.mjs --plan gate-plan/gate-plan.json --scope native-load --download gate-native --output gate-native-provenance.json
+    - name: Require all six accepted load inputs
+      run: node scripts/gates/check-native-inputs.mjs --plan gate-plan/gate-plan.json --inputs gate-native --provenance gate-native-provenance.json --output gate-input/native
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job package-clean --variant "${{ matrix.variant }}" --output gate-results --archives gate-input/native
+    - name: Upload candidate input
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-transfer-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-transfer/release-candidate
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job package-clean --variant "${{ matrix.variant }}" --output gate-artifacts/package-clean/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-package-clean-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/package-clean/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  packaged-host:
+    name: Gate packaged-host (${{ matrix.variant }})
+    needs:
+    - resolve
+    - package-clean
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.artifact == 'true' && needs.package-clean.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.packaged_host) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original candidate pair
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/candidate
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job packaged-host --variant "${{ matrix.variant }}" --output gate-results --candidate gate-input/candidate
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job packaged-host --variant "${{ matrix.variant }}" --output gate-artifacts/packaged-host/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-packaged-host-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/packaged-host/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  installed-pair:
+    name: Gate installed-pair (${{ matrix.variant }})
+    needs:
+    - resolve
+    - package-clean
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.artifact == 'true' && needs.package-clean.result == 'success' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.installed_pair) }}
+    env:
+      DEV_SESSION_CANVAS_GATE_PLAN: gate-plan/gate-plan.json
+    steps:
+    - name: Preserve source bytes on Windows
+      if: ${{ runner.os == 'Windows' }}
+      shell: pwsh
+      run: git config --global core.autocrlf false
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Restore fixed Chromium cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: dsc-chromium-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json') }}
+      timeout-minutes: 5
+    - name: Restore fixed VS Code cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DEV_SESSION_CANVAS_VSCODE_TEST_CACHE_PATH }}
+        key: dsc-vscode-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.runner }}-${{ hashFiles('package-lock.json', 'scripts/gates/catalog.mjs') }}
+      timeout-minutes: 5
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install locked dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Install fixed browser dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |-
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      timeout-minutes: 5
+    - name: Install locked Chromium
+      run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
+      timeout-minutes: 5
+    - name: Download original candidate pair
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-input/candidate
+    - name: Execute planned stage
+      run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job installed-pair --variant "${{ matrix.variant }}" --output gate-results --candidate gate-input/candidate
+    - name: Collect bounded stage evidence
+      if: ${{ always() }}
+      run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job installed-pair --variant "${{ matrix.variant }}" --output gate-artifacts/installed-pair/${{ matrix.variant }}
+      timeout-minutes: 1
+    - name: Preserve stage evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-installed-pair-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-artifacts/installed-pair/${{ matrix.variant }}
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 14
+  verify-result:
+    name: Gate verify-result (default)
+    outputs:
+      accepted: ${{ steps.acceptance.outputs.accepted }}
+    needs:
+    - resolve
+    - input-contract
+    - regression
+    - frontend-build
+    - webview-function
+    - webview-visual
+    - marketplace-browser
+    - native-assets
+    - source-build
+    - source-host
+    - marketplace-host
+    - package-clean
+    - packaged-host
+    - installed-pair
+    if: ${{ always() }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Checkout fixed input
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+        ref: ${{ inputs.input_sha }}
+    - name: Setup fixed Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.23.3
+        architecture: x64
+        cache: npm
+        cache-dependency-path: package-lock.json
+    - name: Configure isolated runner caches
+      run: node scripts/gates/setup-environment.mjs
+    - name: Download frozen plan
+      uses: actions/download-artifact@v4
+      with:
+        name: gate-transfer-plan-${{ github.run_id }}-${{ github.run_attempt }}
+        path: gate-plan
+    - name: Install verifier dependencies
+      run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output gate-results -- npm ci --no-audit --no-fund
+      timeout-minutes: 10
+    - name: Download actual producers and receipts
+      run: node scripts/gates/github-provenance.mjs --plan gate-plan/gate-plan.json --download gate-actual --output gate-provenance.json
+    - name: Verify complete actual task set
+      id: verify
+      shell: bash
+      run: |-
+        set -euo pipefail
+        candidate="gate-actual/gate-transfer-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/package-receipt.json"
+        args=(--plan gate-plan/gate-plan.json --results gate-actual --provenance gate-provenance.json --output gate-final)
+        if [[ -f "$candidate" ]]; then args+=(--package-receipt "$candidate"); fi
+        node scripts/gates/verify-result.mjs "${args[@]}"
+    - name: Preserve aggregate infrastructure failure
+      if: ${{ always() }}
+      env:
+        GATE_RESOLVE: ${{ needs.resolve.result }}
+        GATE_INPUT: ${{ inputs.input_sha }}
+      run: node scripts/gates/aggregate-failure.mjs --output gate-final
+    - name: Preserve aggregate and acceptance
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |-
+          gate-final
+          gate-provenance.json
+          gate-plan
+          gate-results/infrastructure
+        if-no-files-found: error
+        retention-days: 14
+    - name: Expose verified acceptance
+      id: acceptance
+      if: ${{ success() && steps.verify.outcome == 'success' }}
+      run: echo "accepted=true" >> "$GITHUB_OUTPUT"

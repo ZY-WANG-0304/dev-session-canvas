@@ -2,6 +2,91 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-10-24：文件条目 smoke 原生输入修复的验收边界
+
+文件点击前 documentFocus 的测试门槛已由原生鼠标输入替代，受控编辑器持焦下 source 与原双 VSIX packaged 场景通过。历史 CI 自然夺焦的完整时序缺失，仍不认定上游产品焦点缺陷；后续若再失败，应保存点击前后焦点与可信事件。修改后的 PR head 完整 Actions 验收尚待执行，本地局部诊断不解除发布门禁。方案和证据见 [file-entry-native-smoke.md](../design-docs/file-entry-native-smoke.md)。
+
+## 2026-10-18：CI与发布门禁重设计（现有覆盖迁移已验，产品阻塞与补充范围保留）
+
+最新已验PR335 ed9257bd：正式完整39128423778在真预合并1d9bb54b完成，精确main/head parents已核，247 jobs全部成功、330 actual/passed、324 required/requiredPassed，六native校准操作亦通过。同head与未改PR3278313fc72的最新临时0.26.1组合39128957644也247 jobs全成功、330全部必跑通过；输入63b168e2的main/组合949432c3精确parents及双PR ancestry已核。两批原aggregate/acceptance的actual producer、ZIP与同批双包原bytes独立验真，118 source/104 packaged、六native、两个Marketplace Host及三x64原样安装同批通过。六份安装原报告全部核精确恢复全集/一次创建/fresh同fd几何/原进程Stop/通知/两locale/原Host公开退出与cleanup；PR335原431功能/3视觉按冻结434目录独立核全通过、retry0。
+
+原Actions已执行完整聚合，本地未再次下载这两轮全部task再聚合，二者分开记账。临时远端分支已按63b168e2 pinned lease退役，原历史/失败证据保留；最终文档head另收自己的稳定CI，不套用旧回执。两项生产竞态（旧代恢复撤销当前订阅；生产mode-switch删除期间接纳callback并缓存失败）仍未修，最终修复落地后PR327真实预合并和release-tag完整验收保持阻塞。main合并保护、15新增缺口、真实TUI、最低宿主/arm64安装/真实systemd/渠道及历史间歇机制均分别保留，不由临时组合绿灯放行0.26.1。完整来源与边界见正式设计和local-results.json。
+
+以下保留历史输入与当时待验状态；新输入验收不追认历史首败永久修复。
+
+此前第十轮39124063678终态323/324 required通过、330 actual/329 total passed（含六校准），247 jobs为244成功/3失败，仅Windows中文节点身份绑定业务首败。原报告缺创建前ID，不补造历史基线；同production bundle受控一次创建/迟到bootstrap先红，关闭前精确全集恢复观察、真多新增拒绝及原概览Stop3/3通过。115合同、434目录的431功能/3视觉及原第十轮双包Linux完整公开诊断通过，原20秒/包摘要/一次动作不变。
+
+[release-gate-redesign.md](../design-docs/release-gate-redesign.md)已按用户授权进入实现，[已完成实施计划](completed/release-gate-implementation.md)覆盖15验证job、六发布外层job、保守分类、冻结计划、真实Actions来源、有界证据、clean同批双包、消费式packaged、三x64原样安装和原包渠道恢复。当前完整80regression同批通过，423前端/3视觉/Marketplace浏览器有本地通过；独立source、SSH两态及Marketplace Host新包装器有本地诊断，旧资产不冒充新SHA。真实Actions第三轮39095480885/head924cae96/input612a891c：六load/六有限操作、118源码Host、两个Marketplace Host、423功能/3视觉、三regression分片与source-build同批通过。隔离双包各build一次/checkout清理成功，后置文件清单错读外层dist失败；聚合另拒Windows反斜杠回执。现修candidate原包dist私有消费与producer路径序列化，保真实staging/ZIP双层和严格路径；原失败包仅诊断，无正式transfer，packaged/三安装仍not-run。新提交完整验收继续，不能把映射或独立补验视为通过。
+
+第五轮39101493143及0.26.1组合39101774719已终态：前者330 actual/324 required/318 required passed，六校准项包含于324 total passed；后者330全必跑328通过，source118/packaged104全通过，仅macOS长IPC和Windowscached geometry失败，均无acceptance。当前原包焦点tab红绿、稳定hit-target/完整pointer、短路径设置与日志、安全退役、同fd fresh geometry及有界transport恢复已落实；105合同、429浏览器目录的426功能/3视觉、当前production文件视图诊断通过。123 suite原期限逐项不变；最新三平台原样安装与新组合仍需实跑，旧资产诊断不能补验收。
+
+第六轮39108395021与最新组合39108780795已终态失败：前者324 required/320 required passed（326 total passed含六校准），后者330 required/328 passed。两者Linux安装、六native、104packaged及基础层通过；组合source118全通过。两平台真实resize/Stop通过，新首败均是vscode.open等真实确认框；已补公开确认并保原token/完整URI/不记忆和20秒，原Host受控不存在token诊断通过不代证完整回跳。source file/views原panel缺文档focus，公开view focus对照通过，原10秒及全部file/split/reader断言不变。macOS原附加kill EPERM尚无具体syscall/对象/栈，新增严格阶段取证，不吞错。
+
+第七轮39112933251正确拒绝遗漏更新的helper源码hash，业务任务未运行；已重生成并核123期限/wait/倍数/循环完全一致，只改hash/证据行号，补本地正反例避免完整合同漏报。第六轮全量原task本地下载在原5分钟期限终止，部分证据保留，不称独立全量再聚合完成。新输入及PR327组合仍须各自完整运行，历史失败不能拼接通过。
+
+第八轮39113768051和未改PR327组合39113960317已终态失败，分别321/324与327/330 required通过；packaged104及Linux安装同批通过，source各117/118。新Process原身份/公开Quit/概览中文Stop观察实现已有113合同、430登记的427功能/3视觉与原生产页面/原双包Linux局部诊断通过。两轮全量task本地独立下载原5分钟失败，未完成再聚合；不与正式aggregate混账。source real-reopen原45秒未ready和panel原10秒无documentFocus仍未定因，当前原动作只读CDP通过不能解除；新head完整跨平台和两生产竞态持续待验/阻塞。
+
+六平台有限操作及ed9257bd/最新临时组合三x64原样安装已有真实runner同批验收，固定环境/基础设施预算的持续成本校准仍保留为后续工作。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
+
+关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。
+
+## 2026-10-18：Runtime 模式切换删除期间的迟到回调（生产路径已复现，未修）
+
+第六轮source runtime-mode/reload-clear原input a62e5d7e/run39108395021在三delete派发后接纳此前空输出batch3、开始状态保存，84ms内以pending callback拒绝；并非等待到期。直接调用原生产CanvasPanelManager的受控shared/non-shared × simulate reload/prepareForDeactivation四路径确定复现：mode cleanup先于永久准入关闭，首轮集合快照等待不覆盖delete期间的新回调。放行回调归零后再次操作仍取得同一缓存失败；不能据graph保留推断原已删除会话可控制，也不能因最新组合通过解除责任。
+
+未修产品阻塞，与旧代恢复撤销订阅竞态分别记录。CI保原case、原预算、严格失败，不增加sleep/retry或全局drain。后续产品修复须结算原root/session的已派发操作与回调/保存，保其他开启窗口、四阶段接管、严格delete失败和普通reset保存立即拒绝；真实Electron/PTY及不同root仍需相关验收，当前控制脚本仅证明Host方法顺序。见[正式记录](../design-docs/runtime-shared-root-canvas-sync.md#ci-改造时发现的模式切换回调边界2026-10-18)、[复现](../references/release-gate-redesign/implementation/runtime-mode-switch-reproduction.mjs)及其JSON/hash。实现与证据继续PR335，不另建诊断或文档PR。
+
+## 2026-10-17：发布门禁分层与产物证据（审查完成，方案待确认）
+
+用户要求检查smoke之外的环节。设计[release-gate-layering-review.md](../design-docs/release-gate-layering-review.md)基于0100abf0/main6e708c6b，覆盖普通PR、静态输入、70条npm顶层命令、六原生资产、Webview、clean checkout、packaged和渠道汇总。[证据](../references/release-gate-flow-audit/layering-review/README.md)核25源码摘要及8项现有纯逻辑：finalize接受错ref/hash；缺partial而有历史verified仍完成；verifier在历史verified时忽略本轮query=false。不是历史真实错发布的证明。
+
+建议先局部补完整范围守卫、阶段期限/always工件、渠道结果身份与历史复用口径；再实现干净双包构建、消费式packaged和原样安装、测试包与最终发布包的摘要/回执绑定，以及普通PR独立基础回归和稳定聚合检查。落点为release-preflight/publish workflows、clean-checkout/package/VSIX runner、publish-tag与共享完成判定模块。远端保护需管理员实际配置；仅文档不能形成强制约束。
+
+后续按真实依赖拆快速/前端/视觉/Marketplace/Host层，登记notifier与门禁具名回归的所属层，选定有限跨平台真实PTY操作、最低VSCode和latest/provider观察范围。Marketplace重签/远端内容身份与并发耗时未验证，不能用原ZIP摘要或性能假设直接定方案。保持双release ref完整验证、六目标来源核验、已有Release原包复用禁覆盖和VS deferred策略；新增范围不自动扩大0.26.1卡点。现有生产恢复竞态和PR327最终门禁仍按原计划闭环；本轮只更新审查资料，继续当前关联修复范围，不另建诊断/验证/文档PR。
+
+设计研究计划[release-gate-layering-review.md](completed/release-gate-layering-review.md)完成；实现、产品与完整发布验收均未执行。
+
+
+## 2026-10-18：smoke场景与子场景重划（独立目录已接线，新增缺口仍未实施）
+
+[smoke-scenario-boundaries.md](../design-docs/smoke-scenario-boundaries.md)现落实102独立case、13默认因果suite和3focused诊断。source115加3辅助、packaged104及两个Marketplace Host分别冻结；旧22 routes/137覆盖目的地的helper注册/AST可达与实际步骤边界逐项校验，但不签发验收。source/packaged真实对应输入、特殊拓扑及清理结果须继续从Host回执与实际工件验证，不能以目录数量宣称覆盖通过。
+
+15个proposed-gap保留not-implemented：包括live页面remount、snapshot-only真实新Host恢复、边界后自然/Stop终态、额外Terminal退出/重启、原生崩溃、Stop不响应、完整高输出/resize及真实TUI完成证据。它们是原设计明确的后续范围，不混入当前137项已实现映射，也不自动扩大0.26.1阻塞；固定Node/宿主、真实最低宿主和并发成本待受控验收。发布确定生产竞态和最终完整门禁仍阻塞，不能靠CI命名或延长等待消除。
+
+后续时机：补齐每个缺口的独立fixture、真实身份/权威完成信号与故障反例后，经目录差异review再纳入必跑。兼容case共Host优化也须先实测隔离/成本，当前每case或因果suite独立matrix，保留原业务等待与不可切的setup→verify。实施与证据继续现有PR335，不另拆文档/验证PR。
+
+## 2026-10-17：smoke 的 fake Agent 状态断言不能代证真实 TUI 回合完成（待验证）
+
+背景与触发：用户审阅默认01–07 smoke时指出，真实Agent TUI底部输入区可能在任务处理中持续接收输入，回答结束位置也可能位于输入区或状态栏上方。当前`local-execution-flow`使用fake CLI，`burst`等命令完成后打印`> `；`verifyAgentExecutionFlow`分别等待原执行输出标记与Host节点`waiting-input`。输出helper在原session的连续消息或独立快照中查找标记，不要求屏幕最后一行；该标记也不是provider的回合完成事件。
+
+已核对边界：`waiting-input`来自`agentActivityHeuristics.ts`的prompt/通知/bell、spinner/redraw和静默时间推断，包含无近期spinner且静默约1.6秒的兜底。fake场景通过只证明其输入输出与扩展状态推断成立，不能证明真实TUI的输入可用性、回答呈现和回合完成识别准确。真实provider是否存在误判、涉及哪些版本及触发时序尚未验证，不写成已确认产品缺陷，也不以本条自动增加0.26.1发布阻塞。
+
+影响范围：源码和packaged复用的Agent功能链及其验收解释，尤其是持续输入区、回答后还有footer/重绘、处理中暂时静默等场景。此项延续列表中“Agent运行态判定仍缺provider原生权威事件与来源标注”的既有技术债；本轮保留现有代码、断言和门禁，只澄清证据范围。
+
+后续时机与验证目标：用户要求先记录，继续审阅01–07；后续场景重划设计已将其列为独立`agent-tui`待验目录，尚未实施。分别验证输入可用、回答在真实终端页面正确呈现、当前回合完成三个目标；覆盖任务仍处理但可输入、回答不在最后一行、网络/工具等待暂时静默及完成后的TUI重绘。回合完成需有独立于被测启发式的provider证据，不能用同一个`waiting-input`状态或末行位置自证。具体信号接入方案尚未选定。
+
+关联：[smoke说明中的待验证项](../references/release-gate-flow-audit/smoke/README.md#agent-tui的待验证覆盖边界2026-10-17)、[已有Agent状态设计](../design-docs/agent-running-state-detection.md)；代码为`tests/vscode-smoke/extension-tests.cjs:5211`、`tests/vscode-smoke/execution-output.cjs:3`、`tests/vscode-smoke/fixtures/fake-agent-provider:178`、`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts:317`。
+
+## 2026-10-15：restricted ready 诊断隔离已修复，组合门禁阻塞于 packaged，最终发布门禁待验证
+
+PR327正式9198cacb/run38665513172 attempt2在源码restricted首开editor ready20000ms失败。固定输入阶段采样19次中1次同入口自然失败，捕获真实editor ready在fake panel诊断期间被正常接受，然后`runWebviewLifecycleRaceDiagnosticsForTest`的finally恢复两个面旧快照，将editor ready/frameId回滚；诊断数组恢复还抹去ready事件。active面临时为panel使editor未bootstrap，再open复用原HTML不重发ready。原消息期间投递的受控run38678148402按20秒失败、原ready/ack先完成的完整restricted通过，因果已确认；原正式CI无Host工件，不能逐事件追认唯一定因。
+
+该测试模式方法和调用从6月存在，#334未修改；普通安装未注册此测试命令，不因该夹具故障判定用户打开必然失败。已在修复分支把fake诊断放到无共享可变状态的独立对象，实际协议规则保持；两真实面ready前/期间/后三时序、成功/异常责任保护及测试模式守卫回归通过，旧during负对照缺少真实bootstrap；仅延长预算或保留ready字段不能补回bootstrap。修复/回归/根因/证据集中一个修复PR；组合f8d9ad53/run38681093813已通过源码trusted/restricted、systemd、SSHexit/retain和426项Webview，完整命令阻塞于clean-checkout packaged，首败已取得：verifyLiveRuntimePersistence等待Agent启动超时，rejected-before-acquire且editor ready/ack=true；同输入原生对照已确认停止夹具漏等Supervisor旧存储退役、pending:2满而拒绝；原完整CI无逐事件计数。三种真实原ready投递时序完整restricted通过且确认bootstrapAck，none保留20秒失败。合入后再rebase PR327完整门禁；本轮不创建诊断/验证/文档PR，临时workflow完成后移除。历史fallback资源积压与checkpoint首跑停滞保持各自未知范围。
+
+关联：`docs/design-docs/smoke-restricted-ready-root-cause.md`、`docs/exec-plans/completed/smoke-restricted-ready-investigation.md`、`docs/references/smoke-restricted-ready-root-cause/README.md`。
+
+## 2026-10-15：packaged Runtime重启夹具漏等旧会话退役（具名修复已验证，最新完整门禁旧代停止阻塞）
+
+ensureAgentStopped/ensureTerminalStopped只以live=false及localExecutions退休判断；live-runtime旧session仍可能等待读者、Host保存或journal删除，符合正式pending:2责任保护。真实Supervisor134/134通过；同固定f8d9ad53、原六资产、隔离HOME/default npmci/VS Code1.142.0，两轮受控旧删除均复现verifyLiveRuntimePersistence原15秒拒绝，释放后不会补发启动；等待原两份实际退役后完整trusted通过，自然样本亦通过。六份完整工件已核验，精简输入/hash/时序集中PR335，不新增诊断或文档PR。
+
+已按用户授权实现：仅smoke模式的只读RPC直接查原Supervisor sessions含retiring；停止前捕获完整身份并固定原socket连接，原停止/查询/等待共用15秒，两个节点停止且原存储不存在才各启动一次。17项夹具及136项实际Supervisor回归、原等待36项、类型检查与本地六资产build通过，旧具名调用稳定先红。删除失败、断连和错身份保持失败。新组合六资产通过；原生有界延迟删除屏障因果通过（644ms），完整trusted后来文件打开失败；完整组合源码trusted拒绝smoke查询，原snapshot为legacy-detached，更正此前systemd归因；源码入口仅靠ExtensionMode.Test未传显式标志，已补齐并以原main两调用回归先红、18/18及runnerenv通过。systemd独立传递要求也补齐并经startup36/36/旧负对照/typecheck/build验证。第二轮原生完整trustedexit0/645ms通过，最新55c619ad/run38696319881完整源码trusted/restricted通过，具名修复成立；完整命令首败转到旧代停止，详见下节；修复合入后仍需最终PR327预合并完整门禁，原完整CI缺少Supervisor逐事件事实。见docs/design-docs/packaged-runtime-restart-admission-root-cause.md与admission-investigation-result.json。
+
+## 2026-10-15：旧代 Terminal 停止超时（原生恢复竞态已复现，待修复与最终门禁）
+
+固定组合55c619ad/run38696319881的无过滤release:verify已通过新退役18项、源码完整trusted/restricted，随后legacy-supervisor-upgrade-tests.cjs:334等待旧代Terminal停止30秒失败。previous-generation-stream-terminal的原session dd00a348-d787-4cdb-a206-4fec1f587f80收到stopRequested，末次快照仍stopping/live=true、无lastRuntimeError；其他旧Agent/Terminal和新Terminal保持live。该具名夹具在PR335未改，根因未确认；不能凭stopping直接判定测试竞态、产品故障或本次回归。后续重开/systemd/SSH、Webview全套及本完整命令的clean-checkout均未触达。完整工件本地CRC/tar核验，snapshot、stop诊断及固定输入集中PR335的retirement-source-full-result.json和retirement-next-*。这项仍阻塞发布，原生packaged延迟删除完整trustedexit0只收口具名退役修复。
+
+旧代停止调查跟进（2026-10-15）：原场景54文件不含Supervisor/PTY现场，历史唯一归因仍未知。固定原输入四份原生旧代样本通过；完整诊断run38711507240原样release:verify exit0且727文件/hash核验，复用原run资产和类外记录，不代证最终PR327门禁。真实socket/原restore方法及原生最后reload单变量对照已确认生产竞态：第二任务等待client时已收集原node；第一任务attach/subscribed后，第二deferred attach撤销原订阅，Host随后operationIgnored无重新subscribe。run38716971680 late原334行/30秒exit1，PTY12ms退出、Supervisorclosed，但Host仍stopping/live=true；natural完整旧代exit0。run38717714670同控制复核再次失败/通过，实时metadata已attached-live、原请求deferSubscription:true核验；两轮61/31文件全部校验，活动入口已移除。第一轮控制触达过早，后续原reload恢复，成功边界单列。生产修复未实施，不能通过延长等待补建订阅；完整原绑定与过时结果保护须保留。关联修复/证据继续PR335，发布PR327不变。见`docs/design-docs/legacy-supervisor-stop-timeout-investigation.md`与`legacy-stop-investigation-result.json`。
+
 ## 记录字段
 
 - 日期
@@ -844,3 +929,27 @@ run38579057915原输入9f602fed的npm test/SSH两态/Webview426/七packaged通�
 正式修复接续：保存导出后清理接入原reset helper，原Agent/Terminal期望；新增正式调用点回归旧代码pending先红、修后9/9及原19/19通过。产品保护和20秒预算不变；正式代码84d65765的原生run38656199224在VS Code1.142.0触达原Agent/Terminal submitted/pending，同身份saved后第二reset空画布，完整trusted exit0；生产bundle与研究输入一致。完整PR327临时组合031db473/run38656127632的同输入六平台资产、静态preflight、完整npm test、SSH两态、Webview426/426和8个clean-checkout packaged场景含trusted全部通过，release:verify exit0；临时活动workflow已移除。修复尚未合入，PR327正式最新预合并仍须rebase后重跑，未放行合并或发布。completed计划smoke-template-final-persistence-repair.md，证据repair-result.json。
 
 交付状态：修复PR [#334](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/334) 已创建，代码、根因、回归和验收集中；本项实现及组合验收完成。剩余发布责任为该PR合入后rebase PR327，并以最新正式预合并输入重跑完整门禁；临时组合031db473不代替此步骤。最终收口仅文档，PR327草稿及原head保持。
+
+## 0.26.1 发布门禁流程控制与覆盖缺口（2026-10-15）
+
+完整流程审查确认：main 没有有效保护/ruleset；release:verify 继承 smoke filter，trusted 可将默认源码19/packaged8缩为1/1；PR与tag prepare失败未自动上传完整宿主/clean-checkout现场。普通VS Code启动等待进程退出无独立期限，浮动stable/Node patch影响重现。标准链有notifier源码/build但不含独立类型、回跳/locale smoke；普通无契约PR成功skip不证明功能回归通过。影响是强制性、验收范围、首败复盘和补充验收可追溯性，不代表已确认所有未接线named script完全没有覆盖。
+
+当前边界：本次只审查/出图，未修改门禁或远端设置；正式workflow默认无filter，0.26.1仍要求原样完整verify。已有恢复撤销订阅生产竞态仍单独阻塞，诊断通过不替代修复与最终PR327验收。建议在门禁后续修复中先处理过滤保护、有限取证、Host进程期限，并由管理员配置required check；按契约补notifier独立证据。普通PR回归、固定/最新双宿主与重复构建优化可随后推进，不借审查扩张当前产品修复。所有关联文档/回归继续当前PR335范围，发布材料保留PR327；报告与准确代码/API锚点见docs/design-docs/release-gate-flow-audit.md，证据/图见docs/references/release-gate-flow-audit/。
+
+
+## 分层CI真实验收与覆盖边界（2026-10-18）
+
+现有迁移与新验证图在PR335 ed9257bd/真预合并1d9bb54b的39128423778及未改PR327最新临时组合/真输入63b168e2的39128957644完成整批验收：各247 jobs全成功，分别324/324与330/330必跑通过，actual/passed均330；118 source/104 packaged、六native、两个Marketplace Host及三x64原样安装同批通过。原aggregate/acceptance、同批双包及六安装报告按actual producer/ZIP/bytes分别独立验真；PR335原431功能/3视觉按冻结434目录独立核通过、retry0。原业务期限、一次公开动作、原身份/Stop/保存/reader/退役断言保持。最终文档新head另验，完整原始来源和保留历史见实施目录。
+
+此前第九轮39119709105虽已有118 source/104 packaged、六native操作、两个Marketplace Host与三x64原样安装同批通过，中文Stop二次时钟合同和覆盖快照pending计数仍使原整轮失败，严格拒绝31task（含失败producer连带项），293/324 required，无acceptance。修正有同原production bundle受控先红后绿、114合同及429功能/3视觉证据，后续精确恢复基线再补115合同与434目录；这些历史失败不由当前整批通过重写。
+
+同head与未改PR327的真实临时组合39119845747已330/330、247 jobs全成功；原aggregate/acceptance实际producer、ZIP及精确双parents独立核验，结果仅属于该输入。两项独立已确认产品竞态（旧代恢复迟到撤销当前订阅；生产mode-switch删除期间仍接纳callback并缓存失败）未修，持续阻塞0.26.1；不能靠偶发绿色、增加等待或删断言关闭。历史real-reopen45秒未ready、panel10秒缺焦点、CIM服务阻塞机制和macOS原EPERM继续未定因，当前实跑通过不当作永久修复。
+
+PR335已实现固定输入/实际Actions来源、15验证job、六发布job、一次clean双包、消费式packaged和三x64原样安装；当前整批通过不改变第四轮39097246318的packaged103/104和7个失败job历史。原源码字符串、官方macOS入口、安装CDP观察及合成MouseEvent缺view各保留受控证据与修正回归，不将历史单项通过拼接为新的完整验收。渠道模块仅完成本地HTTP/内存合同，不据CI绿色宣称真实交付验证完成。
+
+main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正式设置需实际负例验证。152设计目的地中15新增范围仍明确not-implemented，真实TUI完成信号尚未选定，其余最低宿主、arm64安装、真实systemd/桌面呈现/Marketplace自动依赖和渠道重签边界不外推。生产旧代恢复撤销订阅竞态已复现未修，仍是0.26.1阻塞；CI迁移不能删除原身份/Stop/保存/reader/退役断言或用新等待抹去故障。已完成实施计划release-gate-implementation.md、正式设计release-gate-redesign.md、原竞态legacy-supervisor-stop-timeout-investigation.md分别可追溯。
+
+
+## PR335 非真实 TUI 缺口覆盖（2026-10-20）
+
+用户授权先覆盖原十五项中的十一项。source/packaged独立入口、双Host角色回执、原process身份absence、真实几何和全量输出断言已实现，默认regression补登记production owner的Stop故障与sticky unknown合同。152目的地现148 implemented-unverified/4 not-implemented；这不代证完整新输入验收。四个真实TUI场景保留待覆盖，完成信号仍未选定。最低宿主、arm64原样安装、真实systemd/通知/渠道等既有边界继续独立存在，不因本轮关闭。计划见active/smoke-non-tui-gap-coverage.md，结果按实际运行记录。

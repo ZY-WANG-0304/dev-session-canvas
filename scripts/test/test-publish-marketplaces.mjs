@@ -1,150 +1,37 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { releaseFixture } from './release-fixture.mjs';
+import { writeJSON, objectDigest } from '../gates/receipts.mjs';
+import { publishChannel } from '../release/publish-marketplaces.mjs';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const scriptPath = path.join(repoRoot, 'scripts', 'release', 'publish-marketplaces.mjs');
-const tempDir = await mkdtemp(path.join(os.tmpdir(), 'dsc-publish-marketplaces-'));
-
+const f = await releaseFixture(), root = await fs.mkdtemp(path.join(os.tmpdir(),'dsc-channel-contract-'));
 try {
-  await writePackageJson(path.join(tempDir, 'package.json'), {
-    name: 'dev-session-canvas-workspace',
-    private: true,
-    version: '0.10.0'
-  });
-  await writePackageJson(
-    path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas', 'package.json'),
-    {
-      name: 'dev-session-canvas',
-      version: '0.10.0'
-    }
-  );
-  await writePackageJson(
-    path.join(tempDir, 'extensions', 'vscode', 'dev-session-canvas-notifier', 'package.json'),
-    {
-      name: 'dev-session-canvas-notifier',
-      version: '0.10.0'
-    }
-  );
-  await writeFile(path.join(tempDir, 'dev-session-canvas-0.10.0.vsix'), 'stale package\n', 'utf8');
-
-  const binDir = path.join(tempDir, 'bin');
-  await mkdir(binDir, { recursive: true });
-  const commandLogPath = path.join(tempDir, 'commands.log');
-  await writeFakeCommand(binDir, 'npm', 'npm', 7);
-  await writeFakeCommand(binDir, 'python3', 'python3', 0);
-  await writeFakeCommand(binDir, 'git', 'git', 0, { stdout: 'actual-head' });
-
-  const result = spawnSync(
-    process.execPath,
-    [
-      scriptPath,
-      '--yes',
-      '--continue-on-error',
-      '--target',
-      'open-vsx',
-      '--extension',
-      'main'
-    ],
-    {
-      cwd: tempDir,
-      env: {
-        ...process.env,
-        PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
-        PUBLISH_MARKETPLACES_TEST_LOG: commandLogPath
-      },
-      encoding: 'utf8'
-    }
-  );
-
-  assert.equal(result.status, 7, result.stderr || result.stdout);
-  assert.match(result.stderr, /打包失败，停止后续发布/u);
-
-  const commandLog = await readFile(commandLogPath, 'utf8');
-  assert.match(commandLog, /^npm /u, commandLog);
-  assert.doesNotMatch(commandLog, /^python3 /mu, commandLog);
-
-
-
-  const expectedRefMismatch = spawnSync(
-    process.execPath,
-    [scriptPath, '--dry-run', '--target', 'open-vsx', '--extension', 'main'],
-    {
-      cwd: tempDir,
-      env: {
-        ...process.env,
-        DEV_SESSION_CANVAS_EXPECTED_RELEASE_REF: 'expected-head',
-        PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`
-      },
-      encoding: 'utf8'
-    }
-  );
-
-  assert.equal(expectedRefMismatch.status, 1, expectedRefMismatch.stderr || expectedRefMismatch.stdout);
-  assert.match(expectedRefMismatch.stderr, /expected-head/u);
-  assert.match(expectedRefMismatch.stderr, /actual-head/u);
-
-  const dryRunWithTimeout = spawnSync(
-    process.execPath,
-    [
-      scriptPath,
-      '--dry-run',
-      '--skip-package',
-      '--target',
-      'open-vsx',
-      '--extension',
-      'main',
-      '--open-vsx-timeout',
-      '600'
-    ],
-    {
-      cwd: tempDir,
-      env: {
-        ...process.env,
-        PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`
-      },
-      encoding: 'utf8'
-    }
-  );
-
-  assert.equal(dryRunWithTimeout.status, 0, dryRunWithTimeout.stderr || dryRunWithTimeout.stdout);
-  assert.match(
-    dryRunWithTimeout.stdout,
-    /python3 scripts\/release\/openvsx-api\.py --prefer-ipv4 --timeout 600 publish/u
-  );
-
-  console.log('publish-marketplaces tests passed');
-} finally {
-  await rm(tempDir, { recursive: true, force: true });
-}
-
-async function writePackageJson(filePath, contents) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(contents, null, 2)}\n`, 'utf8');
-}
-
-async function writeFakeCommand(binDir, commandName, logLabel, exitCode, options = {}) {
-  const stdout = options.stdout ? `echo ${options.stdout}\n` : '';
-  if (process.platform === 'win32') {
-    const commandPath = path.join(binDir, `${commandName}.cmd`);
-    await writeFile(
-      commandPath,
-      `@echo off\r\necho ${logLabel} %*>> "%PUBLISH_MARKETPLACES_TEST_LOG%"\r\n${stdout.replace(/\n/g, '\r\n')}exit /b ${exitCode}\r\n`,
-      'utf8'
-    );
-    return;
+  const prepared=path.join(root,'prepared'); await fs.mkdir(prepared);
+  for(const [name,bytes]of Object.entries(f.packageBytes))await fs.writeFile(path.join(prepared,name),bytes);
+  for(const [name,value]of Object.entries({ 'package-receipt.json':f.packageReceipt,'gate-plan.json':f.plan,
+    'acceptance-receipt.json':f.acceptance,'release-identity.json':f.identity,'validated-channel-history.json':{},
+    'prepared-receipt.json':{status:'passed',identityDigest:objectDigest(f.identity),producer:{runID:f.plan.run.id,attempt:f.plan.run.attempt}}}))
+    await writeJSON(path.join(prepared,name),value);
+  const calls=[];
+  const result=await publishChannel({context:f.context,prepared,target:'open-vsx',output:path.join(root,'result'),
+    attempts:2,intervalMs:0,client:{query:async(pkg)=>{calls.push(pkg.id);return f.observation(pkg);},
+      submit:async()=>{throw new Error('Present verified package must not submit');}}});
+  assert.equal(result.complete,true); assert(calls[0].endsWith('-notifier'));
+  assert.equal(result.partial.packages.length,2);
+  const invalidContext=structuredClone(f.context); invalidContext.releaseSHA='d'.repeat(40);
+  await assert.rejects(()=>publishChannel({context:invalidContext,prepared,target:'open-vsx',output:path.join(root,'bad-ref'),
+    client:{query:async()=>{throw new Error('Wrong ref must not query');}}}));
+  await fs.writeFile(path.join(prepared,'main.vsix'),'stale package');
+  let queried=false;
+  await assert.rejects(()=>publishChannel({context:f.context,prepared,target:'open-vsx',output:path.join(root,'stale'),
+    client:{query:async()=>{queried=true;return f.observation(f.identity.packages[0]);}}}));
+  assert.equal(queried,false,'Stale package cannot reach public channels');
+  for(const args of [[],['--yes'],['--skip-package'],['--package-only']]) {
+    const run=spawnSync(process.execPath,['scripts/release/publish-marketplaces.mjs',...args],{encoding:'utf8',timeout:5000});
+    assert.notEqual(run.status,0,'No implicit package lookup/build/publish entry is allowed');
   }
-
-  const commandPath = path.join(binDir, commandName);
-  await writeFile(
-    commandPath,
-    `#!/usr/bin/env sh\necho "${logLabel} $*" >> "$PUBLISH_MARKETPLACES_TEST_LOG"\n${stdout}exit ${exitCode}\n`,
-    {
-      encoding: 'utf8',
-      mode: 0o755
-    }
-  );
-}
+  console.log('publish-marketplaces: accepted original pair, notifier order, wrong ref/hash and implicit packaging rejection passed');
+}finally{await fs.rm(root,{recursive:true,force:true});}

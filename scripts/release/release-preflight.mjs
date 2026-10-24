@@ -40,6 +40,9 @@ async function main() {
   console.log(`发布输入 preflight 通过：v${options.version}`);
 
   if (options.verify) {
+    if (options.version !== '0.26.0') {
+      throw new Error('当前版本完整验证使用 release:verify（冻结计划与隔离任务图），不再使用旧 --verify 串行入口。');
+    }
     runFullVerification(options.version);
     console.log(options.version === '0.26.0'
       ? 'v0.26.0 用户授权范围验证通过；完整测试和宿主/视觉验收仍有延后项，见发布契约。'
@@ -83,8 +86,8 @@ function printHelp() {
 
 说明:
   - 默认检查版本、CHANGELOG 和 docs/release-contracts/vX.Y.Z.md 的静态发布输入。
-  - --verify 会在静态检查通过后运行 npm test 与 clean-checkout VSIX 验证。
-  - 发布准备 PR 和最终 publish/vX.Y.Z tag ref 都必须运行 --verify。`);
+  - release:verify 使用冻结计划及隔离任务图执行完整验证。
+  - --verify 仅保留 v0.26.0 已授权历史范围，不用于当前版本。`);
 }
 
 export function validateReleasePreflight({ projectRoot, version }) {
@@ -252,8 +255,7 @@ function runFullVerification(version) {
     runNpm(['run', 'validate:clean-checkout:vsix', '--', '--ref', 'HEAD', '--skip-vsix-smoke']);
     return;
   }
-  runNpm(['run', 'test']);
-  runNpm(['run', 'validate:clean-checkout:vsix', '--', '--ref', 'HEAD']);
+  throw new Error('完整验证已经迁移到 scripts/gates/run-local.mjs。');
 }
 
 function runNpm(args) {

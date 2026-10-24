@@ -1,0 +1,585 @@
+{
+  "schemaVersion": 1,
+  "scope": "local-directed-source-observations-not-actions-acceptance",
+  "baselinePRHead": "4e42951bb571a17ae6f5b779e1045f637b0b5185",
+  "sourceHashes": {
+    "scripts/smoke/smoke-catalog.mjs": "6436747a5a656844cf16d2990e7d02ddf9b009571cde7d7f2f53c52f83c4dd25",
+    "scripts/smoke/run-vscode-smoke.mjs": "3e990e271d19032ca619ffa35253a0608df7dee8da306eb776ce5c7d062f1ed8",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "5f5d65e1e0c5d7ded2eb457ab2142e59a53d167a665db27de0e291b18fe12cf3",
+    "scripts/smoke/snapshot-host-boundary.mjs": "89d0604bdefe298b48c25ef596af78a2e52ee855ff0b03782d6d6b12d3ae80ea",
+    "tests/vscode-smoke/extension-tests.cjs": "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912",
+    "tests/vscode-smoke/fixtures/fake-agent-provider": "ac8c901a31ed126dcbf3c5c3afee578d20de053467b0ab0d69a152dcd994c8a5",
+    "tests/vscode-smoke/fixtures/smoke-geometry-output-subject.cjs": "9ead2256b884decff92e11268ec965182c758202d9d66aab3551634e49ed00f4",
+    "tests/vscode-smoke/smoke-gap-observations.cjs": "b20c3892d0c114f2642da40f30a4973470e5537763dba7c41522283364c7c49c",
+    "scripts/smoke/smoke-budget-inventory.json": "37547f3868eb3dd6b04c839c60646feef9b05215ae7f398ab13ccdd1727b7de4",
+    "scripts/gates/catalog.mjs": "baa1dc811d16f7ac2b36272437d5e7769119fd24b11b94ed25c8e191278b8029"
+  },
+  "sourceCases": [
+    {
+      "caseID": "execution-exit/native-crash",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3582219,
+            "startTicks": "306163868",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/execution-exit/native-crash/0.host.json"
+      ]
+    },
+    {
+      "caseID": "execution-exit/terminal-error",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3573491,
+            "startTicks": "306161342",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/execution-exit/terminal-error/0.host.json"
+      ]
+    },
+    {
+      "caseID": "execution-exit/terminal-natural",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3568859,
+            "startTicks": "306159952",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/execution-exit/terminal-natural/0.host.json"
+      ]
+    },
+    {
+      "caseID": "execution-resize/live-geometry",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3592548,
+            "startTicks": "306166879",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/execution-resize/live-geometry/0.host.json"
+      ]
+    },
+    {
+      "caseID": "execution-restart/terminal-after-exit",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3577784,
+            "startTicks": "306162544",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/execution-restart/terminal-after-exit/0.host.json"
+      ]
+    },
+    {
+      "caseID": "execution-stop/unresponsive",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3586710,
+            "startTicks": "306165122",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/execution-stop/unresponsive/0.host.json"
+      ]
+    },
+    {
+      "caseID": "output-pressure/full-integrity",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3605455,
+            "startTicks": "306170405",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/output-pressure/full-integrity/0.host.json"
+      ]
+    },
+    {
+      "caseID": "output-pressure/resize",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3597998,
+            "startTicks": "306168185",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/output-pressure/resize/0.host.json"
+      ]
+    },
+    {
+      "caseID": "surface-continuity/live-page-remount",
+      "batch": "source-final",
+      "roles": [
+        "main"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3563544,
+            "startTicks": "306158746",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "73f1117def7dad6b587a7ac34aed1f7440f24510b35f431cf31f9ad039d9cd8b"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/source-final/surface-continuity/live-page-remount/0.host.json"
+      ]
+    },
+    {
+      "caseID": "host-boundary-local/new-host-manual-recovery",
+      "batch": "host-final-4",
+      "roles": [
+        "setup",
+        "verify"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3733474,
+            "startTicks": "306209031",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        },
+        {
+          "expected": {
+            "pid": 3735675,
+            "startTicks": "306209570",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/host-final-4/host-boundary-local/new-host-manual-recovery/3733474-b2a8e173-bbe7-41fa-9cb6-936ec5254c46.host.json",
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/host-final-4/host-boundary-local/new-host-manual-recovery/3735675-2353f873-30a7-4cac-b8a3-fdcd376f676e.host.json"
+      ]
+    },
+    {
+      "caseID": "host-boundary-local/preserve-terminal-state",
+      "batch": "host-final-4",
+      "roles": [
+        "setup",
+        "verify"
+      ],
+      "hostExits": [
+        {
+          "expected": {
+            "pid": 3727634,
+            "startTicks": "306207413",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        },
+        {
+          "expected": {
+            "pid": 3729808,
+            "startTicks": "306207945",
+            "platform": "linux"
+          },
+          "actual": null,
+          "result": "original-absent"
+        }
+      ],
+      "subjectHashes": [
+        "f230a5c0e432379dffd58e76f639a096acbd61abeb61b40e5702af07cb03a912"
+      ],
+      "receiptFiles": [
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/host-final-4/host-boundary-local/preserve-terminal-state/3727634-6e090064-a063-4d62-94db-be034a612544.host.json",
+        "docs/references/smoke-non-tui-gap-coverage/host-receipts/host-final-4/host-boundary-local/preserve-terminal-state/3729808-25e01699-fc77-4090-91ab-4af880ed3c2b.host.json"
+      ]
+    }
+  ],
+  "checks": {
+    "ciContracts": {
+      "passed": 118,
+      "failed": 0,
+      "log": "contract-final-2"
+    },
+    "afterLastSourceChange": {
+      "passed": 6,
+      "failed": 0,
+      "log": "contract-after-source-4"
+    },
+    "ownerLifecycle": {
+      "passed": 54,
+      "native": false
+    },
+    "terminalHistory": 6,
+    "runnerEnvironment": "passed",
+    "typecheck": "passed",
+    "retainedSuiteBudgets": {
+      "count": 123,
+      "changed": []
+    }
+  },
+  "logs": [
+    {
+      "name": "source-final",
+      "path": "/dev/shm/dsc-pr335-gap-source-final.log",
+      "sha256": "010aad5b23cdd5f994f307a7a714884815f8982e71339a84b87dafc6ea7300a2",
+      "size": 682168
+    },
+    {
+      "name": "host-final-2",
+      "path": "/dev/shm/dsc-pr335-gap-host-final-2.log",
+      "sha256": "d5f4cdb5c47dcbfd63e1bdcfc9dd55c38be5f668a7e3d327a5c8d96183970510",
+      "size": 104842
+    },
+    {
+      "name": "host-final-3",
+      "path": "/dev/shm/dsc-pr335-gap-host-final-3.log",
+      "sha256": "cb077bc6020c9c415a66721be8d79d4fca170d2a1d6c43823114943d5a1e9812",
+      "size": 198467
+    },
+    {
+      "name": "host-final-4",
+      "path": "/dev/shm/dsc-pr335-gap-host-final-4.log",
+      "sha256": "8eef5166f10103aa4a3753cce890846e30086e5657bbc2a44938ec1ddbedc86b",
+      "size": 191898
+    },
+    {
+      "name": "contract-first",
+      "path": "/dev/shm/dsc-pr335-gap-contract-first.log",
+      "sha256": "5b854efd3b6b7ff83eda31313bd2c44578087d429bf6a46d5ad094122b5648af",
+      "size": 26420
+    },
+    {
+      "name": "contract-final",
+      "path": "/dev/shm/dsc-pr335-gap-contract-final.log",
+      "sha256": "5e845b96d790a4d6f883ce31a21f9b72b3448a21820dd8344184be7ecddb65a2",
+      "size": 27756
+    },
+    {
+      "name": "contract-final-2",
+      "path": "/dev/shm/dsc-pr335-gap-contract-final-2.log",
+      "sha256": "0de019cccc1d1c8a97cb597fe94f240a10dd1dc44b36bd0e96492dadc8cf764f",
+      "size": 26280
+    },
+    {
+      "name": "contract-after-source-4",
+      "path": "/dev/shm/dsc-pr335-gap-contract-after-source-4.log",
+      "sha256": "a8a84d33c5d6da41f41fa46987fb0262aa9815adf54607f18013f556149e40b9",
+      "size": 1616
+    },
+    {
+      "name": "owner-final",
+      "path": "/dev/shm/dsc-pr335-gap-owner-final.log",
+      "sha256": "2aca8bbc2d0d617d538a229a862062344950df60ff153095b702a8b5b1ea0464",
+      "size": 5083
+    },
+    {
+      "name": "terminal-history",
+      "path": "/dev/shm/dsc-pr335-gap-terminal-history.log",
+      "sha256": "559219e2bce2c0dd17b96d712526ccf8b5088a6af62f8d3b888c3b0db58db95e",
+      "size": 593
+    },
+    {
+      "name": "runner-env",
+      "path": "/dev/shm/dsc-pr335-gap-runner-env.log",
+      "sha256": "cf8d116b3b4d7ec07345c1483d61ff3370af0256faf5f637b89222609e4d570e",
+      "size": 181
+    },
+    {
+      "name": "typecheck",
+      "path": "/dev/shm/dsc-pr335-gap-typecheck.log",
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73",
+      "size": 184
+    },
+    {
+      "name": "build-first",
+      "path": "/dev/shm/dsc-pr335-gap-build-first.log",
+      "sha256": "e080ecc7a11ad4c19af0c6960d4411a21bfc728f7fc52d29ef1400f1d9687bd8",
+      "size": 1135
+    },
+    {
+      "name": "build-second",
+      "path": "/dev/shm/dsc-pr335-gap-build-second.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    }
+  ],
+  "limitations": [
+    "Linux source定向验证，acceptance=false；未冒充Actions完整输入验收。",
+    "本地依赖借用另一worktree node_modules只读链接；不是本次npm ci证明。",
+    "production source构建借用旧固定六平台资产；本地构建不代证新输入native来源。",
+    "本轮packaged本地11项为旧固定production bytes/当前harness兼容性，acceptance=false；新head正式同批双包和完整Actions仍待。",
+    "Stop最终失败证据为production owner受控transport合同；真实PTY smoke覆盖忽略INT后升级成功。",
+    "四项真实Agent TUI未覆盖。"
+  ],
+  "firstFailures": [
+    "remount按猜测viewType定位失败，改为公开唯一active Webview tab身份。",
+    "原生SIGKILL实际signal字符串不是9，live=false先于error终态，改核完整实际终态。",
+    "resize原协议为resizeNode；page fit先于PTY更新，改绝对原期限内fresh geometry观察，不重发。",
+    "新增回归改变shard，旧反例硬编码shard；改为原producer的实际sibling。",
+    "Host新反例错误字段引用，修正合同subjects结构。",
+    "Host可见历史断言误用结束status/尚未保存的setup快照，改原setup捕获输出marker。",
+    "原包提取darwin spawn-helper丢可执行位，恢复既有mode后构建通过。"
+  ],
+  "ciFirstAttempt": {
+    "runID": 39311924428,
+    "head": "c679a60ff2175eaa4a68c3439bccc858758bcf34",
+    "inputSHA": "3da5f41a38435987a9bd4ecb73e65822b3965c09",
+    "planArtifactID": 12215996793,
+    "planZIP": {
+      "path": "/dev/shm/dsc-pr335-gap-ci-plan-original.zip",
+      "sha256": "5e5d8da6cb71eae20ef1b54a0216ec43706465793a2286e94537c27a9953dc72",
+      "size": 22043
+    },
+    "taskCount": 353,
+    "sourceRequired": 129,
+    "packagedRequired": 115,
+    "newCasesRequiredEach": 11,
+    "failedJobID": 118263769598,
+    "failure": "test:smoke-runtime-retirement VM context omitted process.execPath introduced by outer Node22 geometry fixture binding",
+    "log": {
+      "path": "/dev/shm/dsc-pr335-gap-ci-regression-shard1-first.log",
+      "sha256": "181cafd33d151dd2388f244690ae7b271dfb90f8e38bfca3e11087a2421b08f3",
+      "size": 109706
+    },
+    "ownerLifecycle": "54/54 passed in actual Actions",
+    "acceptance": false
+  },
+  "runtimeRetirementRepair": {
+    "result": "passed",
+    "log": {
+      "path": "/dev/shm/dsc-pr335-gap-runtime-retirement-fix.log",
+      "sha256": "8b5d162ac95c5e164e5c2f793aa6d9703ab074f463e011e8e31e563afb273160",
+      "size": 1350
+    },
+    "change": "受控VM显式给outer Node execPath，并核prepare/launch均传同Node路径；产品和runner实现无变化"
+  },
+  "packagedLocal": {
+    "acceptance": false,
+    "scope": "old-fixed-production-bytes-current-harness-local-compatibility",
+    "verified": [
+      {
+        "caseID": "surface-continuity/live-page-remount",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-exit/terminal-natural",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-exit/terminal-error",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-restart/terminal-after-exit",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-exit/native-crash",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-stop/unresponsive",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "execution-resize/live-geometry",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "output-pressure/resize",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "output-pressure/full-integrity",
+        "roles": [
+          "main"
+        ],
+        "exits": 1
+      },
+      {
+        "caseID": "host-boundary-local/preserve-terminal-state",
+        "roles": [
+          "setup",
+          "verify"
+        ],
+        "exits": 2
+      },
+      {
+        "caseID": "host-boundary-local/new-host-manual-recovery",
+        "roles": [
+          "setup",
+          "verify"
+        ],
+        "exits": 2
+      }
+    ],
+    "packages": [
+      {
+        "path": "/dev/shm/dsc-ci-actions-39133495259-download-1/candidate-original-1792332132890/gate-transfer-candidate-39133495259-1/main.vsix",
+        "sha256": "975cefedea6df811c3e1149f8ace400f21db7f32c7ea8ea5c51bdd2d30793bee"
+      },
+      {
+        "path": "/dev/shm/dsc-ci-actions-39133495259-download-1/candidate-original-1792332132890/gate-transfer-candidate-39133495259-1/notifier.vsix",
+        "sha256": "388aa3e3253827309a20c7417cce971fbfbb83a4407c124859983eae2635c7fd"
+      }
+    ],
+    "originalInput": "e92670f21f0aa2702dfb6a7ef488051f145dfef5",
+    "harnessHead": "52bbf2b2e1eebe1d40aa5fbc4e467dc5cabb6725",
+    "log": {
+      "path": "/dev/shm/dsc-pr335-gap-packaged-local.log",
+      "sha256": "c8aa24c08a27902b504d928c23d23f559f510b553b6ccb2c77f4afbd2fcac8a6"
+    },
+    "driver": {
+      "path": "/dev/shm/dsc-pr335-gap-packaged-local-driver.mjs",
+      "sha256": "526e6f18e992c420ea98c0b866c873020f63292f043b3eebaa45e970c7908c79"
+    },
+    "instrumentationFile": "docs/references/smoke-non-tui-gap-coverage/packaged-local-instrumentation.json",
+    "receipts": [
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-exit/native-crash/3935204-a3d02331-e23a-4d90-be90-62db73dc68ef.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-exit/terminal-error/3930112-c32c5137-1c28-48e6-a90d-72ae2937113e.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-exit/terminal-natural/3927010-a3f9c671-1cc2-4a80-a267-9f0cb3fcd22c.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-resize/live-geometry/3942630-714db69e-0e76-4d77-bf4b-6a7010e9bf78.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-restart/terminal-after-exit/3932485-e4d457ea-6077-4070-8004-da1df8612feb.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/execution-stop/unresponsive/3938330-093ead67-3b89-4ffd-94f5-5972b403021b.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/new-host-manual-recovery/3957922-fa3bce52-d115-4f1e-ad86-6fc0abc436f0.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/new-host-manual-recovery/3960111-41805976-443a-4714-95d7-37fd333431fb.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/preserve-terminal-state/3953704-afed5898-a31d-4311-8eb6-96037042adff.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/host-boundary-local/preserve-terminal-state/3955836-9117a0f9-3748-407a-aa18-e10be50d89d4.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/output-pressure/full-integrity/3950866-bdcfb7f2-3de2-4769-89c3-64f0f7b1ca4d.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/output-pressure/resize/3945052-5a7cd977-9b11-40ed-a4a5-ffbfecdb99c7.host.json",
+      "docs/references/smoke-non-tui-gap-coverage/host-receipts/packaged-local/surface-continuity/live-page-remount/3924327-c3980eff-6521-4e8e-97fa-96f3aa8d0a51.host.json"
+    ]
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "baselineHead": "0d29481a622518032668c9f63988140e74b2a70d",
+  "purpose": "remove unrelated dependency coupling, not establish the CI ECONNRESET cause",
+  "lockedPackagesUnchanged": true,
+  "pluginInstall": {
+    "exitCode": 0,
+    "seconds": 43.469,
+    "freshCache": true,
+    "noServiceRequests": true,
+    "absentPackages": [
+      "wrangler",
+      "miniflare",
+      "workerd",
+      "@cloudflare/workerd-linux-64"
+    ],
+    "platformPackagesPresent": [
+      "@esbuild/linux-x64",
+      "@rollup/rollup-linux-x64-gnu",
+      "node-pty"
+    ],
+    "postinstallExecuted": true
+  },
+  "marketplaceInstall": {
+    "exitCode": 0,
+    "seconds": 13.272,
+    "cache": "reused plugin cache, service tarballs fetched",
+    "servicePackagesPresent": true
+  },
+  "tests": {
+    "contractsBeforeMatrixSelection": 121,
+    "finalDependencyContracts": 3,
+    "finalScopeAndPlanContracts": 9,
+    "marketplaceAPI": 99,
+    "marketplaceWeb": 45,
+    "marketplaceShared": 28,
+    "marketplaceTypes": true,
+    "pluginAndNotifierTypes": true,
+    "sourceTerminal": true,
+    "sourceAgent": true,
+    "sourceResize": true,
+    "notifierHost": true,
+    "marketplaceHost": true,
+    "marketplacePreviewHost": true,
+    "marketplaceBrowser": true,
+    "pluginNotifierAndBrowserBuild": true,
+    "bothVsixPackaged": true,
+    "actionlint": true
+  },
+  "limits": [
+    "Linux local validation; cached VS Code1.142.0 and Chromium1217.",
+    "Six native assets copied byte-for-byte from prior PR335 local dist; not current-input native rebuilding or full candidate acceptance.",
+    "No claim that original CI ECONNRESET was caused by workerd.",
+    "Final-head full Actions acceptance must be recorded separately."
+  ],
+  "logs": [
+    {
+      "path": "/tmp/dsc335-deps-evidence/typecheck.log",
+      "bytes": 184,
+      "sha256": "8d613e2e51386b0c827a6ddf727b72d7d5409fc7c652e1509187f9aad62c2f73"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/notifier-typecheck.log",
+      "bytes": 211,
+      "sha256": "1a612b6d95382d40de2731c5b88523e543bf8da2d5a2a6b4422c9cac0413f9b9"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/notifier-build.log",
+      "bytes": 192,
+      "sha256": "511f5eb2819dbe33e3786f008c40dad0f1d04e9db4c3c276b2a5d2f87d73b604"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/browser-build.log",
+      "bytes": 537,
+      "sha256": "51573a24e2028d7cdd78d41c45d1f1c4ae1aadcb0e90cc259bf109ece0e43943"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/source-terminal.log",
+      "bytes": 57318,
+      "sha256": "15247dcd3dd6cd1296aa8d4a457ddb4558fb1f4c54938e63e5776be6723827f3"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/source-agent.log",
+      "bytes": 60184,
+      "sha256": "7384fd6938ee543a47ad8f3e0c47ae50a2975dddb49bb9d32a783c3d271dd01f"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/source-resize.log",
+      "bytes": 62534,
+      "sha256": "4d8cdec75831d5bd798036632bf088dfa68f50d063d784cbdee31ba970d5ec0e"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/notifier.log",
+      "bytes": 61581,
+      "sha256": "61ab4fdde565dc658d1aaf17dd5f22c80810114a3e7591198f703e6a5c318a05"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/marketplace-host.log",
+      "bytes": 60955,
+      "sha256": "21c2f34b7a22026a9148463ee60aac51a3ae80409c799293efa39b69d9bba75f"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/marketplace-preview.log",
+      "bytes": 60796,
+      "sha256": "376961c3d57c4c6f10a768b2db7a41b27e695f3ad697995f6c57c686b184c56c"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/marketplace-browser.log",
+      "bytes": 36,
+      "sha256": "8ba334604df0b7b37b5d4a2ba8f098f586d35f33339d7295784c4c63703629b4"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/contracts.log",
+      "bytes": 27263,
+      "sha256": "1f3a1b5d7f35b0acb99c2861aaefcfe8798fe614ef73eae4e44b153f60a590be"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/dependency-contract-final.log",
+      "bytes": 874,
+      "sha256": "fc172107bdcd8df0f13210b71c528a40014de0e714ae9ef40fe56aba043fd181"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/final-scope-contracts.log",
+      "bytes": 2484,
+      "sha256": "13862a5a8394f4d7beab79b4b0be779e10d413287835f1cfdce0c6380302d9de"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/main-vsix.log",
+      "bytes": 1075,
+      "sha256": "7cfe2718ecce7eb426831b9f577a116225e75e6347fb50c6808678c9a50f2d66"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/notifier-vsix.log",
+      "bytes": 1167,
+      "sha256": "cfd6c9db2a516b6c1c3a984ee9e8d1477abca9821b9173394ff6bbb1b1936080"
+    },
+    {
+      "path": "/tmp/dsc335-deps-evidence/actionlint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/dsc335-market-evidence/typecheck.log",
+      "bytes": 417,
+      "sha256": "0d4bb260234dc33d061bfcef195c8b77e5f47ad2658a60a165255d186675a121"
+    },
+    {
+      "path": "/tmp/dsc335-market-evidence/shared.log",
+      "bytes": 447,
+      "sha256": "90094065bf2aeef074128c212fc30d558b30aa18c868067e08dd508e0da61ff7"
+    },
+    {
+      "path": "/tmp/dsc335-market-evidence/api.log",
+      "bytes": 458,
+      "sha256": "bb8f0f8781635420b9b4354dac0f24ea59dd210ab0ec6ce0c70877084a5441af"
+    },
+    {
+      "path": "/tmp/dsc335-market-evidence/web.log",
+      "bytes": 458,
+      "sha256": "62f7ffeb197af903f524c585f35fd81e1bb1c8bf4462a7515f7b2b518f468b80"
+    },
+    {
+      "path": "/tmp/dsc335-market-evidence/config-tests.json",
+      "bytes": 250,
+      "sha256": "d45373ecb7ddeea36e79e5411e2e942dc655b9113dee58bad0fe13c2b6ffd454"
+    }
+  ],
+  "implementationSHA256": {
+    "scripts/gates/dependency-install.mjs": "4f78c0ea5a9022efe8ef5d7ceee45e25ab1b949fe96dd93239e0d7d06ba2d34f",
+    "scripts/gates/run-infrastructure.mjs": "4c581548a3012f2e3b2b19d3b2d06b8c396269a19b0837f49cefd78cfb2401ce",
+    "scripts/gates/resolve-plan.mjs": "9590d7611424531656d23cedf6e4d8d6f30cd9338c58b91461c40d8ce679ae9d",
+    "scripts/gates/run-local.mjs": "a62a19d142d6aa83001668bcf325f38ebd5583a90a25fde3f35ce6ca5c90924f",
+    "scripts/release/build-release-candidate.mjs": "88d3a0a49f759a15487d4917783e5712abc51ff9707146b269f549ed96ed88f2",
+    "package.json": "9e9eee1db63e900fd55484af75950eb3ef651c785da3430ce84967e8295994ab",
+    "package-lock.json": "926d4708676043836e3ee59ed0968c479bef68fc0248042d4c482cb1381b290e"
+  }
+}

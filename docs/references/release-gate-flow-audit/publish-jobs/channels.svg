@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1740" width="1920" height="1740" data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="1" data-visual-theme="Flat Icon" data-diagram-type="flowchart" data-motion-scene="" data-semantic-profile="generic" data-semantic-valid="true" data-quality-profile="showcase" data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35" data-max-bridged-crossings="0" data-min-node-gap="40.0" data-min-container-gutter="20.0" data-min-label-clearance="4.0" data-min-segment-length="16.0">
+  <defs>
+    <marker id="arrowA" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowC" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowE" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0d9488"/>
+    </marker>
+    <marker id="arrowF" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowH" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <filter id="shadowSoft" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowGlass" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#020617" flood-opacity="0.28"/>
+    </filter>
+    <style>
+    text { font-family: 'Noto Sans CJK SC', sans-serif; }
+    .title { font-size: 30px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 14px; font-weight: 500; fill: #6b7280; }
+    .section { font-size: 13px; font-weight: 700; fill: #2563eb; letter-spacing: 1.4px; }
+    .section-sub { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .node-title { font-weight: 700; fill: #111827; }
+    .node-sub { font-weight: 500; fill: #6b7280; }
+    .node-type { font-size: 12px; font-weight: 700; fill: #64748b; letter-spacing: 0.08em; }
+    .arrow-label { font-size: 12px; font-weight: 600; fill: #6b7280; }
+    .legend { font-size: 12px; font-weight: 500; fill: #6b7280; }
+    .footnote { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .metric-label { font-size: 8.5px; font-weight: 700; fill: #64748b; text-transform: uppercase; }
+    .metric-value { font-size: 9.5px; font-weight: 700; fill: #111827; }
+    </style>
+  </defs>
+  <rect data-graph-role="background" width="1920.0" height="1740.0" fill="#ffffff"/>
+  <text x="960.0" y="56" text-anchor="middle" class="title">发布 job 04–05：两个渠道的内部步骤</text>
+  <text x="960.0" y="82" text-anchor="middle" class="subtitle">prepare成功后并行；各45分钟 · 发布顺序 notifier→main；使用同批产物，不重打包</text>
+  <path id="edge-000" data-graph-role="edge" data-edge-id="edge-000" data-source="open-vsx-0" data-target="open-vsx-1" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,351 L 480,400" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-001" data-graph-role="edge" data-edge-id="edge-001" data-source="open-vsx-1" data-target="open-vsx-2" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,496 L 480,545" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-002" data-graph-role="edge" data-edge-id="edge-002" data-source="open-vsx-2" data-target="open-vsx-3" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,641 L 480,690" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-003" data-graph-role="edge" data-edge-id="edge-003" data-source="open-vsx-3" data-target="open-vsx-4" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,786 L 480,835" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-004" data-graph-role="edge" data-edge-id="edge-004" data-source="open-vsx-4" data-target="open-vsx-5" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,931 L 480,980" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-005" data-graph-role="edge" data-edge-id="edge-005" data-source="open-vsx-5" data-target="open-vsx-6" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,1076 L 480,1125" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-006" data-graph-role="edge" data-edge-id="edge-006" data-source="open-vsx-6" data-target="open-vsx-7" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,1221 L 480,1270" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-007" data-graph-role="edge" data-edge-id="edge-007" data-source="open-vsx-7" data-target="open-vsx-8" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 480,1366 L 480,1415" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-008" data-graph-role="edge" data-edge-id="edge-008" data-source="visual-studio-0" data-target="visual-studio-1" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,351 L 1440,400" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-009" data-graph-role="edge" data-edge-id="edge-009" data-source="visual-studio-1" data-target="visual-studio-2" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,496 L 1440,545" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-010" data-graph-role="edge" data-edge-id="edge-010" data-source="visual-studio-2" data-target="visual-studio-3" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,641 L 1440,690" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-011" data-graph-role="edge" data-edge-id="edge-011" data-source="visual-studio-3" data-target="visual-studio-4" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,786 L 1440,835" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-012" data-graph-role="edge" data-edge-id="edge-012" data-source="visual-studio-4" data-target="visual-studio-5" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,931 L 1440,980" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-013" data-graph-role="edge" data-edge-id="edge-013" data-source="visual-studio-5" data-target="visual-studio-6" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,1076 L 1440,1125" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-014" data-graph-role="edge" data-edge-id="edge-014" data-source="visual-studio-6" data-target="visual-studio-7" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,1221 L 1440,1270" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-015" data-graph-role="edge" data-edge-id="edge-015" data-source="visual-studio-7" data-target="visual-studio-8" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 1440,1366 L 1440,1415" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <g id="node-open-vsx-head" data-graph-role="node" data-node-id="open-vsx-head" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,130,910,200">
+  <rect x="50.0" y="130.0" width="860.0" height="70.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="04  Open VSX" data-text-max-width="836.0" x="480.0" y="165.0" text-anchor="middle" class="node-title" font-size="21.0">04 Open VSX</text>
+  <text data-text-role="subtitle" data-full-text="ubuntu-latest；needs prepare；45分钟" data-text-max-width="836.0" x="480.0" y="187.0" text-anchor="middle" class="node-sub" font-size="12">ubuntu-latest；needs prepare；45分钟</text>
+  </g>
+  <g id="node-open-vsx-0" data-graph-role="node" data-node-id="open-vsx-0" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,255,910,351">
+  <rect x="50.0" y="255.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="01  checkout 临时 trigger tag" data-text-max-width="836.0" x="480.0" y="303.0" text-anchor="middle" class="node-title" font-size="21.0">01 checkout 临时 trigger tag</text>
+  <text data-text-role="subtitle" data-full-text="fetch-depth=0；Node22 → npm ci" data-text-max-width="836.0" x="480.0" y="325.0" text-anchor="middle" class="node-sub" font-size="12">fetch-depth=0；Node22 → npm ci</text>
+  </g>
+  <g id="node-open-vsx-1" data-graph-role="node" data-node-id="open-vsx-1" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,400,910,496">
+  <rect x="50.0" y="400.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="02  下载 prepare 的同 run 产物" data-text-max-width="836.0" x="480.0" y="448.0" text-anchor="middle" class="node-title" font-size="21.0">02 下载 prepare 的同 run 产物</text>
+  <text data-text-role="subtitle" data-full-text="prepared-release-&lt;run_id&gt; → 当前目录" data-text-max-width="836.0" x="480.0" y="470.0" text-anchor="middle" class="node-sub" font-size="12">prepared-release-&lt;run_id&gt; → 当前目录</text>
+  </g>
+  <g id="node-open-vsx-2" data-graph-role="node" data-node-id="open-vsx-2" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,545,910,641">
+  <rect x="50.0" y="545.0" width="860.0" height="96.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="03  检查本渠道 PAT 是否存在" data-text-max-width="836.0" x="480.0" y="593.0" text-anchor="middle" class="node-title" font-size="21.0">03 检查本渠道 PAT 是否存在</text>
+  <text data-text-role="subtitle" data-full-text="OVSX_PAT缺失：status=1，跳过校验/发布" data-text-max-width="836.0" x="480.0" y="615.0" text-anchor="middle" class="node-sub" font-size="12">OVSX_PAT缺失：status=1，跳过校验/发布</text>
+  </g>
+  <g id="node-open-vsx-3" data-graph-role="node" data-node-id="open-vsx-3" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,690,910,786">
+  <rect x="50.0" y="690.0" width="860.0" height="96.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="04  校验 release 输入和原产物" data-text-max-width="836.0" x="480.0" y="738.0" text-anchor="middle" class="node-title" font-size="21.0">04 校验 release 输入和原产物</text>
+  <text data-text-role="subtitle" data-full-text="版本、HEAD/tag/main、clean、manifest ref和VSIX hash" data-text-max-width="836.0" x="480.0" y="760.0" text-anchor="middle" class="node-sub" font-size="12">版本、HEAD/tag/main、clean、manifest ref和VSIX hash</text>
+  </g>
+  <g id="node-open-vsx-4" data-graph-role="node" data-node-id="open-vsx-4" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,835,910,931">
+  <rect x="50.0" y="835.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="05  查询已发布版本 → 发布缺失扩展" data-text-max-width="836.0" x="480.0" y="883.0" text-anchor="middle" class="node-title" font-size="21.0">05 查询已发布版本 → 发布缺失扩展</text>
+  <text data-text-role="subtitle" data-full-text="顺序 notifier→main；已verified/已存在跳过；失败继续其他扩展" data-text-max-width="836.0" x="480.0" y="905.0" text-anchor="middle" class="node-sub" font-size="12">顺序 notifier→main；已verified/已存在跳过；失败继续其他扩展</text>
+  </g>
+  <g id="node-open-vsx-5" data-graph-role="node" data-node-id="open-vsx-5" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,980,910,1076">
+  <rect x="50.0" y="980.0" width="860.0" height="96.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="06  查询渠道结果，限次等待可见" data-text-max-width="836.0" x="480.0" y="1028.0" text-anchor="middle" class="node-title" font-size="21.0">06 查询渠道结果，限次等待可见</text>
+  <text data-text-role="subtitle" data-full-text="Open VSX：版本+download/icon/license/sha256/vsixmanifest链接" data-text-max-width="836.0" x="480.0" y="1050.0" text-anchor="middle" class="node-sub" font-size="12">Open VSX：版本+download/icon/license/sha256/vsixmanifest链接</text>
+  </g>
+  <g id="node-open-vsx-6" data-graph-role="node" data-node-id="open-vsx-6" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1125,910,1221">
+  <rect x="50.0" y="1125.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="07  写结果 manifest 与命令 status" data-text-max-width="836.0" x="480.0" y="1173.0" text-anchor="middle" class="node-title" font-size="21.0">07 写结果 manifest 与命令 status</text>
+  <text data-text-role="subtitle" data-full-text="--skip-package；--no-create-final-tag；本job不删trigger tag" data-text-max-width="836.0" x="480.0" y="1195.0" text-anchor="middle" class="node-sub" font-size="12">--skip-package；--no-create-final-tag；本job不删trigger tag</text>
+  </g>
+  <g id="node-open-vsx-7" data-graph-role="node" data-node-id="open-vsx-7" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1270,910,1366">
+  <rect x="50.0" y="1270.0" width="860.0" height="96.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="08  always：上传本渠道 result manifest" data-text-max-width="836.0" x="480.0" y="1318.0" text-anchor="middle" class="node-title" font-size="21.0">08 always：上传本渠道 result manifest</text>
+  <text data-text-role="subtitle" data-full-text="marketplace-result-open-vsx-&lt;run_id&gt;；无文件warn" data-text-max-width="836.0" x="480.0" y="1340.0" text-anchor="middle" class="node-sub" font-size="12">marketplace-result-open-vsx-&lt;run_id&gt;；无文件warn</text>
+  </g>
+  <g id="node-open-vsx-8" data-graph-role="node" data-node-id="open-vsx-8" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="50,1415,910,1511">
+  <rect x="50.0" y="1415.0" width="860.0" height="96.0" rx="10.0" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="09  Open VSX失败 → job失败" data-text-max-width="836.0" x="480.0" y="1463.0" text-anchor="middle" class="node-title" font-size="21.0">09 Open VSX失败 → job失败</text>
+  <text data-text-role="subtitle" data-full-text="finalize仍会运行；两扩展Open VSX必须满足完成" data-text-max-width="836.0" x="480.0" y="1485.0" text-anchor="middle" class="node-sub" font-size="12">finalize仍会运行；两扩展Open VSX必须满足完成</text>
+  </g>
+  <g id="node-visual-studio-head" data-graph-role="node" data-node-id="visual-studio-head" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,130,1870,200">
+  <rect x="1010.0" y="130.0" width="860.0" height="70.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="05  VS Marketplace" data-text-max-width="836.0" x="1440.0" y="165.0" text-anchor="middle" class="node-title" font-size="21.0">05 VS Marketplace</text>
+  <text data-text-role="subtitle" data-full-text="ubuntu-latest；needs prepare；45分钟" data-text-max-width="836.0" x="1440.0" y="187.0" text-anchor="middle" class="node-sub" font-size="12">ubuntu-latest；needs prepare；45分钟</text>
+  </g>
+  <g id="node-visual-studio-0" data-graph-role="node" data-node-id="visual-studio-0" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,255,1870,351">
+  <rect x="1010.0" y="255.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="01  checkout 临时 trigger tag" data-text-max-width="836.0" x="1440.0" y="303.0" text-anchor="middle" class="node-title" font-size="21.0">01 checkout 临时 trigger tag</text>
+  <text data-text-role="subtitle" data-full-text="fetch-depth=0；Node22 → npm ci" data-text-max-width="836.0" x="1440.0" y="325.0" text-anchor="middle" class="node-sub" font-size="12">fetch-depth=0；Node22 → npm ci</text>
+  </g>
+  <g id="node-visual-studio-1" data-graph-role="node" data-node-id="visual-studio-1" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,400,1870,496">
+  <rect x="1010.0" y="400.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="02  下载 prepare 的同 run 产物" data-text-max-width="836.0" x="1440.0" y="448.0" text-anchor="middle" class="node-title" font-size="21.0">02 下载 prepare 的同 run 产物</text>
+  <text data-text-role="subtitle" data-full-text="prepared-release-&lt;run_id&gt; → 当前目录" data-text-max-width="836.0" x="1440.0" y="470.0" text-anchor="middle" class="node-sub" font-size="12">prepared-release-&lt;run_id&gt; → 当前目录</text>
+  </g>
+  <g id="node-visual-studio-2" data-graph-role="node" data-node-id="visual-studio-2" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,545,1870,641">
+  <rect x="1010.0" y="545.0" width="860.0" height="96.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="03  检查本渠道 PAT 是否存在" data-text-max-width="836.0" x="1440.0" y="593.0" text-anchor="middle" class="node-title" font-size="21.0">03 检查本渠道 PAT 是否存在</text>
+  <text data-text-role="subtitle" data-full-text="VSCE_PAT缺失：status=1，跳过校验/发布" data-text-max-width="836.0" x="1440.0" y="615.0" text-anchor="middle" class="node-sub" font-size="12">VSCE_PAT缺失：status=1，跳过校验/发布</text>
+  </g>
+  <g id="node-visual-studio-3" data-graph-role="node" data-node-id="visual-studio-3" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,690,1870,786">
+  <rect x="1010.0" y="690.0" width="860.0" height="96.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="04  校验 release 输入和原产物" data-text-max-width="836.0" x="1440.0" y="738.0" text-anchor="middle" class="node-title" font-size="21.0">04 校验 release 输入和原产物</text>
+  <text data-text-role="subtitle" data-full-text="版本、HEAD/tag/main、clean、manifest ref和VSIX hash" data-text-max-width="836.0" x="1440.0" y="760.0" text-anchor="middle" class="node-sub" font-size="12">版本、HEAD/tag/main、clean、manifest ref和VSIX hash</text>
+  </g>
+  <g id="node-visual-studio-4" data-graph-role="node" data-node-id="visual-studio-4" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,835,1870,931">
+  <rect x="1010.0" y="835.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="05  查询已发布版本 → 发布缺失扩展" data-text-max-width="836.0" x="1440.0" y="883.0" text-anchor="middle" class="node-title" font-size="21.0">05 查询已发布版本 → 发布缺失扩展</text>
+  <text data-text-role="subtitle" data-full-text="顺序 notifier→main；已verified/已存在跳过；失败继续其他扩展" data-text-max-width="836.0" x="1440.0" y="905.0" text-anchor="middle" class="node-sub" font-size="12">顺序 notifier→main；已verified/已存在跳过；失败继续其他扩展</text>
+  </g>
+  <g id="node-visual-studio-5" data-graph-role="node" data-node-id="visual-studio-5" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,980,1870,1076">
+  <rect x="1010.0" y="980.0" width="860.0" height="96.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="06  查询渠道结果，限次等待可见" data-text-max-width="836.0" x="1440.0" y="1028.0" text-anchor="middle" class="node-title" font-size="21.0">06 查询渠道结果，限次等待可见</text>
+  <text data-text-role="subtitle" data-full-text="VS Marketplace：gallery API返回指定扩展的目标版本" data-text-max-width="836.0" x="1440.0" y="1050.0" text-anchor="middle" class="node-sub" font-size="12">VS Marketplace：gallery API返回指定扩展的目标版本</text>
+  </g>
+  <g id="node-visual-studio-6" data-graph-role="node" data-node-id="visual-studio-6" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,1125,1870,1221">
+  <rect x="1010.0" y="1125.0" width="860.0" height="96.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="07  写结果 manifest 与命令 status" data-text-max-width="836.0" x="1440.0" y="1173.0" text-anchor="middle" class="node-title" font-size="21.0">07 写结果 manifest 与命令 status</text>
+  <text data-text-role="subtitle" data-full-text="--skip-package；--no-create-final-tag；本job不删trigger tag" data-text-max-width="836.0" x="1440.0" y="1195.0" text-anchor="middle" class="node-sub" font-size="12">--skip-package；--no-create-final-tag；本job不删trigger tag</text>
+  </g>
+  <g id="node-visual-studio-7" data-graph-role="node" data-node-id="visual-studio-7" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,1270,1870,1366">
+  <rect x="1010.0" y="1270.0" width="860.0" height="96.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="08  always：上传本渠道 result manifest" data-text-max-width="836.0" x="1440.0" y="1318.0" text-anchor="middle" class="node-title" font-size="21.0">08 always：上传本渠道 result manifest</text>
+  <text data-text-role="subtitle" data-full-text="marketplace-result-visual-studio-&lt;run_id&gt;；无文件warn" data-text-max-width="836.0" x="1440.0" y="1340.0" text-anchor="middle" class="node-sub" font-size="12">marketplace-result-visual-studio-&lt;run_id&gt;；无文件warn</text>
+  </g>
+  <g id="node-visual-studio-8" data-graph-role="node" data-node-id="visual-studio-8" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1010,1415,1870,1511">
+  <rect x="1010.0" y="1415.0" width="860.0" height="96.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="09  VS渠道失败 → 输出 deferred 说明" data-text-max-width="836.0" x="1440.0" y="1463.0" text-anchor="middle" class="node-title" font-size="21.0">09 VS渠道失败 → 输出 deferred 说明</text>
+  <text data-text-role="subtitle" data-full-text="业务发布失败不强制该步exit1；前置硬失败仍可令job失败" data-text-max-width="836.0" x="1440.0" y="1485.0" text-anchor="middle" class="node-sub" font-size="12">业务发布失败不强制该步exit1；前置硬失败仍可令job失败</text>
+  </g>
+</svg>

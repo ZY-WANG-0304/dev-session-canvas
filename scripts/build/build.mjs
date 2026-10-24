@@ -1,6 +1,5 @@
 import esbuild from 'esbuild';
 import { promises as fs } from 'fs';
-import { createRequire } from 'module';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { parseArgs } from 'node:util';
@@ -12,9 +11,8 @@ import { importCandidateAssets as importWindowsCandidateAssets,
   readCandidateAssets as readWindowsCandidateAssets } from './windows-execution-candidate-assets.mjs';
 import { importExecutionCandidateAssetSet, readExecutionCandidateAssetSet } from './execution-candidate-assets-set.mjs';
 import { ensureXtermSerializePatch } from '../shared/ensure-xterm-serialize-patch.mjs';
+import { browserBuildConfig } from './build-browser-assets.mjs';
 
-const require = createRequire(import.meta.url);
-const xtermBrowserMainEntryPath = require.resolve('@xterm/xterm/lib/xterm.js');
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const mainExtensionRoot = path.join(projectRoot, 'extensions', 'vscode', 'dev-session-canvas');
 const mainExtensionDistRoot = path.join(mainExtensionRoot, 'dist');
@@ -162,34 +160,7 @@ const windowsExecutionOutputWorkerConfig = {
   outfile: fromMainExtensionDist('windows-execution-output-worker.js')
 };
 
-const webviewConfig = {
-  entryPoints: {
-    webview: fromMainExtensionRoot('src/webview/main.tsx'),
-    'sidebar-codicon': fromMainExtensionRoot('src/webview/sidebar-codicon.css')
-  },
-  bundle: true,
-  ...sharedConfig,
-  format: 'iife',
-  outdir: mainExtensionDistRoot,
-  entryNames: '[name]',
-  platform: 'browser',
-  target: 'es2020',
-  plugins: [
-    {
-      name: 'xterm-browser-main-entry',
-      setup(build) {
-        build.onResolve({ filter: /^@xterm\/xterm$/ }, () => ({
-          path: xtermBrowserMainEntryPath
-        }));
-      }
-    }
-  ],
-  loader: {
-    '.ttf': 'file',
-    '.woff': 'file',
-    '.woff2': 'file'
-  }
-};
+const webviewConfig = browserBuildConfig({ output: mainExtensionDistRoot, production: isProduction });
 
 async function runBuild() {
   const selection = await resolveExecutionBuildSelection(process.argv.slice(2));

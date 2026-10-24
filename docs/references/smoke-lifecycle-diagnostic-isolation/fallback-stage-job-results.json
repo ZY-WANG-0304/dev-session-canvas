@@ -1,0 +1,29 @@
+{
+  "run": 38683788069,
+  "input": "f8d9ad5341f8a20a7cbd97fda6beb01e71937ddc",
+  "assets_run": 38681093813,
+  "jobs": [
+    {
+      "id": 116253940770,
+      "scenario_step": "success",
+      "job": "success"
+    },
+    {
+      "id": 116253940992,
+      "scenario_step": "success",
+      "job": "success"
+    }
+  ],
+  "artifacts": [
+    {
+      "id": 11948913840,
+      "bytes": 304320228
+    },
+    {
+      "id": 11949177094,
+      "bytes": 304313629
+    }
+  ],
+  "local_download": "failed after range reads; do not claim full local verification",
+  "conclusion": "No fallback blocker: same-input stage-only runs succeeded; full original gate also recorded fallback passed at 04:42:41Z."
+}

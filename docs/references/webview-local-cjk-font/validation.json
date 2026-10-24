@@ -1,0 +1,36 @@
+{
+  "base": "d6646b38c188a441cbf68eadd61e7e5244c8e002",
+  "scope": "local Webview font replacement; not CI acceptance",
+  "node": "22.23.3",
+  "playwright": "1.59.1",
+  "chromium_revision": 1217,
+  "os": "Ubuntu 22.04.5",
+  "system_cjk_fonts_available": false,
+  "registered_tests": 434,
+  "original_catalog_ids_unchanged": true,
+  "final_tests": {
+    "passed": 434,
+    "failed": 0,
+    "skipped": 0,
+    "retries": 0,
+    "duration_minutes": 7.6
+  },
+  "original_screenshot_glyphs": 38,
+  "original_glyph_outlines_and_advance_widths_unchanged": true,
+  "font_cmap_matches_manifest": true,
+  "screenshot_baseline_changed": false,
+  "reproducible_font_bytes": true,
+  "implementation_sha256": {
+    "tests/playwright/webview-harness.spec.mjs": "01ec53db1a653bcdf62882a87a4b26f901d28aad44ba896f8a0e439a700cb162",
+    "tests/playwright/fixtures/screenshot-fonts/load.mjs": "de59fcc68c62d58f251b8abc90ac29579efec306a6b17e417e0b8fad7f43e43a",
+    "tests/playwright/fixtures/screenshot-fonts/generate.py": "f6ab6af18cc0e248502aab2a64c4adc68f6339be037c340bcea2556f7fba5c0c",
+    "tests/playwright/fixtures/screenshot-fonts/cjk-regular.woff": "493f33ce839f7352c9578abb82eb85ddf48d6af47e8bb4af3d58611c45af9cd4",
+    "tests/playwright/fixtures/screenshot-fonts/characters.txt": "b710e5a9f6549c950ecd4ab7778c266b63e9b2cdf081813c4ab03993f2bac359",
+    "tests/playwright/fixtures/screenshot-fonts/provenance.json": "cb99ea7c4f6a1a449f252490e582a1fc95812c6900f8bbc65e73193b944d65bd"
+  },
+  "limitations": [
+    "Uses existing local Webview dist and Chromium cache; no new-head Actions acceptance",
+    "Earlier Latin-only control reproduced 2 of the 3 original CI failures",
+    "VSCode download ECONNRESET remains a separate issue"
+  ]
+}

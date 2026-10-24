@@ -1,0 +1,46 @@
+[
+  {
+    "name": "production-build",
+    "command": [
+      "node",
+      "scripts/build/build.mjs",
+      "--production",
+      "--execution-assets-set",
+      "/tmp/dsc335-assets"
+    ],
+    "exitCode": 0,
+    "seconds": 0.653
+  },
+  {
+    "name": "notifier-production-build",
+    "command": [
+      "node",
+      "extensions/vscode/dev-session-canvas-notifier/scripts/build.mjs",
+      "--production"
+    ],
+    "exitCode": 0,
+    "seconds": 0.165
+  },
+  {
+    "name": "main-vsix",
+    "command": [
+      "node",
+      "scripts/release/package-vsix.mjs",
+      "--output",
+      "/tmp/dsc335-main.vsix"
+    ],
+    "exitCode": 0,
+    "seconds": 3.602
+  },
+  {
+    "name": "notifier-vsix",
+    "command": [
+      "node",
+      "extensions/vscode/dev-session-canvas-notifier/scripts/package-vsix.mjs",
+      "--output",
+      "/tmp/dsc335-notifier.vsix"
+    ],
+    "exitCode": 0,
+    "seconds": 1.798
+  }
+]

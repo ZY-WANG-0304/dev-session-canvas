@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "mode": "flowchart",
+  "style": 1,
+  "text_policy": "strict",
+  "quality_profile": "showcase",
+  "width": 1600,
+  "height": 1580,
+  "title": "03  最终 tag 门禁与发布",
+  "subtitle": "人工在 main 创建 publish/vX.Y.Z 后触发；或 workflow_dispatch 重跑同一临时 tag",
+  "style_overrides": {
+    "font_family": "'Noto Sans CJK SC', sans-serif",
+    "title_size": 30,
+    "arrow_colors": {
+      "control": "#2563eb",
+      "read": "#2563eb",
+      "write": "#16a34a",
+      "data": "#0d9488",
+      "async": "#9333ea",
+      "feedback": "#dc2626",
+      "neutral": "#6b7280"
+    }
+  },
+  "nodes": [
+    {
+      "id": "input",
+      "x": 70,
+      "y": 150,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "解析 publish tag → 固定不可变 SHA",
+      "sublabel": "当前版本走完整 verify；历史 ref 仅保留其既有兼容路径",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "assets",
+      "x": 70,
+      "y": 330,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "同 SHA / 同 run 六平台资产构建与装配",
+      "sublabel": "六 job 并行，各 20 分钟；最小 / 当前 Node 原生加载检查",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "verify",
+      "x": 70,
+      "y": 510,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "prepare：再次执行 release:verify",
+      "sublabel": "Ubuntu 22.04 / Node 22 / Chromium；上限 90 分钟",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "new",
+      "x": 70,
+      "y": 690,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "验证通过：准备 / 核验同批 VSIX + manifest",
+      "sublabel": "Release 不存在则新打包；已存在须齐全，校验 ref / 版本 / SHA",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "github",
+      "x": 70,
+      "y": 870,
+      "width": 800,
+      "height": 104,
+      "kind": "rect",
+      "label": "核验 releaseRef 已合入 main → 正式 v tag / Release",
+      "sublabel": "主扩展 + notifier VSIX 上传，产物传给两个渠道",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "openvsx",
+      "x": 70,
+      "y": 1050,
+      "width": 520,
+      "height": 104,
+      "kind": "rect",
+      "label": "Open VSX：发布与验真",
+      "sublabel": "主扩展与 notifier 都必须成功；45 分钟",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "vsmarket",
+      "x": 720,
+      "y": 1050,
+      "width": 520,
+      "height": 104,
+      "kind": "rect",
+      "label": "VS Marketplace：发布与验真",
+      "sublabel": "允许 deferred，不阻断本版完成；45 分钟",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "finalize",
+      "x": 400,
+      "y": 1230,
+      "width": 620,
+      "height": 104,
+      "kind": "rect",
+      "label": "finalize：always 汇总渠道结果",
+      "sublabel": "仅 prepare 成功才运行；更新 manifest / notes；20 分钟",
+      "title_size": 21,
+      "fill": "#eff6ff",
+      "stroke": "#bfdbfe",
+      "flat": true
+    },
+    {
+      "id": "complete",
+      "x": 400,
+      "y": 1410,
+      "width": 620,
+      "height": 104,
+      "kind": "rect",
+      "label": "GitHub assets + Open VSX 完整：删 publish tag",
+      "sublabel": "否则保留临时 tag 并失败，供后续重跑",
+      "title_size": 21,
+      "fill": "#f0fdf4",
+      "stroke": "#86efac",
+      "flat": true
+    },
+    {
+      "id": "failure",
+      "x": 1040,
+      "y": 510,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "verify 失败：停在 prepare",
+      "sublabel": "不进入正式打包 / Release / 渠道",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "partial",
+      "x": 1040,
+      "y": 690,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "已有 Release 缺资产：拒绝覆盖",
+      "sublabel": "须人工处理，不自动生成另一批 VSIX",
+      "title_size": 21,
+      "fill": "#fef2f2",
+      "stroke": "#fca5a5",
+      "flat": true
+    },
+    {
+      "id": "native",
+      "x": 1040,
+      "y": 330,
+      "width": 490,
+      "height": 104,
+      "kind": "rect",
+      "label": "六平台 ≠ 六平台功能验收",
+      "sublabel": "nativeLoaded=true；productValidated=false",
+      "title_size": 21,
+      "fill": "#f9fafb",
+      "stroke": "#d1d5db",
+      "flat": true
+    }
+  ],
+  "arrows": [
+    {
+      "source": "input",
+      "target": "assets",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "assets",
+      "target": "verify",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "verify",
+      "target": "new",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "通过",
+      "color": "#16a34a"
+    },
+    {
+      "source": "verify",
+      "target": "failure",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "失败",
+      "color": "#dc2626"
+    },
+    {
+      "source": "new",
+      "target": "partial",
+      "source_port": "right",
+      "target_port": "left",
+      "label": "不完整",
+      "color": "#dc2626"
+    },
+    {
+      "source": "new",
+      "target": "github",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "github",
+      "target": "openvsx",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "github",
+      "target": "vsmarket",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "openvsx",
+      "target": "finalize",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "vsmarket",
+      "target": "finalize",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#2563eb"
+    },
+    {
+      "source": "finalize",
+      "target": "complete",
+      "source_port": "bottom",
+      "target_port": "top",
+      "label": "",
+      "color": "#16a34a"
+    }
+  ],
+  "legend": [
+    {
+      "label": "自动执行",
+      "color": "#2563eb"
+    },
+    {
+      "label": "失败 / 跳过",
+      "color": "#dc2626"
+    },
+    {
+      "label": "满足验收",
+      "color": "#16a34a"
+    },
+    {
+      "label": "人工协作",
+      "color": "#9333ea"
+    }
+  ],
+  "legend_x": 60,
+  "legend_y": 1532,
+  "legend_orientation": "horizontal"
+}

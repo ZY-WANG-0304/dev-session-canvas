@@ -1,0 +1,5721 @@
+{
+  "schemaVersion": 1,
+  "inputHead": "50e201caefb7c7d20ee2818455318fc33d8a2ba9",
+  "status": "implementation-targets-with-historical-proposal-baseline",
+  "validationScope": "static-design-traceability-not-product-acceptance",
+  "sourceSha256": {
+    "package.json": "9869b3f1aefa49b2cec333c718916f83351df5e1e20f6792601311513b4cd371",
+    "scripts/release/release-preflight.mjs": "d2cd9646843cc58de0309b42bdebeb46824002f34f23f5d27d88a79c30f59802",
+    "scripts/release/run-clean-checkout-vsix-validation.mjs": "ea36a568a51f75d13627f4d17ff5c501dac43f9becdc9ac0d2eb31838430e789",
+    "scripts/smoke/run-vscode-smoke.mjs": "6109299e164de7eca5bac5b36aedd7c8b5336ee3527ec3eb84ba1e05825897cd",
+    "scripts/smoke/run-vscode-vsix-smoke.mjs": "07015a10d0046c2a9018d9171c8ee09aa672cbeda8a095c00015f73505685d1d",
+    "scripts/smoke/vscode-smoke-runner.mjs": "cc482a109444558c56d53b84d36ba4c47edeb342f497af7908ad97a0d95a9307",
+    "scripts/smoke/vscode-remote-ssh-fixture.mjs": "071473c44adfadba723b0b14a4cd94fe8ffe770858e88f4a8f092f760ddd106d",
+    "tests/vscode-smoke/extension-tests.cjs": "3599b5e380e76e9aebb385d68b01a058e2b0da3add6dda66d8f7dba90af98c66",
+    "tests/vscode-smoke/test-helpers.cjs": "9748043331b8480a8a003d9c3796d2b57a9a316f589147882fa6166e645a66b0",
+    "tests/vscode-smoke/real-reopen-tests.cjs": "d0797f439381e8fd003561142c7ca1112ccce0025999f0e626244bb149614d42",
+    "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "24ccbcefc4ff50b3a2b2a13ef7fc28a8962156d7e71edf4c01a959e6bf3559b0",
+    "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "1919dc546808caaf951ba6d7ac0534b7684ca40c883ffb40cf2fa908af58e250",
+    "tests/vscode-smoke/terminal-resize.cjs": "4db03e6fa60abef90570c80b2540507a01b0738cb7e51d0f36eaaef373054908",
+    "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718",
+    "tests/vscode-smoke/remote-host-control.cjs": "81e4b5f900b38faf56421774b188d35e02486e7a65d9778592064b82b9a26225",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "deca17ae00666a1e6b7f1402cf0445f240a191ebd49d1794dc3481dd3271da96",
+    "tests/vscode-smoke/execution-output.cjs": "9e6002d49e7774b335aa76b38b0153ddbcfcc8f0726dc95edf34f4286dc745c7",
+    "tests/vscode-smoke/runtime-compatibility-tests.cjs": "2654335090bc7aeeab7dd69d8241cc8dfc474feffbd262fe33ed843ec060c558",
+    "tests/vscode-smoke/fixtures/fake-agent-provider": "dccdb322f194b9aed1c6743de08b55217a0312dc21a39d4a432a99dfd46681d6",
+    "extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts": "c10136a1e96cff9aab511fcba552ea4fe4bd5f448efdd2fbfd3d949edea3a8fe"
+  },
+  "currentSourceDefault": [
+    "local-execution-flow",
+    "owned-canvas-reconciliation",
+    "snapshot-only-manual-recovery",
+    "local-surface-cutover",
+    "local-preparation-failure",
+    "local-links-and-stop",
+    "local-pty-robustness",
+    "runtime-checkpoint-refresh",
+    "trusted",
+    "restricted",
+    "legacy-supervisor-upgrade",
+    "real-reopen",
+    "multi-root-real-reopen",
+    "single-to-multi-root-real-reopen",
+    "two-window-shared-runtime",
+    "systemd-user-real-reopen",
+    "systemd-fallback-real-reopen",
+    "remote-ssh-real-reopen-exit",
+    "remote-ssh-real-reopen-retain"
+  ],
+  "currentPackagedDefault": [
+    "owned-canvas-reconciliation",
+    "local-execution-flow",
+    "snapshot-only-manual-recovery",
+    "local-surface-cutover",
+    "local-pty-robustness",
+    "local-preparation-failure",
+    "local-links-and-stop",
+    "trusted"
+  ],
+  "currentSourceFocusedOnly": [
+    "runtime-legacy-reconnect",
+    "linux-runtime-report-unavailable",
+    "runtime-completed-no-history"
+  ],
+  "cases": [
+    {
+      "id": "execution-start/auto-start",
+      "scenario": "execution-start",
+      "case": "auto-start",
+      "title": "创建后原执行started",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "owned-canvas-reconciliation",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-start/duplicate",
+      "scenario": "execution-start",
+      "case": "duplicate",
+      "title": "活动执行拒绝重复Start",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-start/missing-cli",
+      "scenario": "execution-start",
+      "case": "missing-cli",
+      "title": "缺CLI未启动请求结算",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-preparation-failure",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-start/invalid-launch",
+      "scenario": "execution-start",
+      "case": "invalid-launch",
+      "title": "非法命令拒绝且不产生执行",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-io/agent-line",
+      "scenario": "execution-io",
+      "case": "agent-line",
+      "title": "Agent完整命令与正文",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-io/agent-partial",
+      "scenario": "execution-io",
+      "case": "agent-partial",
+      "title": "Agent分段输入不提前提交",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-io/terminal-line",
+      "scenario": "execution-io",
+      "case": "terminal-line",
+      "title": "Terminal真实printf正文",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-io/live-snapshot",
+      "scenario": "execution-io",
+      "case": "live-snapshot",
+      "title": "活动快照绑定原执行与正文",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-io/bounded-burst",
+      "scenario": "execution-io",
+      "case": "bounded-burst",
+      "title": "有限burst末标记到达",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-state-fixture/burst-prompt",
+      "scenario": "agent-state-fixture",
+      "case": "burst-prompt",
+      "title": "fake burst与prompt状态",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-state-fixture/sleep",
+      "scenario": "agent-state-fixture",
+      "case": "sleep",
+      "title": "受控静默前后状态",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-state-fixture/spinner",
+      "scenario": "agent-state-fixture",
+      "case": "spinner",
+      "title": "受控重绘前后状态",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-exit/natural-zero",
+      "scenario": "execution-exit",
+      "case": "natural-zero",
+      "title": "Agent自然退出0与终态证据",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-exit/nonzero",
+      "scenario": "execution-exit",
+      "case": "nonzero",
+      "title": "Agent命令退出17与错误分类",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-exit/resumed-nonzero",
+      "scenario": "execution-exit",
+      "case": "resumed-nonzero",
+      "title": "成功resume后退出19分类",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "snapshot-only-manual-recovery",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-stop/agent",
+      "scenario": "execution-stop",
+      "case": "agent",
+      "title": "Stop原Agent",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-stop/terminal",
+      "scenario": "execution-stop",
+      "case": "terminal",
+      "title": "Stop原Terminal",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-stop/codex-queued-exit",
+      "scenario": "execution-stop",
+      "case": "codex-queued-exit",
+      "title": "Stop与排队exit9竞态",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-stop/claude-graceful",
+      "scenario": "execution-stop",
+      "case": "claude-graceful",
+      "title": "Claude单次优雅Stop",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-restart/after-natural",
+      "scenario": "execution-restart",
+      "case": "after-natural",
+      "title": "自然退出后新Start",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-restart/after-error",
+      "scenario": "execution-restart",
+      "case": "after-error",
+      "title": "错误退出后新Start",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-restart/after-stop",
+      "scenario": "execution-restart",
+      "case": "after-stop",
+      "title": "Stop后新Start",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-reconcile/reread",
+      "scenario": "canvas-reconcile",
+      "case": "reread",
+      "title": "画布重读保持原执行",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "owned-canvas-reconciliation"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-reconcile/root-remap",
+      "scenario": "canvas-reconcile",
+      "case": "root-remap",
+      "title": "root重组保留原执行",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "owned-canvas-reconciliation"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-reconcile/remove-root",
+      "scenario": "canvas-reconcile",
+      "case": "remove-root",
+      "title": "移除root只清理所属执行",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "owned-canvas-reconciliation"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "surface-continuity/cutover",
+      "scenario": "surface-continuity",
+      "case": "cutover",
+      "title": "切面与重读保持原执行正文",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-surface-cutover",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "surface-continuity/completed-reflow",
+      "scenario": "surface-continuity",
+      "case": "completed-reflow",
+      "title": "结束后重排保护保存尺寸",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "surface-continuity/live-page-remount",
+      "scenario": "surface-continuity",
+      "case": "live-page-remount",
+      "title": "活动执行下真实页面重建",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "host-boundary-local/interrupt-and-flush",
+      "scenario": "host-boundary-local",
+      "case": "interrupt-and-flush",
+      "title": "模拟Host边界中断并保存本地执行",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "owned-canvas-reconciliation",
+        "snapshot-only-manual-recovery",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "host-boundary-local/manual-terminal-start",
+      "scenario": "host-boundary-local",
+      "case": "manual-terminal-start",
+      "title": "边界后Terminal显式新启动",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "snapshot-only-manual-recovery",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "host-boundary-local/explicit-new-start",
+      "scenario": "host-boundary-local",
+      "case": "explicit-new-start",
+      "title": "边界后Agent/Terminal显式普通新Start",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "owned-canvas-reconciliation"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "host-boundary-local/recent-state-flush",
+      "scenario": "host-boundary-local",
+      "case": "recent-state-flush",
+      "title": "模拟Host边界flush近期本地状态",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "host-boundary-local/preserve-terminal-state",
+      "scenario": "host-boundary-local",
+      "case": "preserve-terminal-state",
+      "title": "自然或Stop终态经边界仍保持",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "host-boundary-local/new-host-manual-recovery",
+      "scenario": "host-boundary-local",
+      "case": "new-host-manual-recovery",
+      "title": "snapshot-only真正新Host恢复",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "agent-tui/input-during-work",
+      "scenario": "agent-tui",
+      "case": "input-during-work",
+      "title": "真实TUI处理中输入可用",
+      "status": "proposed-gap",
+      "currentRoutes": [],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-tui/answer-with-footer",
+      "scenario": "agent-tui",
+      "case": "answer-with-footer",
+      "title": "真实回答在footer上方正确呈现",
+      "status": "proposed-gap",
+      "currentRoutes": [],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-tui/tool-network-silence",
+      "scenario": "agent-tui",
+      "case": "tool-network-silence",
+      "title": "工具网络静默期间原回合仍处理中",
+      "status": "proposed-gap",
+      "currentRoutes": [],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-tui/turn-completion-redraw",
+      "scenario": "agent-tui",
+      "case": "turn-completion-redraw",
+      "title": "独立provider完成证据与完成后重绘",
+      "status": "proposed-gap",
+      "currentRoutes": [],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-exit/native-crash",
+      "scenario": "execution-exit",
+      "case": "native-crash",
+      "title": "原生异常终止独立故障模型",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "execution-exit/terminal-natural",
+      "scenario": "execution-exit",
+      "case": "terminal-natural",
+      "title": "Terminal自然退出契约",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "execution-exit/terminal-error",
+      "scenario": "execution-exit",
+      "case": "terminal-error",
+      "title": "Terminal异常退出契约",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "execution-restart/terminal-after-exit",
+      "scenario": "execution-restart",
+      "case": "terminal-after-exit",
+      "title": "Terminal自然异常退出后新Start",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "execution-stop/unresponsive",
+      "scenario": "execution-stop",
+      "case": "unresponsive",
+      "title": "不响应Stop时升级与失败责任",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "execution-resize/live-geometry",
+      "scenario": "execution-resize",
+      "case": "live-geometry",
+      "title": "普通活动执行的独立几何resize正例",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "output-pressure/resize",
+      "scenario": "output-pressure",
+      "case": "resize",
+      "title": "高输出中原PTY几何resize",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "output-pressure/full-integrity",
+      "scenario": "output-pressure",
+      "case": "full-integrity",
+      "title": "高输出完整性独立验收",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-20 用户要求 PR335 实现并纳入必跑；执行结果独立验收"
+    },
+    {
+      "id": "agent-resume-context/manual-resume",
+      "scenario": "agent-resume-context",
+      "case": "manual-resume",
+      "title": "mount不自动继续且用户显式resume",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "snapshot-only-manual-recovery",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-resume-context/claude-explicit-id",
+      "scenario": "agent-resume-context",
+      "case": "claude-explicit-id",
+      "title": "文件确认显式Claude ID经Stop保持",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-links/file-position",
+      "scenario": "terminal-links",
+      "case": "file-position",
+      "title": "文件链接打开准确行列",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-links/image",
+      "scenario": "terminal-links",
+      "case": "image",
+      "title": "图片链接进入正确tab",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-links/cwd-and-multiline",
+      "scenario": "terminal-links",
+      "case": "cwd-and-multiline",
+      "title": "cwd相对及多行rg链接",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-links/missing-fallback",
+      "scenario": "terminal-links",
+      "case": "missing-fallback",
+      "title": "缺文件降级quickOpen",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-links/url-and-osc8",
+      "scenario": "terminal-links",
+      "case": "url-and-osc8",
+      "title": "URL提示浏览器路由与OSC8",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-links/opener-error",
+      "scenario": "terminal-links",
+      "case": "opener-error",
+      "title": "opener失败准确反馈",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-resource-drop/first-resource",
+      "scenario": "terminal-resource-drop",
+      "case": "first-resource",
+      "title": "拖放只消费第一个含空格资源",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-links-and-stop",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-concurrency/agent-terminal",
+      "scenario": "execution-concurrency",
+      "case": "agent-terminal",
+      "title": "普通Agent和Terminal并发不串流",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "output-pressure/flood-fairness",
+      "scenario": "output-pressure",
+      "case": "flood-fairness",
+      "title": "持续输出下选择响应与新增执行公平性",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "output-pressure/ctrl-c-retains-session",
+      "scenario": "output-pressure",
+      "case": "ctrl-c-retains-session",
+      "title": "Ctrl-C中断前台命令而原PTY保持",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-pty-robustness",
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-projection/checkpoint-current-state",
+      "scenario": "runtime-projection",
+      "case": "checkpoint-current-state",
+      "title": "分页current-state与连续修订",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "runtime-checkpoint-refresh"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-projection/completed-no-history",
+      "scenario": "runtime-projection",
+      "case": "completed-no-history",
+      "title": "完成drain后丢弃history",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "runtime-checkpoint-refresh",
+        "trusted",
+        "runtime-completed-no-history"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-projection/completed-page-reopen",
+      "scenario": "runtime-projection",
+      "case": "completed-page-reopen",
+      "title": "已完成无history会话页面重开保持空正文",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "runtime-checkpoint-refresh"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-projection/legacy-completed-migration",
+      "scenario": "runtime-projection",
+      "case": "legacy-completed-migration",
+      "title": "旧stream已完成数据迁移清除正文与pending意图",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "runtime-checkpoint-refresh"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/legacy-binding",
+      "scenario": "runtime-recovery",
+      "case": "legacy-binding",
+      "title": "旧binding重连拒绝后保持责任",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "runtime-legacy-reconnect"
+      ],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/legacy-no-auto-resume",
+      "scenario": "runtime-recovery",
+      "case": "legacy-no-auto-resume",
+      "title": "恢复旧history不自动resume",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "runtime-legacy-reconnect"
+      ],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-compatibility/report-unavailable",
+      "scenario": "runtime-compatibility",
+      "case": "report-unavailable",
+      "title": "Linux activate前report不可用",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "linux-runtime-report-unavailable"
+      ],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-entry/first-template",
+      "scenario": "canvas-entry",
+      "case": "first-template",
+      "title": "公共入口首次打开默认模板",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "local-execution-flow",
+        "owned-canvas-reconciliation",
+        "snapshot-only-manual-recovery",
+        "local-surface-cutover",
+        "local-preparation-failure",
+        "local-links-and-stop",
+        "local-pty-robustness",
+        "runtime-checkpoint-refresh",
+        "trusted",
+        "restricted",
+        "runtime-legacy-reconnect",
+        "runtime-completed-no-history"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-entry/surface-sidebar",
+      "scenario": "canvas-entry",
+      "case": "surface-sidebar",
+      "title": "可信空画布panel/editor及sidebar摘要",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-protocol/unknown-message",
+      "scenario": "canvas-protocol",
+      "case": "unknown-message",
+      "title": "unknown消息错误与toast消退",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-protocol/missing-node",
+      "scenario": "canvas-protocol",
+      "case": "missing-node",
+      "title": "未知节点操作反馈与基线保护",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-protocol/lifecycle-race",
+      "scenario": "canvas-protocol",
+      "case": "lifecycle-race",
+      "title": "隔离fake生命周期诊断",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted",
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/note-host-update",
+      "scenario": "canvas-nodes",
+      "case": "note-host-update",
+      "title": "Host修改Note标题内容与位置",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/post-delete-state",
+      "scenario": "canvas-nodes",
+      "case": "post-delete-state",
+      "title": "删除后结构快照断言",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/entry",
+      "scenario": "restricted-workspace",
+      "case": "entry",
+      "title": "受限空画布与sidebar",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/webview-create",
+      "scenario": "restricted-workspace",
+      "case": "webview-create",
+      "title": "webview拒Agent/Terminal创建但允许Note",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/quickpick-terminal",
+      "scenario": "restricted-workspace",
+      "case": "quickpick-terminal",
+      "title": "QuickPick拒Terminal创建",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/quickpick-agent",
+      "scenario": "restricted-workspace",
+      "case": "quickpick-agent",
+      "title": "QuickPick拒Agent创建",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/execution-actions",
+      "scenario": "restricted-workspace",
+      "case": "execution-actions",
+      "title": "禁止Agent/Terminal start/input并显示overlay",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "supervisor-upgrade/generation-continuity",
+      "scenario": "supervisor-upgrade",
+      "case": "generation-continuity",
+      "title": "旧v1/上一代stream/当前代attach-input-resize-stop-delete组合",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "legacy-supervisor-upgrade"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/local",
+      "scenario": "runtime-reopen",
+      "case": "local",
+      "title": "本地两阶段重开",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "real-reopen"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/multi-root",
+      "scenario": "runtime-reopen",
+      "case": "multi-root",
+      "title": "multi-root两阶段重开",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "multi-root-real-reopen"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/single-to-multi-root",
+      "scenario": "runtime-reopen",
+      "case": "single-to-multi-root",
+      "title": "single到multi重开",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "single-to-multi-root-real-reopen"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/systemd-user",
+      "scenario": "runtime-reopen",
+      "case": "systemd-user",
+      "title": "systemd shim成功后重开",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "systemd-user-real-reopen"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/systemd-fallback",
+      "scenario": "runtime-reopen",
+      "case": "systemd-fallback",
+      "title": "缺bus提交前fallback与零提交",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "systemd-fallback-real-reopen"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/ssh-host-exit",
+      "scenario": "runtime-reopen",
+      "case": "ssh-host-exit",
+      "title": "SSH断client后原Host退出",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "remote-ssh-real-reopen-exit"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-reopen/ssh-host-retain",
+      "scenario": "runtime-reopen",
+      "case": "ssh-host-retain",
+      "title": "SSH断client后原Host保留",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "remote-ssh-real-reopen-retain"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "shared-runtime-windows/owner-attacher",
+      "scenario": "shared-runtime-windows",
+      "case": "owner-attacher",
+      "title": "双窗口结构执行模式与接管组合",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "two-window-shared-runtime"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-entry/trusted-templates",
+      "scenario": "canvas-entry",
+      "case": "trusted-templates",
+      "title": "可信模板保存导入导出与清理",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-resume-context/codex-locator",
+      "scenario": "agent-resume-context",
+      "case": "codex-locator",
+      "title": "Codex文件身份定位",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-resume-context/claude-locator",
+      "scenario": "agent-resume-context",
+      "case": "claude-locator",
+      "title": "Claude文件身份定位",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-resume-context/codex-hint",
+      "scenario": "agent-resume-context",
+      "case": "codex-hint",
+      "title": "Codex恢复提示解析",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "agent-resume-context/claude-hint",
+      "scenario": "agent-resume-context",
+      "case": "claude-hint",
+      "title": "Claude恢复提示解析",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/cli-cache",
+      "scenario": "execution-config",
+      "case": "cli-cache",
+      "title": "CLI缓存隔离",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/default-provider",
+      "scenario": "execution-config",
+      "case": "default-provider",
+      "title": "默认provider刷新",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/scrollback",
+      "scenario": "execution-config",
+      "case": "scrollback",
+      "title": "scrollback运行上下文刷新",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/stopped-shell",
+      "scenario": "execution-config",
+      "case": "stopped-shell",
+      "title": "已停止Terminal shell路径刷新",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/detected-shell",
+      "scenario": "execution-config",
+      "case": "detected-shell",
+      "title": "持久化精确探测shell路径",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/workspace-shell",
+      "scenario": "execution-config",
+      "case": "workspace-shell",
+      "title": "shell workspace override",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-entry/default-surface-reload",
+      "scenario": "canvas-entry",
+      "case": "default-surface-reload",
+      "title": "默认surface配置经reload生效",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/create-quickpick",
+      "scenario": "canvas-nodes",
+      "case": "create-quickpick",
+      "title": "QuickPick创建节点",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/default-root",
+      "scenario": "execution-config",
+      "case": "default-root",
+      "title": "默认执行metadata采用workspace root",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-config/relative-shell",
+      "scenario": "execution-config",
+      "case": "relative-shell",
+      "title": "相对shell路径依workspace root",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/explorer-create",
+      "scenario": "canvas-nodes",
+      "case": "explorer-create",
+      "title": "Explorer资源创建执行节点",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/create-open-surface",
+      "scenario": "canvas-nodes",
+      "case": "create-open-surface",
+      "title": "创建使用已打开surface",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/create-selected-mode",
+      "scenario": "canvas-nodes",
+      "case": "create-selected-mode",
+      "title": "QuickPick保留模式直到用户编辑",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/create-preset-intent",
+      "scenario": "canvas-nodes",
+      "case": "create-preset-intent",
+      "title": "QuickPick保留显式preset意图",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/legacy-filter",
+      "scenario": "canvas-nodes",
+      "case": "legacy-filter",
+      "title": "持久化过滤旧Task节点",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/empty-group-delete",
+      "scenario": "canvas-nodes",
+      "case": "empty-group-delete",
+      "title": "空组删除无确认",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/nested-group-delete",
+      "scenario": "canvas-nodes",
+      "case": "nested-group-delete",
+      "title": "嵌套组删除展示递归范围",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/layout",
+      "scenario": "canvas-nodes",
+      "case": "layout",
+      "title": "画布布局持久化",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-sidebar/node-list",
+      "scenario": "canvas-sidebar",
+      "case": "node-list",
+      "title": "侧栏节点列表",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-sidebar/node-quickpick",
+      "scenario": "canvas-sidebar",
+      "case": "node-quickpick",
+      "title": "侧栏QuickPick节点与session身份",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-sidebar/node-ui",
+      "scenario": "canvas-sidebar",
+      "case": "node-ui",
+      "title": "侧栏节点真实UI",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-protocol/real-probe",
+      "scenario": "canvas-protocol",
+      "case": "real-probe",
+      "title": "真实Webview probe",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/dom-edit",
+      "scenario": "canvas-nodes",
+      "case": "dom-edit",
+      "title": "真实DOM编辑节点与Note基线",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-notes/checklist",
+      "scenario": "canvas-notes",
+      "case": "checklist",
+      "title": "Note交互清单",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-notes/file-links",
+      "scenario": "canvas-notes",
+      "case": "file-links",
+      "title": "Note workspace文件链接",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-notes/markdown-association",
+      "scenario": "canvas-notes",
+      "case": "markdown-association",
+      "title": "Note Markdown文件关联",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/saved-size",
+      "scenario": "canvas-nodes",
+      "case": "saved-size",
+      "title": "节点尺寸持久化",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-notifications/bridge-migration",
+      "scenario": "execution-notifications",
+      "case": "bridge-migration",
+      "title": "旧注意通知bridge迁移",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-notifications/attention",
+      "scenario": "execution-notifications",
+      "case": "attention",
+      "title": "注意信号配置与通知反馈",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-notifications/abnormal",
+      "scenario": "execution-notifications",
+      "case": "abnormal",
+      "title": "异常中断通知",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-view/local-scrollback",
+      "scenario": "terminal-view",
+      "case": "local-scrollback",
+      "title": "snapshot-only配置scrollback与边界恢复",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-view/editor-viewport",
+      "scenario": "terminal-view",
+      "case": "editor-viewport",
+      "title": "Editor tab切换保留viewport",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-view/panel-viewport",
+      "scenario": "terminal-view",
+      "case": "panel-viewport",
+      "title": "Panel tab切换保留viewport",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-view/workbench-theme",
+      "scenario": "terminal-view",
+      "case": "workbench-theme",
+      "title": "Editor/Panel主题跟随workbench",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-reconcile/completed-state",
+      "scenario": "canvas-reconcile",
+      "case": "completed-state",
+      "title": "已完成节点和Note重读保持",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-protocol/standby",
+      "scenario": "canvas-protocol",
+      "case": "standby",
+      "title": "standby surface忽略消息",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-protocol/pending-fault",
+      "scenario": "canvas-protocol",
+      "case": "pending-fault",
+      "title": "pending请求故障与责任保护",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/live-persistence",
+      "scenario": "runtime-recovery",
+      "case": "live-persistence",
+      "title": "runtime保持原session及启动停止责任",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "terminal-view/runtime-scrollback",
+      "scenario": "terminal-view",
+      "case": "runtime-scrollback",
+      "title": "runtime更新scrollback重建与正文",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/binding-failure",
+      "scenario": "runtime-recovery",
+      "case": "binding-failure",
+      "title": "重连失败保持原binding",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/no-stale-resume",
+      "scenario": "runtime-recovery",
+      "case": "no-stale-resume",
+      "title": "恢复history忽略过时自动resume",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/exit-classification",
+      "scenario": "runtime-recovery",
+      "case": "exit-classification",
+      "title": "runtime恢复退出分类与摘要",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-recovery/immediate-boundary",
+      "scenario": "runtime-recovery",
+      "case": "immediate-boundary",
+      "title": "启动后立即模拟Host边界",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/dom-delete",
+      "scenario": "canvas-nodes",
+      "case": "dom-delete",
+      "title": "真实删除按钮与移除",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "canvas-nodes/manual-edge",
+      "scenario": "canvas-nodes",
+      "case": "manual-edge",
+      "title": "手动边生命周期",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-file-activity/views",
+      "scenario": "execution-file-activity",
+      "case": "views",
+      "title": "文件活动view与打开",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "execution-file-activity/read-exit-drain",
+      "scenario": "execution-file-activity",
+      "case": "read-exit-drain",
+      "title": "read-exit末尾文件活动drain",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "runtime-mode/reload-clear",
+      "scenario": "runtime-mode",
+      "case": "reload-clear",
+      "title": "持久化配置经reload生效与清理",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/restore",
+      "scenario": "session-history",
+      "case": "restore",
+      "title": "侧栏历史restore",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/fork-ui",
+      "scenario": "session-history",
+      "case": "fork-ui",
+      "title": "侧栏fork UI",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/codex-branch",
+      "scenario": "session-history",
+      "case": "codex-branch",
+      "title": "当前Codex节点branch",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/claude-branch",
+      "scenario": "session-history",
+      "case": "claude-branch",
+      "title": "当前Claude节点branch",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/branch-rejection",
+      "scenario": "session-history",
+      "case": "branch-rejection",
+      "title": "不支持源拒绝branch",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/search",
+      "scenario": "session-history",
+      "case": "search",
+      "title": "侧栏按title搜索历史",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "session-history/doubleclick",
+      "scenario": "session-history",
+      "case": "doubleclick",
+      "title": "历史双击UI",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "trusted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/templates",
+      "scenario": "restricted-workspace",
+      "case": "templates",
+      "title": "受限模板行为",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/diagnostics",
+      "scenario": "restricted-workspace",
+      "case": "diagnostics",
+      "title": "受限操作诊断",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/reconnect",
+      "scenario": "restricted-workspace",
+      "case": "reconnect",
+      "title": "受限runtime reconnect阻止",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/history-delete",
+      "scenario": "restricted-workspace",
+      "case": "history-delete",
+      "title": "受限history-only删除清理",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/mode",
+      "scenario": "restricted-workspace",
+      "case": "mode",
+      "title": "受限模式配置生效与清理",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    },
+    {
+      "id": "restricted-workspace/history-disabled",
+      "scenario": "restricted-workspace",
+      "case": "history-disabled",
+      "title": "受限历史restore禁用",
+      "status": "existing-to-migrate",
+      "currentRoutes": [
+        "restricted"
+      ],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+    }
+  ],
+  "currentRoutes": [
+    {
+      "currentScenario": "local-execution-flow",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/live-snapshot",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "execution-exit/natural-zero",
+        "execution-restart/after-natural",
+        "execution-start/duplicate",
+        "execution-stop/agent",
+        "execution-io/terminal-line",
+        "execution-stop/terminal",
+        "surface-continuity/completed-reflow",
+        "execution-start/auto-start",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "owned-canvas-reconciliation",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "execution-start/auto-start",
+        "canvas-reconcile/reread",
+        "canvas-reconcile/root-remap",
+        "canvas-reconcile/remove-root",
+        "host-boundary-local/interrupt-and-flush",
+        "host-boundary-local/explicit-new-start",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "snapshot-only-manual-recovery",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "host-boundary-local/interrupt-and-flush",
+        "agent-resume-context/manual-resume",
+        "execution-exit/resumed-nonzero",
+        "host-boundary-local/manual-terminal-start",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-surface-cutover",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "surface-continuity/cutover",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-preparation-failure",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "execution-start/missing-cli",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-links-and-stop",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "terminal-resource-drop/first-resource",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/missing-fallback",
+        "terminal-links/url-and-osc8",
+        "terminal-links/opener-error",
+        "execution-stop/codex-queued-exit",
+        "execution-stop/claude-graceful",
+        "agent-resume-context/claude-explicit-id",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "local-pty-robustness",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "execution-io/bounded-burst",
+        "execution-exit/nonzero",
+        "execution-restart/after-error",
+        "execution-stop/agent",
+        "execution-restart/after-stop",
+        "execution-concurrency/agent-terminal",
+        "output-pressure/flood-fairness",
+        "output-pressure/ctrl-c-retains-session",
+        "canvas-entry/first-template"
+      ],
+      "context": "snapshot-only；与trusted重复时先保持自己的独立fixture入口"
+    },
+    {
+      "currentScenario": "runtime-checkpoint-refresh",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-projection/checkpoint-current-state",
+        "runtime-projection/completed-no-history",
+        "runtime-projection/completed-page-reopen",
+        "runtime-projection/legacy-completed-migration",
+        "canvas-entry/first-template"
+      ],
+      "context": "runtime环境；保留原模式/binding/分页状态，等价前不移除专用fixture"
+    },
+    {
+      "currentScenario": "trusted",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": true,
+      "targets": [
+        "agent-resume-context/claude-explicit-id",
+        "agent-resume-context/claude-hint",
+        "agent-resume-context/claude-locator",
+        "agent-resume-context/codex-hint",
+        "agent-resume-context/codex-locator",
+        "agent-resume-context/manual-resume",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "canvas-entry/default-surface-reload",
+        "canvas-entry/surface-sidebar",
+        "canvas-entry/trusted-templates",
+        "canvas-nodes/create-open-surface",
+        "canvas-nodes/create-preset-intent",
+        "canvas-nodes/create-quickpick",
+        "canvas-nodes/create-selected-mode",
+        "canvas-nodes/dom-delete",
+        "canvas-nodes/dom-edit",
+        "canvas-nodes/empty-group-delete",
+        "canvas-nodes/explorer-create",
+        "canvas-nodes/layout",
+        "canvas-nodes/legacy-filter",
+        "canvas-nodes/manual-edge",
+        "canvas-nodes/nested-group-delete",
+        "canvas-nodes/note-host-update",
+        "canvas-nodes/post-delete-state",
+        "canvas-nodes/saved-size",
+        "canvas-notes/checklist",
+        "canvas-notes/file-links",
+        "canvas-notes/markdown-association",
+        "canvas-protocol/missing-node",
+        "canvas-protocol/pending-fault",
+        "canvas-protocol/real-probe",
+        "canvas-protocol/standby",
+        "canvas-protocol/unknown-message",
+        "canvas-reconcile/completed-state",
+        "canvas-sidebar/node-list",
+        "canvas-sidebar/node-quickpick",
+        "canvas-sidebar/node-ui",
+        "execution-concurrency/agent-terminal",
+        "execution-config/cli-cache",
+        "execution-config/default-provider",
+        "execution-config/default-root",
+        "execution-config/detected-shell",
+        "execution-config/relative-shell",
+        "execution-config/scrollback",
+        "execution-config/stopped-shell",
+        "execution-config/workspace-shell",
+        "execution-exit/natural-zero",
+        "execution-exit/nonzero",
+        "execution-exit/resumed-nonzero",
+        "execution-file-activity/read-exit-drain",
+        "execution-file-activity/views",
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/bounded-burst",
+        "execution-io/live-snapshot",
+        "execution-io/terminal-line",
+        "execution-notifications/abnormal",
+        "execution-notifications/attention",
+        "execution-notifications/bridge-migration",
+        "execution-restart/after-error",
+        "execution-restart/after-natural",
+        "execution-restart/after-stop",
+        "execution-start/auto-start",
+        "execution-start/duplicate",
+        "execution-start/invalid-launch",
+        "execution-start/missing-cli",
+        "execution-stop/agent",
+        "execution-stop/claude-graceful",
+        "execution-stop/codex-queued-exit",
+        "execution-stop/terminal",
+        "host-boundary-local/interrupt-and-flush",
+        "host-boundary-local/manual-terminal-start",
+        "host-boundary-local/recent-state-flush",
+        "output-pressure/ctrl-c-retains-session",
+        "output-pressure/flood-fairness",
+        "runtime-mode/reload-clear",
+        "runtime-projection/completed-no-history",
+        "runtime-recovery/binding-failure",
+        "runtime-recovery/exit-classification",
+        "runtime-recovery/immediate-boundary",
+        "runtime-recovery/live-persistence",
+        "runtime-recovery/no-stale-resume",
+        "session-history/branch-rejection",
+        "session-history/claude-branch",
+        "session-history/codex-branch",
+        "session-history/doubleclick",
+        "session-history/fork-ui",
+        "session-history/restore",
+        "session-history/search",
+        "surface-continuity/completed-reflow",
+        "surface-continuity/cutover",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/missing-fallback",
+        "terminal-links/opener-error",
+        "terminal-links/url-and-osc8",
+        "terminal-resource-drop/first-resource",
+        "terminal-view/editor-viewport",
+        "terminal-view/local-scrollback",
+        "terminal-view/panel-viewport",
+        "terminal-view/runtime-scrollback",
+        "terminal-view/workbench-theme",
+        "canvas-protocol/lifecycle-race",
+        "canvas-entry/first-template"
+      ],
+      "context": "拆独有领域与证据消费者；逐项映射，不先删除重复调用"
+    },
+    {
+      "currentScenario": "restricted",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "restricted-workspace/diagnostics",
+        "restricted-workspace/entry",
+        "restricted-workspace/execution-actions",
+        "restricted-workspace/history-delete",
+        "restricted-workspace/history-disabled",
+        "restricted-workspace/mode",
+        "restricted-workspace/quickpick-agent",
+        "restricted-workspace/quickpick-terminal",
+        "restricted-workspace/reconnect",
+        "restricted-workspace/templates",
+        "restricted-workspace/webview-create",
+        "canvas-protocol/lifecycle-race",
+        "canvas-entry/first-template"
+      ],
+      "context": "受限，无真实执行；独立seed与拒绝契约"
+    },
+    {
+      "currentScenario": "legacy-supervisor-upgrade",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "supervisor-upgrade/generation-continuity"
+      ],
+      "context": "保留三代上下文及因果步骤；普通Stop/resize不可替代"
+    },
+    {
+      "currentScenario": "real-reopen",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/local"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "multi-root-real-reopen",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/multi-root"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "single-to-multi-root-real-reopen",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/single-to-multi-root"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "two-window-shared-runtime",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "shared-runtime-windows/owner-attacher"
+      ],
+      "context": "保留跨窗口握手；最后空root重开不是原session恢复"
+    },
+    {
+      "currentScenario": "systemd-user-real-reopen",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/systemd-user"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "systemd-fallback-real-reopen",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/systemd-fallback"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "remote-ssh-real-reopen-exit",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/ssh-host-exit"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "remote-ssh-real-reopen-retain",
+      "sourceDefault": true,
+      "sourceFocusedOnly": false,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-reopen/ssh-host-retain"
+      ],
+      "context": "保留setup/transition/completed barrier/verify；SSH原Host寿命单独确认"
+    },
+    {
+      "currentScenario": "runtime-legacy-reconnect",
+      "sourceDefault": false,
+      "sourceFocusedOnly": true,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-recovery/legacy-binding",
+        "runtime-recovery/legacy-no-auto-resume",
+        "canvas-entry/first-template"
+      ],
+      "context": "runtime环境；保留原模式/binding/分页状态，等价前不移除专用fixture"
+    },
+    {
+      "currentScenario": "linux-runtime-report-unavailable",
+      "sourceDefault": false,
+      "sourceFocusedOnly": true,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-compatibility/report-unavailable"
+      ],
+      "context": "preActivation独立Host；focused-only"
+    },
+    {
+      "currentScenario": "runtime-completed-no-history",
+      "sourceDefault": false,
+      "sourceFocusedOnly": true,
+      "packagedDefault": false,
+      "targets": [
+        "runtime-projection/completed-no-history",
+        "canvas-entry/first-template"
+      ],
+      "context": "runtime环境；保留原模式/binding/分页状态，等价前不移除专用fixture"
+    }
+  ],
+  "commonEntryMigration": [
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "activateVisibleExtension",
+      "line": 183,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "waitForCommand",
+      "line": 184,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 185,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "waitForCommand",
+      "line": 186,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.getCommands",
+      "line": 188,
+      "role": "observe-assert",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyFirstOpenDefaultTemplate",
+      "line": 193,
+      "role": "action-assert",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 194,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 195,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearDiagnosticEvents",
+      "line": 196,
+      "role": "prepare",
+      "targets": [
+        "canvas-entry/first-template"
+      ]
+    },
+    {
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyWebviewLifecycleRaceDiagnostics",
+      "line": 300,
+      "role": "action-assert",
+      "targets": [
+        "canvas-protocol/lifecycle-race"
+      ]
+    }
+  ],
+  "suiteCallMigration": [
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 1,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 1274,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "prepare",
+      "note": "打开panel/editor与ready，清空观测消息；不启动执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 2,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 1275,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "prepare",
+      "note": "打开panel/editor与ready，清空观测消息；不启动执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 3,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 1276,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "prepare",
+      "note": "打开panel/editor与ready，清空观测消息；不启动执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 4,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1278,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "observe-assert",
+      "note": "快照和sidebar摘要后的直接assert必须迁移"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 5,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 1285,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "prepare",
+      "note": "打开panel/editor与ready，清空观测消息；不启动执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 6,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 1286,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "prepare",
+      "note": "打开panel/editor与ready，清空观测消息；不启动执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 7,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 1287,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "prepare",
+      "note": "打开panel/editor与ready，清空观测消息；不启动执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 8,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1289,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "observe-assert",
+      "note": "快照和sidebar摘要后的直接assert必须迁移"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 9,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getSidebarSummaryItems",
+      "line": 1298,
+      "targets": [
+        "canvas-entry/surface-sidebar"
+      ],
+      "role": "observe-assert",
+      "note": "快照和sidebar摘要后的直接assert必须迁移"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 10,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCanvasTemplatesTrusted",
+      "line": 1333,
+      "targets": [
+        "canvas-entry/trusted-templates"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 11,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "ensureEditorCanvasReady",
+      "line": 1334,
+      "targets": [
+        "agent-resume-context/codex-locator",
+        "execution-config/cli-cache",
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "prepare",
+      "note": "模板完成后恢复editor与清观测缓存；新case各自准备"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 12,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 1335,
+      "targets": [
+        "agent-resume-context/codex-locator",
+        "execution-config/cli-cache",
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "prepare",
+      "note": "模板完成后恢复editor与清观测缓存；新case各自准备"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 13,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearDiagnosticEvents",
+      "line": 1336,
+      "targets": [
+        "agent-resume-context/codex-locator",
+        "execution-config/cli-cache",
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "prepare",
+      "note": "模板完成后恢复editor与清观测缓存；新case各自准备"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 14,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCodexSessionIdLocator",
+      "line": 1338,
+      "targets": [
+        "agent-resume-context/codex-locator"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 15,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyClaudeSessionIdLocator",
+      "line": 1339,
+      "targets": [
+        "agent-resume-context/claude-locator"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 16,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCodexResumeCommandHintParser",
+      "line": 1340,
+      "targets": [
+        "agent-resume-context/codex-hint"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 17,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyClaudeResumeCommandHintParser",
+      "line": 1341,
+      "targets": [
+        "agent-resume-context/claude-hint"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 18,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyAgentCliCacheIsolation",
+      "line": 1342,
+      "targets": [
+        "execution-config/cli-cache"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 19,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 1344,
+      "targets": [
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "action",
+      "note": "发unknown消息"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 20,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getHostMessages",
+      "line": 1345,
+      "targets": [
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "observe-assert",
+      "note": "Host错误、toast出现及消退、空画布断言"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 21,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "waitForWebviewProbeOnSurface",
+      "line": 1353,
+      "targets": [
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "observe-assert",
+      "note": "Host错误、toast出现及消退、空画布断言"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 22,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "waitForWebviewProbeOnSurface",
+      "line": 1359,
+      "targets": [
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "observe-assert",
+      "note": "Host错误、toast出现及消退、空画布断言"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 23,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1361,
+      "targets": [
+        "canvas-protocol/unknown-message"
+      ],
+      "role": "observe-assert",
+      "note": "Host错误、toast出现及消退、空画布断言"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 24,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRuntimeContextRefreshesDefaultAgentProvider",
+      "line": 1364,
+      "targets": [
+        "execution-config/default-provider"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 25,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRuntimeContextRefreshesTerminalScrollback",
+      "line": 1365,
+      "targets": [
+        "execution-config/scrollback"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 26,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyTerminalShellPathRefreshesStoppedTerminalNode",
+      "line": 1366,
+      "targets": [
+        "execution-config/stopped-shell"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 27,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySelectTerminalShellCommandPersistsExactDetectedPath",
+      "line": 1367,
+      "targets": [
+        "execution-config/detected-shell"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 28,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySelectTerminalShellCommandUpdatesWorkspaceOverride",
+      "line": 1368,
+      "targets": [
+        "execution-config/workspace-shell"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 29,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyDefaultSurfaceRequiresReload",
+      "line": 1369,
+      "targets": [
+        "canvas-entry/default-surface-reload"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 30,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCreateNodeCommandQuickPick",
+      "line": 1370,
+      "targets": [
+        "canvas-nodes/create-quickpick"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 31,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyDefaultExecutionNodeMetadataUsesWorkspaceRoot",
+      "line": 1371,
+      "targets": [
+        "execution-config/default-root"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 32,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot",
+      "line": 1372,
+      "targets": [
+        "execution-config/relative-shell"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 33,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyExplorerResourceExecutionNodeCreation",
+      "line": 1373,
+      "targets": [
+        "canvas-nodes/explorer-create"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 34,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCreateNodeCommandUsesOpenCanvasSurface",
+      "line": 1374,
+      "targets": [
+        "canvas-nodes/create-open-surface"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 35,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits",
+      "line": 1375,
+      "targets": [
+        "canvas-nodes/create-selected-mode"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 36,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent",
+      "line": 1376,
+      "targets": [
+        "canvas-nodes/create-preset-intent"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 37,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyPersistedStateFiltersLegacyTaskNodes",
+      "line": 1377,
+      "targets": [
+        "canvas-nodes/legacy-filter"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 38,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 1378,
+      "targets": [
+        "canvas-nodes/legacy-filter",
+        "canvas-nodes/empty-group-delete"
+      ],
+      "role": "prepare-observe",
+      "note": "创建相关helper完成后确认空画布并重置观测"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 39,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearDiagnosticEvents",
+      "line": 1379,
+      "targets": [
+        "canvas-nodes/legacy-filter",
+        "canvas-nodes/empty-group-delete"
+      ],
+      "role": "prepare-observe",
+      "note": "创建相关helper完成后确认空画布并重置观测"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 40,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1380,
+      "targets": [
+        "canvas-nodes/legacy-filter",
+        "canvas-nodes/empty-group-delete"
+      ],
+      "role": "prepare-observe",
+      "note": "创建相关helper完成后确认空画布并重置观测"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 41,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyEmptyGroupDeletionSkipsConfirmation",
+      "line": 1383,
+      "targets": [
+        "canvas-nodes/empty-group-delete"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 42,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope",
+      "line": 1384,
+      "targets": [
+        "canvas-nodes/nested-group-delete"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 43,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCanvasLayoutArrangementPersists",
+      "line": 1385,
+      "targets": [
+        "canvas-nodes/layout"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 44,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 1386,
+      "targets": [
+        "canvas-nodes/note-host-update"
+      ],
+      "role": "prepare",
+      "note": "清消息"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 45,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "createBaseNodes",
+      "line": 1387,
+      "targets": [
+        "canvas-nodes/note-host-update",
+        "execution-start/auto-start"
+      ],
+      "role": "prepare",
+      "note": "旧fixture自动启动三种节点；新Note fixture不要隐含启动无关执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 46,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1388,
+      "targets": [
+        "canvas-nodes/note-host-update"
+      ],
+      "role": "observe-assert",
+      "note": "节点kind集合与后续Note/Agent/Terminal引用"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 47,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 1397,
+      "targets": [
+        "canvas-nodes/note-host-update"
+      ],
+      "role": "action",
+      "note": "修改Note title/body/position"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 48,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 1404,
+      "targets": [
+        "canvas-nodes/note-host-update"
+      ],
+      "role": "action",
+      "note": "修改Note title/body/position"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 49,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 1411,
+      "targets": [
+        "canvas-nodes/note-host-update"
+      ],
+      "role": "action",
+      "note": "修改Note title/body/position"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 50,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1422,
+      "targets": [
+        "canvas-nodes/note-host-update"
+      ],
+      "role": "observe-assert",
+      "note": "直接验证Note变更"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 51,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyAutoStartOnCreate",
+      "line": 1429,
+      "targets": [
+        "execution-start/auto-start"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 52,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "stopOwnedFixtureExecutions",
+      "line": 1430,
+      "targets": [
+        "canvas-sidebar/node-list",
+        "canvas-nodes/dom-edit"
+      ],
+      "role": "prepare",
+      "note": "为历史/侧栏准备已退休基线；Stop不是本段业务目标"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 53,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarNodeList",
+      "line": 1431,
+      "targets": [
+        "canvas-sidebar/node-list"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 54,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarNodeListQuickPick",
+      "line": 1432,
+      "targets": [
+        "canvas-sidebar/node-quickpick"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 55,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarNodeListWebviewUi",
+      "line": 1435,
+      "targets": [
+        "canvas-sidebar/node-ui"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 56,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRealWebviewProbe",
+      "line": 1437,
+      "targets": [
+        "canvas-protocol/real-probe"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 57,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRealWebviewDomInteractions",
+      "line": 1438,
+      "targets": [
+        "canvas-nodes/dom-edit"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 58,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyInteractiveNoteChecklist",
+      "line": 1439,
+      "targets": [
+        "canvas-notes/checklist"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 59,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyNoteWorkspaceFileLinks",
+      "line": 1440,
+      "targets": [
+        "canvas-notes/file-links"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 60,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyNoteMarkdownFileAssociation",
+      "line": 1441,
+      "targets": [
+        "canvas-notes/markdown-association"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 61,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyNodeResizePersistence",
+      "line": 1442,
+      "targets": [
+        "canvas-nodes/saved-size"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 62,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "startFixtureExecutions",
+      "line": 1443,
+      "targets": [
+        "execution-io/agent-line",
+        "execution-io/terminal-line"
+      ],
+      "role": "prepare",
+      "note": "新case自己的原started屏障；不能沿用另一case的执行"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 63,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyAgentExecutionFlow",
+      "line": 1444,
+      "targets": [
+        "execution-io/agent-line",
+        "execution-io/agent-partial",
+        "execution-io/live-snapshot",
+        "agent-state-fixture/burst-prompt",
+        "agent-state-fixture/sleep",
+        "agent-state-fixture/spinner",
+        "execution-exit/natural-zero",
+        "execution-restart/after-natural",
+        "execution-start/duplicate",
+        "execution-stop/agent"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 64,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarNodeListQuickPick",
+      "line": 1445,
+      "targets": [
+        "canvas-sidebar/node-quickpick"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 65,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyTerminalExecutionFlow",
+      "line": 1448,
+      "targets": [
+        "execution-start/duplicate",
+        "execution-io/terminal-line",
+        "execution-io/live-snapshot",
+        "execution-stop/terminal",
+        "surface-continuity/completed-reflow"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 66,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyLegacyAttentionNotificationBridgeMigration",
+      "line": 1449,
+      "targets": [
+        "execution-notifications/bridge-migration"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 67,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyExecutionAttentionNotificationBridge",
+      "line": 1450,
+      "targets": [
+        "execution-notifications/attention"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 68,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyAgentAbnormalInterruptionNotifications",
+      "line": 1451,
+      "targets": [
+        "execution-notifications/abnormal"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 69,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyExecutionTerminalNativeInteractions",
+      "line": 1452,
+      "targets": [
+        "terminal-resource-drop/first-resource",
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/missing-fallback",
+        "terminal-links/url-and-osc8",
+        "terminal-links/opener-error"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 70,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory",
+      "line": 1453,
+      "targets": [
+        "terminal-view/local-scrollback"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 71,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyEditorTerminalTabSwitchPreservesViewport",
+      "line": 1454,
+      "targets": [
+        "terminal-view/editor-viewport"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 72,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyPanelTerminalTabSwitchPreservesViewport",
+      "line": 1455,
+      "targets": [
+        "terminal-view/panel-viewport"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 73,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyEmbeddedTerminalThemeFollowWorkbench",
+      "line": 1456,
+      "targets": [
+        "terminal-view/workbench-theme"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 74,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRuntimeReloadRecovery",
+      "line": 1457,
+      "targets": [
+        "host-boundary-local/interrupt-and-flush",
+        "agent-resume-context/manual-resume",
+        "execution-exit/resumed-nonzero",
+        "host-boundary-local/manual-terminal-start",
+        "canvas-entry/first-template"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 75,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyLiveSessionCutoverAndReload",
+      "line": 1458,
+      "targets": [
+        "surface-continuity/cutover",
+        "canvas-entry/first-template"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 76,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyPtyRobustness",
+      "line": 1459,
+      "targets": [
+        "execution-io/bounded-burst",
+        "execution-exit/nonzero",
+        "execution-restart/after-error",
+        "execution-stop/agent",
+        "execution-restart/after-stop",
+        "execution-concurrency/agent-terminal"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 77,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyTerminalFloodKeepsCanvasResponsive",
+      "line": 1460,
+      "targets": [
+        "output-pressure/flood-fairness",
+        "output-pressure/ctrl-c-retains-session"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 78,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyFailurePaths",
+      "line": 1461,
+      "targets": [
+        "execution-start/missing-cli",
+        "execution-start/invalid-launch",
+        "canvas-protocol/missing-node"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 79,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyPersistenceAndRecovery",
+      "line": 1462,
+      "targets": [
+        "canvas-reconcile/completed-state"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 80,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyStandbySurfaceIgnoresMessages",
+      "line": 1463,
+      "targets": [
+        "canvas-protocol/standby"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 81,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyPendingWebviewRequestFaultInjection",
+      "line": 1464,
+      "targets": [
+        "canvas-protocol/pending-fault"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 82,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyStopVsQueuedExitRace",
+      "line": 1465,
+      "targets": [
+        "execution-stop/codex-queued-exit"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 83,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyClaudeStopRestoresPreviousSignal",
+      "line": 1466,
+      "targets": [
+        "execution-stop/claude-graceful"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 84,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyClaudeExplicitSessionIdPreservesResumeContext",
+      "line": 1467,
+      "targets": [
+        "agent-resume-context/claude-explicit-id"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 85,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "prepareTrustedBaseNodesForAppliedRuntimePersistenceMode",
+      "line": 1468,
+      "targets": [
+        "runtime-recovery/live-persistence",
+        "runtime-recovery/binding-failure",
+        "runtime-recovery/no-stale-resume",
+        "runtime-recovery/exit-classification",
+        "runtime-recovery/immediate-boundary",
+        "terminal-view/runtime-scrollback",
+        "runtime-projection/completed-no-history"
+      ],
+      "role": "prepare",
+      "note": "旧runtime=true共享fixture需按目标重建；不丢每种binding状态"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 86,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyLiveRuntimePersistence",
+      "line": 1469,
+      "targets": [
+        "runtime-recovery/live-persistence"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 87,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory",
+      "line": 1470,
+      "targets": [
+        "terminal-view/runtime-scrollback"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 88,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain",
+      "line": 1471,
+      "targets": [
+        "runtime-projection/completed-no-history"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 89,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyLiveRuntimeReconnectFailurePreservesBinding",
+      "line": 1472,
+      "targets": [
+        "runtime-recovery/binding-failure"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 90,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyHistoryRestoredIgnoresStaleAutomaticResume",
+      "line": 1476,
+      "targets": [
+        "runtime-recovery/no-stale-resume"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 91,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyLiveRuntimeResumeExitClassification",
+      "line": 1480,
+      "targets": [
+        "runtime-recovery/exit-classification"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 92,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyImmediateReloadAfterLiveRuntimeLaunch",
+      "line": 1481,
+      "targets": [
+        "runtime-recovery/immediate-boundary"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 93,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "prepareTrustedBaseNodesForAppliedRuntimePersistenceMode",
+      "line": 1486,
+      "targets": [
+        "host-boundary-local/recent-state-flush",
+        "canvas-nodes/dom-delete",
+        "canvas-nodes/manual-edge"
+      ],
+      "role": "prepare",
+      "note": "runtime=false新fixture；原执行与Note基线显式"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 94,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyHostBoundaryFlushesRecentLocalState",
+      "line": 1487,
+      "targets": [
+        "host-boundary-local/recent-state-flush"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 95,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyTrustedDiagnostics",
+      "line": 1491,
+      "targets": [
+        "execution-exit/natural-zero",
+        "execution-io/terminal-line",
+        "execution-io/live-snapshot",
+        "execution-stop/terminal",
+        "execution-start/missing-cli"
+      ],
+      "role": "evidence-consumer",
+      "note": "现有汇总检查返回证据，迁入证据产生case；缺项拒绝不能删除"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 96,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRealDeleteButton",
+      "line": 1492,
+      "targets": [
+        "canvas-nodes/dom-delete"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 97,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 1494,
+      "targets": [
+        "canvas-nodes/post-delete-state"
+      ],
+      "role": "observe-assert",
+      "note": "删除Note后节点数与身份断言"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 98,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyManualEdgeLifecycle",
+      "line": 1498,
+      "targets": [
+        "canvas-nodes/manual-edge"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 99,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyFileActivityViewsAndOpenFiles",
+      "line": 1499,
+      "targets": [
+        "execution-file-activity/views"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 100,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyReadExitFileActivityDrain",
+      "line": 1500,
+      "targets": [
+        "execution-file-activity/read-exit-drain"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 101,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRuntimePersistenceRequiresReloadAndClearsState",
+      "line": 1501,
+      "targets": [
+        "runtime-mode/reload-clear"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 102,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarSessionHistoryRestore",
+      "line": 1502,
+      "targets": [
+        "session-history/restore"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 103,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarSessionHistoryForkActionUi",
+      "line": 1503,
+      "targets": [
+        "session-history/fork-ui"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 104,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCodexAgentBranchFromCurrentNode",
+      "line": 1504,
+      "targets": [
+        "session-history/codex-branch"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 105,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyClaudeAgentBranchFromCurrentNode",
+      "line": 1505,
+      "targets": [
+        "session-history/claude-branch"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 106,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyAgentBranchRejectsUnsupportedSources",
+      "line": 1506,
+      "targets": [
+        "session-history/branch-rejection"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 107,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarSessionHistorySearchByTitleUi",
+      "line": 1507,
+      "targets": [
+        "session-history/search"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 108,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifySidebarSessionHistoryDoubleClickUi",
+      "line": 1508,
+      "targets": [
+        "session-history/doubleclick"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runTrustedSmoke",
+      "ordinal": 109,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 1510,
+      "targets": [
+        "session-history/doubleclick",
+        "session-history/fork-ui",
+        "session-history/restore",
+        "session-history/search"
+      ],
+      "role": "cleanup",
+      "note": "关闭editor；记录清理结果不能当业务通过"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 1,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4766,
+      "targets": [
+        "restricted-workspace/entry"
+      ],
+      "role": "prepare",
+      "note": "受限环境editor ready，不启动执行"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 2,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4767,
+      "targets": [
+        "restricted-workspace/entry"
+      ],
+      "role": "prepare",
+      "note": "受限环境editor ready，不启动执行"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 3,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 4768,
+      "targets": [
+        "restricted-workspace/entry"
+      ],
+      "role": "prepare",
+      "note": "受限环境editor ready，不启动执行"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 4,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 4770,
+      "targets": [
+        "restricted-workspace/entry"
+      ],
+      "role": "observe-assert",
+      "note": "trust、creatableKinds、surface与空节点断言"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 5,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyCanvasTemplatesRestricted",
+      "line": 4778,
+      "targets": [
+        "restricted-workspace/templates"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 6,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "ensureEditorCanvasReady",
+      "line": 4779,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "prepare",
+      "note": "模板完成后恢复页面与观测"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 7,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 4780,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "prepare",
+      "note": "模板完成后恢复页面与观测"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 8,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4782,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "action",
+      "note": "用户webview创建Agent/Terminal/Note"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 9,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4789,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "action",
+      "note": "用户webview创建Agent/Terminal/Note"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 10,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4796,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "action",
+      "note": "用户webview创建Agent/Terminal/Note"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 11,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 4804,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "observe-assert",
+      "note": "只创建Note及准确拒绝反馈"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 12,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getHostMessages",
+      "line": 4810,
+      "targets": [
+        "restricted-workspace/webview-create"
+      ],
+      "role": "observe-assert",
+      "note": "只创建Note及准确拒绝反馈"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 13,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "withInterceptedWarningMessages",
+      "line": 4819,
+      "targets": [
+        "restricted-workspace/quickpick-terminal"
+      ],
+      "role": "action-assert",
+      "note": "拦截modal内含真实QuickPick动作与准确警告断言"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 14,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "setQuickPickSelections",
+      "line": 4820,
+      "targets": [
+        "restricted-workspace/quickpick-terminal"
+      ],
+      "role": "prepare",
+      "note": "QuickPick选择"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 15,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4821,
+      "targets": [
+        "restricted-workspace/quickpick-terminal"
+      ],
+      "role": "action",
+      "note": "createNode命令"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 16,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 4831,
+      "targets": [
+        "restricted-workspace/quickpick-terminal"
+      ],
+      "role": "observe-assert",
+      "note": "原Note集合不变"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 17,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "withInterceptedWarningMessages",
+      "line": 4837,
+      "targets": [
+        "restricted-workspace/quickpick-agent"
+      ],
+      "role": "action-assert",
+      "note": "拦截modal内含真实QuickPick动作与准确警告断言"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 18,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "setQuickPickSelections",
+      "line": 4838,
+      "targets": [
+        "restricted-workspace/quickpick-agent"
+      ],
+      "role": "prepare",
+      "note": "QuickPick选择"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 19,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4839,
+      "targets": [
+        "restricted-workspace/quickpick-agent"
+      ],
+      "role": "action",
+      "note": "createNode命令"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 20,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 4849,
+      "targets": [
+        "restricted-workspace/quickpick-agent"
+      ],
+      "role": "observe-assert",
+      "note": "原Note集合不变"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 21,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4855,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "prepare",
+      "note": "test seed执行节点并清消息；不得auto-start"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 22,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4856,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "prepare",
+      "note": "test seed执行节点并清消息；不得auto-start"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 23,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 4857,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "prepare",
+      "note": "test seed执行节点并清消息；不得auto-start"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 24,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "clearHostMessages",
+      "line": 4862,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "prepare",
+      "note": "test seed执行节点并清消息；不得auto-start"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 25,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4863,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "action",
+      "note": "分别请求Agent/Terminal start/input"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 26,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4873,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "action",
+      "note": "分别请求Agent/Terminal start/input"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 27,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4882,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "action",
+      "note": "分别请求Agent/Terminal start/input"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 28,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "dispatchWebviewMessage",
+      "line": 4890,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "action",
+      "note": "分别请求Agent/Terminal start/input"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 29,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getHostMessages",
+      "line": 4899,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "observe-assert",
+      "note": "四种准确错误、live=false与真实受限overlay"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 30,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "getDebugSnapshot",
+      "line": 4929,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "observe-assert",
+      "note": "四种准确错误、live=false与真实受限overlay"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 31,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "waitForWebviewProbe",
+      "line": 4933,
+      "targets": [
+        "restricted-workspace/execution-actions"
+      ],
+      "role": "observe-assert",
+      "note": "四种准确错误、live=false与真实受限overlay"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 32,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRestrictedDiagnostics",
+      "line": 4953,
+      "targets": [
+        "restricted-workspace/diagnostics"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 33,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRestrictedLiveRuntimeReconnectBlocked",
+      "line": 4954,
+      "targets": [
+        "restricted-workspace/reconnect"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 34,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "prepareRestrictedBaseNodesForAppliedRuntimePersistenceMode",
+      "line": 4955,
+      "targets": [
+        "restricted-workspace/history-delete"
+      ],
+      "role": "prepare",
+      "note": "history-only runtime节点，无真实执行"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 35,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRestrictedDeleteCleansHistoryOnlyLiveRuntime",
+      "line": 4956,
+      "targets": [
+        "restricted-workspace/history-delete"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 36,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRestrictedRuntimePersistenceRequiresReloadAndClearsState",
+      "line": 4960,
+      "targets": [
+        "restricted-workspace/mode"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 37,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "verifyRestrictedSessionHistoryRestoreIsDisabled",
+      "line": 4961,
+      "targets": [
+        "restricted-workspace/history-disabled"
+      ],
+      "role": "action-assert",
+      "note": "迁移该helper全部业务断言；内部fixture/清理需拆分并逐条review"
+    },
+    {
+      "suite": "runRestrictedSmoke",
+      "ordinal": 38,
+      "file": "tests/vscode-smoke/extension-tests.cjs",
+      "call": "vscode.commands.executeCommand",
+      "line": 4963,
+      "targets": [
+        "restricted-workspace/history-disabled"
+      ],
+      "role": "cleanup",
+      "note": "关闭editor"
+    }
+  ],
+  "localSemanticMigration": [
+    {
+      "id": "local-001",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "原started及初始尺寸",
+      "targets": [
+        "execution-start/auto-start"
+      ],
+      "role": "action-assert",
+      "evidence": "原session/generation、live、正行列",
+      "note": ""
+    },
+    {
+      "id": "local-002",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "有限burst1普通正文",
+      "targets": [
+        "execution-io/agent-line"
+      ],
+      "role": "action-assert",
+      "evidence": "原session burst001与活动快照",
+      "note": ""
+    },
+    {
+      "id": "local-003",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "burst状态转换",
+      "targets": [
+        "agent-state-fixture/burst-prompt"
+      ],
+      "role": "action-assert",
+      "evidence": "running→waiting-input；仅fake启发式",
+      "note": ""
+    },
+    {
+      "id": "local-004",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "分段输入",
+      "targets": [
+        "execution-io/agent-partial"
+      ],
+      "role": "action-assert",
+      "evidence": "h未提交、ello后原hello正文",
+      "note": ""
+    },
+    {
+      "id": "local-005",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "sleep状态",
+      "targets": [
+        "agent-state-fixture/sleep"
+      ],
+      "role": "action-assert",
+      "evidence": "受控sleep中仍running、woke后waiting-input",
+      "note": ""
+    },
+    {
+      "id": "local-006",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "slowspin状态",
+      "targets": [
+        "agent-state-fixture/spinner"
+      ],
+      "role": "action-assert",
+      "evidence": "重绘期间running、done后waiting-input",
+      "note": ""
+    },
+    {
+      "id": "local-007",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "自然exit0",
+      "targets": [
+        "execution-exit/natural-zero"
+      ],
+      "role": "action-assert",
+      "evidence": "stopped、code0、摘要、无runtimeError、原saved/reader applied、单次exit和final序列",
+      "note": ""
+    },
+    {
+      "id": "local-008",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "自然结束后再次启动",
+      "targets": [
+        "execution-restart/after-natural"
+      ],
+      "role": "action-assert",
+      "evidence": "旧执行退休后新started、新正文；拆分时补明确新身份正例",
+      "note": ""
+    },
+    {
+      "id": "local-009",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "重复Agent Start拒绝",
+      "targets": [
+        "execution-start/duplicate"
+      ],
+      "role": "action-assert",
+      "evidence": "拒绝类别与原identity、started事件不增",
+      "note": ""
+    },
+    {
+      "id": "local-010",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyAgentExecutionFlow",
+        "line": 5211,
+        "endLine": 5428
+      },
+      "title": "明确Agent Stop",
+      "targets": [
+        "execution-stop/agent"
+      ],
+      "role": "action-assert",
+      "evidence": "stopped/livefalse、原执行退役",
+      "note": ""
+    },
+    {
+      "id": "local-011",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalExecutionFlow",
+        "line": 6697,
+        "endLine": 6771
+      },
+      "title": "原Terminal started",
+      "targets": [
+        "execution-start/auto-start"
+      ],
+      "role": "action-assert",
+      "evidence": "原session/generation、live及尺寸",
+      "note": ""
+    },
+    {
+      "id": "local-012",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalExecutionFlow",
+        "line": 6697,
+        "endLine": 6771
+      },
+      "title": "重复Terminal Start拒绝",
+      "targets": [
+        "execution-start/duplicate"
+      ],
+      "role": "action-assert",
+      "evidence": "原identity/started数保持",
+      "note": ""
+    },
+    {
+      "id": "local-013",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalExecutionFlow",
+        "line": 6697,
+        "endLine": 6771
+      },
+      "title": "Terminal正文与live快照",
+      "targets": [
+        "execution-io/terminal-line",
+        "execution-io/live-snapshot"
+      ],
+      "role": "action-assert",
+      "evidence": "拆分printf排回显、原live snapshot正文和行列",
+      "note": ""
+    },
+    {
+      "id": "local-014",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalExecutionFlow",
+        "line": 6697,
+        "endLine": 6771
+      },
+      "title": "Terminal Stop",
+      "targets": [
+        "execution-stop/terminal"
+      ],
+      "role": "action-assert",
+      "evidence": "closed/livefalse、准确摘要、保存与退役",
+      "note": ""
+    },
+    {
+      "id": "local-015",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalExecutionFlow",
+        "line": 6697,
+        "endLine": 6771
+      },
+      "title": "closed后页面resize保护",
+      "targets": [
+        "surface-continuity/completed-reflow"
+      ],
+      "role": "action-assert",
+      "evidence": "保存cols/rows及serializedState不变；不是live几何resize",
+      "note": ""
+    },
+    {
+      "id": "local-016",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyOwnedCanvasReconciliation",
+        "line": 5132,
+        "endLine": 5194
+      },
+      "title": "画布reload/set无重新启动",
+      "targets": [
+        "canvas-reconcile/reread"
+      ],
+      "role": "action-assert",
+      "evidence": "两原started、原session列表不变",
+      "note": ""
+    },
+    {
+      "id": "local-017",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyOwnedCanvasReconciliation",
+        "line": 5132,
+        "endLine": 5194
+      },
+      "title": "root映射后输入",
+      "targets": [
+        "canvas-reconcile/root-remap"
+      ],
+      "role": "action-assert",
+      "evidence": "nodeId可变化、原执行及输入正文保持",
+      "note": ""
+    },
+    {
+      "id": "local-018",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyOwnedCanvasReconciliation",
+        "line": 5132,
+        "endLine": 5194
+      },
+      "title": "移除root的原责任",
+      "targets": [
+        "canvas-reconcile/remove-root"
+      ],
+      "role": "action-assert",
+      "evidence": "第三执行保存、移除所属node；原两执行保持、无projectionRejected",
+      "note": ""
+    },
+    {
+      "id": "local-019",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyOwnedCanvasReconciliation",
+        "line": 5132,
+        "endLine": 5194
+      },
+      "title": "模拟Host边界保存",
+      "targets": [
+        "host-boundary-local/interrupt-and-flush"
+      ],
+      "role": "action-assert",
+      "evidence": "localExecutions清空与两原saved",
+      "note": ""
+    },
+    {
+      "id": "local-020",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyOwnedCanvasReconciliation",
+        "line": 5132,
+        "endLine": 5194
+      },
+      "title": "边界后显式启动",
+      "targets": [
+        "host-boundary-local/explicit-new-start"
+      ],
+      "role": "action-assert",
+      "evidence": "旧原责任完成后显式新Start；这是Host中断后新Start，不能代证用户Stop后重启",
+      "note": ""
+    },
+    {
+      "id": "local-021",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyRuntimeReloadRecovery",
+        "line": 8894,
+        "endLine": 9039
+      },
+      "title": "新原执行就绪及fake trap前提",
+      "targets": [
+        "host-boundary-local/interrupt-and-flush"
+      ],
+      "role": "prepare",
+      "evidence": "两原started、burst答复证明fake trap安装",
+      "note": ""
+    },
+    {
+      "id": "local-022",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyRuntimeReloadRecovery",
+        "line": 8894,
+        "endLine": 9039
+      },
+      "title": "模拟边界正确恢复状态",
+      "targets": [
+        "host-boundary-local/interrupt-and-flush"
+      ],
+      "role": "action-assert",
+      "evidence": "Agent resume-ready/pending空/livefalse、Terminal interrupted/livefalse",
+      "note": ""
+    },
+    {
+      "id": "local-023",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyRuntimeReloadRecovery",
+        "line": 8894,
+        "endLine": 9039
+      },
+      "title": "中断后mount不自动resume",
+      "targets": [
+        "agent-resume-context/manual-resume"
+      ],
+      "role": "action-assert",
+      "evidence": "close/open后无新增start、无活动Agent record、providerID保持",
+      "note": ""
+    },
+    {
+      "id": "local-024",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyRuntimeReloadRecovery",
+        "line": 8894,
+        "endLine": 9039
+      },
+      "title": "用户显式resume",
+      "targets": [
+        "agent-resume-context/manual-resume"
+      ],
+      "role": "action-assert",
+      "evidence": "新execution与原providerID、resumed正文、burst输入输出",
+      "note": ""
+    },
+    {
+      "id": "local-025",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyRuntimeReloadRecovery",
+        "line": 8894,
+        "endLine": 9039
+      },
+      "title": "resume后exit19",
+      "targets": [
+        "execution-exit/resumed-nonzero"
+      ],
+      "role": "action-assert",
+      "evidence": "error/code19与摘要，不能误报resume-failed",
+      "note": ""
+    },
+    {
+      "id": "local-026",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyRuntimeReloadRecovery",
+        "line": 8894,
+        "endLine": 9039
+      },
+      "title": "边界后Terminal显式Start",
+      "targets": [
+        "host-boundary-local/manual-terminal-start"
+      ],
+      "role": "action-assert",
+      "evidence": "显式请求后live；新设计需同身份started",
+      "note": ""
+    },
+    {
+      "id": "local-027",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyLiveSessionCutoverAndReload",
+        "line": 9040,
+        "endLine": 9128
+      },
+      "title": "切面及重读连续性",
+      "targets": [
+        "surface-continuity/cutover"
+      ],
+      "role": "action-assert",
+      "evidence": "editor/panel原生命周期快照与marker、原identity/generation、真实页面正文",
+      "note": ""
+    },
+    {
+      "id": "local-028",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyLiveSessionCutoverAndReload",
+        "line": 9040,
+        "endLine": 9128
+      },
+      "title": "组合结束后四marker保存",
+      "targets": [
+        "surface-continuity/cutover"
+      ],
+      "role": "action-assert",
+      "evidence": "Stop后原保存含四marker并退役；保留为连续性后置断言，不替代独立Stop",
+      "note": ""
+    },
+    {
+      "id": "local-029",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyMissingAgentCliFailure",
+        "line": 9399,
+        "endLine": 9494
+      },
+      "title": "缺CLI未取得进程",
+      "targets": [
+        "execution-start/missing-cli"
+      ],
+      "role": "action-assert",
+      "evidence": "unique新node、error、pending清、无started、startFailed/startRequested、单次not-required未提交保存、一次Host错误、record释放",
+      "note": ""
+    },
+    {
+      "id": "local-030",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyMissingAgentCliFailure",
+        "line": 9399,
+        "endLine": 9494
+      },
+      "title": "删除失败节点",
+      "targets": [
+        "execution-start/missing-cli"
+      ],
+      "role": "cleanup",
+      "evidence": "删除后节点不存在",
+      "note": ""
+    },
+    {
+      "id": "local-031",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "私有资源与原Terminal",
+      "targets": [
+        "terminal-resource-drop/first-resource",
+        "terminal-links/file-position"
+      ],
+      "role": "prepare",
+      "evidence": "文件/server/config准备、原started",
+      "note": ""
+    },
+    {
+      "id": "local-032",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "多资源拖放只首项",
+      "targets": [
+        "terminal-resource-drop/first-resource"
+      ],
+      "role": "action-assert",
+      "evidence": "含空格路径准确引用、原正文只首资源、dropPrepared",
+      "note": ""
+    },
+    {
+      "id": "local-033",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "文件行列打开",
+      "targets": [
+        "terminal-links/file-position"
+      ],
+      "role": "action-assert",
+      "evidence": "真实页面link、Editor URI/line/character",
+      "note": ""
+    },
+    {
+      "id": "local-034",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "图片链接",
+      "targets": [
+        "terminal-links/image"
+      ],
+      "role": "action-assert",
+      "evidence": "原页面marker与vscode.open/custom tab",
+      "note": ""
+    },
+    {
+      "id": "local-035",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "opener拒绝",
+      "targets": [
+        "terminal-links/opener-error"
+      ],
+      "role": "action-assert",
+      "evidence": "synthetic拒绝准确diagnostic；不宣称真实opener已失败",
+      "note": ""
+    },
+    {
+      "id": "local-036",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "cwd及多行rg链接",
+      "targets": [
+        "terminal-links/cwd-and-multiline"
+      ],
+      "role": "action-assert",
+      "evidence": "cwd后相对文件、多行path+line结果、正确URI/行列",
+      "note": ""
+    },
+    {
+      "id": "local-037",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "缺文件降级",
+      "targets": [
+        "terminal-links/missing-fallback"
+      ],
+      "role": "action-assert",
+      "evidence": "原页面link与quickOpen openerKind准确",
+      "note": ""
+    },
+    {
+      "id": "local-038",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "URL提示浏览器和OSC8",
+      "targets": [
+        "terminal-links/url-and-osc8"
+      ],
+      "role": "action-assert",
+      "evidence": "原页面tooltip、localhost simpleBrowser路由、OSC8交互",
+      "note": ""
+    },
+    {
+      "id": "local-039",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "原正文排除回显与旧history",
+      "targets": [
+        "terminal-links/file-position",
+        "terminal-links/image",
+        "terminal-links/cwd-and-multiline",
+        "terminal-links/missing-fallback",
+        "terminal-links/url-and-osc8"
+      ],
+      "role": "action-assert",
+      "evidence": "unique分段marker、原identity/真实页面可见内容",
+      "note": ""
+    },
+    {
+      "id": "local-040",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyExecutionTerminalNativeInteractions",
+        "line": 8055,
+        "endLine": 8561
+      },
+      "title": "链接清理与取证",
+      "targets": [
+        "terminal-links/file-position",
+        "terminal-links/opener-error"
+      ],
+      "role": "cleanup",
+      "evidence": "清hover、server close、配置恢复、openEditor；Stop旧fixture是准备而非链接业务",
+      "note": ""
+    },
+    {
+      "id": "local-041",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyStopVsQueuedExitRace",
+        "line": 9865,
+        "endLine": 9943
+      },
+      "title": "睡眠和排队exit后Stop",
+      "targets": [
+        "execution-stop/codex-queued-exit"
+      ],
+      "role": "action-assert",
+      "evidence": "原started、sleep已输出、Stop压过exit9、单INT、exit0、Token usage/resume尾部、saved/reader/exit各一次及原final序列",
+      "note": ""
+    },
+    {
+      "id": "local-042",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyClaudeStopRestoresPreviousSignal",
+        "line": 9944,
+        "endLine": 10035
+      },
+      "title": "Claude Stop正确收口",
+      "targets": [
+        "execution-stop/claude-graceful"
+      ],
+      "role": "action-assert",
+      "evidence": "原started与hello、stopped、原退役、无第二Ctrl-C/forcekill、无虚假恢复ID",
+      "note": ""
+    },
+    {
+      "id": "local-043",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyClaudeStopRestoresPreviousSignal",
+        "line": 9944,
+        "endLine": 10035
+      },
+      "title": "删除Claude fixture",
+      "targets": [
+        "execution-stop/claude-graceful"
+      ],
+      "role": "cleanup",
+      "evidence": "删除并确认不存在",
+      "note": ""
+    },
+    {
+      "id": "local-044",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyClaudeExplicitSessionIdPreservesResumeContext",
+        "line": 10036,
+        "endLine": 10113
+      },
+      "title": "文件确认原候选身份",
+      "targets": [
+        "agent-resume-context/claude-explicit-id"
+      ],
+      "role": "action-assert",
+      "evidence": "seed transcript、显式sessionID/strategy确认；Stop后保持同值",
+      "note": ""
+    },
+    {
+      "id": "local-045",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyClaudeExplicitSessionIdPreservesResumeContext",
+        "line": 10036,
+        "endLine": 10113
+      },
+      "title": "删除节点与transcript",
+      "targets": [
+        "agent-resume-context/claude-explicit-id"
+      ],
+      "role": "cleanup",
+      "evidence": "原Stop/退役后delete、私有文件清理",
+      "note": ""
+    },
+    {
+      "id": "local-046",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "有限burst80",
+      "targets": [
+        "execution-io/bounded-burst"
+      ],
+      "role": "action-assert",
+      "evidence": "末marker080、原执行waiting-input；非全80行完整性",
+      "note": ""
+    },
+    {
+      "id": "local-047",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "非零exit17",
+      "targets": [
+        "execution-exit/nonzero"
+      ],
+      "role": "action-assert",
+      "evidence": "error/code17/摘要、原资源退休；不是原生崩溃",
+      "note": ""
+    },
+    {
+      "id": "local-048",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "异常后新启动",
+      "targets": [
+        "execution-restart/after-error"
+      ],
+      "role": "action-assert",
+      "evidence": "第二execution与第一不同且原started",
+      "note": ""
+    },
+    {
+      "id": "local-049",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "第二执行显式Stop",
+      "targets": [
+        "execution-stop/agent"
+      ],
+      "role": "action-assert",
+      "evidence": "stopped/livefalse与第二原资源退休",
+      "note": ""
+    },
+    {
+      "id": "local-050",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "Stop后新启动",
+      "targets": [
+        "execution-restart/after-stop"
+      ],
+      "role": "action-assert",
+      "evidence": "第三execution与第二不同且原started",
+      "note": ""
+    },
+    {
+      "id": "local-051",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "普通Agent/Terminal并发",
+      "targets": [
+        "execution-concurrency/agent-terminal"
+      ],
+      "role": "action-assert",
+      "evidence": "两原started、分别回应、两个原live xterm-serialize-v1 snapshot",
+      "note": ""
+    },
+    {
+      "id": "local-052",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyPtyRobustness",
+        "line": 9129,
+        "endLine": 9225
+      },
+      "title": "并发资源清理",
+      "targets": [
+        "execution-concurrency/agent-terminal"
+      ],
+      "role": "cleanup",
+      "evidence": "两终态及原退休；分离记录清理",
+      "note": ""
+    },
+    {
+      "id": "local-053",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalFloodKeepsCanvasResponsive",
+        "line": 9226,
+        "endLine": 9398
+      },
+      "title": "压力前提",
+      "targets": [
+        "output-pressure/flood-fairness"
+      ],
+      "role": "prepare",
+      "evidence": "各原started、真实DOM发送无限输出、原marker8秒",
+      "note": ""
+    },
+    {
+      "id": "local-054",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalFloodKeepsCanvasResponsive",
+        "line": 9226,
+        "endLine": 9398
+      },
+      "title": "压力中Note和已有Agent",
+      "targets": [
+        "output-pressure/flood-fairness"
+      ],
+      "role": "action-assert",
+      "evidence": "Note真实选中8秒、原Agent响应15秒",
+      "note": ""
+    },
+    {
+      "id": "local-055",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalFloodKeepsCanvasResponsive",
+        "line": 9226,
+        "endLine": 9398
+      },
+      "title": "压力中新节点与第二流",
+      "targets": [
+        "output-pressure/flood-fairness"
+      ],
+      "role": "action-assert",
+      "evidence": "新Terminal/Agent created/started、第二无限流8秒与新Agent回应15秒",
+      "note": ""
+    },
+    {
+      "id": "local-056",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalFloodKeepsCanvasResponsive",
+        "line": 9226,
+        "endLine": 9398
+      },
+      "title": "Ctrl-C后原PTY输入有效",
+      "targets": [
+        "output-pressure/ctrl-c-retains-session"
+      ],
+      "role": "action-assert",
+      "evidence": "两原Terminal在Ctrl-C后分别printf新marker15秒且live，不停止PTY",
+      "note": ""
+    },
+    {
+      "id": "local-057",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyTerminalFloodKeepsCanvasResponsive",
+        "line": 9226,
+        "endLine": 9398
+      },
+      "title": "压力资源清理",
+      "targets": [
+        "output-pressure/flood-fairness",
+        "output-pressure/ctrl-c-retains-session"
+      ],
+      "role": "cleanup",
+      "evidence": "Stop四执行与退役、删除secondary；不是Ctrl-C目标",
+      "note": ""
+    },
+    {
+      "id": "local-058",
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "verifyFailurePaths",
+        "line": 9495,
+        "endLine": 9690
+      },
+      "title": "其余拒绝及基线保护",
+      "targets": [
+        "execution-start/invalid-launch",
+        "canvas-protocol/missing-node"
+      ],
+      "role": "action-assert",
+      "evidence": "invalid跨provider/create或seed launch拒绝、missingAgent/Terminal/delete准确反馈、基线标题body/closed保持",
+      "note": ""
+    }
+  ],
+  "additionalSemanticMigration": [
+    {
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "runRuntimeCheckpointRefreshSmoke",
+        "line": 310,
+        "endLine": 464
+      },
+      "title": "运行态current-state及Host重建",
+      "targets": [
+        "runtime-projection/checkpoint-current-state"
+      ],
+      "role": "action-assert",
+      "evidence": "18000行、空Host cached events、paged current-state descriptor、完整连续chunk/codec、post-capture修订、原session及页面正文"
+    },
+    {
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "runRuntimeCheckpointRefreshSmoke",
+        "line": 310,
+        "endLine": 464
+      },
+      "title": "完成后drain与历史丢弃",
+      "targets": [
+        "runtime-projection/completed-no-history"
+      ],
+      "role": "action-assert",
+      "evidence": "完成后的当前页面原marker、两节点historyDiscarded、持久化metadata契约"
+    },
+    {
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "runRuntimeCheckpointRefreshSmoke",
+        "line": 310,
+        "endLine": 464
+      },
+      "title": "完成后页面重开无旧正文",
+      "targets": [
+        "runtime-projection/completed-page-reopen"
+      ],
+      "role": "action-assert",
+      "evidence": "关闭页面并模拟边界后，snapshot livefalse/output空，无stream/read/serializedState，真实页面无旧marker"
+    },
+    {
+      "source": {
+        "file": "tests/vscode-smoke/extension-tests.cjs",
+        "function": "runRuntimeCheckpointRefreshSmoke",
+        "line": 310,
+        "endLine": 464
+      },
+      "title": "旧已完成stream迁移",
+      "targets": [
+        "runtime-projection/legacy-completed-migration"
+      ],
+      "role": "action-assert",
+      "evidence": "seed旧stream及pending start，重读清除旧正文/summary/pending，无history复活，落盘无OLD_COMPLETED_HISTORY"
+    }
+  ],
+  "complexCaseSteps": [
+    {
+      "case": "supervisor-upgrade/generation-continuity",
+      "steps": [
+        {
+          "id": "prepare-generations",
+          "title": "准备v1/上一代stream进程与原session；当前代另建",
+          "role": "prepare"
+        },
+        {
+          "id": "attach-and-output",
+          "title": "恢复旧两代原binding，输入输出和快照",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原Host/DOM/RPC/PTY几何与session/storage一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "stop-old",
+          "title": "Stop旧执行，分别确认PTY/Supervisor终态与Host消费",
+          "role": "action-assert"
+        },
+        {
+          "id": "delete-and-retire",
+          "title": "删除旧绑定并确认旧客户端/责任退休",
+          "role": "action-assert"
+        },
+        {
+          "id": "new-generation-isolation",
+          "title": "当前generation继续有效且不受旧清理影响",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有原进程与目录",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "shared-runtime-windows/owner-attacher",
+      "steps": [
+        {
+          "id": "owner-setup",
+          "title": "owner窗口创建原共享root与执行",
+          "role": "prepare"
+        },
+        {
+          "id": "attacher-setup",
+          "title": "attacher握手并确认共享原session",
+          "role": "prepare"
+        },
+        {
+          "id": "structure",
+          "title": "共享Note/节点结构修改双向可见",
+          "role": "action-assert"
+        },
+        {
+          "id": "io-resize",
+          "title": "两窗口原输入输出与resize",
+          "role": "action-assert"
+        },
+        {
+          "id": "stop-delete",
+          "title": "共享Stop保留读者终态，Delete移除两方投影",
+          "role": "action-assert"
+        },
+        {
+          "id": "mode-takeover",
+          "title": "配置边界、关闭隔离和最后窗口接管/清理",
+          "role": "action-assert"
+        },
+        {
+          "id": "empty-root-reopen",
+          "title": "关闭两方后重开空共享root",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "窗口和私有资源结束",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/local",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/multi-root",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/single-to-multi-root",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/systemd-user",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/systemd-fallback",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/ssh-host-exit",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    },
+    {
+      "case": "runtime-reopen/ssh-host-retain",
+      "steps": [
+        {
+          "id": "setup",
+          "title": "原runtime session started、活动及离线完成夹具准备、保存原身份",
+          "role": "prepare"
+        },
+        {
+          "id": "transition",
+          "title": "原client退出；SSH明确原Host exit/retain，Supervisor继续",
+          "role": "action-assert"
+        },
+        {
+          "id": "completed-barrier",
+          "title": "拟议统一原Terminal完成屏障；现有本地固定3秒后在verify确认、SSH独立轮询",
+          "role": "action-assert"
+        },
+        {
+          "id": "verify",
+          "title": "新窗口接回原session/root/storage与活动正文，完成会话准确终态",
+          "role": "action-assert"
+        },
+        {
+          "id": "resize",
+          "title": "原PTY几何与页面目标/Host/RPC共同一致",
+          "role": "action-assert"
+        },
+        {
+          "id": "cleanup",
+          "title": "结束本次私有责任",
+          "role": "cleanup"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "直接await清单包含嵌套modal回调；不是测试数量或完整断言AST",
+    "语义行按helper范围关联，拆分实现需逐条review内部断言",
+    "相同case多个currentRoutes不证明fixture等价；删除重复前须验证",
+    "现有与拟议default标记为覆盖保留计划，不代表已实施或通过",
+    "proposed-gap不进入新必跑清单；真实TUI/新Host/原生崩溃覆盖仍待验"
+  ]
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ms-vscode-remote.remote-ssh",
+    "version": "0.128.0",
+    "sha256": "458bfdea562840a3a4d9cb246cfe9a212c67a0c9317a8fdd0d22aeaedc82bf2c",
+    "url": "https://ms-vscode-remote.gallery.vsassets.io/_apis/public/gallery/publisher/ms-vscode-remote/extension/remote-ssh/0.128.0/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage"
+  },
+  {
+    "id": "ms-vscode-remote.remote-ssh-edit",
+    "version": "0.87.0",
+    "sha256": "c9e5fa440265d3b77e4ae63219014b64d714cd5280b263c5c932849fecb71ae3",
+    "url": "https://ms-vscode-remote.gallery.vsassets.io/_apis/public/gallery/publisher/ms-vscode-remote/extension/remote-ssh-edit/0.87.0/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage"
+  },
+  {
+    "id": "ms-vscode.remote-explorer",
+    "version": "0.5.0",
+    "sha256": "04db277ada5d771bf763d323644454e633aad48da0e81345175ac3ec08299abf",
+    "url": "https://ms-vscode.gallery.vsassets.io/_apis/public/gallery/publisher/ms-vscode/extension/remote-explorer/0.5.0/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage"
+  }
+]

@@ -1,0 +1,1062 @@
+{
+  "canvas": {
+    "height": 2942.0,
+    "width": 1920.0
+  },
+  "composition": {
+    "limits": {
+      "max_bends_per_edge": 2,
+      "max_bridged_crossings": 0,
+      "max_route_stretch": 1.35,
+      "max_total_bends": 8,
+      "min_container_gutter": 20.0,
+      "min_label_clearance": 4.0,
+      "min_node_gap": 40.0,
+      "min_segment_length": 16.0,
+      "profile": "showcase"
+    },
+    "metrics": {
+      "bridged_crossings": 0,
+      "max_route_stretch": 1.0,
+      "minimum_container_gutter": null,
+      "minimum_node_gap": 40.0,
+      "shortest_segment": 42.0,
+      "total_bends": 0
+    },
+    "ok": true,
+    "profile": "showcase",
+    "score": 100,
+    "violations": []
+  },
+  "edges": [
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-000",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          332.0
+        ],
+        [
+          480.0,
+          374.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-0",
+      "source_port": [
+        480.0,
+        332.0
+      ],
+      "target": "win32-x64-1",
+      "target_port": [
+        480.0,
+        374.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-001",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          466.0
+        ],
+        [
+          480.0,
+          508.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-1",
+      "source_port": [
+        480.0,
+        466.0
+      ],
+      "target": "win32-x64-2",
+      "target_port": [
+        480.0,
+        508.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-002",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          600.0
+        ],
+        [
+          480.0,
+          642.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-2",
+      "source_port": [
+        480.0,
+        600.0
+      ],
+      "target": "win32-x64-3",
+      "target_port": [
+        480.0,
+        642.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-003",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          734.0
+        ],
+        [
+          480.0,
+          776.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-3",
+      "source_port": [
+        480.0,
+        734.0
+      ],
+      "target": "win32-x64-4",
+      "target_port": [
+        480.0,
+        776.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-004",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          868.0
+        ],
+        [
+          480.0,
+          910.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-4",
+      "source_port": [
+        480.0,
+        868.0
+      ],
+      "target": "win32-x64-5",
+      "target_port": [
+        480.0,
+        910.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-005",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1002.0
+        ],
+        [
+          480.0,
+          1044.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-5",
+      "source_port": [
+        480.0,
+        1002.0
+      ],
+      "target": "win32-x64-6",
+      "target_port": [
+        480.0,
+        1044.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-006",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1136.0
+        ],
+        [
+          480.0,
+          1178.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-6",
+      "source_port": [
+        480.0,
+        1136.0
+      ],
+      "target": "win32-x64-7",
+      "target_port": [
+        480.0,
+        1178.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-007",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1270.0
+        ],
+        [
+          480.0,
+          1312.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-7",
+      "source_port": [
+        480.0,
+        1270.0
+      ],
+      "target": "win32-x64-8",
+      "target_port": [
+        480.0,
+        1312.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-008",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1404.0
+        ],
+        [
+          480.0,
+          1446.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-8",
+      "source_port": [
+        480.0,
+        1404.0
+      ],
+      "target": "win32-x64-9",
+      "target_port": [
+        480.0,
+        1446.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-009",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1538.0
+        ],
+        [
+          480.0,
+          1580.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-9",
+      "source_port": [
+        480.0,
+        1538.0
+      ],
+      "target": "win32-x64-10",
+      "target_port": [
+        480.0,
+        1580.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-010",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1672.0
+        ],
+        [
+          480.0,
+          1714.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-10",
+      "source_port": [
+        480.0,
+        1672.0
+      ],
+      "target": "win32-x64-11",
+      "target_port": [
+        480.0,
+        1714.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-011",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1806.0
+        ],
+        [
+          480.0,
+          1848.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-11",
+      "source_port": [
+        480.0,
+        1806.0
+      ],
+      "target": "win32-x64-12",
+      "target_port": [
+        480.0,
+        1848.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-012",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          1940.0
+        ],
+        [
+          480.0,
+          1982.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-12",
+      "source_port": [
+        480.0,
+        1940.0
+      ],
+      "target": "win32-x64-13",
+      "target_port": [
+        480.0,
+        1982.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-013",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          2074.0
+        ],
+        [
+          480.0,
+          2116.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-13",
+      "source_port": [
+        480.0,
+        2074.0
+      ],
+      "target": "win32-x64-14",
+      "target_port": [
+        480.0,
+        2116.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-014",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          2208.0
+        ],
+        [
+          480.0,
+          2250.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-14",
+      "source_port": [
+        480.0,
+        2208.0
+      ],
+      "target": "win32-x64-15",
+      "target_port": [
+        480.0,
+        2250.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-015",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          2342.0
+        ],
+        [
+          480.0,
+          2384.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-15",
+      "source_port": [
+        480.0,
+        2342.0
+      ],
+      "target": "win32-x64-16",
+      "target_port": [
+        480.0,
+        2384.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-016",
+      "length": 42.0,
+      "route": [
+        [
+          480.0,
+          2476.0
+        ],
+        [
+          480.0,
+          2518.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-x64-16",
+      "source_port": [
+        480.0,
+        2476.0
+      ],
+      "target": "win32-x64-17",
+      "target_port": [
+        480.0,
+        2518.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-017",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          332.0
+        ],
+        [
+          1440.0,
+          374.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-0",
+      "source_port": [
+        1440.0,
+        332.0
+      ],
+      "target": "win32-arm64-1",
+      "target_port": [
+        1440.0,
+        374.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-018",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          466.0
+        ],
+        [
+          1440.0,
+          508.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-1",
+      "source_port": [
+        1440.0,
+        466.0
+      ],
+      "target": "win32-arm64-2",
+      "target_port": [
+        1440.0,
+        508.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-019",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          600.0
+        ],
+        [
+          1440.0,
+          642.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-2",
+      "source_port": [
+        1440.0,
+        600.0
+      ],
+      "target": "win32-arm64-3",
+      "target_port": [
+        1440.0,
+        642.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-020",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          734.0
+        ],
+        [
+          1440.0,
+          776.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-3",
+      "source_port": [
+        1440.0,
+        734.0
+      ],
+      "target": "win32-arm64-4",
+      "target_port": [
+        1440.0,
+        776.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-021",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          868.0
+        ],
+        [
+          1440.0,
+          910.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-4",
+      "source_port": [
+        1440.0,
+        868.0
+      ],
+      "target": "win32-arm64-5",
+      "target_port": [
+        1440.0,
+        910.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-022",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1002.0
+        ],
+        [
+          1440.0,
+          1044.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-5",
+      "source_port": [
+        1440.0,
+        1002.0
+      ],
+      "target": "win32-arm64-6",
+      "target_port": [
+        1440.0,
+        1044.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-023",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1136.0
+        ],
+        [
+          1440.0,
+          1178.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-6",
+      "source_port": [
+        1440.0,
+        1136.0
+      ],
+      "target": "win32-arm64-7",
+      "target_port": [
+        1440.0,
+        1178.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-024",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1270.0
+        ],
+        [
+          1440.0,
+          1312.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-7",
+      "source_port": [
+        1440.0,
+        1270.0
+      ],
+      "target": "win32-arm64-8",
+      "target_port": [
+        1440.0,
+        1312.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-025",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1404.0
+        ],
+        [
+          1440.0,
+          1446.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-8",
+      "source_port": [
+        1440.0,
+        1404.0
+      ],
+      "target": "win32-arm64-9",
+      "target_port": [
+        1440.0,
+        1446.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-026",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1538.0
+        ],
+        [
+          1440.0,
+          1580.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-9",
+      "source_port": [
+        1440.0,
+        1538.0
+      ],
+      "target": "win32-arm64-10",
+      "target_port": [
+        1440.0,
+        1580.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-027",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1672.0
+        ],
+        [
+          1440.0,
+          1714.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-10",
+      "source_port": [
+        1440.0,
+        1672.0
+      ],
+      "target": "win32-arm64-11",
+      "target_port": [
+        1440.0,
+        1714.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-028",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1806.0
+        ],
+        [
+          1440.0,
+          1848.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-11",
+      "source_port": [
+        1440.0,
+        1806.0
+      ],
+      "target": "win32-arm64-12",
+      "target_port": [
+        1440.0,
+        1848.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-029",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          1940.0
+        ],
+        [
+          1440.0,
+          1982.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-12",
+      "source_port": [
+        1440.0,
+        1940.0
+      ],
+      "target": "win32-arm64-13",
+      "target_port": [
+        1440.0,
+        1982.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-030",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          2074.0
+        ],
+        [
+          1440.0,
+          2116.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-13",
+      "source_port": [
+        1440.0,
+        2074.0
+      ],
+      "target": "win32-arm64-14",
+      "target_port": [
+        1440.0,
+        2116.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-031",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          2208.0
+        ],
+        [
+          1440.0,
+          2250.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-14",
+      "source_port": [
+        1440.0,
+        2208.0
+      ],
+      "target": "win32-arm64-15",
+      "target_port": [
+        1440.0,
+        2250.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-032",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          2342.0
+        ],
+        [
+          1440.0,
+          2384.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-15",
+      "source_port": [
+        1440.0,
+        2342.0
+      ],
+      "target": "win32-arm64-16",
+      "target_port": [
+        1440.0,
+        2384.0
+      ],
+      "waypoints": []
+    },
+    {
+      "bends": 0,
+      "bridges": [],
+      "crossings": [],
+      "id": "edge-033",
+      "length": 42.0,
+      "route": [
+        [
+          1440.0,
+          2476.0
+        ],
+        [
+          1440.0,
+          2518.0
+        ]
+      ],
+      "route_stretch": 1.0,
+      "source": "win32-arm64-16",
+      "source_port": [
+        1440.0,
+        2476.0
+      ],
+      "target": "win32-arm64-17",
+      "target_port": [
+        1440.0,
+        2518.0
+      ],
+      "waypoints": []
+    }
+  ],
+  "input_schema": "v1",
+  "issues": [],
+  "mode": "flowchart",
+  "ok": true,
+  "palette": {
+    "below_target": [],
+    "minimum_target": 4.5,
+    "ratios": {
+      "section_sub_fill": 4.76,
+      "text_muted": 4.76,
+      "text_primary": 17.74,
+      "text_secondary": 4.83
+    },
+    "scope": "default opaque canvas text tokens; not a full rendered accessibility audit",
+    "unsupported_tokens": []
+  },
+  "placements": {
+    "legend": null
+  },
+  "schema_version": 1,
+  "semantics": {
+    "details": {},
+    "ok": true,
+    "profile": "generic",
+    "style": 1,
+    "visual_theme": "Flat Icon"
+  },
+  "style": {
+    "id": 1,
+    "name": "Flat Icon"
+  },
+  "summary": {
+    "bridged_crossings": 0,
+    "edges": 34,
+    "nodes": 40
+  },
+  "text_metrics": "heuristic-v1",
+  "typography": {
+    "complete_text": true,
+    "hint": null,
+    "metrics": "heuristic widths; inspect the actual rendered font",
+    "truncated": []
+  }
+}

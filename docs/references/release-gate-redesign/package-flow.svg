@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1680 1600" width="1680" height="1600" data-generator="fireworks-tech-graph" data-schema-version="1" data-text-metrics="heuristic-v1" data-style-id="1" data-visual-theme="Flat Icon" data-diagram-type="flowchart" data-motion-scene="" data-semantic-profile="generic" data-semantic-valid="true" data-quality-profile="showcase" data-max-bends-per-edge="2" data-max-total-bends="8" data-max-route-stretch="1.35" data-max-bridged-crossings="0" data-min-node-gap="40.0" data-min-container-gutter="20.0" data-min-label-clearance="4.0" data-min-segment-length="16.0">
+  <defs>
+    <marker id="arrowA" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowC" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowB" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowE" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#0d9488"/>
+    </marker>
+    <marker id="arrowF" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrowG" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowH" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280"/>
+    </marker>
+    <filter id="shadowSoft" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowGlass" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#020617" flood-opacity="0.28"/>
+    </filter>
+    <style>
+    text { font-family: 'Noto Sans CJK SC', sans-serif; }
+    .title { font-size: 30px; font-weight: 700; fill: #111827; }
+    .subtitle { font-size: 14px; font-weight: 500; fill: #6b7280; }
+    .section { font-size: 13px; font-weight: 700; fill: #2563eb; letter-spacing: 1.4px; }
+    .section-sub { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .node-title { font-weight: 700; fill: #111827; }
+    .node-sub { font-weight: 500; fill: #6b7280; }
+    .node-type { font-size: 12px; font-weight: 700; fill: #64748b; letter-spacing: 0.08em; }
+    .arrow-label { font-size: 12px; font-weight: 600; fill: #6b7280; }
+    .legend { font-size: 12px; font-weight: 500; fill: #6b7280; }
+    .footnote { font-size: 12px; font-weight: 500; fill: #64748b; }
+    .metric-label { font-size: 8.5px; font-weight: 700; fill: #64748b; text-transform: uppercase; }
+    .metric-value { font-size: 9.5px; font-weight: 700; fill: #111827; }
+    </style>
+  </defs>
+  <rect data-graph-role="background" width="1680.0" height="1600.0" fill="#ffffff"/>
+  <text x="840.0" y="56" text-anchor="middle" class="title">02  双包交接与验收</text>
+  <text x="840.0" y="82" text-anchor="middle" class="subtitle">每个预合并/最终tag输入各自构建验收；最终发布消费最终SHA上验过的同批文件</text>
+  <path id="edge-000" data-graph-role="edge" data-edge-id="edge-000" data-source="input" data-target="build" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 520,244 L 520,340" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-001" data-graph-role="edge" data-edge-id="edge-001" data-source="build" data-target="pair" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 520,444 L 520,540" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowB)"/>
+  <path id="edge-002" data-graph-role="edge" data-edge-id="edge-002" data-source="pair" data-target="instrument" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 520,644 L 520,740" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowB)"/>
+  <path id="edge-003" data-graph-role="edge" data-edge-id="edge-003" data-source="pair" data-target="installed" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="2" data-route-stretch="1.12" data-bridges="" d="M 60,592 L 36,592 L 36,992 L 60,992" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowB)"/>
+  <path id="edge-004" data-graph-role="edge" data-edge-id="edge-004" data-source="instrument" data-target="accept" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="2" data-route-stretch="1.12" data-bridges="" d="M 980,792 L 1004,792 L 1004,1192 L 980,1192" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-005" data-graph-role="edge" data-edge-id="edge-005" data-source="installed" data-target="accept" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 520,1044 L 520,1140" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowA)"/>
+  <path id="edge-006" data-graph-role="edge" data-edge-id="edge-006" data-source="accept" data-target="prepare" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 520,1244 L 520,1340" fill="none" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowB)"/>
+  <path id="edge-007" data-graph-role="edge" data-edge-id="edge-007" data-source="prepare" data-target="retry" data-edge-kind="flow" data-topic-id="" data-flow="" data-motion-role="" data-motion-stage="" data-motion-order="" data-protocol="" data-via="" data-critical-path-id="" data-critical-hop="" data-critical-hops="" data-critical="false" data-bends="0" data-route-stretch="1.0" data-bridges="" d="M 980,1392 L 1110,1392" fill="none" stroke="#9333ea" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrowF)"/>
+  <g id="node-input" data-graph-role="node" data-node-id="input" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,140,980,244">
+  <rect x="60.0" y="140.0" width="920.0" height="104.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="固定源码 + lock + 同run六目标native-set" data-text-max-width="896.0" x="520.0" y="192.0" text-anchor="middle" class="node-title" font-size="21.0">固定源码 + lock + 同run六目标native-set</text>
+  <text data-text-role="subtitle" data-full-text="git archive SHA；隔离HOME/config/npm依赖；native不在dist内" data-text-max-width="896.0" x="520.0" y="214.0" text-anchor="middle" class="node-sub" font-size="12">git archive SHA；隔离HOME/config/npm依赖；native不在dist内</text>
+  </g>
+  <g id="node-build" data-graph-role="node" data-node-id="build" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,340,980,444">
+  <rect x="60.0" y="340.0" width="920.0" height="104.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="package-clean：主/notifier各构建打包一次" data-text-max-width="896.0" x="520.0" y="392.0" text-anchor="middle" class="node-title" font-size="21.0">package-clean：主/notifier各构建打包一次</text>
+  <text data-text-role="subtitle" data-full-text="正式platform/profile/admission；保留补丁、资源、README-ref与file-list检查" data-text-max-width="896.0" x="520.0" y="414.0" text-anchor="middle" class="node-sub" font-size="12">正式platform/profile/admission；保留补丁、资源、README-ref与file-list检查</text>
+  </g>
+  <g id="node-pair" data-graph-role="node" data-node-id="pair" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,540,980,644">
+  <rect x="60.0" y="540.0" width="920.0" height="104.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="固定路径双包 + package-receipt" data-text-max-width="896.0" x="520.0" y="592.0" text-anchor="middle" class="node-title" font-size="21.0">固定路径双包 + package-receipt</text>
+  <text data-text-role="subtitle" data-full-text="main.vsix / notifier.vsix；ID/版本/SHA/size、源码与asset-set摘要" data-text-max-width="896.0" x="520.0" y="614.0" text-anchor="middle" class="node-sub" font-size="12">main.vsix / notifier.vsix；ID/版本/SHA/size、源码与asset-set摘要</text>
+  </g>
+  <g id="node-instrument" data-graph-role="node" data-node-id="instrument" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,740,980,844">
+  <rect x="60.0" y="740.0" width="920.0" height="104.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="packaged-host：只消费两个包的测试副本" data-text-max-width="896.0" x="520.0" y="792.0" text-anchor="middle" class="node-title" font-size="21.0">packaged-host：只消费两个包的测试副本</text>
+  <text data-text-role="subtitle" data-full-text="wrapper/manifest/test-mode变更清单；notifier禁止从源码dist替代" data-text-max-width="896.0" x="520.0" y="814.0" text-anchor="middle" class="node-sub" font-size="12">wrapper/manifest/test-mode变更清单；notifier禁止从源码dist替代</text>
+  </g>
+  <g id="node-installed" data-graph-role="node" data-node-id="installed" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,940,980,1044">
+  <rect x="60.0" y="940.0" width="920.0" height="104.0" rx="10.0" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="installed-pair：原样双包安装" data-text-max-width="896.0" x="520.0" y="992.0" text-anchor="middle" class="node-title" font-size="21.0">installed-pair：原样双包安装</text>
+  <text data-text-role="subtitle" data-full-text="空extensionsDir；独立driver/公开入口；三x64系统；产品无smoke模式" data-text-max-width="896.0" x="520.0" y="1014.0" text-anchor="middle" class="node-sub" font-size="12">空extensionsDir；独立driver/公开入口；三x64系统；产品无smoke模式</text>
+  </g>
+  <g id="node-accept" data-graph-role="node" data-node-id="accept" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,1140,980,1244">
+  <rect x="60.0" y="1140.0" width="920.0" height="104.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="聚合包验收与其他完整层 → acceptance回执" data-text-max-width="896.0" x="520.0" y="1192.0" text-anchor="middle" class="node-title" font-size="21.0">聚合包验收与其他完整层 → acceptance回执</text>
+  <text data-text-role="subtitle" data-full-text="原包前后摘要不变；case/输入/环境/producer来源一致" data-text-max-width="896.0" x="520.0" y="1214.0" text-anchor="middle" class="node-sub" font-size="12">原包前后摘要不变；case/输入/环境/producer来源一致</text>
+  </g>
+  <g id="node-prepare" data-graph-role="node" data-node-id="prepare" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="60,1340,980,1444">
+  <rect x="60.0" y="1340.0" width="920.0" height="104.0" rx="10.0" fill="#f0fdf4" stroke="#86efac" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="最终tag：prepare只下载、核验和交付同批包" data-text-max-width="896.0" x="520.0" y="1392.0" text-anchor="middle" class="node-title" font-size="21.0">最终tag：prepare只下载、核验和交付同批包</text>
+  <text data-text-role="subtitle" data-full-text="不重打包；远端GitHub资产核摘要 → 两渠道消费原包" data-text-max-width="896.0" x="520.0" y="1414.0" text-anchor="middle" class="node-sub" font-size="12">不重打包；远端GitHub资产核摘要 → 两渠道消费原包</text>
+  </g>
+  <g id="node-notserial" data-graph-role="node" data-node-id="notserial" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1110,740,1620,844">
+  <rect x="1110.0" y="740.0" width="510.0" height="104.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="两层验收独立执行" data-text-max-width="486.0" x="1365.0" y="792.0" text-anchor="middle" class="node-title" font-size="21.0">两层验收独立执行</text>
+  <text data-text-role="subtitle" data-full-text="图按交接展开；installed不依赖packaged成功" data-text-max-width="486.0" x="1365.0" y="814.0" text-anchor="middle" class="node-sub" font-size="12">图按交接展开；installed不依赖packaged成功</text>
+  </g>
+  <g id="node-differentref" data-graph-role="node" data-node-id="differentref" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1110,140,1620,244">
+  <rect x="1110.0" y="140.0" width="510.0" height="104.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="PR与最终tag是不同输入" data-text-max-width="486.0" x="1365.0" y="192.0" text-anchor="middle" class="node-title" font-size="21.0">PR与最终tag是不同输入</text>
+  <text data-text-role="subtitle" data-full-text="两阶段分别全量验证；不拿PR包直接发布" data-text-max-width="486.0" x="1365.0" y="214.0" text-anchor="middle" class="node-sub" font-size="12">两阶段分别全量验证；不拿PR包直接发布</text>
+  </g>
+  <g id="node-exact" data-graph-role="node" data-node-id="exact" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1110,540,1620,644">
+  <rect x="1110.0" y="540.0" width="510.0" height="104.0" rx="10.0" fill="#f9fafb" stroke="#d1d5db" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="不以mtime / glob选择包" data-text-max-width="486.0" x="1365.0" y="592.0" text-anchor="middle" class="node-title" font-size="21.0">不以mtime / glob选择包</text>
+  <text data-text-role="subtitle" data-full-text="每个消费边界重新计算原包摘要" data-text-max-width="486.0" x="1365.0" y="614.0" text-anchor="middle" class="node-sub" font-size="12">每个消费边界重新计算原包摘要</text>
+  </g>
+  <g id="node-bad" data-graph-role="node" data-node-id="bad" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1110,1140,1620,1244">
+  <rect x="1110.0" y="1140.0" width="510.0" height="104.0" rx="10.0" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="错包 / 缺回执 / 未验收" data-text-max-width="486.0" x="1365.0" y="1192.0" text-anchor="middle" class="node-title" font-size="21.0">错包 / 缺回执 / 未验收</text>
+  <text data-text-role="subtitle" data-full-text="不能发布；保留现场与原输入" data-text-max-width="486.0" x="1365.0" y="1214.0" text-anchor="middle" class="node-sub" font-size="12">不能发布；保留现场与原输入</text>
+  </g>
+  <g id="node-retry" data-graph-role="node" data-node-id="retry" data-semantic-role="rect" data-motion-role="" data-motion-stage="" data-motion-order="" data-parent="" data-deployment-id="" data-topic-id="" data-span-id="" data-station-order="" data-status="" data-start-ms="" data-duration-ms="" data-parent-span="" data-graph-bounds="1110,1340,1620,1444">
+  <rect x="1110.0" y="1340.0" width="510.0" height="104.0" rx="10.0" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.8"/>
+  <text data-text-role="title" data-full-text="已有Release恢复原双包" data-text-max-width="486.0" x="1365.0" y="1392.0" text-anchor="middle" class="node-title" font-size="21.0">已有Release恢复原双包</text>
+  <text data-text-role="subtitle" data-full-text="匹配原acceptance；拒绝自动重打或覆盖" data-text-max-width="486.0" x="1365.0" y="1414.0" text-anchor="middle" class="node-sub" font-size="12">匹配原acceptance；拒绝自动重打或覆盖</text>
+  </g>
+  <g id="edge-007-label" data-graph-role="label" data-owner="edge-007" data-graph-bounds="1026,1361,1064,1381">
+  <rect x="1026.0" y="1361.0" width="38.0" height="20" rx="6" fill="#ffffff" opacity="0.94"/>
+  <text x="1045.0" y="1375.0" text-anchor="middle" class="arrow-label">重跑</text>
+  </g>
+  <g id="legend" data-graph-role="legend">
+    <rect id="legend-zone" data-graph-role="reserved" data-reserved-kind="legend" x="50" y="1542" width="632.08" height="46" rx="10" fill="none" stroke="none"/>
+    <line data-graph-role="decoration" x1="60.0" y1="1556.0" x2="90.0" y2="1556.0" stroke="#2563eb" stroke-width="2.4" marker-end="url(#arrowA)"/>
+    <text data-graph-role="decoration" x="100.0" y="1560.0" class="legend">验证 / 输入依赖</text>
+    <line data-graph-role="decoration" x1="215.6" y1="1556.0" x2="245.6" y2="1556.0" stroke="#16a34a" stroke-width="2.4" marker-end="url(#arrowB)"/>
+    <text data-graph-role="decoration" x="255.6" y="1560.0" class="legend">同批产物 / 完成</text>
+    <line data-graph-role="decoration" x1="371.20000000000005" y1="1556.0" x2="401.20000000000005" y2="1556.0" stroke="#dc2626" stroke-width="2.4" marker-end="url(#arrowG)"/>
+    <text data-graph-role="decoration" x="411.20000000000005" y="1560.0" class="legend">失败 / 未完成</text>
+    <line data-graph-role="decoration" x1="514.8000000000001" y1="1556.0" x2="544.8000000000001" y2="1556.0" stroke="#9333ea" stroke-width="2.4" marker-end="url(#arrowF)"/>
+    <text data-graph-role="decoration" x="554.8000000000001" y="1560.0" class="legend">恢复 / 可deferred</text>
+  </g>
+</svg>
