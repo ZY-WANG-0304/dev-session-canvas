@@ -40,7 +40,7 @@ updated_at: 2026-10-24
 
 首次恢复在本地 managed session 建立前断连时，不能只把任务标成 ignored：此时没有既有分页会话替它安排恢复，节点会永远显示 reattaching。`handleRuntimeSupervisorDisconnected` 为该任务保留原连接错误并投影 history-restored，全部等待者得到同一失败；已存在的分页会话继续由原重连流程负责。此边界由本次新回归先红后绿验证。
 
-本次不改变模式切换删除前的回调准入或保存边界。该独立缺陷仍由 `runtime-shared-root-canvas-sync.md` 跟踪；不能声称此次恢复修复关闭所有模式切换交错。
+最初恢复订阅修复不改变模式切换删除前的回调准入或保存边界。用户后续授权在同一 PR336 实施关联修复，当前方案与独立验证见 [模式切换结算设计](runtime-mode-switch-settlement.md)。两项证据分别保留，恢复订阅通过本身不证明模式切换已修复。
 
 ## 验证与当前状态
 
@@ -50,7 +50,7 @@ Node 22.23.3/Linux 的当前实现已通过完整 `test:runtime-supervisor-proto
 
 首次 Host 全套与协议链并行时，原 PID 等待用例超过其原 3 秒期限；随后同输入单项和串行全套 634/634 通过，未延长期限，原因仍未确认。VS Code 日志有 watcher ENOSPC 警告，具名场景最终通过。依赖、六目标资产和 VS Code 缓存均复用既有输入，build 按原规则校验原生资产；不称为冷安装或新的六平台产品验收。
 
-命令、日志摘要与本轮文件 hash 见 `docs/references/runtime-restore-subscription-fix/result.json`。正式 CI/复审、剩余模式切换缺陷以及 PR327 最新正式预合并完整验收仍分别待收口，状态保持验证中。
+命令、日志摘要与本轮文件 hash 见 `docs/references/runtime-restore-subscription-fix/result.json`。正式 CI/复审、模式切换接续验证以及 PR327 最新正式预合并完整验收仍分别待收口，状态保持验证中。
 
 ## 判断修复成立的标准与证据边界
 

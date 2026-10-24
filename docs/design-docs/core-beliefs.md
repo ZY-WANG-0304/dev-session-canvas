@@ -465,3 +465,5 @@ smoke的准备、业务动作、观察断言和清理承担不同责任。原链
 产品成熟度、Marketplace通道与GitHub Release类别应分别记录；门禁重构须保持已确认的发布类别，通过真实客户端请求合同防止隐式切换。见[GitHub Release类别](release-gate-redesign.md#github-release-类别2026-10-24-review-修正)。
 
 异步恢复的完成点必须包括建立输出订阅；附着快照已应用不等于终态已有递送路径。同身份调用共用完整责任，资格检查覆盖真实请求派发前，不能只拒绝过时响应。见 [完整恢复与订阅责任](runtime-restore-subscription-fix.md)。
+
+模式切换必须结算原会话已派发的删除及其回调、读者和保存，不能用全局丢弃事件消除 pending。失败后的继续处理保留原请求和完成事实，已删除绑定不得由旧保存复活。选定实施方案见 [原会话结算与旧保存隔离](runtime-mode-switch-settlement.md)，局部验证与正式 CI 分开记账。

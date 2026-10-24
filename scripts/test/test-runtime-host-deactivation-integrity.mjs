@@ -148,6 +148,7 @@ function makeHost() {
   host.terminalAvailableNotifications = new TerminalAvailableNotifications();
   Object.assign(host, {
     context: { extensionMode: 3, extensionUri: { fsPath: cwd } },
+    appliedStartupConfiguration: { runtimePersistenceEnabled: false },
     rawExtensionStoragePath: path.join(cwd, 'controlled-workspace-slot'),
     resolveRuntimeCreationTarget: async rootPath => ({ rootPath, runtimeStoragePath: '/controlled/runtime' }),
     state: { version: 1, nodes: [node], edges: [], groups: [] },
@@ -158,6 +159,7 @@ function makeHost() {
       kind: 'terminal', nodeId: 'terminal-1', runtimeSessionId: 'session-1'
     }]]),
     runtimeSupervisorClients: new Map(),
+    executionSessionOperationTokens: new Map(),
     preferredRootRuntimeBackends: new Map(),
     runtimeSupervisorEventAdmissionOpen: true,
     runtimeSupervisorClientEpochs: new Map(),
@@ -291,7 +293,8 @@ async function testOriginalRootBindingValidation() {
     const refused = [];
     restored.host.markExecutionNodeAsHistoryRestored = (id, _kind, message) => refused.push({ id, message });
     restored.host.getRuntimeHostBackend = () => assert.fail('conflicting or incomplete restore reached backend resolution');
-    await restored.host.restoreLiveRuntimeSessions();
+    if (bindingOwners[0] === null) await restored.host.restoreLiveRuntimeSessions();
+    else await assert.rejects(restored.host.restoreLiveRuntimeSessions(), /owner/i);
     assert.equal(refused.length, 2);
     assert.ok(refused.every(result => /owner/i.test(result.message)));
     assert.deepEqual(restored.host.state, before);
@@ -821,7 +824,7 @@ async function testOrdinaryDeactivationRetainsSuccess(preserveLiveRuntime) {
     dispose() { disposals += 1; }
   };
   f.host.runtimeSupervisorClients.set('original', client);
-  f.host.isRuntimePersistenceEnabled = () => true;
+  f.host.isRuntimePersistenceEnabled = () => preserveLiveRuntime;
   f.host.readStartupConfiguration = () => {
     configurationReads += 1;
     return { runtimePersistenceEnabled: configuredPersistence };

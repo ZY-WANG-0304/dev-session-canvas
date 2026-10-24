@@ -960,4 +960,11 @@ main保护API仍404未保护，稳定检查尚不具备强制合并阻断；正�
 
 Host 首次全套与协议链并行时，未改的 PR319 原 PID 等待用例超出原 3 秒，单项和随后串行 634/634 均通过；原始失败保留，未确认是否由资源调度引起。若再现，应固定输入核对原子进程与实际等待时间，不延长业务期限来掩盖故障。原生 VS Code 日志还出现 watcher ENOSPC，场景最终通过；本轮未改变系统配置或清理其他工作的进程。两者作为环境/复现 follow-up，不作为本恢复修复的确定性 blocker。
 
-生产模式切换删除期间迟到回调及失败缓存不在本次恢复修复范围内，仍是独立产品阻塞；其根因见 `runtime-shared-root-canvas-sync.md`。PR327 必须在所需修复合入后再次 rebase，并对最新正式预合并输入完整验收。本轮 Linux、受控快照/UI、复用依赖/资产和单项自然 GUI 不外推多 root、跨平台或真实 provider 完整验收；历史首败唯一归因缺口保留。
+最初恢复修复没有覆盖生产模式切换删除期间迟到回调及失败缓存；用户后续已授权在 PR336 接续实现，见下节及 `runtime-mode-switch-settlement.md`，保留两项证据边界。PR327 必须在所需修复合入后再次 rebase，并对最新正式预合并输入完整验收。本轮 Linux、受控快照/UI、复用依赖/资产和单项自然 GUI 不外推多 root、跨平台或真实 provider 完整验收；历史首败唯一归因缺口保留。
+
+
+## 模式切换结算修复的验收边界（2026-10-24）
+
+PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败阶段继续。旧输入确定失败、当前行为和真实 socket/PTY 回归通过；共享窗口/多 root 及四阶段接管继续沿原保护，定向结果见 `docs/references/runtime-mode-switch-settlement/result.json`。未知删除不得重新派发或清掉责任，真实持久化错误仍明确失败，不能承诺所有存储错误都可自动恢复。
+
+旧 PR336 head 2f219c89 的 CI40096144651 首败为 `source-host(remote-ssh-real-reopen-exit)` editor Canvas ready 45000ms，尚未完成根因归属。新 head 必须取得自己的正式 CI；本轮模式切换局部通过不能证明该 ready 首败已修。Linux 自然 GUI 与受控时序不外推跨平台、真实 provider、多 root GUI 或最终 PR327 预合并门禁。watcher ENOSPC 和历史 Host PID 3 秒等待偶发失败继续按原证据追踪，未通过延长期限或改系统配置绕过。
