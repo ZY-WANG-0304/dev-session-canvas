@@ -127,5 +127,6 @@
   "command.exportTemplate.title": "Dev Session Canvas: Export Template to File",
   "command.deleteTemplate.title": "Dev Session Canvas: Delete Template",
   "command.setDefaultTemplate.title": "Dev Session Canvas: Set as Default Template",
-  "command.refreshTemplates.title": "Dev Session Canvas: Refresh Template List"
+  "command.refreshTemplates.title": "Dev Session Canvas: Refresh Template List",
+  "command.startExecutionFlowTrace.title": "Dev Session Canvas: Start Execution Flow Trace (120 seconds)"
 }

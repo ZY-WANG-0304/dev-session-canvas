@@ -1,3 +1,4 @@
+import { ExecutionFlowRecorder, EXECUTION_FLOW_DURATION_MS, FLOW_DURATION_BUCKETS_MS, type FlowSnapshot, type FlowToken } from '../common/executionFlowDiagnostics';
 import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1476,6 +1477,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly templateCatalogEmitter = new vscode.EventEmitter<void>();
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
+  private readonly executionFlow = new ExecutionFlowRecorder();
+  private flowMessageSequence = 0;
+  private readonly flowReceipts = new Map<CanvasSurfaceLocation, { token: FlowToken; requestId: string; frameId?: string; messageType: string }>();
+  private readonly flowSurfaceFrames = new Map<CanvasSurfaceLocation, { initialFrameId?: string; currentFrameId?: string; replacements: number }>();
+  private readonly flowReceiptLastAt = new Map<CanvasSurfaceLocation, number>();
+  private readonly flowCollections = new Map<string, { surface: CanvasSurfaceLocation; frameId?: string;
+    resolve: (snapshot: FlowSnapshot | undefined) => void }>();
+
   private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly executionPerformanceDiagnostics: ExecutionPerformanceDiagnosticSample[] = [];
   private readonly executionFileLinkResolveQueueByNode = new Map<string, Promise<void>>();
@@ -2497,7 +2506,57 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  public startExecutionFlowTrace(): void {
+    this.executionFlow.start(randomUUID());
+    this.flowReceipts.clear(); this.flowReceiptLastAt.clear(); this.flowSurfaceFrames.clear();
+    for (const surface of ['panel', 'editor'] as const) this.sendExecutionFlowStart(surface);
+  }
+
+  private sendExecutionFlowStart(surface: CanvasSurfaceLocation): void {
+    if (!this.executionFlow.active || !this.isInteractiveSurface(surface)) return;
+    const frameId = this.getSurfaceLifecycleIdentity(surface)?.frameId;
+    const previous = this.flowSurfaceFrames.get(surface);
+    this.flowSurfaceFrames.set(surface, previous ? { ...previous, currentFrameId: frameId,
+      replacements: previous.replacements + (previous.currentFrameId === frameId ? 0 : 1) }
+      : { initialFrameId: frameId, currentFrameId: frameId, replacements: 0 });
+    this.postMessage({ type: 'host/executionFlowStart', payload: {
+      traceId: this.executionFlow.currentTraceId!, durationMs: this.executionFlow.remainingMs
+    } }, surface);
+  }
+
+  private async collectExecutionFlowTrace(): Promise<unknown> {
+    this.executionFlow.stop();
+    const traceId = this.executionFlow.currentTraceId;
+    const host = this.executionFlow.snapshot();
+    const participatingFrames = [...this.flowSurfaceFrames].map(([surface, frames]) => ({ surface, ...frames }));
+    const pendingMessageReceipts = [...this.flowReceipts].map(([surface, pending]) => ({ surface,
+      requestId: pending.requestId, ageMs: performance.now() - pending.token.started }));
+    const surfaces = await Promise.all((['panel', 'editor'] as const).map(async surface => {
+      if (!traceId || !this.isInteractiveSurface(surface)) return { surface, status: 'not-participating' };
+      if (this.flowCollections.size >= 2) return { surface, status: 'collection-busy' };
+      const requestId = randomUUID();
+      const frameId = this.getSurfaceLifecycleIdentity(surface)?.frameId;
+      return new Promise<unknown>(resolve => {
+        const timer = setTimeout(() => {
+          this.flowCollections.delete(requestId); resolve({ surface, frameId, status:
+            this.getSurfaceLifecycleIdentity(surface)?.frameId === frameId ? 'timeout' : 'lifecycle-replaced' });
+        }, 3000);
+        this.flowCollections.set(requestId, { surface, frameId, resolve: snapshot => {
+          clearTimeout(timer); this.flowCollections.delete(requestId);
+          resolve({ surface, frameId, status: snapshot?.traceId === traceId ? 'collected' : 'not-participating',
+            ...(snapshot?.traceId === traceId ? { snapshot } : {}) });
+        } });
+        try { this.postMessage({ type: 'host/executionFlowCollect', payload: { requestId, traceId } }, surface); }
+        catch { clearTimeout(timer); this.flowCollections.delete(requestId); resolve({ surface, frameId, status: 'post-failed' }); }
+      });
+    }));
+    return { schema: 1, durationBucketsMs: FLOW_DURATION_BUCKETS_MS,
+      clockSemantics: 'atMs/durationMs are process-local monotonic times; epoch is context only; do not subtract clocks across processes',
+      host, surfaces, participatingFrames, pendingMessageReceipts };
+  }
+
   public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
+    const flowDiagnosticsPromise = this.collectExecutionFlowTrace();
     await this.flushDeferredCanvasStatePersist('diagnostics');
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -2640,6 +2699,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         executionPerformanceDiagnosticsPath,
         executionPerformanceDiagnostics
       ),
+      writeJsonFile(path.join(outputDir, 'execution-flow-diagnostics.json'), await flowDiagnosticsPromise),
       writeJsonFile(path.join(outputDir, 'diagnostic-events.json'), diagnosticEvents),
       writeJsonFile(path.join(outputDir, 'note-markdown-diagnostics.json'), noteMarkdownDiagnostics),
       writeJsonFile(
@@ -8048,8 +8108,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private postState(
     type: 'host/bootstrap' | 'host/stateUpdated',
-    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity }
+    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity; reason?: string }
   ): void {
+    const flowBuild = this.executionFlow.begin();
     const targetSurface = options?.surface ?? this.activeSurface;
     const activeWebview =
       targetSurface && this.isInteractiveSurface(targetSurface)
@@ -8059,14 +8120,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeWebview.options = this.getWebviewOptions();
     }
     const lifecycle = options?.lifecycle ?? (targetSurface ? this.getSurfaceLifecycleIdentity(targetSurface) : undefined);
-    this.postMessage({
-      type,
-      lifecycle,
-      payload: {
-        state: this.prepareCanvasStateForWebview(activeWebview),
-        runtime: this.getRuntimeContext(activeWebview)
-      }
-    }, targetSurface);
+    const payload = { state: this.prepareCanvasStateForWebview(activeWebview), runtime: this.getRuntimeContext(activeWebview) };
+    this.executionFlow.finish(flowBuild, { stage: 'state-build', reason: options?.reason ?? 'other', messageType: type });
+    this.postMessage({ type, lifecycle, payload }, targetSurface, options?.reason ?? 'other');
+    if (type === 'host/bootstrap' && targetSurface) this.sendExecutionFlowStart(targetSurface);
     this.notifySidebarStateChanged();
   }
 
@@ -8076,12 +8133,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return stripExecutionTerminalRecoveryPayloadsFromCanvasState(stateWithImageResources);
   }
 
-  private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation): void {
-    void this.postMessageWithDeliveryResult(message, surface);
+  private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation, reason?: string): void {
+    void this.postMessageWithDeliveryResult(message, surface, reason);
   }
 
   private postMessageWithDeliveryResult(
-    message: HostToWebviewMessage, surface?: CanvasSurfaceLocation
+    message: HostToWebviewMessage, surface?: CanvasSurfaceLocation, reason?: string
   ): Thenable<boolean> | undefined {
     const targetSurface = surface ?? this.activeSurface;
     const targetWebview =
@@ -8100,7 +8157,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    return targetWebview.postMessage(preparedMessage);
+    if (!this.executionFlow.active || preparedMessage.type.startsWith('host/executionFlow')) {
+      return targetWebview.postMessage(preparedMessage);
+    }
+    const requestId = `message:${++this.flowMessageSequence}`;
+    const now = performance.now();
+    const pending = targetSurface && this.flowReceipts.get(targetSurface);
+    if (targetSurface && pending && now - pending.token.started > 30_000) {
+      this.executionFlow.finish(pending.token, { stage: 'message-roundtrip', requestId: pending.requestId, messageType: pending.messageType, success: false });
+      this.flowReceipts.delete(targetSurface);
+    }
+    const receipt = !!targetSurface && !this.flowReceipts.has(targetSurface) &&
+      now - (this.flowReceiptLastAt.get(targetSurface) ?? -Infinity) >= 1000;
+    const tracedMessage: HostToWebviewMessage = { ...preparedMessage, flowTrace: {
+      traceId: this.executionFlow.currentTraceId!, requestId, receipt
+    } };
+    let bytes: number | undefined;
+    const measureAt = performance.now();
+    try { bytes = Buffer.byteLength(JSON.stringify(tracedMessage), 'utf8'); } catch { /* diagnostic only */ }
+    const measurementMs = performance.now() - measureAt;
+    const token = this.executionFlow.begin();
+    if (receipt && targetSurface && token) {
+      this.flowReceiptLastAt.set(targetSurface, now);
+      this.flowReceipts.set(targetSurface, { token, requestId, frameId: this.getSurfaceLifecycleIdentity(targetSurface)?.frameId, messageType: preparedMessage.type });
+    }
+    try { return targetWebview.postMessage(tracedMessage); }
+    finally { this.executionFlow.finish(token, { stage: 'message-post', requestId,
+      messageType: preparedMessage.type, reason, bytes, measurementMs }); }
   }
 
   private withSurfaceLifecycle(
@@ -13550,7 +13633,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         })
       });
       await this.persistState({ reason: 'runtime-supervisor-live-snapshot' });
-      this.postState('host/stateUpdated');
+      this.postState('host/stateUpdated', { reason: 'runtime-supervisor-live-snapshot' });
       if (options.postSnapshot) {
         void this.postExecutionSnapshot(kind, nodeId, {
           executionSessionId: session.sessionId
@@ -14492,6 +14575,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (parsedMessage.type === 'webview/executionFlowSnapshot' || parsedMessage.type === 'webview/executionFlowReceipt') {
+      if (!this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, { recordIgnored: false })) return;
+      const p = parsedMessage.payload;
+      if (parsedMessage.type === 'webview/executionFlowSnapshot') {
+        const pending = this.flowCollections.get(p.requestId);
+        if (pending?.surface === sourceSurface && pending.frameId === lifecycle?.frameId) pending.resolve(parsedMessage.payload.snapshot);
+      } else {
+        const pending = this.flowReceipts.get(sourceSurface);
+        if (pending?.requestId === p.requestId && pending.frameId === lifecycle?.frameId &&
+            pending.token.traceId === parsedMessage.payload.traceId) {
+          this.executionFlow.finish(pending.token, { stage: 'message-roundtrip', requestId: p.requestId,
+            messageType: pending.messageType, processingMs: parsedMessage.payload.processingMs, success: true });
+          this.flowReceipts.delete(sourceSurface);
+        }
+      }
+      return;
+    }
+
     if (parsedMessage.type === 'webview/executionPerformanceDiagnostic') {
       const current = this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, {
         recordIgnored: false
@@ -14970,6 +15071,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/executionInput':
         {
+          const flowInput = this.executionFlow.begin();
           const hostReceivedEpochMs = Date.now();
           const queueDelayMs =
             typeof parsedMessage.payload.webviewEpochMs === 'number'
@@ -15016,6 +15118,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               pendingOutputLength: schedulerStateBeforeAck.pendingOutputLength
             }
           });
+          this.executionFlow.finish(flowInput, { stage: 'input-host', nodeId: parsedMessage.payload.nodeId,
+            sequence: parsedMessage.payload.sequence, bytes: Buffer.byteLength(parsedMessage.payload.data, 'utf8') });
           void this.writeExecutionInput(
             parsedMessage.payload.kind,
             parsedMessage.payload.nodeId,
@@ -20356,6 +20460,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     data: string,
     diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
   ): Promise<boolean> {
+    const token = this.executionFlow.begin();
+    if (!token) return this.writeExecutionInputUntraced(kind, nodeId, data, diagnosticMetadata);
+    this.executionFlow.record({ stage: 'input-write-start', nodeId, sequence: diagnosticMetadata.sequence });
+    let success = false;
+    try { success = await this.writeExecutionInputUntraced(kind, nodeId, data, diagnosticMetadata); return success; }
+    finally { this.executionFlow.finish(token, { stage: 'input-write', nodeId, sequence: diagnosticMetadata.sequence,
+      bytes: Buffer.byteLength(data, 'utf8'), success }); }
+  }
+
+  private async writeExecutionInputUntraced(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    data: string,
+    diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
+  ): Promise<boolean> {
     const ownedRecord = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
     if (ownedRecord?.business) return this.writeNonNativeHostInput(ownedRecord, data);
     if (this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId))) {
@@ -22483,7 +22602,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.postState !== false &&
       (options.postState === true || options.persistMode === 'immediate' || !this.hasActiveExecutionSessions())
     ) {
-      this.postState('host/stateUpdated');
+      this.postState('host/stateUpdated', { reason: 'execution-state-sync' });
     }
   }
 
@@ -22984,12 +23103,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const lifecycle = this.getSurfaceLifecycleIdentity(surface);
     const { nodeId, kind, executionSessionId, authorityId, readId, requestId, afterRevision, stateOffset } = payload;
+    const flowPage = this.executionFlow.begin();
+    this.executionFlow.record({ stage: 'page-host-request', nodeId, sessionId: executionSessionId, requestId, afterRevision });
+    let flowSuccess = false;
+    let flowTiming: { queueMs: number; readMs: number; totalMs: number } | undefined;
     try {
       const page = await this.terminalReadRelay.read(`${surface}:${kind}:${nodeId}`, {
         sessionId: executionSessionId, authorityId, readId, afterRevision,
+        ...(flowPage ? { diagnostics: true } : {}),
         ...(stateOffset !== undefined ? { stateOffset } : {})
       });
       if (page) {
+        flowSuccess = true; flowTiming = page.diagnostics;
         this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
           nodeId, kind, executionSessionId, authorityId, readId, requestId, page
         } }, surface);
@@ -23009,6 +23134,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId, kind, executionSessionId, authorityId, readId, requestId, error: formatUnknownError(error),
         ...(readClosed ? { readClosed: true as const } : {})
       } }, surface);
+    } finally {
+      this.executionFlow.finish(flowPage, { stage: 'page-host', nodeId, sessionId: executionSessionId,
+        requestId, afterRevision, success: flowSuccess, supervisorQueueMs: flowTiming?.queueMs,
+        supervisorReadMs: flowTiming?.readMs, supervisorTotalMs: flowTiming?.totalMs });
     }
   }
 
@@ -23487,9 +23616,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private startHostEventLoopLagMonitor(): void {
+    let flowExpected = performance.now() + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
     this.hostEventLoopLagMonitorExpectedAtMs = Date.now() + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
     const tick = (): void => {
       const now = Date.now();
+      const flowNow = performance.now();
+      const flowLag = Math.max(0, flowNow - flowExpected);
+      if (flowLag >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS) this.executionFlow.record({ stage: 'host-loop', durationMs: flowLag });
+      flowExpected = flowNow + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
       const lagMs = Math.max(0, now - this.hostEventLoopLagMonitorExpectedAtMs);
       if (lagMs >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS) {
         this.recordExecutionPerformanceDiagnostics({

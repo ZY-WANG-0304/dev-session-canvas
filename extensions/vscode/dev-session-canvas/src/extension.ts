@@ -296,6 +296,13 @@ export function activate(context: vscode.ExtensionContext): void {
     context.workspaceState
   );
 
+  registerCommand(context, COMMAND_IDS.startExecutionFlowTrace, async () => {
+    panelManager.startExecutionFlowTrace();
+    void vscode.window.showInformationMessage(vscode.l10n.t(
+      'Execution trace started for 120 seconds. Reproduce the delay, then run Write Host Diagnostics to Disk.'
+    ));
+  });
+
   registerCommand(context, COMMAND_IDS.dumpHostDiagnostics, async () => {
     const dumpResult = await panelManager.dumpCurrentHostDiagnostics();
     const revealAction = vscode.l10n.t('Reveal in File Explorer');

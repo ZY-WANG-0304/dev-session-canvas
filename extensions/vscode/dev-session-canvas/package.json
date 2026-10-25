@@ -81,7 +81,8 @@
     "onCommand:devSessionCanvas.deleteTemplate",
     "onCommand:devSessionCanvas.setDefaultTemplate",
     "onCommand:devSessionCanvas.refreshTemplates",
-    "onView:devSessionCanvas.sidebarTemplates"
+    "onView:devSessionCanvas.sidebarTemplates",
+    "onCommand:devSessionCanvas.startExecutionFlowTrace"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -393,6 +394,10 @@
         "command": "devSessionCanvas.refreshTemplates",
         "title": "%command.refreshTemplates.title%",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "devSessionCanvas.startExecutionFlowTrace",
+        "title": "%command.startExecutionFlowTrace.title%"
       }
     ],
     "menus": {

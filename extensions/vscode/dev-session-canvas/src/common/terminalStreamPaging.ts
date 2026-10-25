@@ -23,7 +23,15 @@ export interface TerminalStreamReadDescriptor {
   currentState?: { format: 'xterm-current-state-v1'; length: number };
 }
 
+export interface TerminalPageTiming { queueMs: number; readMs: number; totalMs: number }
+function normalizePageTiming(value: unknown): TerminalPageTiming | undefined {
+  if (!isRecord(value) || !['queueMs', 'readMs', 'totalMs'].every(k =>
+      typeof value[k] === 'number' && Number.isFinite(value[k]) && (value[k] as number) >= 0)) return undefined;
+  return { queueMs: value.queueMs as number, readMs: value.readMs as number, totalMs: value.totalMs as number };
+}
+
 export interface TerminalStreamPage {
+  diagnostics?: TerminalPageTiming;
   readId: string;
   sessionId: string;
   authorityId: string;
@@ -69,13 +77,14 @@ export function normalizeTerminalStreamPage(value: unknown): TerminalStreamPage 
       value.events.length > TERMINAL_STREAM_PAGE_MAX_EVENTS) {
     return undefined;
   }
+  const diagnostics = normalizePageTiming(value.diagnostics);
   if (value.stateChunk !== undefined) {
     const chunk = value.stateChunk;
     if (!isRecord(chunk) || !Number.isSafeInteger(chunk.offset) || (chunk.offset as number) < 0 ||
         typeof chunk.data !== 'string' || chunk.data.length === 0 ||
         chunk.data.length > TERMINAL_CURRENT_STATE_CHUNK_MAX_CHARS || value.events.length !== 0 ||
         afterRevision !== revision) return undefined;
-    const page: TerminalStreamPage = { readId: value.readId, sessionId: value.sessionId, authorityId: value.authorityId,
+    const page: TerminalStreamPage = { ...(diagnostics ? { diagnostics } : {}), readId: value.readId, sessionId: value.sessionId, authorityId: value.authorityId,
       afterRevision, revision, headRevision, events: [], stateChunk: { offset: chunk.offset as number, data: chunk.data } };
     return new TextEncoder().encode(JSON.stringify(page)).length <= TERMINAL_STREAM_PAGE_MAX_BYTES ? page : undefined;
   }
@@ -93,7 +102,7 @@ export function normalizeTerminalStreamPage(value: unknown): TerminalStreamPage 
     return undefined;
   }
   return { readId: value.readId, sessionId: value.sessionId, authorityId: value.authorityId,
-    afterRevision, revision, headRevision, events };
+    afterRevision, revision, headRevision, events, ...(diagnostics ? { diagnostics } : {}) };
 }
 
 export function takeTerminalStreamPage(events: readonly TerminalStreamEvent[], startIndex: number): TerminalStreamEvent[] {

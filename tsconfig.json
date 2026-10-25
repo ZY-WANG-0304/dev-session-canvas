@@ -11,6 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node", "vscode"],
     "rootDir": ".",
+    "allowImportingTsExtensions": true,
     "noEmit": true
   },
   "include": [

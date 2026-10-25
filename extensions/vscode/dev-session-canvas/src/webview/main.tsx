@@ -1,3 +1,4 @@
+import { ExecutionFlowRecorder, type FlowToken } from '../common/executionFlowDiagnostics';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -861,6 +862,7 @@ function handleExecutionInputAck(payload: {
   const now = readPerformanceNow();
   const startedAt = pending?.webviewPerformanceNowMs ?? payload.webviewPerformanceNowMs;
   const durationMs = typeof startedAt === 'number' ? Math.max(0, now - startedAt) : undefined;
+  executionFlow.record({ stage: 'input-ack', nodeId: payload.nodeId, sequence: payload.sequence, durationMs });
   reportExecutionPerformanceDiagnostic(
     {
       source: 'webview-input-ack',
@@ -919,6 +921,9 @@ function estimateUtf8ByteLength(value: string): number {
   }
 }
 
+const executionFlow = new ExecutionFlowRecorder();
+const flowPageRequests = new Map<string, { token: FlowToken; readId: string; nodeId: string; sessionId: string; afterRevision: number }>();
+
 function readPerformanceNow(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
 }
@@ -929,6 +934,7 @@ function startExecutionMainThreadLagMonitor(): void {
     const now = readPerformanceNow();
     const lagMs = Math.max(0, now - expectedAt);
     if (lagMs >= EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS) {
+      executionFlow.record({ stage: 'webview-loop', durationMs: lagMs });
       lastExecutionMainThreadLagAtMs = now;
       reportExecutionPerformanceDiagnostic(
         {
@@ -1605,7 +1611,21 @@ function App(): JSX.Element {
       return;
     }
 
+    const flowHandle = executionFlow.begin();
+    try {
     switch (message.type) {
+      case 'host/executionFlowStart':
+        if (executionFlow.currentTraceId !== message.payload.traceId) {
+          executionFlow.start(message.payload.traceId, message.payload.durationMs);
+          flowPageRequests.clear();
+        }
+        break;
+      case 'host/executionFlowCollect':
+        if (message.payload.traceId === executionFlow.currentTraceId) executionFlow.stop();
+        postMessage({ type: 'webview/executionFlowSnapshot', payload: {
+          requestId: message.payload.requestId, snapshot: message.payload.traceId === executionFlow.currentTraceId ? executionFlow.snapshot() : undefined
+        } });
+        break;
       case 'host/bootstrap':
       case 'host/stateUpdated':
         {
@@ -1848,6 +1868,15 @@ function App(): JSX.Element {
       case 'host/testDomAction':
         void performWebviewDomAction(message.payload.requestId, message.payload.action);
         break;
+    }
+    } finally {
+      const trace = message.flowTrace;
+      const processingMs = flowHandle ? readPerformanceNow() - flowHandle.started : 0;
+      executionFlow.finish(flowHandle, { stage: 'message-handle', messageType: message.type,
+        requestId: trace?.requestId });
+      if (flowHandle && trace?.receipt && trace.traceId === flowHandle.traceId) postMessage({
+        type: 'webview/executionFlowReceipt', payload: { traceId: trace.traceId, requestId: trace.requestId, processingMs }
+      });
     }
   };
 
@@ -8025,6 +8054,14 @@ function createExecutionTerminalController(
       pagedProjection.available(sessionId, authorityId, revision, completed, finalRevision);
     },
     applyTerminalPage(readId, requestId, page, closedError) {
+      const request = flowPageRequests.get(requestId);
+      if (request?.readId === readId) {
+        flowPageRequests.delete(requestId);
+        executionFlow.finish(request.token, { stage: 'page-roundtrip', nodeId, sessionId: request.sessionId,
+          requestId, afterRevision: request.afterRevision, revision: page?.revision, headRevision: page?.headRevision,
+          supervisorQueueMs: page?.diagnostics?.queueMs, supervisorReadMs: page?.diagnostics?.readMs,
+          supervisorTotalMs: page?.diagnostics?.totalMs, success: !!page && !closedError });
+      }
       pagedProjection.accept(readId, requestId, page, closedError);
     },
     applySnapshot(detail) {
@@ -8645,6 +8682,14 @@ function createExecutionTerminalController(
 
   const pagedProjection = new TerminalPagedProjection({
     request: (read, afterRevision, requestId, stateOffset) => {
+      const flowRequest = executionFlow.begin();
+      if (flowRequest) {
+        executionFlow.record({ stage: 'page-request', nodeId, sessionId: read.sessionId, requestId, afterRevision,
+          success: flowPageRequests.size < 256 });
+        if (flowPageRequests.size < 256) flowPageRequests.set(requestId, {
+          token: flowRequest, readId: read.readId, nodeId, sessionId: read.sessionId, afterRevision
+        });
+      }
       reportTerminalDrainDiagnostic(
         {
           source: 'webview-terminal-drain',
@@ -8666,10 +8711,16 @@ function createExecutionTerminalController(
         }
       });
     },
-    close: (read, outcome) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
+    close: (read, outcome) => {
+      for (const [requestId, request] of flowPageRequests) if (request.readId === read.readId) {
+        executionFlow.finish(request.token, { stage: 'page-roundtrip', nodeId, sessionId: read.sessionId,
+          requestId, success: false, reason: 'reader-closed' });
+        flowPageRequests.delete(requestId);
+      }
+      postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
       nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
       ...(outcome ? { outcome } : {})
-    } }),
+    } }); },
     currentStateProgress: (read, offset, chunkCount, assemblyPeakCharacters) => {
       reportExecutionPerformanceDiagnostic({
         source: 'webview-terminal-drain', nodeId, kind,
@@ -8740,7 +8791,15 @@ function createExecutionTerminalController(
         applied(restored && current());
       });
     },
-    events: (events, revision, current, applied) => {
+    events: (events, revision, current, applied, requestId) => {
+      const flowQueued = executionFlow.begin();
+      const flowIdentity = { nodeId, sessionId: currentExecutionSessionId, requestId, revision, events: events.length };
+      let flowApplying: FlowToken | undefined;
+      let flowBytes: number | undefined;
+      if (flowQueued) {
+        // Actual terminal input bytes, distinct from the serialized page/envelope bytes measured at Host.
+        flowBytes = events.reduce((size, event) => size + (event.type === 'output' ? estimateUtf8ByteLength(event.data) : 0), 0);
+      }
       options?.onContentWillChange?.('output');
       let releaseSnapshotRestore: (() => void) | undefined;
       const snapshotGeneration = writeGeneration;
@@ -8760,11 +8819,15 @@ function createExecutionTerminalController(
       );
       queueTerminalWrite((done, _markStarted, failed) => {
         if (!current()) { done(false); return; }
+        executionFlow.finish(flowQueued, { stage: 'page-queue', ...flowIdentity, bytes: flowBytes });
+        flowApplying = flowQueued?.traceId === executionFlow.currentTraceId ? executionFlow.begin() : undefined;
         releaseSnapshotRestore = beginSnapshotRestore();
         applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
       }, { reason: 'paged-events', replayEventCount: events.length,
         replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
       }, (success) => {
+        executionFlow.finish(flowApplying ?? flowQueued, { stage: flowApplying ? 'page-apply' : 'page-queue',
+          ...flowIdentity, bytes: flowBytes, success: success && current() });
         const restored = finishSnapshotRestore(undefined, releaseSnapshotRestore, success && current(), snapshotGeneration);
         if (restored && current() && currentTerminalAuthorityId !== undefined) {
           currentTerminalRevision = Math.max(currentTerminalRevision, revision);
@@ -10482,6 +10545,10 @@ function clearPendingExecutionPasteRequests(): void {
 }
 
 function postMessage(message: WebviewToHostMessage): void {
+  if (message.type === 'webview/executionInput' && executionFlow.active) executionFlow.record({
+    stage: 'input-dispatch', nodeId: message.payload.nodeId, sequence: message.payload.sequence,
+    bytes: estimateUtf8ByteLength(message.payload.data)
+  });
   vscode.postMessage({
     ...message,
     lifecycle: webviewLifecycleIdentity

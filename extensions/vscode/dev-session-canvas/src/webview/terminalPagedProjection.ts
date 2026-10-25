@@ -16,7 +16,7 @@ export interface TerminalPagedProjectionCallbacks {
   currentState?: (read: TerminalStreamReadDescriptor, state: unknown,
     current: () => boolean, done: (applied?: boolean) => void) => void;
   events: (events: TerminalStreamEvent[], revision: number, current: () => boolean,
-    done: (applied?: boolean) => void) => void;
+    done: (applied?: boolean) => void, requestId?: string) => void;
   exit: (message: string) => void;
   error?: (message: string) => void;
 }
@@ -184,7 +184,7 @@ export class TerminalPagedProjection {
       this.busy = false;
       this.finishExit();
       this.pull();
-    });
+    }, requestId);
   }
 
   public showExit(message: string, sessionId?: string): void {

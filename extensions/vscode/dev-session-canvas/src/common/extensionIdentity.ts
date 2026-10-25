@@ -50,6 +50,7 @@ export const COMMAND_IDS = {
   enableSidebarSessionHistoryTimeGrouping: 'devSessionCanvas.enableSidebarSessionHistoryTimeGrouping',
   disableSidebarSessionHistoryTimeGrouping: 'devSessionCanvas.disableSidebarSessionHistoryTimeGrouping',
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
+  startExecutionFlowTrace: 'devSessionCanvas.startExecutionFlowTrace',
   dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
   editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
   editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',

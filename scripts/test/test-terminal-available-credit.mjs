@@ -32,9 +32,11 @@ try {
   await esbuild.build({ stdin: {
     contents: `
       ${baselineRef ? '' : "import { TerminalAvailableNotifications } from './panel/terminalAvailableNotifications';"}
+      import { ExecutionFlowRecorder } from './common/executionFlowDiagnostics';
       const vscode = { l10n: { t: value => value } };
       const formatSurfaceForDiagnostics = surface => surface;
       export class Harness {
+        executionFlow = new ExecutionFlowRecorder();
         ${baselineRef ? '' : 'terminalAvailableNotifications = new TerminalAvailableNotifications();'}
         ${methods.join('\n')}
       }
