@@ -152,12 +152,31 @@ Host 调度读取，Webview 再单独调度应用。
 
 最直接的依据是仓库已经使用的 `common/executionOutputScheduler.ts`：它按 `kind + nodeId` 提升最近输入节点，并在后台等待达到阈值后释放最老 controller。`scripts/test/test-execution-output-scheduler.mjs` 覆盖 10 个 Agent 的普通 drain 选择：输入节点优先；连续输入时，9 个等待达到 480ms 的后台 controller 逐个得到额外 drain slot。测试证明现有选择函数的规则，不证明 journal 页应用性能。建议复用这个选择原则和诊断，不另造优先级身份模型；journal page 需要补的是共享应用队列和可让出的 xterm write quantum。
 
-这与两个成熟机制相吻合，但不是直接照搬某个库：
+### 8.1 可选调度算法
+
+这些都是成熟的队列调度方法，但优化目标不同。对比假设“每个 ready reader 可以被切成有限 xterm write quantum”：
+
+| 算法 | 选择规则 | 优点 | 用于当前终端回显的限制 |
+| --- | --- | --- | --- |
+| Round Robin（RR） | ready reader 逐个获得一个 quantum | 实现简单；在 callback 最终返回的前提下，每个 ready reader 都能轮到 | 所有节点同等优先，不能直接让刚输入节点更快 |
+| Weighted Round Robin（WRR / IWRR） | 按配置权重分配 turn，例如输入队列多轮、后台队列一轮 | 服务份额显式；适合想控制交互与后台吞吐比例 | 权重保证的是轮次/份额，不是回显最大延迟；终端处理成本也不一定与字符数成正比 |
+| Strict priority + background reservation | 输入节点先服务，同时固定预留每 N 轮或固定比例给后台 | 优先级和后台份额直接、可预测；不依赖等待年龄计算 | 固定预留可能浪费空槽；预留比例需选择，且没单独限制最长连续 write 时仍会卡 |
+| Deficit Round Robin（DRR） | 每个 reader 累积 deficit quantum，按字符/字节成本扣减后轮转 | 面向变长数据流的公平带宽份额，常数级队列调度开销 | 保证的是长期输出量公平，不自动保证当前输入回显低延迟或最大等待 |
+| Weighted Fair Queueing（WFQ）/ virtual finish time | 按权重和数据量估算每个队列的虚拟完成时间，选最早者 | 比简单 WRR 更平滑地分配不同权重的吞吐 | 需要维护虚拟时间/队列状态；若不另设输入优先类或 deadline，不能保证回显延迟 |
+| Earliest Deadline First（EDF） | 先处理截止时间最近的页面/任务 | 有真实 deadline 的实时任务适用，可直接围绕端到端期限优化 | 当前 journal page 没有“这页对应哪次输入回显”的 deadline 字段；Webview/xterm 也不是硬实时执行器，暂时无法据此正确排序 |
+
+当前候选年龄策略可以看作“短时输入 strict priority + 最大后台等待年龄”的组合：近期输入页先取服务机会，后台 reader 到阈值后额外获得一个 quantum。它更直接回应“输入不能被其他节点压住，同时后台不能饿死”，也复用仓库已有做法；代价是 480ms 只控制调度器何时授予后台机会，不能承诺墙钟完成时间。
+
+如果后续测量表明主要目标变成**按输出量公平分配总吞吐**，可考虑“当前输入优先 lane + 后台 DRR”，由 DRR 在后台节点间分量子；如果目标是**严格的输入时延 deadline**，则需先建立输入与对应 echo/page 的关联及实际显示时刻，再评估 deadline scheduler。固定 WRR 也可作为年龄规则的简单替代，但应比较它给后台的时间份额和输入节点 p95 回显时延。
+
+### 8.2 外部依据与复用边界
 
 - [Reactive Streams 1.0.4](https://github.com/reactive-streams/reactive-streams-jvm/tree/v1.0.4) 定义基于需求的异步流和非阻塞背压。当前 reader 的“一页在途、应用确认后才请求下一页”是 page 粒度的需求控制；保留它可以避免 reader 不受限制地累计历史页。Reactive Streams 本身不定义当前输入节点优先或多 reader 公平规则。
 - Shreedhar 与 Varghese 的 [Deficit Round Robin 公平排队算法](https://doi.org/10.1109/90.502236) 针对不同大小的数据单元提供公平服务，是按 quantum 给多个输出流分配服务的成熟参考。提案没有直接实现 DRR 的 deficit accounting，而采用项目现有“等待年龄达到阈值后释放最老后台项”的规则；两者的共同点是服务需要分段并轮转，不能把本提案称为完整 DRR。
+- Parekh 与 Gallager 的 [Generalized Processor Sharing 网络流量控制分析](https://doi.org/10.1109/90.234856) 是 WFQ 一类按权重分享服务的理论依据；它说明权重/虚拟服务份额适合回答吞吐分配问题，但不会自动给本产品一个正确的输入回显 deadline。
+- Liu 与 Layland 的 [硬实时多道程序调度分析](https://doi.org/10.1145/321738.321743) 是经典 deadline/实时调度参考。当前 Webview 的事件循环、xterm callback 和显示绘制不构成该论文所需的硬实时执行假设，且页面与特定输入没有可靠关联，因此 EDF 只列为概念候选，不作为当前推荐。
 
-目前没有发现 tmux 或 xterm.js 提供可直接套用的“多终端 journal readers 依当前输入节点优先、同时保障其他节点公平”的现成调度器。因此成熟依据分成三层：仓库已有调度器是最直接的项目内先例；Reactive Streams 提供按需读取/背压的依据；DRR 提供分量子公平服务的参考。把最近输入优先、年龄公平、xterm 写分段和 journal applied ACK 组合起来的仍是本项目策略，必须靠本项目负载验证，不能声称已由标准或库证明。
+目前没有发现 tmux 或 xterm.js 提供可直接套用的“多终端 journal readers 依当前输入节点优先、同时保障其他节点公平”的现成调度器。RR/WRR/DRR/WFQ/EDF 为成熟算法家族；仓库已有 output scheduler 是最直接的项目内先例。最近输入优先、年龄公平、xterm 写分段和 journal applied ACK 的具体组合仍是本项目策略，必须用本项目负载验证，不能声称已由标准或库证明。
 
 ## 9. 验证方法
 

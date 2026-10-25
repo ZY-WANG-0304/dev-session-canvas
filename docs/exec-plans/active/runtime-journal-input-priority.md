@@ -45,7 +45,7 @@ Runtime journal reader 的拉取状态由 `extensions/vscode/dev-session-canvas/
 
 ### 阶段二：候选比较与草稿 PR
 
-正式文档比较 Webview page-application-only、Host read-only、Webview shared demand/application、Host+Webview 双调度。为每项写清节点内顺序、读者单页背压、跨节点公平性、页面消息竞争、资源上界和实施复杂度。推荐第一阶段只调度页面应用，保留每 reader 独立读取；将 240ms 优先窗口、480ms fairness 与 4/16/32 Ki UTF-16 code unit 应用预算标为候选参数，64 KiB page cap 作为传输限制单独说明。只有诊断发现 read-stage 共享等待才追加读取准入调度。
+正式文档比较 Webview page-application-only、Host read-only、Webview shared demand/application、Host+Webview 双调度，并对照 RR、WRR、strict priority + background reservation、DRR、WFQ 与 EDF 的目标和适用边界。为各方案写清节点内顺序、读者单页背压、跨节点公平性、页面消息竞争、资源上界和实施复杂度。推荐第一阶段只调度页面应用，保留每 reader 独立读取；将 240ms 优先窗口、480ms fairness 与 4/16/32 Ki UTF-16 code unit 应用预算标为候选参数，64 KiB page cap 作为传输限制单独说明。只有诊断发现 read-stage 共享等待才追加读取准入调度。
 
 只提交设计相关文档：新设计提案、相关旧设计的实现边界补充、`docs/design-docs/index.md` 和本 ExecPlan。PR 使用 draft 状态，标题和描述明确“设计提案 / 暂无运行时代码”。用 `git diff --check` 检查 whitespace；不运行产品测试，因为此阶段没有运行时变更。用户确认后再继续阶段三。
 
