@@ -88,4 +88,51 @@ lagRevisions 是 Host 观察到的回执落后，包含回执传输/合并等待
 
 本次未返回 Supervisor 内部 queue/read/total 字段，不能伪造为 0；但 Host 读页跨度已经覆盖这些阶段，所以对已完成且有关联的慢页，仍可判断秒级差额不在 Host 读页调用内。状态构造包含 Webview options、画布 payload 与 runtime context，尚未细分哪一项占用约 40 ms；采样消息 RTT 最大 20.808 秒亦包含回程。JSON 字节测量在保留详情中最大约 0.435 ms，缺少整个窗口的测量耗时聚合，不能据此断言诊断无扰动。
 
-当前结论是：本次复现的主要可见延迟位于消息往返路径，Host 全量状态构造/广播为优先验证的负担；journal 优先级或 Webview xterm 调度器缺少作为首修目标的实测支持。下一步建议先拆清 state-build 内部成本，并对仅由连续输出引起的全量状态发布做单变量合并/去重对照，保留真实生命周期、配置、布局变化和分页通知。需同时观察 ACK RTT、状态构造耗时/频率、页往返、画布状态及时性和终端完整性。尚未证明状态广播是唯一原因，尚未实施性能修复，也不以该日志宣称网络、React 或整个 VS Code UI 已排除。
+首采时的结论是：本次复现的主要可见延迟位于消息往返路径，Host 全量状态构造/广播为优先验证的负担；journal 优先级或 Webview xterm 调度器缺少作为首修目标的实测支持。首采时建议先拆清 state-build 内部成本，并对仅由连续输出引起的全量状态发布做单变量合并/去重对照，保留真实生命周期、配置、布局变化和分页通知。需同时观察 ACK RTT、状态构造耗时/频率、页往返、画布状态及时性和终端完整性。尚未证明状态广播是唯一原因，尚未实施性能修复，也不以该日志宣称网络、React 或整个 VS Code UI 已排除。
+
+
+## 2026-10-26 分段采集与配置读取验证
+
+输入为 `/home/users/ziyang01.wang-al/projects/dsc-test-01/.debug/current-host-diagnostics/2026-10-25T17-58-07-854Z`。Host 与 panel 同一 traceId，分别覆盖 69.270/69.272 秒，panel 收集成功、editor 未参与、frame 替换为 0；Host/Webview 详情分别淘汰 2559/1324 条，分组没有溢出。以下使用完整每秒聚合，不将旧采集与本次不同负载当作改善对照。本地复算及只读实验数值保存在主工作区 `.debug/diagnostic-analyses/2026-10-25T17-58-07-854Z/summary.json`，含原始 JSON 的 SHA-256；不提交原始用户诊断。
+
+六种状态阶段均为 299 个样本，无失败；保留的 64 个 state requestId 均有完整六段关联。
+
+| 阶段 | 平均 ms | 最大 ms | 累计 ms |
+| --- | ---: | ---: | ---: |
+| options 构造 | 0.039 | 0.129 | 11.618 |
+| options 设置 | 0.019 | 0.344 | 5.622 |
+| 画布状态构造 | 0.008 | 0.062 | 2.336 |
+| runtime context 构造 | 35.333 | 68.461 | 10564.639 |
+| state-build 总跨度 | 35.491 | 68.632 | 10611.874 |
+| 侧栏同步通知（总跨度之外） | 15.146 | 24.367 | 4528.622 |
+
+runtime context 占 state-build 累计耗时的 99.55%；每次状态构造加侧栏同步通知平均约 50.64 ms，不包含消息提交和后续异步 UI。299 次状态广播中 294 次来自实时 Supervisor snapshot，状态消息共 2636722 字节。这个结果把状态构造成本定位到具体函数，并没有证明它解释全部回显停顿。
+
+本次 178 次输入均收到 ACK，写入观测均成功；ACK 最大 17911.9 ms，62 次超过 1 秒。Host 接收至提交 ACK 最大 1.400 ms，写入调用至结果最大 241.305 ms。Webview 派发 151 个读页请求、收到 150 个响应，其中 2 个失败，冻结时有 1 个尚未返回；不能称全部分页成功。Host 完成 150 个读页跨度，最大 160.038 ms；Webview 最长分页往返 17994.1 ms 对应失败响应。119 个普通 journal 页应用均成功，排队最大 0.700 ms、应用最大 12.400 ms、应用累计 71.000 ms。成功响应数与普通 journal 应用数不同，初始状态导入不计入该阶段，已淘汰的详情不足以逐条补全差额。本次仍缺 Supervisor 内部 queue/read/total 字段。
+
+### 17 秒 Host 停顿保持未归因
+
+Host 的 timer-lag 共 15 次，最大 17179.920 ms，记录于自身第 25.119 秒；第 8–24 秒没有阶段完成记录。Webview 此期间仍派发输入，第 25 秒集中收到 24 次 ACK。没有任何单次 state/runtime/sidebar 测量跨度接近 17 秒，不能把这次停顿归因到已测得的约 35 ms 状态构造。用户对期间是否断点暂停、手动暂停 F5 或休眠回答“不确定”，因此调试干扰、其它同步工作及进程调度等仍未区分，也不能反向确认是调试暂停。
+
+另一个局部观察：Host 自身第 43–53 秒完成 110 次状态构造，累计 3941.77 ms，并有 109 次侧栏通知累计 1662.23 ms（边界使计数不同），无超过阈值的 Host loop-lag；Webview 自身第 43–53 秒收到 63 次输入 ACK，最大 572.2 ms。这不是同步时钟或受控实验，但说明持续状态构造与多秒 ACK 等待不能简单画等号。Webview 全窗口也有 10 次 loop-lag，最大 832.2 ms；不能沿用首采“未见 Webview 长任务”的描述，更不能用 lifecycle Healthy 排除性能停顿。
+
+### 同一 Host 的只读配置获取微基准
+
+代码核对发现 `src/panel/configuration.ts:getConfigurationValue` 每读一个键都调用一次无 section 的 `vscode.workspace.getConfiguration()`。`CanvasPanelManager.getRuntimeContext` 的常见 activeSurface 路径读取文件配置 4 次、Agent CLI 配置 5 次并在两个 provider launch defaults 中再各读 5 次、画布显示配置 4 次，合计 23 次获取根配置对象；其中 Agent CLI 读了三遍。另有 terminal/editor scoped 配置和资源 URI 构造，不在这 23 次内。
+
+在同一活动 Host（PID 1860748、加载当前 worktree 的 main-only F5 包）用 inspector 的只读 Runtime.evaluate 比较这 23 次键读取。对照保留相同顺序与键，唯一改变是每键重新获取根配置对象，或单次获取后复用。四轮按原方式/复用/复用/原方式执行，每轮间 setImmediate 让出事件循环；四轮返回值比较一致，不输出或保存配置值，不修改配置、不暂停调试。
+
+| 顺序 | getConfiguration 次数 | 耗时 ms | 返回值比较 |
+| --- | ---: | ---: | --- |
+| 1：原方式 | 23 | 38.725 | 一致 |
+| 2：单次复用 | 1 | 1.336 | 一致 |
+| 3：单次复用 | 1 | 1.604 | 一致 |
+| 4：原方式 | 23 | 32.401 | 一致 |
+
+23 个键为 `devSessionCanvas.` 下的 files.presentationMode、fileNode.displayStyle、files.nodeDisplayMode、files.pathDisplayMode；agent.defaultProvider、agent.codexCommand、agent.claudeCommand、agent.codexDefaultArgs、agent.claudeDefaultArgs（此组重复三遍）；canvas.overviewMode、canvas.overviewZoomThreshold、canvas.multiRootPresentationMode、canvas.workspaceRootWatermarks.enabled。该只读实验直接复现了与 runtime context 同量级的耗时，支持“重复获取根配置对象是具体成本来源”。它不等于完整 getRuntimeContext/postState 的替换实验，更不是输入回显的端到端 A/B，也未定位 VS Code 配置 API 内部实现成本。侧栏存在类似配置读取，但其 15.146 ms 包含其它状态构造和同步 listener，不能全部算成配置成本。
+
+### 当前修复验证建议
+
+下一步优先验证单次同步状态构造内复用配置对象及 Agent CLI 读取结果，并检查侧栏中的同类读取。保持配置 section、scope、默认值、正规化语义与读取结果不变；每次构造重新获取，先不引入跨事件缓存或失效机制。保持状态广播频率、输入与分页策略不变，以隔离配置获取成本的贡献。该项是本次证据支持的候选修复，本轮只更新调查结论，尚未实现性能修改。
+
+验收同时观察 runtime/sidebar/state-build 分布、广播频率、输入 ACK、分页往返、终端完整性及配置修改能否及时反映；构造变快但回显未改善时，不能宣称用户问题解决。后续无主动调试暂停的复现中如仍出现长 Host 停顿，再针对停顿补 CPU profile 或关联 VS Code 进程证据。广播去重、journal 优先级和 Webview 全局调度继续按受控结果决定，不因最初方案而预设顺序。

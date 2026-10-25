@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/runtime-journal-input-priority.md` | 执行节点通信与分页诊断；120 秒有界采集、状态构造五段计时、状态广播统计及消息/分页阶段关联，首采定位消息往返与 Host 状态构造负担，因果对照待验证 | 执行编排域、画布交互域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-26 |
+| `docs/design-docs/runtime-journal-input-priority.md` | 执行节点通信与分页诊断；120 秒有界采集、状态构造五段计时、状态广播统计及消息/分页阶段关联，两次采集及只读微基准定位重复配置获取成本，长停顿归因与端到端对照待验证 | 执行编排域、画布交互域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-26 |
 | `docs/design-docs/runtime-mode-switch-settlement.md` | 模式切换逐原会话结算、迟到保存隔离及失败后继续；重试重验 root 责任，终态回调按接纳身份保留 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/runtime-mode-switch-settlement.md` | 2026-10-24 |
 | `docs/design-docs/file-entry-native-smoke.md` | 文件条目原生点击与编辑器持焦回归 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/file-entry-native-smoke.md` | 2026-10-24 |
 | `docs/design-docs/release-gate-flow-audit.md` | 0.26.1 发布门禁全流程审查、六平台/发布六job及smoke内部六图；确认强制合并约束缺失、过滤范围漏洞、失败取证和 notifier/普通 PR 接线边界，区分ready/resize/Stop/退役与Host退出的验证责任；仅审查，建议未实施 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 待探索 | 已验证 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-16 |
