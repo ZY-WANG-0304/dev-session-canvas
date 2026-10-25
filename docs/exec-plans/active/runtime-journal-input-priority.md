@@ -10,7 +10,8 @@
 - [x] 2026-10-25：实现采集命令、共享记录器、Host/Webview 消息与分页阶段计时、可选 Supervisor 读取耗时和导出。
 - [x] 2026-10-25：定向自动化测试、RuntimeSupervisor 整链、类型检查与 VSIX 构建通过。
 - [x] 2026-10-25：收口验证记录；随本次提交更新 PR #337 标题与描述。
-- [ ] 用户安装新包，在同负载条件下复现并导出新诊断；据数据决定修复方案。
+- [x] 2026-10-26：用户通过 F5 导出首份约 76 秒链路诊断；核验窗口、聚合和 requestId 关联，确认秒级等待主要位于本地处理跨度外。
+- [ ] 对 Host state-build 和实时状态广播做受控验证，确定修复及性能/正确性验收。
 
 ## 上下文与定向
 
@@ -36,11 +37,14 @@
 
 实现验证发现原协议测试直接由 Node 加载 TypeScript：新增运行时依赖必须使用显式 .ts 后缀，仓库 noEmit 配置启用 allowImportingTsExtensions；未修改测试的解析路径。部分 Host 测试提取实际方法、绕过构造函数，已补真实记录器初始化。隔离工作区使用主工作区已有 generated/execution-assets 构建，保持默认 platform 执行资源。
 
+首份新采集 `2026-10-25T16-26-03-114Z` 的 183 次输入均收到 ACK，但 96 次往返超过 1 秒、最大 24.603 秒；Host 接收至 ACK 最长 1.153 ms。70 页排队最长 0.400 ms、应用最长 12.400 ms；同一慢页往返 16.741 秒而 Host 处理 6.226 ms。578 次状态广播中 575 次来自实时 Supervisor snapshot，状态构造累计 23.054 秒。详细窗口口径、关联样本和缺失字段均登记到正式设计的新采集章节。
+
 ## 决策记录
 
 - 2026-10-25：用户批准本阶段诊断实现，取代旧计划的“只写设计”限制；实际性能修复继续待诊断归因和设计确认。
 - 2026-10-25：继续 PR #337 而非另建关联 PR；采用手动短时采集与本地聚合，避免逐事件 telemetry 加剧被测消息桥压力。
 - 2026-10-25：可选 Supervisor timing 随原 page 返回，兼容旧 Supervisor，保留原 owned reader 对象/结算关系。
+- 2026-10-26：依据实际关联数据，下调 journal/xterm 调度作为首修方向的优先级；先研究状态构造与广播，并以单变量对照确认影响。没有把 Host 同步跨度写成 CPU 占用率，也没有把往返差额写成纯网络耗时。
 
 ## 幂等性与恢复
 
@@ -54,12 +58,14 @@
 
 2026-10-25 在隔离工作区执行 `npm run typecheck`、`npm run test:execution-flow-diagnostics`、`npm run test:protocol-webview-messages`、`npm run test:extension-manifest` 与 `npm run test:ui-copy-localization` 均通过。分页验证包含实际 Webview controller 51/51、Host batch handling 10/10，以及真实 Supervisor socket/PTY 的可选读取耗时校验。首次协议整链运行在历史测试夹具缺少记录器处失败，补齐夹具后重新执行 `npm run test:runtime-supervisor-protocol` 全链通过，包含请求期限、旧会话重连、恢复订阅、模式切换竞争、实际 Supervisor 协议、checkpoint、分页投影、completed history、分页完成及输出 credit。
 
-使用 `DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/home/users/ziyang01.wang-al/projects/dev-session-canvas/generated/execution-assets npm run package:vsix` 完成正式 platform 资源的本地诊断包构建，产物为工作区根 `dev-session-canvas-0.26.0.vsix`。没有发布市场或执行真实 SSH UI 性能验收；这是当前分支诊断包，不是 0.26.1 发布物。
+使用 `DEV_SESSION_CANVAS_EXECUTION_ASSETS_SET=/home/users/ziyang01.wang-al/projects/dev-session-canvas/generated/execution-assets npm run package:vsix` 完成正式 platform 资源的本地诊断包构建，产物为工作区根 `dev-session-canvas-0.26.0.vsix`。该构建阶段没有发布市场或执行真实 SSH UI 性能验收；2026-10-26 的首份用户采集另记于本计划发现章节。这是当前分支诊断包，不是 0.26.1 发布物。
 
 安装此包后，打开原问题画布，执行 `Dev Session Canvas: 开始执行链路诊断（120 秒）`，复现单节点/双节点输出与输入，再执行 `Dev Session Canvas: 落盘当前宿主诊断`。新增文件 `execution-flow-diagnostics.json` 中 Host 与至少一个 surface 应有同一 traceId；surface 若 timeout、not-participating 或 replacements 非零，先按正式设计的缺失语义判断，不把缺失当零耗时。
 
 ## 结果与复盘
 
-诊断实现与定向验证已完成，已生成本地诊断 VSIX；PR #337 更新后供复现使用。根因与调度算法未选定，现场性能结论等待新采集，因此本调查计划继续保持 active。
+诊断实现与定向验证已完成，已生成本地诊断 VSIX；PR #337 更新后供复现使用。首份现场采集已把优先调查范围收敛到消息往返与 Host 状态构造/广播，因果对照和修复仍待完成，因此本调查计划继续保持 active。
 
 修订说明：2026-10-25 根据实际日志和用户授权，将工作从调度器提案调整为定向通信/分页诊断实现。
+
+修订说明：2026-10-26 补入首次真实 SSH 链路采集及聚合/请求关联核验；仅更新证据和下一步验证范围，未修改业务代码。
