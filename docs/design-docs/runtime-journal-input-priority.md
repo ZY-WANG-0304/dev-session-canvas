@@ -29,6 +29,10 @@ updated_at: 2026-10-26
 
 `src/panel/CanvasPanelManager.ts` 记录输入处理、写入调用至提交结果、状态构造、消息提交和读页往返。`postState` 标记 live Supervisor snapshot 与普通 execution state sync 的触发原因；导出区分其它原因，不能将其它原因猜成 live output。state-build 覆盖 Webview options 与 payload 构造，不包含随后侧栏通知；采集期间量化实际提交消息的 JSON UTF-8 大小，并单独报告测量这一步的耗时。`postMessage` 的返回与原 `delivered` 字段不是浏览器接收确认。
 
+2026-10-26 用户授权补充状态构造分段计时。保留原 `state-build` 总跨度，增加 `state-options-build`（getWebviewOptions）、`state-options-set`（Webview options setter）、`state-canvas-build`（prepareCanvasStateForWebview）、`state-runtime-build`（getRuntimeContext）与 `state-sidebar-notify`（同步 notifySidebarStateChanged）。同一次 postState 的总计与分段共用生成的 requestId，记录相同 messageType/reason，沿用每秒聚合、直方图和每阶段 64 条详情；侧栏是总构造跨度之外的独立阶段，不能与子阶段一起重复相加。options setter 的计时不包含 VS Code 后续异步应用，侧栏计时不包含异步渲染或 listener 内未等待的任务。
+
+同步测量包装保留返回值和异常，失败阶段记录 success=false 后原样抛出；未开启时直接调用原操作，不额外计时、保留记录或发送消息。开启时原 state-build 总跨度包含分段记录自身的少量开销，不把它当作零成本探针。没有 Webview 时不虚构 options 的零耗时；采集冻结/到期时丢弃未完成跨度，不把缺失当成功。本次只补这五段，不合并广播、不改调度或缓存策略，也不改变输入、分页及 ACK 语义。新字段随既有 execution-flow-diagnostics.json 导出，英文调试窗口继续使用 Start Execution Flow Trace (120 seconds)。
+
 每个 surface 最多一个采样消息回执在途、最多每秒一个；Webview 在同步消息处理完成后回复 ID 与自身处理耗时，Host 用自己的单调时钟测提交至回执的往返。该时长包含返回路径和事件循环等待，不能称为单向传输时间。未回执数量和年龄随导出提供。详情本地缓存，采集期间不逐事件上传；正常输入 ACK 与 page request 原有流量不增加。
 
 `src/webview/main.tsx` 记录输入派发与原有 ACK 往返、状态消息同步处理、page 请求至返回、page 等待写入及 xterm callback 完成。页面各阶段使用同一个 requestId、read/session 身份与 revision 边界。同步 state handler 不包含后续 React commit；记录此限制，不能把它解释成全部 UI 绘制成本。`src/webview/terminalPagedProjection.ts` 仅向应用回调透传请求 ID，不改变 busy、retry、revision 或回执语义。失败与取消不作为成功应用。

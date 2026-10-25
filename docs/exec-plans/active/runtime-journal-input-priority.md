@@ -11,6 +11,7 @@
 - [x] 2026-10-25：定向自动化测试、RuntimeSupervisor 整链、类型检查与 VSIX 构建通过。
 - [x] 2026-10-25：收口验证记录；随本次提交更新 PR #337 标题与描述。
 - [x] 2026-10-26：用户通过 F5 导出首份约 76 秒链路诊断；核验窗口、聚合和 requestId 关联，确认秒级等待主要位于本地处理跨度外。
+- [x] 2026-10-26：补充 options 构造/设置、画布状态、runtime context、侧栏通知五段计时；异常、未开启、冻结与原执行顺序测试通过，重新构建并准备 F5 调试包。
 - [ ] 对 Host state-build 和实时状态广播做受控验证，确定修复及性能/正确性验收。
 
 ## 上下文与定向
@@ -46,6 +47,8 @@
 - 2026-10-25：可选 Supervisor timing 随原 page 返回，兼容旧 Supervisor，保留原 owned reader 对象/结算关系。
 - 2026-10-26：依据实际关联数据，下调 journal/xterm 调度作为首修方向的优先级；先研究状态构造与广播，并以单变量对照确认影响。没有把 Host 同步跨度写成 CPU 占用率，也没有把往返差额写成纯网络耗时。
 
+- 2026-10-26：用户授权定向分段计时；五段使用现有有界采集，同次 postState 关联 requestId。保留总跨度与侧栏边界，本轮不实施 A/B 广播策略。
+
 ## 幂等性与恢复
 
 再次启动替换旧采集；导出不清空本地记录，超时可重试。采集自动停止但保留结果；Webview 重建仅新实例可继续记录，旧实例缺失必须说明。回退该 PR 只移除观测，不改变任何终端历史或 reader 状态。
@@ -62,6 +65,10 @@
 
 安装此包后，打开原问题画布，执行 `Dev Session Canvas: 开始执行链路诊断（120 秒）`，复现单节点/双节点输出与输入，再执行 `Dev Session Canvas: 落盘当前宿主诊断`。新增文件 `execution-flow-diagnostics.json` 中 Host 与至少一个 surface 应有同一 traceId；surface 若 timeout、not-participating 或 replacements 非零，先按正式设计的缺失语义判断，不把缺失当零耗时。
 
+2026-10-26 分段计时补充验证：`npm run test:execution-flow-diagnostics`、`npm run typecheck`、`node scripts/test/test-terminal-paged-projection.mjs`（实际 Webview 51/51、Host batch 10/10）及 `npm run test:protocol-webview-messages` 均通过。新增测试执行真实 postState 方法，用可控时钟验证各阶段耗时、总构造不包含侧栏/提交、同次 requestId、原 payload 对象与调用顺序、五个阶段原异常继续抛出、无 Webview 不伪造 options 样本、未开启不读计时器、采集冻结不阻止广播及 bootstrap 行为。`npm run build` 与 `npm run prepare:debug-main-only-extension` 成功；当前源码目录 F5 包包含五段计时。先前分发的 VSIX 为旧诊断版本，本轮采用 F5 复测。
+
+本轮只补计时，未启动广播合并实验。用户应停止原 F5 调试并重新启动，在英文界面运行 `Dev Session Canvas: Start Execution Flow Trace (120 seconds)`，复现后运行 `Dev Session Canvas: Write Host Diagnostics to Disk`；新的 `execution-flow-diagnostics.json` 包含五段的详情和完整窗口聚合。
+
 ## 结果与复盘
 
 诊断实现与定向验证已完成，已生成本地诊断 VSIX；PR #337 更新后供复现使用。首份现场采集已把优先调查范围收敛到消息往返与 Host 状态构造/广播，因果对照和修复仍待完成，因此本调查计划继续保持 active。
@@ -69,3 +76,5 @@
 修订说明：2026-10-25 根据实际日志和用户授权，将工作从调度器提案调整为定向通信/分页诊断实现。
 
 修订说明：2026-10-26 补入首次真实 SSH 链路采集及聚合/请求关联核验；仅更新证据和下一步验证范围，未修改业务代码。
+
+修订说明：2026-10-26 按用户授权实现状态构造分段诊断，记录本轮定向验证与 F5 复测入口；性能修复仍待新数据和对照验证。

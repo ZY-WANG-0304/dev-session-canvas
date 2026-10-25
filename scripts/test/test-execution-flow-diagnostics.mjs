@@ -104,7 +104,7 @@ try {
   const source = await readFile(filename, 'utf8');
   const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
   const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
-  const methods = ['postMessageWithDeliveryResult', 'collectExecutionFlowTrace', 'readExecutionTerminalPage', 'writeExecutionInput']
+  const methods = ['postMessageWithDeliveryResult', 'collectExecutionFlowTrace', 'readExecutionTerminalPage', 'writeExecutionInput', 'postState']
     .map(name => declaration.members.find(member => member.name?.getText(ast) === name).getText(ast)).join('\n');
   const harnessFile = path.join(directory, 'host.cjs');
   await esbuild.build({ stdin: { contents: `
@@ -168,6 +168,100 @@ try {
   await host.readExecutionTerminalPage('panel', payload);
   assert.equal(receivedParams.diagnostics, undefined, 'inactive Host uses the original Supervisor request');
   console.log('PASS actual Host: disabled transport, bounded receipt sampling, page/input tracing and capture isolation');
+
+  const stateStages = ['state-options-build', 'state-options-set', 'state-canvas-build',
+    'state-runtime-build', 'state-sidebar-notify'];
+  const makeStateHost = ({ active = true, failing, interactive = true, freezeAt } = {}) => {
+    let clock = 0;
+    const actual = new Harness();
+    actual.executionFlow = new ExecutionFlowRecorder(() => {
+      assert.ok(active, 'inactive state diagnostics must not read the timer');
+      return clock;
+    });
+    if (active) actual.executionFlow.start('state-trace');
+    const calls = [];
+    const failure = new Error('controlled state operation failure');
+    const values = { options: { enableScripts: true }, canvas: { body: 'PRIVATE-CANVAS' }, runtime: { body: 'PRIVATE-RUNTIME' } };
+    const work = (stage, duration, value) => {
+      calls.push(stage); clock += duration;
+      if (stage === freezeAt) actual.executionFlow.stop();
+      if (stage === failing) throw failure;
+      return value;
+    };
+    const webview = { set options(value) {
+      assert.equal(value, values.options);
+      work('state-options-set', 3);
+    } };
+    actual.isInteractiveSurface = () => interactive;
+    actual.getSurfaceMessageWebview = () => webview;
+    actual.getWebviewOptions = () => work('state-options-build', 2, values.options);
+    actual.prepareCanvasStateForWebview = target => {
+      assert.equal(target, interactive ? webview : undefined);
+      return work('state-canvas-build', 5, values.canvas);
+    };
+    actual.getRuntimeContext = target => {
+      assert.equal(target, interactive ? webview : undefined);
+      return work('state-runtime-build', 7, values.runtime);
+    };
+    actual.postMessage = message => {
+      assert.equal(message.payload.state, values.canvas);
+      assert.equal(message.payload.runtime, values.runtime);
+      work('post', 13);
+    };
+    actual.sendExecutionFlowStart = () => calls.push('bootstrap-trace-start');
+    actual.notifySidebarStateChanged = () => work('state-sidebar-notify', 11);
+    return { actual, calls, failure };
+  };
+  const order = [...stateStages.slice(0, 4), 'post', stateStages[4]];
+  const activeState = makeStateHost();
+  activeState.actual.postState('host/stateUpdated', { reason: 'runtime-supervisor-live-snapshot' });
+  assert.deepEqual(activeState.calls, order);
+  const stateTrace = activeState.actual.executionFlow.snapshot();
+  assert.deepEqual(stateTrace.details.map(s => [s.stage, s.durationMs]), [
+    ['state-options-build', 2], ['state-options-set', 3], ['state-canvas-build', 5],
+    ['state-runtime-build', 7], ['state-build', 17], ['state-sidebar-notify', 11]
+  ], 'state-build retains its original boundary and excludes message submission/sidebar work');
+  for (const sample of stateTrace.details) {
+    assert.equal(sample.requestId, 'state:1');
+    assert.equal(sample.reason, 'runtime-supervisor-live-snapshot');
+    assert.equal(sample.messageType, 'host/stateUpdated');
+  }
+  assert.equal(JSON.stringify(stateTrace).includes('PRIVATE-'), false);
+  assert.deepEqual(normalizeFlowSnapshot(stateTrace), stateTrace);
+  for (const stage of stateStages) {
+    const aggregate = stateTrace.seconds.find(s => s.stage === stage);
+    assert.equal(aggregate.count, 1);
+    assert.equal(aggregate.failures, 0);
+    assert.equal(aggregate.messageType, 'host/stateUpdated');
+  }
+  const inactiveState = makeStateHost({ active: false });
+  inactiveState.actual.postState('host/stateUpdated');
+  assert.deepEqual(inactiveState.calls, order);
+  assert.equal(inactiveState.actual.executionFlow.snapshot(), undefined);
+  assert.equal(inactiveState.actual.flowMessageSequence, 0);
+  for (const active of [false, true]) for (const failing of stateStages) {
+    const f = makeStateHost({ active, failing });
+    assert.throws(() => f.actual.postState('host/stateUpdated'), error => error === f.failure);
+    assert.deepEqual(f.calls, order.slice(0, order.indexOf(failing) + 1), 'failure preserves original stop point');
+    if (active) {
+      const last = f.actual.executionFlow.snapshot().details.at(-1);
+      assert.equal(last.stage, failing);
+      assert.equal(last.success, false);
+    }
+  }
+  const hidden = makeStateHost({ interactive: false });
+  hidden.actual.postState('host/stateUpdated');
+  assert.deepEqual(hidden.calls, order.slice(2));
+  assert.ok(hidden.actual.executionFlow.snapshot().details.every(s => !s.stage.startsWith('state-options-')));
+  const bootstrap = makeStateHost();
+  bootstrap.actual.postState('host/bootstrap');
+  assert.deepEqual(bootstrap.calls, [...order.slice(0, -1), 'bootstrap-trace-start', 'state-sidebar-notify']);
+  const frozen = makeStateHost({ freezeAt: 'state-canvas-build' });
+  frozen.actual.postState('host/stateUpdated');
+  assert.deepEqual(frozen.calls, order, 'freezing diagnostics must not stop state publication');
+  assert.deepEqual(frozen.actual.executionFlow.snapshot().details.map(s => s.stage), stateStages.slice(0, 2));
+  console.log('PASS actual Host state stages: exact timing boundaries, correlation, payload identity, inactive mode, errors, bootstrap and freeze');
+
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

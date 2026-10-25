@@ -8111,20 +8111,31 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity; reason?: string }
   ): void {
     const flowBuild = this.executionFlow.begin();
+    const flowIdentity = { requestId: flowBuild ? `state:${++this.flowMessageSequence}` : undefined,
+      reason: options?.reason ?? 'other', messageType: type };
     const targetSurface = options?.surface ?? this.activeSurface;
     const activeWebview =
       targetSurface && this.isInteractiveSurface(targetSurface)
         ? this.getSurfaceMessageWebview(targetSurface)
         : undefined;
     if (activeWebview) {
-      activeWebview.options = this.getWebviewOptions();
+      const webviewOptions = this.executionFlow.measureSync({ stage: 'state-options-build', ...flowIdentity },
+        () => this.getWebviewOptions());
+      this.executionFlow.measureSync({ stage: 'state-options-set', ...flowIdentity },
+        () => { activeWebview.options = webviewOptions; });
     }
     const lifecycle = options?.lifecycle ?? (targetSurface ? this.getSurfaceLifecycleIdentity(targetSurface) : undefined);
-    const payload = { state: this.prepareCanvasStateForWebview(activeWebview), runtime: this.getRuntimeContext(activeWebview) };
-    this.executionFlow.finish(flowBuild, { stage: 'state-build', reason: options?.reason ?? 'other', messageType: type });
+    const payload = {
+      state: this.executionFlow.measureSync({ stage: 'state-canvas-build', ...flowIdentity },
+        () => this.prepareCanvasStateForWebview(activeWebview)),
+      runtime: this.executionFlow.measureSync({ stage: 'state-runtime-build', ...flowIdentity },
+        () => this.getRuntimeContext(activeWebview))
+    };
+    this.executionFlow.finish(flowBuild, { stage: 'state-build', ...flowIdentity });
     this.postMessage({ type, lifecycle, payload }, targetSurface, options?.reason ?? 'other');
     if (type === 'host/bootstrap' && targetSurface) this.sendExecutionFlowStart(targetSurface);
-    this.notifySidebarStateChanged();
+    this.executionFlow.measureSync({ stage: 'state-sidebar-notify', ...flowIdentity },
+      () => this.notifySidebarStateChanged());
   }
 
   private prepareCanvasStateForWebview(webview: vscode.Webview | undefined): CanvasPrototypeState {

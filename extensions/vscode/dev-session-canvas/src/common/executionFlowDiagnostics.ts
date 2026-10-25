@@ -2,6 +2,7 @@
 export const EXECUTION_FLOW_DURATION_MS = 120_000;
 export const FLOW_STAGES = [
   'input-dispatch', 'input-ack', 'input-host', 'input-write-start', 'input-write', 'state-build',
+  'state-options-build', 'state-options-set', 'state-canvas-build', 'state-runtime-build', 'state-sidebar-notify',
   'message-post', 'message-handle', 'message-roundtrip', 'page-request',
   'page-roundtrip', 'page-host-request', 'page-host', 'page-queue', 'page-apply', 'host-loop', 'webview-loop'
 ] as const;
@@ -117,6 +118,19 @@ export class ExecutionFlowRecorder {
   public finish(token: FlowToken | undefined, sample: Omit<FlowSample, 'atMs'>): void {
     if (!token || token.traceId !== this.traceId || !this.active) return;
     this.record({ ...sample, durationMs: this.now() - token.started });
+  }
+  /** Measure synchronous work only; keep the operation's return value and thrown error. */
+  public measureSync<T>(sample: Omit<FlowSample, 'atMs' | 'durationMs' | 'success'>, operation: () => T): T {
+    const token = this.begin();
+    if (!token) return operation();
+    let success = false;
+    try {
+      const result = operation();
+      success = true;
+      return result;
+    } finally {
+      this.finish(token, { ...sample, success });
+    }
   }
   public record(value: Omit<FlowSample, 'atMs'>): void {
     if (!this.active) return;
