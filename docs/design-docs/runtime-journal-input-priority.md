@@ -59,6 +59,7 @@ sequenceDiagram
 
 ## 3. 目标
 
+- 在选择调度算法或改运行逻辑前，用同一次实际输入把输入处理、PTY 写入、journal page 读取、Webview xterm 应用和可见绘制阶段分开计时，定位主要等待点。
 - 最近接收用户输入的 Agent / Terminal 节点，其已返回 journal 页面优先进入 xterm 应用；其 page read 仍保持现有按 reader 按需发起。
 - 保持同一 reader 的 `authorityId + revision` 连续、事件顺序、幂等重试与“应用后才 ACK”语义，不丢弃或重排任何节点内容。
 - 在持续输入下为其他节点提供有界公平服务；队列和在途页面的资源上界应明确，不能以无限推迟或清除后台页面换取响应。
@@ -75,7 +76,7 @@ sequenceDiagram
 
 ## 5. 候选方案
 
-### 5.1 Webview 共享页面应用调度器，读取仍按 reader 按需进行（推荐）
+### 5.1 Webview 共享页面应用调度器，读取仍按 reader 按需进行（候选）
 
 各 reader 保留现有方式：有新 head、且自身没有未完成页面时，立即从自己的 `afterRevision` 请求一页；不新建跨 session 的全局读队列。页面返回并校验身份后，Webview 不再把整页直接排进该 controller 的 write chain，而交给一个共享 page application scheduler。这里的优先级作用在**已返回页面的应用**，不作用在 page read RPC；若输入节点的页面还没读回来，调度器不能凭空让它先显示。
 
@@ -137,7 +138,7 @@ Host 调度读取，Webview 再单独调度应用。
 
 ## 7. 当前结论
 
-**推荐方案 5.1，尚未被接受为正式方案。** 读取保持 per-reader 按需并行；Webview 仅增加共享 page application scheduler，在跨节点竞争 xterm main thread 的位置执行最近输入节点优先与后台轮转。端到端诊断分别记录 page request、page returned、xterm quantum 和 applied revision；不要称该算法为“优先读取”，因为它只影响已返回页面的应用次序。候选方案 5.3 只有在诊断证实 Host/Supervisor page read admission 是共享瓶颈时再启动，不能凭“没有同一套 scheduler”就新增全局读取队列。
+**暂不选择调度算法，也不把方案 5.1 写成确定修复。** 当前源码确认普通 push 和 journal page 应用路径不同，但静态调用链不能说明用户卡顿主要发生在输入写入、Supervisor 产出、Host/read relay、Webview 消息排队、xterm 应用还是画面绘制。应先对原复现场景采集分段数据；如果证据集中在多个已返回页面争用 Webview/xterm，再从 5.1 和各调度算法中选型；如果瓶颈落在其它阶段，设计应转向对应阶段。读页维持 per-reader 按需并行是当前代码发现，不代表显示调度方案已获选择。
 
 以下参数与验收假设须在实现前确认或用具名基准决定：
 
@@ -146,11 +147,11 @@ Host 调度读取，Webview 再单独调度应用。
 - callback 串行 quantum 会否损害多 terminal 总吞吐，以及是否需要 requestAnimationFrame / drain-turn 总预算来为浏览器绘制留出机会。write callback 只证明 xterm 处理了该 write，不证明像素已绘制。
 - 如果诊断显示 read RPC 或 Host→Webview posting 本身形成共享队列，再为后台读取引入全局并发预算；当前并发模型允许不同 session 独立读，不应先选一个任意数字。
 
-开始编码前，用户需要确认：采用方案 5.1 作为第一步，且接受上述批次/时间参数通过定向验证后冻结。此确认前不改运行时代码、不宣称现有延迟已归因于此缺口。
+240ms、480ms 与 4/16/32 Ki 字符值只用于理解现有 drain 和制定可比实验，不构成当前方案要求确认的最终参数。先取现场诊断并判定等待阶段，再基于数据提出算法和参数供用户确认；如果需增补 trace，也先呈现字段、采样率、保留上限和内容脱敏方式。当前不改运行时代码，也不宣称静态调度缺口就是现有延迟的根因。
 
 ## 8. 成熟依据与复用边界
 
-最直接的依据是仓库已经使用的 `common/executionOutputScheduler.ts`：它按 `kind + nodeId` 提升最近输入节点，并在后台等待达到阈值后释放最老 controller。`scripts/test/test-execution-output-scheduler.mjs` 覆盖 10 个 Agent 的普通 drain 选择：输入节点优先；连续输入时，9 个等待达到 480ms 的后台 controller 逐个得到额外 drain slot。测试证明现有选择函数的规则，不证明 journal 页应用性能。建议复用这个选择原则和诊断，不另造优先级身份模型；journal page 需要补的是共享应用队列和可让出的 xterm write quantum。
+最直接的项目内对照是已有的 `common/executionOutputScheduler.ts`：它按 `kind + nodeId` 提升最近输入节点，并在后台等待达到阈值后释放最老 controller。`scripts/test/test-execution-output-scheduler.mjs` 覆盖 10 个 Agent 的普通 drain 选择：输入节点优先；连续输入时，9 个等待达到 480ms 的后台 controller 逐个得到额外 drain slot。测试证明现有选择函数的规则，不证明 journal 页应用性能。可用它作为行为基线，但是否沿用该规则到 journal path，应等现场分段数据说明主要瓶颈后再决定。
 
 ### 8.1 可选调度算法
 
@@ -180,8 +181,41 @@ RR、WRR、DRR 与 WFQ 都是本显示链路上的有效候选。它们决定 re
 
 目前没有发现 tmux 或 xterm.js 提供可直接套用的“多终端 journal readers 依当前输入节点优先、同时保障其他节点公平”的现成调度器。RR/WRR/DRR/WFQ/EDF 为成熟算法家族；仓库已有 output scheduler 是最直接的项目内先例。最近输入优先、年龄公平、xterm 写分段和 journal applied ACK 的具体组合仍是本项目策略，必须用本项目负载验证，不能声称已由标准或库证明。
 
-## 9. 验证方法
+## 9. 定位与数据采集
 
-实现后先用 Webview 调度器单测注入多个已返回页面的 reader：新近输入节点的页面先获 xterm 应用 quantum；同 reader 的 revision 不跳号、不重复；持续输入期间后台 reader 达到等待阈值后仍得到量子并推进；替换 reader、页面迟到、xterm 写失败和重试均不错误 ACK。每 reader 仍至多一页请求或待应用页面；不新增全局 read in-flight cap。另用具名多终端负载验证 callback 分段没有令总排空时间或渲染帧间隔明显退化。
+### 9.1 先采当前已有诊断
 
-随后在具有多 Agent / Terminal 持续输出的真实 Webview 场景同时输入一个节点，记录同一 input sequence 对应的输入 ACK、page requested、page received、`paged-events` write quantum 开始/完成与 applied revision。验收应看到已返回的当前输入节点页面先应用、真实回显延迟下降；逐节点核对完整、无重复、无乱序输出，并报告后台最大等待、页面积压及内存观察。若页面在 Host/IPC 或 Supervisor read 阶段已有可复现排队，再单独提出 read scheduler 方案。诊断仍不能把优先调度单独证明为唯一卡顿根因；端到端对照还须排除输入 RPC / PTY 写入延迟。
+在用户观察到卡顿的同一 VS Code 宿主运行 `Dev Session Canvas: 落盘当前宿主诊断`。保存该命令返回目录中的 `execution-performance-diagnostics.json`、`diagnostic-events.json` 和 `summary.json`；后者的 `diagnostics.executionPerformanceSummary` 可快速查看各来源样本数、耗时总量、最大值和慢样本数。必须在短时复现场景结束后立即落盘，因为 Host 与 Webview 都只保留最近 500 个性能样本。性能样本以时序、计数和长度为主，不含终端正文；其它 dump 文件可能含 workspace 路径、node 标识或诊断摘要，分享前应检查并脱敏，不要公开上传完整诊断目录。
+
+先做两组固定条件的短采集：A 为 RuntimePersistence 开启、只有目标 Agent / Terminal 输入；B 为同一节点、同一输入和相同 Webview surface，同时让其它节点持续输出。记录 VS Code / 扩展版本、机器、surface（Panel / Editor）、RuntimePersistence 状态、活跃节点数、后台输出负载和复现步骤。每轮保持这些因素不变，只改变是否有竞争输出；若用户问题只在隐藏切回后出现，则将 visibility 单独设为另一组，不能与背景输出变量混在一轮中。
+
+### 9.2 现有字段能说明什么
+
+- `webview-input-dispatch`、`host-input-received`、`webview-input-ack`、`host-input-write` 可判断输入派发/到 Host/ACK 往返/Host 发往 PTY 的耗时。注意 Host 会在 PTY write 完成前就 ACK；ACK 快只说明输入已被 Host 接纳并回送，不证明程序已经收到或回显。
+- `webview-main-thread-lag`、`host-event-loop-lag` 可判断两个事件循环是否明显卡顿。
+- 普通 push 的 `host-output-scheduler`、`host-output-post`、`webview-output-enqueue`、`webview-terminal-drain` 可分析普通 output 链；它们不能代表 journal page scheduler，因为当前 page 路径不走普通 output drain。
+- `terminal-page-requested`、`terminal-page-received` 与 `webview-terminal-write(reason=paged-events)` 能提供 journal page request、回执和 xterm callback 的部分观察；Host `runtime/terminalPagePosted` 在 `diagnostic-events.json` 中记录 page revision、大小及事件数。
+
+当前记录适合初筛，不能保证完整重建单页时序：page receipt 未携带 `requestId` / `afterRevision` / page revision；Host `readExecutionTerminalPage()` 没有记录 read RPC 开始/结束耗时；page 收到到进入 `writeChain` 的排队时间未单独记录；write callback 不等于浏览器完成绘制。常规诊断会过滤短耗时/小数据样本（Webview 多数默认需达到 24ms 或 32 Ki 字符，drain 默认 16ms；输入统计有 8ms 门槛；page transport 另有限速和小页例外），因此没有样本不等于该阶段没有耗时。
+
+### 9.3 若现有数据不足，补一轮短时关联 trace
+
+只在复现期间开启一个 bounded trace（固定时间窗和样本上限；目标节点 100% 采样，背景节点可限速），不记录输入正文、PTY output 正文或屏幕文本。每条 span 带统一 `traceId`，并至少包含 `surface + kind + nodeId + executionSessionId`；page 阶段增加 `authorityId + readId + requestId + afterRevision + revision`，输入阶段保留现有 `sequence`。把“触发当前输入优先级的 `prioritySequence`”与“输出由这条输入因果产生”分开命名，避免把时间邻近误当成因果。
+
+最小时间点依次为：Webview input dispatch；Host 收到输入与 ACK post；Host→Supervisor input RPC start/end；Supervisor PTY write 完成；Supervisor onData 收到输出并 append journal/revision；page read 在 Host 和 Supervisor 的开始/结束；Host post page；Webview page received/enqueued/write start/write callback；write callback 后第一个 `requestAnimationFrame`；applied ACK 发出/接收。同步相关上下文还应记每节点 ready page 数、待写字符量、最老等待年龄、已选 reader、调度原因、write quantum 字符数和成功/失败。
+
+这能把以下区间分开计算：输入到 Host、Host 写 PTY、PTY output 到 journal、page RPC 往返、page 回到 Webview 后的调度等待、xterm write service、callback 后到绘制机会。实际像素可见时间需由具名 UI probe 或带时间基准的屏幕录制核对；`requestAnimationFrame` 只能说明浏览器得到绘制机会，不等于用户已经看见。
+
+现有 input `sequence` 不会随 PTY output/journal revision 传播，Agent TUI 也可能延迟或改写回显，因此不能仅凭同一节点“输入后紧接页面”断定页面就是这次输入的 echo。应在可控的 Terminal/Agent 场景选一个可识别的测试 marker，通过 UI probe/录屏确认 marker 第一次可见的时刻；诊断仍只记序号、revision 和长度，不落屏幕或终端正文。
+
+### 9.4 分析与选型门槛
+
+按 `(traceId, nodeId, sessionId, requestId, revision)` 排序，并分别计算输入 ACK、Host PTY write、PTY→journal、read RPC、page 回传、page queue wait、xterm write、callback→render opportunity 的 p50/p95/max。再比较输入节点 echo 首次可见时延、各节点 chars/sec、后台最长无服务时间、Webview/Host lag、总排空时间和待处理 page/字符峰值。
+
+若输入与 PTY write 很快、page 已及时回到 Webview，但目标页长期等在 xterm application queue，才有证据优先评估显示 scheduler；若时间消耗在 Supervisor read/Host relay，先分析该阶段是否存在串行化或 IPC 排队；若 callback 很快但绘制机会迟到，则应分析 Webview 主线程/帧调度。拿到这组数据后，再决定年龄阈值、WRR、后台 DRR/WFQ 或其它方案，并以相同输入/输出负载复测。
+
+## 10. 后续实现验证
+
+算法和瓶颈经数据确认、设计得到用户确认后，才实现相应调度器。若选 page application scheduler，先用 Webview 单测注入多个已返回页面的 reader，覆盖输入页面优先、后台公平、同 reader revision 连续、整页应用后 ACK、同游标重试、迟到页面丢弃及 xterm 写失败。每 reader 仍至多一页请求或待应用页面；不新增全局 read in-flight cap。
+
+随后在相同输入/竞争输出负载下复测并逐节点核对完整、无重复、无乱序输出，同时比较输入节点 echo p50/p95、每节点输出吞吐、后台最长等待、总排空时间、页面积压和 Webview main-thread lag。只有用户原复现场景的显示延迟下降且后台服务没有饥饿，才可宣称修复。

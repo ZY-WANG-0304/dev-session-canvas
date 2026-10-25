@@ -1,6 +1,6 @@
 # Runtime journal 分页的输入优先调度
 
-本计划针对一个可见问题：RuntimePersistence 开启后，当前输入 Agent / Terminal 的回显可能与其他节点的 journal 页面争用 Webview 主线程。用户能看到的目标是输入节点的真实回显更快出现，同时其他节点的完整输出仍按顺序显示。
+本计划针对一个可见问题：RuntimePersistence 开启后，当前输入 Agent / Terminal 的回显可能延迟。输入与输出是两条不同链路；本计划要定位的是按键已进入 PTY 后，输出通过 Supervisor journal、page read、Host/Webview 消息传递和 xterm 绘制的具体等待，再基于数据选修复方案。用户能看到的目标是输入节点的真实回显更快出现，同时其他节点的完整输出仍按顺序显示。
 
 本分支从 `origin/main@37ff8554` 创建。PR #327 保持未合并；本阶段只提交设计，不改运行时代码，不做 PR #327 的合并或 cherry-pick。用户要求先审核设计，因此在用户确认前，计划停在设计门槛。
 
@@ -10,15 +10,18 @@ RuntimePersistence 的 live terminal history 由 Runtime Supervisor 的 xterm mo
 
 当前分页实现使每个 `TerminalPagedProjection` 自行请求下一页，Host 直接 relay，Webview 页面回调直接进入单节点 `queueTerminalWrite()`。各 session page RPC 独立异步发起，目前没有证据表明它们排进了同一条全局 FIFO；因此不能仅凭缺少 read scheduler 断定当前节点的读请求会被后台节点挡住。明确缺少的是多个已返回页面之间的 Webview/xterm 应用优先级。设计文档 [`runtime-journal-input-priority.md`](../../design-docs/runtime-journal-input-priority.md) 提出先给页面应用增加共享调度器，保留现有 reader demand flow；读阶段只有在现场诊断证明有共享排队后再设计调度。回显卡顿的具体因果仍未通过现场时间线确定。
 
-计划交付分成先后两个阶段。当前阶段完成源代码路径核对、比较候选、登记正式设计提案并创建只含设计的草稿 PR。只有用户确认提案后，才继续冻结应用 quantum / fairness 参数、实施 scheduler、补回归并运行相关测试与真实 Webview 验收。
+计划交付先定位再修复：已核对源码并梳理现有诊断；下一步先从真实复现场景导出现有 Host 诊断，确认输入、Host→PTY、page read/回传和 Webview 应用各阶段能解释到什么程度。现有记录缺少 page RPC 时长、请求/回执的完整关联和页面排队至 xterm write start 的等待；若初筛不能定位，先提出 bounded trace 的字段和采样设计，再经设计确认后采集。取得瓶颈证据后才选择年龄、WRR、DRR/WFQ 或其它调度策略；任何运行时修复均需用户确认设计后才开始。
 
 ## 进度
 
 - [x] (2026-10-25) 从最新 `origin/main@37ff8554` 创建隔离分支 `docs-journal-input-priority`，保留原工作区的未提交文件。
 - [x] (2026-10-25) 对照输入状态记录、Host 普通 output scheduler、journal relay、Webview reader 和 page application 路径，确认跨 reader page request/application 不经过普通优先队列。
-- [x] (2026-10-25) 比较只调度页面应用、只调度 Host read、Webview 共享两阶段调度、Host+Webview 双调度，并记录推荐方案、未验证风险和验收办法。
-- [x] (2026-10-25) 生成设计提案、更新索引及相关正式记录；本分支限定为设计文档，等待用户确认。
-- [ ] 用户确认设计方向和未决参数后，冻结 `runtime-journal-input-priority.md` 的正式方案，再开始代码实现。
+- [x] (2026-10-25) 盘点现有 performance diagnostics：输入派发 / Host 接收与 ACK / Host PTY write、事件循环 lag、普通 push output、journal page request/receive 与 Webview xterm write 样本及落盘入口。
+- [x] (2026-10-25) 比较 page 应用、Host read、Webview demand/application、双层调度，以及 RR、WRR、年龄公平、DRR、WFQ、EDF；将调度算法选择暂缓到现场数据之后。
+- [x] (2026-10-25) 更新设计提案、索引及 ExecPlan；PR 限定为诊断优先的设计文档，不含运行时代码。
+- [ ] 用户在目标 VS Code 宿主复现问题并导出现有诊断，提供 `execution-performance-diagnostics.json`、`diagnostic-events.json` 与 `summary.json` 供阶段归因；性能样本不含终端正文，其它 dump 字段分享前需检查并脱敏。
+- [ ] 若现有采样不足，先确认 bounded trace 设计，再实现仅用于短时复现的诊断采集；据该 trace 选择显示链路调度方案。
+- [ ] 基于现场证据更新设计并等用户确认；确认后才实现修复、补回归并运行相关测试与真实 Webview 验收。
 - [ ] 实现后更新本计划和设计文档，记录定向测试、性能诊断、真实输入回显与后台公平性证据。
 
 ## 定向与代码路径
@@ -31,11 +34,11 @@ Runtime journal reader 的拉取状态由 `extensions/vscode/dev-session-canvas/
 
 ## 当前设计提案
 
-推荐新增 Webview 共享页面应用调度器，page read 仍按每 reader 当前做法即时发起。每个 reader 保留自己的读取身份、revision 和一页在途/待应用限制；页面返回并校验后进入共享 application 队列。调度器以最近输入的 `kind + nodeId` 优先，按有界 xterm write quantum 推进；每次 write callback 后重选下一 reader。后台按最近一次获得服务的时间轮转，达到候选等待阈值后确保得到一个 quantum。只有页面的全部 output、resize、scrollback 操作都成功后，才通知原 reader 推进 applied revision 并允许下一页。
+共享 Webview 页面应用调度器仍是一个结构上合理的候选，但不作为当前已推荐/已选择的修复。用户首先要用现场 span 区分 Host 输入→PTY 写入、Supervisor onData→journal revision、page read/回传、Webview page queue wait、xterm write callback 和 callback 后绘制机会。只有证据显示 page 返回后在 Webview/xterm 争用导致主要等待，才继续采用或修改该候选；其它阶段占主导则设计应转向对应边界。
 
-每 reader 最多一个页面请求或待应用页面，不允许为优先级跳过页面。第一步不加全局 read 并发上限，因为现有请求按 session 独立异步发起，目前没有共享等待队列证据；加限额会额外制造 head-of-line 等待。每 reader 至多缓存一页意味着正文内存按活跃 reader 数增长；单个超过 page 字节预算的 journal event 是现有协议例外，不能将页数直接宣传成精确 RSS 保证。
+现有模型为每 reader 最多一个页面请求或待应用页面，不允许为优先级跳过页面。静态调用链未发现共享 read FIFO，因此提案阶段不预设全局 read 并发上限；若 trace 显示 Host/Supervisor read admission 或桥接处形成共享积压，再按实测资源与等待设计限制。每 reader 至多缓存一页意味着正文内存按活跃 reader 数增长；单个超过 page 字节预算的 journal event 是现有协议例外，不能将页数直接宣传成精确 RSS 保证。
 
-推荐复用 Webview 当前最近输入节点身份和 240ms 短时优先窗口，普通非优先 controller 的 480ms 最大等待作为公平基线；二者目前仅被普通输出 drain 使用，尚未在 RuntimePersistence page 路径验证。量子先以现有普通 drain 的单位和量级为候选：输入 / 超时后台各 4 Ki 个 JavaScript UTF-16 code unit，普通每 controller 不超过 16 Ki；现有普通 drain 的 32 Ki 每轮总预算是否适用于共享 page scheduler 另行验证。分页 64 KiB 是协议 page byte budget，不是 write quantum；64 Ki 字符的 snapshot output batch 又是独立参数。每个 callback 后轮转并重读 priority。定向诊断若显示回显常在输入窗口之后到达，应在冻结正式方案前调整 priority lease。所有候选和风险均记录于正式提案文档；这段推荐尚非用户已接受结论。
+240ms 输入窗口、480ms 后台公平阈值及 4/16/32 Ki 字符预算只是现有 ordinary drain 的实现参数，当前均不是 journal path 选型。RR/WRR/DRR/WFQ 直接影响多个 ready output readers 的显示容量分配，应结合输入 echo p50/p95、各节点输出吞吐、后台最长无服务时间及总排空时间比较；年龄策略优先控制最长服务等待，DRR/WFQ 主要按配置分配吞吐。具体组合待现场数据决定。
 
 ## 阶段与执行步骤
 
@@ -43,17 +46,25 @@ Runtime journal reader 的拉取状态由 `extensions/vscode/dev-session-canvas/
 
 核对从 `origin/main` 起点的现有代码，而不是从 PR #327 的未合并 diff 推断。检查 Webview input dispatch、Host input ACK 与最近输入标记、普通 output scheduler、`TerminalPagedProjection` page request/application 完成点、Host `readExecutionTerminalPage()` 与 `RuntimeTerminalReadRelay`。结果应能说明两类路径在哪个函数处分开，并区分输入优先级已存在的路径与尚未接入的路径。
 
-### 阶段二：候选比较与草稿 PR
+### 阶段二：诊断先行设计与草稿 PR
 
-正式文档比较 Webview page-application-only、Host read-only、Webview shared demand/application、Host+Webview 双调度，并对照 RR、WRR、strict priority + background reservation、DRR、WFQ 与 EDF 的目标和适用边界。为各方案写清节点内顺序、读者单页背压、跨节点公平性、页面消息竞争、资源上界和实施复杂度。推荐第一阶段只调度页面应用，保留每 reader 独立读取；将 240ms 优先窗口、480ms fairness 与 4/16/32 Ki UTF-16 code unit 应用预算标为候选参数，64 KiB page cap 作为传输限制单独说明。只有诊断发现 read-stage 共享等待才追加读取准入调度。
+先从目标现场执行 `Dev Session Canvas: 落盘当前宿主诊断`，保留 `execution-performance-diagnostics.json`、`diagnostic-events.json`、`summary.json`。按现有样本先区分 input/ACK、Host PTY write、主线程 lag、page request/receive、xterm write。严格说明 ACK 早于 PTY write 完成，普通 push output 指标不代表 journal page。
+
+若该捕获不能定位，则先提交 bounded trace 的诊断变更设计供审阅：短时 opt-in、固定时长及环形样本上限、目标节点完整采样、后台限速；记录 dispatch 到 applied / render opportunity 的阶段时间、page request/revision 标识、ready queue 等待和 backlog；不记录输入或终端正文。用户确认 trace 设计后再实现并采集。形成 p50/p95/max 与同条件背景输出对照，再基于证据从 page-application-only、Host read、共享 demand/application、双层调度架构，以及 RR、WRR、strict priority + reservation、年龄公平、DRR、WFQ、EDF 中选择合适组合。
+
+目前 PR 只登记数据需求、已有字段与缺口、候选算法的目标差异及选型门槛；不声明已选择 scheduler 或其参数。240ms、480ms、4/16/32 Ki UTF-16 code unit 是现有普通 drain 参考值，64 KiB page cap 是传输限制。
 
 只提交设计相关文档：新设计提案、相关旧设计的实现边界补充、`docs/design-docs/index.md` 和本 ExecPlan。PR 使用 draft 状态，标题和描述明确“设计提案 / 暂无运行时代码”。用 `git diff --check` 检查 whitespace；不运行产品测试，因为此阶段没有运行时变更。用户确认后再继续阶段三。
 
-### 阶段三：确认后实现与验证
+### 阶段三：基于数据更新设计并确认
 
-该阶段尚未授权开始。确认后先根据批准的方案补全正式设计状态，再以最小变更创建 Webview page coordinator，保持 wire protocol、journal 与 Supervisor authority 不变。
+取得诊断后更新正式设计：记录实际等待阶段、竞争负载、可复现性与统计范围，确认修复边界和调度算法。只有用户确认数据归因及方案后才能进入运行时实现；若现有采集不足，诊断补充变更也需先审阅具体字段和采样开销。
 
-单元回归须覆盖输入节点已返回 page 的应用优先、背景 reader 到达等待阈值后得到 quantum、同一 reader revision 严格连续、整页应用完成后才 ACK、retry 同游标、迟到旧 reader response 丢弃、写失败不推进。Webview 集成回归须并发输出并发送真实 xterm input，不可伪造 Host input 消息绕过竞争点。最终真实 VS Code / packaged 场景记录同一 input sequence 的 input ACK、page requested/received、`paged-events` xterm quantum 开始/完成和 applied revision，并逐节点比对完整内容、顺序、重复数及后台等待。如果诊断显示 read RPC 或 Host post 阶段有共享等待，再另设读取调度阶段。
+### 阶段四：确认后实现与验证
+
+此阶段尚未授权开始。确认后才实施对应最小修复；如果证据支持 page application scheduler，再创建 Webview page coordinator，保持 wire protocol、journal 与 Supervisor authority 不变。
+
+如果实施 page application scheduler，单元回归须覆盖输入节点已返回 page 的应用优先、后台 reader 公平服务、同一 reader revision 严格连续、整页应用完成后才 ACK、retry 同游标、迟到旧 reader response 丢弃、写失败不推进。Webview 集成回归须并发输出并发送真实 xterm input，不可伪造 Host input 消息绕过竞争点。最终真实 VS Code / packaged 场景按新 trace 记录输入至 PTY、journal revision、page RPC、page queue wait、xterm callback、paint opportunity 与 applied ACK；逐节点比对完整内容、顺序、重复数及后台等待。若归因在别的 stage，则对应的回归和性能指标按实际修复更新。
 
 工作目录为仓库根。按仓库默认命令执行 `npm run typecheck`、相关 page / protocol / Webview 定向测试、`npm run build` 和具名真实 smoke；具体脚本名须先根据实现修改范围核实，记录实际运行与未运行项，不把设计 PR 的静态检查写成性能验证。
 
@@ -79,9 +90,10 @@ Runtime journal reader 的拉取状态由 `extensions/vscode/dev-session-canvas/
 
 ## 决策记录
 
-- 2026-10-25：把推荐从“Webview 同时调度 page demand/application”收窄为“保留 per-reader 独立 demand read，只调度共享 xterm 页面应用”。理由是静态调用链没有显示跨 session 共享 read FIFO；全局限流可能制造原来没有的 head-of-line 等待，当前确定共享的竞争点是 Webview 主线程。方案为提案，等待用户确认；输入窗口和应用 quantum 未冻结。
+- 2026-10-25：初始候选从“Webview 同时调度 page demand/application”收窄为“保留 per-reader 独立 demand read，考虑共享 xterm 页面应用调度”。理由是静态调用链没有显示跨 session 共享 read FIFO；此时只识别到页面应用选择点未经过普通 output scheduler，尚未证明它是现场的主要等待阶段，因此仍需现场诊断后决定是否实施。
 - 2026-10-25：本分支只提交设计提案，不执行运行时实现或测试。理由是用户要求先确认方案；当前静态路径差异还不能证明现场卡顿的因果归属。
+- 2026-10-25：在收集现场输入和输出链路数据前，不选择年龄公平或其它算法，也不把 page application scheduler 当成已确认修复。先使用已有性能诊断；若其采样和关联字段不足，再审阅 bounded trace 方案。显示链路的吞吐分配直接影响输入 echo 页的排队时间，应同时分析回显时延、节点吞吐和总排空时间。
 
 ## 结果与复盘
 
-设计提案已记录现状、优先级缺口、四个候选方案、推荐的共享 Webview 调度器、保序/公平不变量与实现验证方法。当前结果不包含代码修复，且方案状态为“比较中 / 未验证”；在用户确认前不推进 runtime implementation。
+设计提案已记录当前诊断能力及缺口、控制变量采集方法、需要关联的阶段 span，以及调度架构/算法候选。当前未选择算法或根因，不含代码修复；先等待目标宿主导出现实复现场景数据，再据证据更新方案。

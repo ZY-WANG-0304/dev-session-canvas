@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/runtime-journal-input-priority.md` | RuntimePersistence journal page 的 Webview 应用优先级提案；比较 RR、WRR、年龄公平、DRR、WFQ 与 EDF，read RPC 保留 per-reader 按需并行 | 执行编排域、画布交互域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 未验证 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-25 |
+| `docs/design-docs/runtime-journal-input-priority.md` | RuntimePersistence 输入回显的诊断优先方案；盘点现有链路指标及 journal page 时序关联缺口，等待现场数据后选择显示调度算法 | 执行编排域、画布交互域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 比较中 | 未验证 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-25 |
 | `docs/design-docs/runtime-mode-switch-settlement.md` | 模式切换逐原会话结算、迟到保存隔离及失败后继续；重试重验 root 责任，终态回调按接纳身份保留 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/runtime-mode-switch-settlement.md` | 2026-10-24 |
 | `docs/design-docs/file-entry-native-smoke.md` | 文件条目原生点击与编辑器持焦回归 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/file-entry-native-smoke.md` | 2026-10-24 |
 | `docs/design-docs/release-gate-flow-audit.md` | 0.26.1 发布门禁全流程审查、六平台/发布六job及smoke内部六图；确认强制合并约束缺失、过滤范围漏洞、失败取证和 notifier/普通 PR 接线边界，区分ready/resize/Stop/退役与Host退出的验证责任；仅审查，建议未实施 | VSCode 集成域、执行编排域 / 宿主集成层、适配与基础设施层 | 待探索 | 已验证 | `docs/exec-plans/active/smoke-lifecycle-diagnostic-isolation.md` | 2026-10-16 |
