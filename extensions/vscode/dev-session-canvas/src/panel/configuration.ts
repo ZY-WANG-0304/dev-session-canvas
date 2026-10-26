@@ -18,8 +18,11 @@ type InspectConfigurationResult<T> =
     }
   | undefined;
 
-export function getConfigurationValue<T>(key: keyof typeof CONFIG_KEYS, defaultValue: T): T {
-  const configuration = vscode.workspace.getConfiguration();
+export function getConfigurationValue<T>(
+  key: keyof typeof CONFIG_KEYS,
+  defaultValue: T,
+  configuration: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration()
+): T {
   return configuration.get<T>(CONFIG_KEYS[key], defaultValue);
 }
 
@@ -31,8 +34,9 @@ function getWorkspaceScopedConfigurationValue<T>(
     : inspection?.workspaceValue;
 }
 
-export function getEffectiveTerminalShellConfiguration(): EffectiveTerminalShellConfiguration {
-  const configuration = vscode.workspace.getConfiguration();
+export function getEffectiveTerminalShellConfiguration(
+  configuration: vscode.WorkspaceConfiguration = vscode.workspace.getConfiguration()
+): EffectiveTerminalShellConfiguration {
   const configuredShell = configuration.inspect<string>(CONFIG_KEYS.terminalShell);
   const configuredPath = configuration.inspect<string>(CONFIG_KEYS.terminalShellPath);
   return resolveEffectiveTerminalShellConfiguration({
@@ -46,8 +50,8 @@ export function getEffectiveTerminalShellConfiguration(): EffectiveTerminalShell
   });
 }
 
-export function getConfiguredTerminalShell(): ResolvedConfiguredTerminalShell {
-  const effectiveConfiguration = getEffectiveTerminalShellConfiguration();
+export function getConfiguredTerminalShell(configuration?: vscode.WorkspaceConfiguration): ResolvedConfiguredTerminalShell {
+  const effectiveConfiguration = getEffectiveTerminalShellConfiguration(configuration);
   return resolveConfiguredTerminalShell({
     configuredShell: effectiveConfiguration.configuredShell,
     configuredPath: effectiveConfiguration.configuredPath,

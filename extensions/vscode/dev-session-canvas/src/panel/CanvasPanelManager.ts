@@ -1866,12 +1866,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public getSidebarState(): CanvasSidebarState {
+    const configuration = vscode.workspace.getConfiguration();
     const configuredSurface = this.getConfiguredSurface();
     const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
     const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
-    const fileConfiguration = this.getCanvasFileViewConfiguration();
-    const terminalShell = getConfiguredTerminalShell();
-    const agentCliConfig = this.getAgentCliConfig();
+    const fileConfiguration = this.getCanvasFileViewConfiguration(configuration);
+    const terminalShell = getConfiguredTerminalShell(configuration);
+    const agentCliConfig = this.getAgentCliConfig(configuration);
 
     return {
       canvasSurface,
@@ -8261,14 +8262,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
-    const fileConfiguration = this.getCanvasFileViewConfiguration();
+    const configuration = vscode.workspace.getConfiguration();
+    const fileConfiguration = this.getCanvasFileViewConfiguration(configuration);
+    const agentCliConfig = this.getAgentCliConfig(configuration);
     return {
       executionMouseDiagnosticsEnabled: this.context.extensionMode === vscode.ExtensionMode.Development,
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       workspaceFolders: this.getWorkspaceFoldersForDisplay(),
-      defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
-      agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(),
+      defaultAgentProvider: agentCliConfig.defaultProvider,
+      agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(agentCliConfig),
       strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
       terminalScrollback: this.getTerminalScrollback(),
       editorMultiCursorModifier: normalizeEditorMultiCursorModifier(
@@ -8279,10 +8282,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       terminalWordSeparators: normalizeExecutionTerminalWordSeparators(
         vscode.workspace.getConfiguration('terminal.integrated').get<string>('wordSeparators')
       ),
-      overviewMode: this.getCanvasOverviewMode(),
-      overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(),
-      multiRootPresentationMode: this.getCanvasMultiRootPresentationMode(),
-      workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(),
+      overviewMode: this.getCanvasOverviewMode(configuration),
+      overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(configuration),
+      multiRootPresentationMode: this.getCanvasMultiRootPresentationMode(configuration),
+      workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(configuration),
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
@@ -8317,21 +8320,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private getCanvasOverviewMode(): CanvasOverviewMode {
+  private getCanvasOverviewMode(configuration?: vscode.WorkspaceConfiguration): CanvasOverviewMode {
     return normalizeCanvasOverviewMode(
-      getConfigurationValue<CanvasOverviewMode>('canvasOverviewMode', 'title')
+      getConfigurationValue<CanvasOverviewMode>('canvasOverviewMode', 'title', configuration)
     );
   }
 
-  private getCanvasOverviewZoomThreshold(): number {
+  private getCanvasOverviewZoomThreshold(configuration?: vscode.WorkspaceConfiguration): number {
     return normalizeCanvasOverviewZoomThreshold(
-      getConfigurationValue<number>('canvasOverviewZoomThreshold', DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD)
+      getConfigurationValue<number>('canvasOverviewZoomThreshold', DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD, configuration)
     );
   }
 
-  private getCanvasMultiRootPresentationMode(): CanvasMultiRootPresentationMode {
+  private getCanvasMultiRootPresentationMode(configuration?: vscode.WorkspaceConfiguration): CanvasMultiRootPresentationMode {
     return normalizeCanvasMultiRootPresentationMode(
-      getConfigurationValue<CanvasMultiRootPresentationMode>('canvasMultiRootPresentationMode', 'rootGroups')
+      getConfigurationValue<CanvasMultiRootPresentationMode>('canvasMultiRootPresentationMode', 'rootGroups', configuration)
     );
   }
 
@@ -8341,15 +8344,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private getWorkspaceRootWatermarksEnabled(): boolean {
-    return getConfigurationValue<boolean>('canvasWorkspaceRootWatermarksEnabled', true);
+  private getWorkspaceRootWatermarksEnabled(configuration?: vscode.WorkspaceConfiguration): boolean {
+    return getConfigurationValue<boolean>('canvasWorkspaceRootWatermarksEnabled', true, configuration);
   }
 
-  private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
-    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists');
-    const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
-    const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
-    const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
+  private getCanvasFileViewConfiguration(configuration?: vscode.WorkspaceConfiguration): CanvasFileViewConfiguration {
+    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists', configuration);
+    const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal', configuration);
+    const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path', configuration);
+    const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename', configuration);
 
     return {
       enabled: this.appliedStartupConfiguration.filesFeatureEnabled,
@@ -17821,12 +17824,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private getAgentCliConfig(): AgentCliConfig {
-    const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
-    const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex';
-    const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude';
-    const codexDefaultArgs = getConfigurationValue<string>('agentCodexDefaultArgs', '').trim();
-    const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '').trim();
+  private getAgentCliConfig(configuration?: vscode.WorkspaceConfiguration): AgentCliConfig {
+    const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex', configuration);
+    const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex', configuration).trim() || 'codex';
+    const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude', configuration).trim() || 'claude';
+    const codexDefaultArgs = getConfigurationValue<string>('agentCodexDefaultArgs', '', configuration).trim();
+    const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '', configuration).trim();
 
     const codexCommand =
       isTestHarnessMode(this.context.extensionMode)
@@ -17846,8 +17849,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private getAgentLaunchDefaults(provider: AgentProviderKind): AgentProviderLaunchDefaults {
-    const configuration = this.getAgentCliConfig();
+  private getAgentLaunchDefaults(
+    provider: AgentProviderKind,
+    configuration: AgentCliConfig = this.getAgentCliConfig()
+  ): AgentProviderLaunchDefaults {
     return provider === 'claude'
       ? {
           command: configuration.claudeCommand,
@@ -17859,10 +17864,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
   }
 
-  private getAgentLaunchDefaultsByProvider(): AgentLaunchDefaultsByProvider {
+  private getAgentLaunchDefaultsByProvider(configuration?: AgentCliConfig): AgentLaunchDefaultsByProvider {
     return {
-      codex: this.getAgentLaunchDefaults('codex'),
-      claude: this.getAgentLaunchDefaults('claude')
+      codex: this.getAgentLaunchDefaults('codex', configuration),
+      claude: this.getAgentLaunchDefaults('claude', configuration)
     };
   }
 

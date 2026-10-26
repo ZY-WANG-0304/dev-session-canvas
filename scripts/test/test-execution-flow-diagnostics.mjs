@@ -265,3 +265,7 @@ try {
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
+
+await import('./test-state-configuration-reuse.mjs');
+
+await import("./test-configuration-echo-probe.mjs");

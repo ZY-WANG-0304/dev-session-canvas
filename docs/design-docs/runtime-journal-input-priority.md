@@ -21,7 +21,7 @@ updated_at: 2026-10-26
 
 ## 正式方案：短时诊断采集
 
-2026-10-25 用户确认先实现诊断增强，再据实测选择修复边界。此处选定的仅是诊断方案，Supervisor journal 优先级、Webview 全局应用调度、状态广播合并仍未选定。本 PR #337 承载诊断实现；发布 PR #327 保持未合并。
+2026-10-25 用户确认先实现诊断增强，再据实测选择修复边界。初始选定的是诊断方案，2026-10-26 进一步授权下节的构造内配置复用；Supervisor journal 优先级、Webview 全局应用调度、状态广播合并仍未选定。本 PR #337 承载诊断实现；发布 PR #327 保持未合并。
 
 用户执行“开始执行链路诊断（120 秒）”，随后复现问题，用原有“落盘当前宿主诊断”导出新增 `execution-flow-diagnostics.json`。Host 与各 Webview 独立缓存元数据，在 120 秒后自动冻结；导出时停止并收集快照。再次开始会明确替换上一次采集。未开始时不计算消息 JSON 字节、不发送采样回执、不保留阶段事件。运行中的进程与终端 journal 内容、输入顺序、读页节奏均不改变。
 
@@ -31,7 +31,7 @@ updated_at: 2026-10-26
 
 2026-10-26 用户授权补充状态构造分段计时。保留原 `state-build` 总跨度，增加 `state-options-build`（getWebviewOptions）、`state-options-set`（Webview options setter）、`state-canvas-build`（prepareCanvasStateForWebview）、`state-runtime-build`（getRuntimeContext）与 `state-sidebar-notify`（同步 notifySidebarStateChanged）。同一次 postState 的总计与分段共用生成的 requestId，记录相同 messageType/reason，沿用每秒聚合、直方图和每阶段 64 条详情；侧栏是总构造跨度之外的独立阶段，不能与子阶段一起重复相加。options setter 的计时不包含 VS Code 后续异步应用，侧栏计时不包含异步渲染或 listener 内未等待的任务。
 
-同步测量包装保留返回值和异常，失败阶段记录 success=false 后原样抛出；未开启时直接调用原操作，不额外计时、保留记录或发送消息。开启时原 state-build 总跨度包含分段记录自身的少量开销，不把它当作零成本探针。没有 Webview 时不虚构 options 的零耗时；采集冻结/到期时丢弃未完成跨度，不把缺失当成功。本次只补这五段，不合并广播、不改调度或缓存策略，也不改变输入、分页及 ACK 语义。新字段随既有 execution-flow-diagnostics.json 导出，英文调试窗口继续使用 Start Execution Flow Trace (120 seconds)。
+同步测量包装保留返回值和异常，失败阶段记录 success=false 后原样抛出；未开启时直接调用原操作，不额外计时、保留记录或发送消息。开启时原 state-build 总跨度包含分段记录自身的少量开销，不把它当作零成本探针。没有 Webview 时不虚构 options 的零耗时；采集冻结/到期时丢弃未完成跨度，不把缺失当成功。分段计时阶段只补这五段，不合并广播、不改调度或缓存策略，也不改变输入、分页及 ACK 语义。新字段随既有 execution-flow-diagnostics.json 导出，英文调试窗口继续使用 Start Execution Flow Trace (120 seconds)。
 
 每个 surface 最多一个采样消息回执在途、最多每秒一个；Webview 在同步消息处理完成后回复 ID 与自身处理耗时，Host 用自己的单调时钟测提交至回执的往返。该时长包含返回路径和事件循环等待，不能称为单向传输时间。未回执数量和年龄随导出提供。详情本地缓存，采集期间不逐事件上传；正常输入 ACK 与 page request 原有流量不增加。
 
@@ -42,6 +42,14 @@ Host 同时记录 page-host-request 与 input-write-start 起点；只有完成�
 Host 在采集期间对 `RuntimeSupervisorReadTerminalPageParams` 加可选诊断标志；`src/supervisor/runtimeSupervisorMain.ts` 用自己的单调时钟在原 session 操作队列入口、读取开始、journal 读取完成处测耗时，将可选数值放入 page diagnostics。沿原对象返回，保留 owned reader 身份与结算。旧 Supervisor 不返回该字段时导出明确缺失，不重启旧会话，也不伪造零时长。
 
 进程内部使用 `performance.now()`；快照中的 epoch 只供人工关联。跨本机 Webview 和 SSH Host 不直接相减 Date.now。输入 ACK 早于 PTY write，page applied callback 不保证像素已绘制，Host 收到的 revision ACK 可能迟到。诊断开关、可选 page 字段与详情采集失败不能阻止业务消息或推动 revision。
+
+## 正式方案：构造内配置复用与自动化对照
+
+2026-10-26 用户授权实现和自行验证。`panel/configuration.ts` 的读取函数接受可选的本次配置对象，`CanvasPanelManager.getRuntimeContext` 入口获取一次根配置并显式传递到文件、Agent、画布配置读取；Agent CLI 结果只构造一次供默认 provider 与两种启动默认值使用。`getSidebarState` 独立获取一次根配置，供自身文件、Agent 与 shell 配置读取。对象仅存活于当前同步调用，不保存到 manager 字段，不跨状态发布，不改变 editor/terminal section、资源 scope、默认值与正规化语义。shell 的 inspect 覆盖优先级保持原逻辑。非目标调用保留原默认读取路径。
+
+保持 postState 的触发条件、通知顺序、广播节奏策略与输入/分页链路不变。实际单位时间完成的广播数可能随 Host 变快变化，应测量而不是强行固定。分两步冻结 runtime-only 和 runtime+sidebar 候选，与当前 cce236b3 基线比较，不增加产品配置开关。先测试配置等价性、下次调用可见变更与完整函数耗时，再用隔离真实 VS Code/Webview、受控 PTY CLI 和键盘事件验证单节点、双节点静默/单输出/双输出。受控 Agent CLI 不代表真实模型服务耗时。
+
+自然输出 pilot 不产生现场的高频状态广播；因此额外加入独立标注的 10 Hz 状态发布压力场景，在测试副本调用既有 postState，不能将其解释为自然 Agent 行为。自动化对照在相同版本、配置、尺寸和固定负载下交错执行 A/B/C 与返回 A；请求输入标记只能由 PTY 程序接收后生成回复，使用同一 Webview 单调时钟测键盘派发至实际 xterm buffer 更新，ACK 单独报告。渲染事件和截图只验证可见性，不将 buffer 时刻称作像素呈现。遗漏、超时计入失败分母，记录实际负载与广播量、耗时分布及最大值。复用现有 VS Code/Playwright/Remote SSH 基础设施，独立 profile、工作区和 runtime，避免修改用户正在运行的节点。回环 Remote SSH 不外推用户跨机器网络或客户端压力；环境不能执行的部分明确保留失败证据与范围。
 
 ## 日志依据与未决根因
 
@@ -131,8 +139,72 @@ Host 的 timer-lag 共 15 次，最大 17179.920 ms，记录于自身第 25.119 
 
 23 个键为 `devSessionCanvas.` 下的 files.presentationMode、fileNode.displayStyle、files.nodeDisplayMode、files.pathDisplayMode；agent.defaultProvider、agent.codexCommand、agent.claudeCommand、agent.codexDefaultArgs、agent.claudeDefaultArgs（此组重复三遍）；canvas.overviewMode、canvas.overviewZoomThreshold、canvas.multiRootPresentationMode、canvas.workspaceRootWatermarks.enabled。该只读实验直接复现了与 runtime context 同量级的耗时，支持“重复获取根配置对象是具体成本来源”。它不等于完整 getRuntimeContext/postState 的替换实验，更不是输入回显的端到端 A/B，也未定位 VS Code 配置 API 内部实现成本。侧栏存在类似配置读取，但其 15.146 ms 包含其它状态构造和同步 listener，不能全部算成配置成本。
 
-### 当前修复验证建议
+### 第二次采集后的修复验证建议
 
-下一步优先验证单次同步状态构造内复用配置对象及 Agent CLI 读取结果，并检查侧栏中的同类读取。保持配置 section、scope、默认值、正规化语义与读取结果不变；每次构造重新获取，先不引入跨事件缓存或失效机制。保持状态广播频率、输入与分页策略不变，以隔离配置获取成本的贡献。该项是本次证据支持的候选修复，本轮只更新调查结论，尚未实现性能修改。
+下一步优先验证单次同步状态构造内复用配置对象及 Agent CLI 读取结果，并检查侧栏中的同类读取。保持配置 section、scope、默认值、正规化语义与读取结果不变；每次构造重新获取，先不引入跨事件缓存或失效机制。保持状态广播频率、输入与分页策略不变，以隔离配置获取成本的贡献。该项是这次证据支持的候选修复；初次分析仅更新调查结论，后续授权实现及自动化结果见下节。
 
 验收同时观察 runtime/sidebar/state-build 分布、广播频率、输入 ACK、分页往返、终端完整性及配置修改能否及时反映；构造变快但回显未改善时，不能宣称用户问题解决。后续无主动调试暂停的复现中如仍出现长 Host 停顿，再针对停顿补 CPU profile 或关联 VS Code 进程证据。广播去重、journal 优先级和 Webview 全局调度继续按受控结果决定，不因最初方案而预设顺序。
+
+
+## 2026-10-26 构造内复用实现与独立自动化验证
+
+实现限制在 `CanvasPanelManager.getRuntimeContext/getSidebarState` 的本次配置对象及 Agent CLI 结果复用。辅助读取函数接受可选对象，不传时保留原默认读取路径；runtime 的 editor/terminal section、侧栏 shell inspect 优先级、配置正规化均保留。postState 及输入/分页实现未修改；没有跨调用缓存和新增产品开关。
+
+原配置构造代码固定于 `cce236b3ec1a6eb776c494f9f8ce971f408f4f16`。本地 `.debug/config-reuse/` 冻结 baseline、runtime-only、full 三个扩展副本，`run-a1/run-b/run-c/run-a2` 按 A/B/C/A 运行；每次使用真实 VS Code 1.126.0、独立 profile/workspace、受控 Python CLI、实际 native PTY、detached Supervisor 与 journal、真实 Webview。该桌面版本不同于现场记录的 1.140.0，不将绝对耗时互换。默认 systemd 启动 pilot 未确认并失败；后续使用现有 backend 环境覆盖隔离 Supervisor，持久化始终开启。文件监听配额不足在环境中存在，未修改机器级配额。
+
+`node scripts/test/test-state-configuration-reuse.mjs` 由既有执行链路测试入口运行，执行真实构造方法和配置 helper，验证根配置获取次数、section/scope、Agent 参数及默认值、shell inspect 优先级、下一次构造读到新配置、旧 payload 不被修改及测试环境覆盖。既有 postState 测试继续核对广播/侧栏顺序、消息对象和异常语义。真实 Host 中另通过配置 API 更新并恢复测试参数，确认新构造可见变更。
+
+独立驱动见 `scripts/diagnostics/diagnose-configuration-reuse.mjs` 和 `scripts/diagnostics/configuration-reuse/README.md`。测试专用观察代码只加在复制的扩展产物，不进入产品构建。Playwright 通过 textarea 键盘事件输入，只有 PTY 收到后才生成回复；同一 Webview 时钟测 keydown 至对应 xterm buffer 被观察到，ACK 单独保留。截图验证可见回复，不宣称像素呈现计时。
+
+### 同一 Host 的完整构造对照
+
+`run-c/benchmark.json` 在真实活动 manager 上对照原配置消费方法与完整复用候选，交替执行顺序，预热 10 组、保留 50 组；每组完整 runtime/sidebar payload 比较一致。原方法使用活动 manager 的继承对象，不修改正在测量的 manager 方法。其余未改依赖来自同一 checkout，configuration helper 无参行为保持原语义。
+
+| 完整方法 | 原版平均 ms | 复用平均 ms | 降幅 |
+| --- | ---: | ---: | ---: |
+| getRuntimeContext | 1.731 | 0.373 | 约 78.5% |
+| getSidebarState | 0.954 | 0.318 | 约 66.7% |
+
+返回基线 `run-a2` 用同样的原版/参考方法检查：runtime 平均 1.405/1.375 ms，sidebar 0.734/0.784 ms，完整返回值一致。该负控没有出现候选中的大幅降耗。A1/B 的初始未配对均值存在窗口间波动，不能据其 sidebar 0.853→1.870 ms 判断 runtime-only 修改拖慢了侧栏。
+
+### 键盘至 PTY 回复对照
+
+每版运行四个自然场景：单节点输出、第二节点静默、仅第二节点输出、双节点输出；另加双输出并由测试驱动按 100 ms 间隔调用原 postState 的压力场景。每场景 40 次输入，合计 800 次，全部观察到对应 PTY 回复，无超时或缺失；A2 的两个测试 CLI 在 reset 后确认 PID 已退出。状态压力场景每轮约 10 秒实际完成 103–104 次构造，策略相同，不强求 wall-clock 内完成数完全一致。完整输入、阶段聚合、配置检查、尺寸及截图留在各 run 目录。
+
+| 双节点场景 | A1 P95 ms | B P95 ms | C P95 ms | A2 P95 ms |
+| --- | ---: | ---: | ---: | ---: |
+| 自然持续输出 | 21.9 | 27.0 | 31.6 | 39.5 |
+| 另加 10 Hz 状态发布压力 | 44.3 | 39.3 | 43.0 | 42.8 |
+
+全组最大的单次回复延迟为 243 ms，没有复现现场秒级停顿。自然打印场景大多数没有 state-build 样本（C 的仅第二节点输出有 1 次），不具备现场每秒十余次状态发布的负载条件。压力场景为人工控制的调用负载，只能用于控制变量，不能冒充真实 Agent 的自然状态广播。上述 P95 未表现出稳定端到端改善；不能把完整构造下降 78.5% 写成输入回显加速 78.5%。目前确认的是配置构造优化成立且这些受控场景没有发现功能回归，现场卡顿与 17 秒停顿尚未闭环。
+
+
+远程 setup 过程中另外确认了测试配置的作用域约束：`agent.codexCommand` 为 machine 设置，工作区设置不会覆盖远端机器的 CLI 路径。`remote-c2` 已进入真实 ssh-remote Host，完成 50 组原版/候选方法配对（runtime 1.524→0.300 ms、sidebar 0.785→0.276 ms，payload 一致），但随后因测试 CLI 未在远端机器配置中生效而未完成回显场景。该失败只支持方法配对结论，不能记为远程端到端通过。驱动已补远端配置 API 初始化和显式核对，再独立复测。
+
+
+远程第三次试跑 `remote-c3` 已启动受控 CLI，但观察器按 LF 增量扫描，遇到自动折行会漏掉合并输出页较早的回复。这个测试缺陷由实际 xterm 的大量折行用例复现；最终 `browser-probe.mjs` 从 buffer 尾部反向搜索在途标记，不截断任意行数，找到全部后即停止。`scripts/test/test-configuration-echo-probe.mjs` 验证大页折行、未返回标记保持未完成及焦点隔离，接入既有执行链路测试。该轮缺失保留为失败证据，不能据其判断产品丢输入；修正后远程 A/C 对照另行记录。
+
+
+修正后的 `remote-c4` 在 VS Code/Server 1.126.0 的真实 ssh-remote Host 完成五场景各 24 次，共 120 次键盘至 PTY 回复，全部成功，CLI PID 退出与临时 SSH 夹具清理均通过。完整构造配对 runtime 1.630→0.314 ms、sidebar 0.830→0.288 ms，payload 一致；双输出回显 P95 95.4 ms、人工 10 Hz 压力 P95 122.0 ms。它补足远程路径功能覆盖，只有候选没有同版远程基线，不以其单独声称延迟改善。随后取得与现场版本一致的 1.140.0，使用相同观察器、负载和场景完成远程 A/C 对照，见下节。
+
+
+1.140.0 的首轮基线 `remote-140-a` 在创建测试节点之前遇到 shared Canvas commit lease 端口 22027 被占用；保留失败记录，没有停止占用端口的未知进程或修改产品锁逻辑。换用新隔离工作区的 `remote-140-a2` 完成全部 120 次回复，配置更新、CLI 退出及 SSH 夹具清理通过。此 setup 失败不作为回显性能样本。
+
+
+### 与现场版本一致的 Remote SSH A/C 对照
+
+VS Code/Server 1.140.0 的 `remote-140-a2`（基线）与 `remote-140-c`（完整复用）完成五场景各 24 次，共 240 次回复，全部观察到，配置更新及完整 payload 比较通过；CLI PID 退出和临时 SSH 夹具清理均通过。输入产物记录确认 Webview、驱动、观察器、CLI 的 SHA-256 一致，Host 产物不同；负载、输入间隔和样本数相同。最终截图可见额外 `REPLY_000121_7a`。统计保存在 `.debug/config-reuse/remote-summary.json`，原始成功/失败试跑保留。
+
+候选 Host 的 50 组完整方法配对：runtime 原版平均 1.813 ms、复用 0.347 ms（降低约 80.9%）；sidebar 原版 0.927 ms、复用 0.329 ms（降低约 64.5%）。基线的实际/参考方法均值 runtime 1.545/1.526 ms、sidebar 0.758/0.744 ms，没有候选的大幅差异。
+
+| 回显场景 | 基线 P95 ms | 复用 P95 ms |
+| --- | ---: | ---: |
+| 单节点持续输出 | 165.9 | 157.4 |
+| 第二节点静默 | 117.7 | 117.4 |
+| 仅第二节点持续输出 | 127.6 | 106.9 |
+| 双节点持续输出 | 91.9 | 106.9 |
+| 双输出另加人工 10 Hz 状态发布 | 130.7 | 140.8 |
+
+自然场景两版均无 state-build 样本；压力场景分别采集 6.301/6.266 秒，都完成 63 次状态构造，累计耗时 306.736/91.207 ms。该场景普通 page-apply 为 196/195 页、250308/249288 字节；窗口边界和批次切分不要求完全相同。输入 ACK 各 24 次，最大 65.2/54.2 ms；已完成 page-roundtrip 各 195 次，最大 130.4/96.9 ms。所有场景已记录阶段均无失败。ACK/page 最大值的小幅下降不能替代回显改善证据。
+
+输入节点尺寸两版均为 67×21；第二节点基线为 67×21，候选为 66×21，自动布局有一列差异。保留该控制限制，不把单轮小幅差异判定为性能回归或收益。P95 使用成功样本排序的 nearest-rank，此处成功率 240/240，无排除超时。两版本自动化合计 1160 次采样回复均成功，但受控环境未复现现场秒级卡顿、状态构造绝对成本亦显著低于现场。此轮完成配置复用的实现、语义与局部成本验证；仍未证实端到端稳定改善，17 秒原始停顿继续未归因。测试覆盖回环 SSH 与 detached backend，不覆盖跨机器网络、systemd 启动、真实 Agent 服务或精确像素 paint。

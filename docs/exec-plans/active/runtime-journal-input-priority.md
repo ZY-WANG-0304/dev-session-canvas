@@ -13,7 +13,12 @@
 - [x] 2026-10-26：用户通过 F5 导出首份约 76 秒链路诊断；核验窗口、聚合和 requestId 关联，确认秒级等待主要位于本地处理跨度外。
 - [x] 2026-10-26：补充 options 构造/设置、画布状态、runtime context、侧栏通知五段计时；异常、未开启、冻结与原执行顺序测试通过，重新构建并准备 F5 调试包。
 - [x] 2026-10-26：分析第二份分段采集，runtime 占 state-build 99.55%；同 Host 只读微基准复现重复配置获取成本，记录 17 秒停顿未归因。
-- [ ] 优先验证单次状态构造内的配置对象及 CLI 读取结果复用，保持广播频率不变；端到端因果对照、17 秒停顿归因及修复验收仍待完成。
+- [x] 2026-10-26：用户批准构造内复用及代理自行执行自动化验证；记录方案和验收边界。
+- [x] 2026-10-26：冻结基线和 runtime-only/full 两个构建副本；实际方法配置测试、shell 配置与诊断回归及类型检查通过。
+- [x] 2026-10-26：完成真实本机 VS Code A/B/C/A 的四种自然负载与额外 10 Hz 状态压力，800 次回复均观察到；同 Host 配对确认 runtime/sidebar 降耗及 payload 一致。
+- [x] 2026-10-26：修正机器级测试 CLI 配置及折行观察器后，1.126.0 回环 Remote SSH 候选五场景 120 次回复全部通过，CLI/夹具清理通过。
+- [x] 2026-10-26：完成 1.140.0 远程 A/C 共 240 次回显；完整方法降耗、状态压力次数相同，回显 P95 未稳定改善；记录第二节点一列尺寸差异及覆盖限制。
+- [x] 2026-10-26：同步实测结果、回归与 PR #337 更新内容；17 秒原始停顿仍需独立归因。
 
 ## 上下文与定向
 
@@ -27,15 +32,22 @@
 
 第三阶段沿输入、状态广播、page 请求/读取/应用增加阶段记录；read requestId 透传至 page 应用回调。Supervisor 可选 page diagnostics 只返回自身 queue/read/total 时长，旧进程返回缺失字段合法。不得更改 session 队列、journal 顺序、读页触发、revision 或应用 ACK。
 
-后续验证先针对 `panel/configuration.ts:getConfigurationValue` 与 `CanvasPanelManager.getRuntimeContext` 的重复根配置获取，比较构造内复用，保持广播频率不变。侧栏同步 listener 成本不能未经测量全算作配置读取；实际性能修改仍按设计确认推进。
+后续验证先针对 `panel/configuration.ts:getConfigurationValue` 与 `CanvasPanelManager.getRuntimeContext` 的重复根配置获取，比较构造内复用，保持广播频率不变。侧栏同步 listener 成本不能未经测量全算作配置读取；用户已授权此范围的实现与自动化验证。
 
 第四阶段运行仓库根的 `npm run typecheck`、`node scripts/test/test-execution-flow-diagnostics.mjs`、`node scripts/test/test-terminal-paged-projection.mjs`、协议定向脚本和 `npm run build`。补能发现阶段关联丢失、越界、正文泄露、旧协议兼容或取消推进的回归。实际脚本与结果在本文件记录。
 
 ## 验证与验收
 
-未启动时无新增 page 诊断字段、JSON 字节测量和采样回执。启动后不需要每条事件往返即可保留完整窗口聚合，详细环形记录淘汰不删除计数与耗时分布。导出 execution-flow-diagnostics.json 能按 requestId 连接 Webview request/receive/queue/apply 与 Host relay，同时看到 Supervisor queue/read 可用或缺失。输入 ACK 与 PTY write 明确分开；跨进程不相减 epoch。真实 SSH 验收由用户安装包后以单节点/双节点固定输出场景采集，当前不将自动化结果外推到现场卡顿消失。
+未启动时无新增 page 诊断字段、JSON 字节测量和采样回执。启动后不需要每条事件往返即可保留完整窗口聚合，详细环形记录淘汰不删除计数与耗时分布。导出 execution-flow-diagnostics.json 能按 requestId 连接 Webview request/receive/queue/apply 与 Host relay，同时看到 Supervisor queue/read 可用或缺失。输入 ACK 与 PTY write 明确分开；跨进程不相减 epoch。由代理运行独立真实 VS Code 与受控 CLI，以键盘输入和终端 buffer 回显做自动化对照，使用现有 Remote SSH 夹具核对远程链路；明确本机回环与用户现场拓扑差异，不将自动化结果外推到现场卡顿消失。
 
 ## 意外与发现
+
+远程第三次试跑使观察器暴露自动折行漏报：按 LF 增量估计可见行数会漏掉同一合并输出页较早的回复。已抽出 browser-probe.mjs，改为从 buffer 尾部搜索全部在途标记（找到后停止），并用真实 headless xterm 的 400 行三倍折行页验证；未知回复仍未完成、错误焦点不计入输入。失败 remote-c3 保留，不将其缺失计数当作产品丢输入结论；最终远程基线/候选使用相同修正观察器。
+
+Remote SSH 补验中，首次等待命令面板在远程下载/初始化期间失效，改为测试副本启动激活；第二次完成真实 ssh-remote Host 构造配对，但 CLI 未启动。证据表明 agent.codexCommand 是 machine 作用域，工作区设置被正确忽略；夹具已改为通过远端配置 API 设置并核对测试 CLI。两次 setup 失败保留，不计为回显成功；未修改产品的配置作用域。
+
+2026-10-26 自动化 pilot：真实 VS Code 1.126.0、独立 profile、受控 CLI 的四种负载均完成 8 次键盘输入至 xterm 回复，使用实际 native PTY/Supervisor/journal。自然连续输出没有触发高频状态广播，因此新增独立标注的 10 Hz 状态发布压力场景（只在测试副本驱动既有 postState，所有候选同样触发）；不将其伪称自然 Agent 复现。默认 systemd 启动未确认，保留失败试跑后使用现有 legacy-detached 环境覆盖建立独立 Supervisor；持久化仍开启。宿主已有文件监听配额不足异常，配置 API 更新检查通过，但环境限制仍保留。
+
 
 双输出样本 ACK 最大约 13.9 秒，但 Host 接收至发 ACK 为 0–1 ms；12:18:26–32 有 116 个 stateUpdated 而无新 page 提交，后续大页是追赶。Host 收到的 applied revision ACK 会受传输影响。旧性能记录偏向小页，不能用其 0.5ms 最大值代替完整 page 写入耗时。以上证据改变诊断优先级，尚不足以确认唯一根因。
 
@@ -56,9 +68,11 @@
 
 - 2026-10-26：将下一项受控验证优先收窄为构造内配置复用，暂不改变广播频率；依据是 runtime 分段与同 Host 只读微基准相互支持。只读微基准不能代替完整修复 A/B，17 秒停顿不归因于配置获取。此轮仅证据文档更新，没有实施性能修复。
 
+- 2026-10-26：用户要求代理自行验证并授权开始；冻结 cce236b3 基线，按 runtime-only、再加 sidebar 的两步候选推进；不改变广播策略。
+
 ## 幂等性与恢复
 
-再次启动替换旧采集；导出不清空本地记录，超时可重试。采集自动停止但保留结果；Webview 重建仅新实例可继续记录，旧实例缺失必须说明。回退该 PR 只移除观测，不改变任何终端历史或 reader 状态。
+再次启动替换旧采集；导出不清空本地记录，超时可重试。采集自动停止但保留结果；Webview 重建仅新实例可继续记录，旧实例缺失必须说明。回退该 PR 将移除观测与构造内配置复用，不改变任何终端历史或 reader 状态。
 
 ## 接口与依赖
 
@@ -76,9 +90,14 @@
 
 本轮只补计时，未启动广播合并实验。用户应停止原 F5 调试并重新启动，在英文界面运行 `Dev Session Canvas: Start Execution Flow Trace (120 seconds)`，复现后运行 `Dev Session Canvas: Write Host Diagnostics to Disk`；新的 `execution-flow-diagnostics.json` 包含五段的详情和完整窗口聚合。
 
+2026-10-26 构造复用回归：`npm run test:execution-flow-diagnostics`（含新 actual-method 配置复用测试）、`npm run test:terminal-shell-configuration`、`npm run test:agent-launch-presets`、`node scripts/test/test-terminal-paged-projection.mjs`（Webview 51/51、Host 10/10）、`npm run test:protocol-webview-messages`、`npm run typecheck` 通过。runtime-only 与完整候选分别构建；最终 `npm run prepare:debug-main-only-extension` 成功，当前 worktree F5 包为完整复用候选。新诊断脚本语法检查及 Python 编译检查通过。
+
 ## 结果与复盘
 
-诊断实现与定向验证已完成，已生成本地诊断 VSIX；PR #337 更新后供复现使用。首份现场采集已把优先调查范围收敛到消息往返与 Host 状态构造/广播，第二份采集及只读微基准进一步定位重复配置获取的具体成本；17 秒 Host 停顿、端到端因果对照和修复仍待完成，因此本调查计划继续保持 active。
+2026-10-26 构造内复用已实现，配置/API 更新及定向回归通过；真实 Host 配对 runtime 1.731→0.373 ms、sidebar 0.954→0.318 ms，完整 payload 一致。本机 A/B/C/A 共 800 次键盘至 PTY 回复成功；自然打印未产生现场的高频状态广播，人工 10 Hz 场景也未呈现稳定的回显改善。因此局部优化成立，用户现场卡顿及 17 秒停顿仍未闭环；Remote SSH 1.126.0 候选 120 次及 1.140.0 A/C 240 次均完成，配置/回复/清理通过；1.140.0 runtime 1.813→0.347 ms、sidebar 0.927→0.329 ms，但回显 P95 未稳定改善。
+
+
+诊断实现与定向验证已完成，已生成本地诊断 VSIX；PR #337 更新后供复现使用。首份现场采集已把优先调查范围收敛到消息往返与 Host 状态构造/广播，第二份采集及只读微基准进一步定位重复配置获取的具体成本；构造内配置复用已完成实现与自动化对照；17 秒 Host 停顿和现场回显改善仍待独立确认，因此本调查计划继续保持 active。
 
 修订说明：2026-10-25 根据实际日志和用户授权，将工作从调度器提案调整为定向通信/分页诊断实现。
 
@@ -87,3 +106,9 @@
 修订说明：2026-10-26 按用户授权实现状态构造分段诊断，记录本轮定向验证与 F5 复测入口；性能修复仍待新数据和对照验证。
 
 修订说明：2026-10-26 补入第二份分段采集、同 Host 只读配置获取微基准及用户对调试暂停的不确定答复；优先验证构造内配置复用，保持长停顿未归因。本轮仅文档与数值复核，未重复运行业务测试。
+
+修订说明：2026-10-26 用户授权实现及自动化对照，新增基线、候选、键盘至 PTY 回复验证与失败分母要求，独立测试环境不影响用户会话。
+
+修订说明：2026-10-26 记录构造内复用实现、定向验证、本机 A/B/C/A 与同 Host 配对结果；区分局部降耗、自然负载和人工压力，未宣称现场卡顿消失。
+
+修订说明：2026-10-26 完成同现场版本的 Remote SSH A/C，记录 240/240 回复、局部降耗、相同状态次数及未稳定改善的回显；保留端口占用 setup 失败和一列尺寸差异，原问题调查继续。
