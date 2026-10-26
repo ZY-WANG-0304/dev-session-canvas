@@ -64,7 +64,7 @@ export interface SidebarNodeListTestGroupRowSnapshot {
 
 type SidebarWorkspaceFolderKind = 'folder' | 'repository' | 'worktree';
 
-interface CanvasSidebarGroupSnapshot extends CanvasGroupSummary {
+interface CanvasSidebarGroupSnapshot extends Pick<CanvasGroupSummary, 'id' | 'title' | 'parentGroupId' | 'role' | 'workspaceRootPath'> {
   workspaceFolderKind?: SidebarWorkspaceFolderKind;
   workspaceRootOrderIndex?: number;
 }
@@ -171,6 +171,11 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   private viewMode: SidebarNodeListViewMode = 'grouped';
   private isWebviewReady = false;
   private refreshTimer: NodeJS.Timeout | undefined;
+  private refreshOperation: Promise<CanvasSidebarNodeItemSnapshot[]> | undefined;
+  private refreshRequested = false;
+  private forceNextRefresh = false;
+  private lastPostedState: string | undefined;
+  private disposed = false;
   private readonly pendingReadyRequests = new Map<string, PendingSidebarNodeListReadyRequest>();
   private readonly pendingTestActionRequests = new Map<string, PendingSidebarNodeListTestActionRequest>();
 
@@ -187,6 +192,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   }
 
   public dispose(): void {
+    this.disposed = true;
     this.view = undefined;
     this.isWebviewReady = false;
     this.stateSubscription.dispose();
@@ -200,6 +206,7 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    this.lastPostedState = undefined;
     this.isWebviewReady = false;
     webviewView.webview.options = {
       enableScripts: true,
@@ -214,6 +221,10 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
         this.rejectPendingReadyRequests('Sidebar node list view was closed.');
         this.rejectPendingTestActionRequests('Sidebar node list view was closed.');
       }
+    });
+
+    webviewView.onDidChangeVisibility(() => {
+      if (this.view === webviewView && webviewView.visible) void this.refresh();
     });
 
     webviewView.webview.onDidReceiveMessage((message) => {
@@ -300,12 +311,34 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
     });
   }
 
-  public async refresh(): Promise<CanvasSidebarNodeItemSnapshot[]> {
-    const snapshot = this.panelManager.getCanvasSidebarNodeListSnapshot();
-    const workspaceFolders = this.panelManager.getWorkspaceFoldersForDisplay();
-    this.groups = await resolveSidebarGroupSnapshots(snapshot.groups, workspaceFolders);
-    this.items = getCanvasSidebarNodeListItems(snapshot, workspaceFolders);
-    await this.postState();
+  public async refresh(force = true): Promise<CanvasSidebarNodeItemSnapshot[]> {
+    if (this.disposed) return this.items;
+    this.refreshRequested = true;
+    this.forceNextRefresh ||= force;
+    // Serialize classification and publication so an older async result cannot
+    // overwrite a newer refresh. Coalesce requests arriving during an await.
+    this.refreshOperation ??= this.flushRefreshes().finally(() => {
+      this.refreshOperation = undefined;
+      if (this.refreshRequested && !this.disposed) void this.refresh(false);
+    });
+    return this.refreshOperation;
+  }
+
+  private async flushRefreshes(): Promise<CanvasSidebarNodeItemSnapshot[]> {
+    while (this.refreshRequested && !this.disposed) {
+      this.refreshRequested = false;
+      const force = this.forceNextRefresh;
+      this.forceNextRefresh = false;
+      const view = this.view;
+      const snapshot = this.panelManager.getCanvasSidebarNodeListSnapshot();
+      const workspaceFolders = this.panelManager.getWorkspaceFoldersForDisplay();
+      const items = getCanvasSidebarNodeListItems(snapshot, workspaceFolders);
+      const groups = await resolveSidebarGroupSnapshots(snapshot.groups, workspaceFolders);
+      if (this.disposed || this.view !== view) continue;
+      this.groups = groups;
+      this.items = items;
+      await this.postState(force);
+    }
     return this.items;
   }
 
@@ -327,33 +360,26 @@ export class CanvasSidebarNodeListView implements vscode.WebviewViewProvider, vs
   }
 
   private scheduleRefresh(): void {
-    if (!this.view) {
-      return;
-    }
-
-    if (this.refreshTimer) {
-      clearTimeout(this.refreshTimer);
-    }
-
+    if (!this.view?.visible || this.disposed) return;
+    if (this.refreshTimer) return;
+    // Keep the existing wait, but do not postpone it indefinitely under output.
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = undefined;
-      void this.refresh();
+      void this.refresh(false);
     }, SIDEBAR_NODE_LIST_REFRESH_DEBOUNCE_MS);
   }
 
-  private async postState(): Promise<void> {
-    if (!this.view) {
-      return;
-    }
-
-    await this.view.webview.postMessage({
-      type: 'sidebarNodeList/state',
-      payload: {
-        items: this.items,
-        groups: this.groups,
-        viewMode: this.viewMode
-      }
-    } satisfies SidebarNodeListOutboundMessage);
+  private async postState(force = true): Promise<void> {
+    const view = this.view;
+    if (!view?.visible || !this.isWebviewReady) return;
+    const payload = { items: this.items, groups: this.groups, viewMode: this.viewMode };
+    const key = JSON.stringify(payload);
+    if (!force && key === this.lastPostedState) return;
+    this.lastPostedState = key;
+    try {
+      if (await view.webview.postMessage({ type: 'sidebarNodeList/state', payload } satisfies SidebarNodeListOutboundMessage)) return;
+    } catch { /* A subsequent refresh/ready handshake retries the latest state. */ }
+    if (this.view === view && this.lastPostedState === key) this.lastPostedState = undefined;
   }
 
   private applyViewModeContext(): void {
@@ -824,12 +850,16 @@ async function resolveSidebarGroupSnapshots(
   const workspaceRootOrderIndexes = buildSidebarWorkspaceRootOrderIndexes(workspaceFolders);
   return await Promise.all(
     groups.map(async (group): Promise<CanvasSidebarGroupSnapshot> => {
+      const displayed = {
+        id: group.id, title: group.title, parentGroupId: group.parentGroupId,
+        role: group.role, workspaceRootPath: group.workspaceRootPath
+      };
       if (!isWorkspaceRootGroupSummary(group) || typeof group.workspaceRootPath !== 'string') {
-        return group;
+        return displayed;
       }
 
       return {
-        ...group,
+        ...displayed,
         workspaceRootOrderIndex: readSidebarWorkspaceRootOrderIndex(group.workspaceRootPath, workspaceRootOrderIndexes),
         workspaceFolderKind: await classifyWorkspaceFolderKind(group.workspaceRootPath)
       };

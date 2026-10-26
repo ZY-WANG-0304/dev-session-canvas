@@ -22,3 +22,6 @@ xvfb-run -a node scripts/diagnostics/diagnose-configuration-reuse.mjs \
 主要输出：`input.json`（身份/范围）、`benchmark.json`、`configuration-check.json`、每场景 JSON/PNG、`visibility.json`、`result.json`、`cli-cleanup.json`，失败时增加错误与诊断事件。`success` 仅表示输入/回复检查通过；环境警告、cleanup 失败和性能是否改善仍需独立审阅。不要从 Healthy、无缺失或 buffer 更新推导像素延迟与用户现场问题已解决。
 
 A/B/C/A 顺序分别使用基线、仅 runtime 复用、runtime+sidebar 复用、返回基线。保持同一 VS Code、配置、负载、尺寸、探针；环境波动以返回基线和同一 Host 原版/候选配对一起判断。输出目录内配置和源码路径用于本机排查，不提交原始证据；正式文档保留统计、输入身份、失败与覆盖限制。
+
+
+侧栏对照增加 `--sidebar`。A/B/C 分别输入当前配置复用基线、仅复用事件状态、完整侧栏去重产物；五场景为双输出且侧栏从未打开/可见/隐藏/重开（人工 20 Hz 状态压力），以及侧栏可见的自然双输出。使用真实已注册的三个侧栏实例，拦截副本中的配置构造、树刷新和侧栏 postMessage，记录次数/字节；不以未创建的侧栏代替可见侧栏。每场景记录 created/visible 状态。隐藏场景结束后通过实际 Host 方法修改测试节点标题和 include 过滤，重开时检查 Host 期望值、实际最后发布值及 Webview DOM。筛选面板的 files 功能在独立测试配置中启用。统计段外进行显示检查；计数是 Host 调用/提交次数，不冒充像素绘制计数。输入标记与原回显观察器保持相同，sidebar-driver 的 SHA-256 另存于 input.json。

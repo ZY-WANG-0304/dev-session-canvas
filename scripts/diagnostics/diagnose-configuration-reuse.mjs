@@ -14,7 +14,7 @@ import { chromium } from 'playwright';
 import { prepareRuntime, buildVSCodeArgs, buildVSCodeChildEnv } from '../smoke/vscode-smoke-runner.mjs';
 
 const { values } = parseArgs({ options: { extension: { type: 'string' }, vscode: { type: 'string' },
-  output: { type: 'string' }, remote: {type:'boolean',default:false}, samples: { type: 'string', default: '40' } } });
+  output: { type: 'string' }, sidebar: {type:'boolean',default:false}, remote: {type:'boolean',default:false}, samples: { type: 'string', default: '40' } } });
 assert(values.extension && values.vscode && values.output, 'Required: --extension frozen-directory --vscode executable --output NEW-directory');
 const output = path.resolve(values.output), source = path.resolve(values.extension);
 const sampleCount = Number(values.samples); assert(Number.isInteger(sampleCount) && sampleCount > 0 && sampleCount <= 120);
@@ -36,7 +36,7 @@ await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/echo-cli.py', imp
 const runtime = await prepareRuntime({ debugRoot: path.join(output, 'runtime'), runtimeDirName: `dsc-cfg-${randomUUID().slice(0,8)}`,
   userSettings: { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none',
     'window.restoreWindows': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false,
-    'devSessionCanvas.runtimePersistence.enabled': true, 'devSessionCanvas.agent.codexCommand': fixture,
+    'devSessionCanvas.runtimePersistence.enabled': true, ...(values.sidebar?{'devSessionCanvas.files.enabled':true}:{}), 'devSessionCanvas.agent.codexCommand': fixture,
     'devSessionCanvas.agent.codexDefaultArgs': '', 'devSessionCanvas.canvas.overviewMode': 'off',
     'terminal.integrated.scrollback': 5000, 'workbench.editor.enablePreview': false } });
 const staged = path.join(output, 'extension'); await fs.cp(source, staged, { recursive: true });
@@ -48,19 +48,21 @@ if(values.remote) {
 }
 const hostFile = path.join(staged,'dist/extension.js'), webFile = path.join(staged,'dist/webview.js');
 const host = await fs.readFile(hostFile,'utf8'), web = await fs.readFile(webFile,'utf8');
-const hostAnchor = '  activePanelManager = panelManager;';
+const hostAnchor = values.sidebar ? '  const sidebarNodeListView = new CanvasSidebarNodeListView(panelManager, context.extensionUri, context.workspaceState);' : '  activePanelManager = panelManager;';
 const webAnchor = 'var executionTerminalRegistry = /* @__PURE__ */ new Map();';
 assert.equal(host.split(hostAnchor).length,2); assert.equal(web.split(webAnchor).length,2);
-await fs.writeFile(hostFile,host.replace(hostAnchor,hostAnchor+'\n  require("./configuration-reuse-driver.cjs").start(panelManager, vscode, context);'));
+await fs.writeFile(hostFile,host.replace(hostAnchor,hostAnchor+'\n  require("./configuration-reuse-driver.cjs").start(panelManager, vscode, context'+(values.sidebar?', {summary:sidebarSummaryView,actions:sidebarActionsView,nodes:sidebarNodeListView}':'')+');'));
 await fs.writeFile(webFile,web.replace(webAnchor,webAnchor+'\n  window.__dscConfigurationProbeRegistry = executionTerminalRegistry;'));
 await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/host-driver.cjs',import.meta.url)),path.join(staged,'dist/configuration-reuse-driver.cjs'));
+if(values.sidebar)await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/sidebar-driver.cjs',import.meta.url)),path.join(staged,'dist/sidebar-driver.cjs'));
 const token=randomUUID(),receipt=path.join(output,'host.json');
 await fs.writeFile(path.join(staged,'dist/configuration-reuse-driver.json'),JSON.stringify({token,receipt,workspace,fixture}),{mode:0o600});
 const reference=await buildReference(path.join(staged,'dist/configuration-reuse-reference.cjs'));
 await write('input.json',{reference,source,hostSha256:createHash('sha256').update(host).digest('hex'),webviewSha256:createHash('sha256').update(web).digest('hex'),
   vscode:path.resolve(values.vscode),sampleCount,intervalMs:250,load:{tickMs:50,linesPerTick:12},
-  remoteRequested:values.remote,
+  remoteRequested:values.remote,sidebarRequested:values.sidebar,
   runnerSha256:createHash('sha256').update(await fs.readFile(fileURLToPath(import.meta.url))).digest('hex'),
+  sidebarDriverSha256:values.sidebar?createHash('sha256').update(await fs.readFile(path.join(staged,'dist/sidebar-driver.cjs'))).digest('hex'):undefined,
   driverSha256:createHash('sha256').update(await fs.readFile(path.join(staged,'dist/configuration-reuse-driver.cjs'))).digest('hex'),
   cliSha256:createHash('sha256').update(await fs.readFile(fixture)).digest('hex'),
   observerSha256:createHash('sha256').update(installEchoProbe.toString()).digest('hex'),
@@ -139,29 +141,59 @@ try {
   await create(0);
   // Observe normal keyboard events and actual xterm parse completion in one clock domain.
   await frame.evaluate(installEchoProbe,ids[0]);
-  for(const scene of [{name:'single',loads:[true,false]},{name:'two-second-silent',loads:[true,false]},
+  const scenes=values.sidebar ? [
+    {name:'sidebar-never-open',loads:[true,true],stateLoad:true},
+    {name:'sidebar-visible',loads:[true,true],stateLoad:true,sidebarVisible:true},
+    {name:'sidebar-hidden',loads:[true,true],stateLoad:true,sidebarVisible:false},
+    {name:'sidebar-reopened',loads:[true,true],stateLoad:true,sidebarVisible:true},
+    {name:'sidebar-natural-output',loads:[true,true],sidebarVisible:true}
+  ] : [{name:'single',loads:[true,false]},{name:'two-second-silent',loads:[true,false]},
     {name:'two-second-output',loads:[false,true]},{name:'two-both-output',loads:[true,true]},
-    {name:'two-both-output-state-10hz',loads:[true,true],stateLoad:true}]) {
+    {name:'two-both-output-state-10hz',loads:[true,true],stateLoad:true}];
+  for(const scene of scenes) {
     if(scene.name!=='single'&&ids.length===1)await create(1);
     for(let i=0;i<2;i++)await fs.writeFile(path.join(workspace,`node${i}`,'load.json'),JSON.stringify({enabled:scene.loads[i]}));
-    await request('state-load',{enabled:scene.stateLoad===true});
+    if(values.sidebar && scene.sidebarVisible!==undefined) {
+      await request('sidebar-show',{visible:scene.sidebarVisible});
+      await wait('sidebar visibility',()=>request('sidebar-metrics'),m=>Object.values(m.views).every(v=>v.created && v.visible===scene.sidebarVisible));
+    }
+    await request('state-load',{enabled:scene.stateLoad===true,hz:values.sidebar?20:10});
     await frame.getByRole('button',{name:'Fit view',exact:true}).click();
     await pause(1500);
     await frame.evaluate(id=>{const t=window.__dscConfigurationProbeRegistry.get(id).terminal;t.focus();},ids[0]);
     const node=frame.locator(`[data-node-id="${ids[0]}"]`);
     await node.locator('.xterm-helper-textarea').focus();
+    if(values.sidebar)await request('sidebar-reset-metrics');
     await request('start-trace');
     await frame.evaluate(()=>{window.__dscEchoProbe.active=true;window.__dscEchoProbe.samples=[];window.__dscEchoProbe.parsed=0;window.__dscEchoProbe.renders=0;});
     for(let i=0;i<sampleCount;i++){await page.keyboard.press(String.fromCharCode(97+i%26));await pause(250);}
     await wait('all replies or timeout',()=>frame.evaluate(()=>window.__dscEchoProbe.samples.every(s=>s.applied!==undefined)),Boolean,20000).catch(()=>{});
     const observation=await frame.evaluate(()=>{const p=window.__dscEchoProbe;p.active=false;return {samples:p.samples,parsed:p.parsed,renders:p.renders};});
+    const sidebar=values.sidebar?await request('sidebar-metrics'):undefined;
     const trace=await request('trace');
     await request('state-load',{enabled:false});
     const dimensions=await frame.evaluate(()=>[...window.__dscConfigurationProbeRegistry].map(([id,e])=>({id,cols:e.terminal.cols,rows:e.terminal.rows})));
-    const result={scene:scene.name,controlledStateLoadHz:scene.stateLoad?10:0,requested:sampleCount,observed:observation.samples.length,missing:sampleCount-observation.samples.filter(s=>s.applied!==undefined).length,
-      ...observation,dimensions};results.push(result);
+    const result={scene:scene.name,controlledStateLoadHz:scene.stateLoad?(values.sidebar?20:10):0,requested:sampleCount,observed:observation.samples.length,missing:sampleCount-observation.samples.filter(s=>s.applied!==undefined).length,
+      ...observation,dimensions,sidebar};results.push(result);
     await write(`${scene.name}.json`,{...result,trace});
     await page.screenshot({path:path.join(output,`${scene.name}.png`)});
+    if(values.sidebar && scene.sidebarVisible) {
+      const check=await request('sidebar-check');
+      assert(check.last.actions,'Actions view must actually receive its state');
+      for(const [key,value] of Object.entries(check.expectedFilters))assert.deepEqual(check.last.actions.state[key],value);
+      assert.deepEqual(check.last.nodes.items.map(i=>i.nodeId).sort(),[...ids].sort());
+      const dom=await wait('sidebar DOM matches Host state',async()=>{
+        const result={nodes:[],include:undefined};
+        for(const f of page.frames()) {
+          const observed=await f.evaluate(()=>({nodes:[...document.querySelectorAll('[data-sidebar-node-item-id]')].map(e=>({id:e.getAttribute('data-sidebar-node-item-id'),text:e.textContent})),include:document.querySelector('#include-input')?.value})).catch(()=>undefined);
+          if(observed?.nodes.length)result.nodes=observed.nodes;
+          if(observed?.include!==undefined)result.include=observed.include;
+        }
+        return result;
+      },v=>v.include===check.expectedFilters.fileFilters.includeGlobs.join(', ') && check.expectedNodes.every(n=>v.nodes.some(row=>row.id===`node/${n.id}` && row.text.includes(n.title))));
+      await write(`${scene.name}-sidebar-check.json`,{...check,dom});
+    }
+    if(values.sidebar && scene.name==='sidebar-hidden')await request('sidebar-mutate',{nodeId:ids[0]});
     console.log(JSON.stringify({scene:scene.name,missing:result.missing,maxMs:Math.max(...result.samples.map(s=>s.durationMs??0))}));
   }
   for(let i=0;i<2;i++)await fs.writeFile(path.join(workspace,`node${i}`,'load.json'),JSON.stringify({enabled:false}));

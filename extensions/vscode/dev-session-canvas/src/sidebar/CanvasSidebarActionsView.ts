@@ -36,7 +36,7 @@ type SidebarActionsInboundMessage =
 type SidebarActionsOutboundMessage = {
   type: 'sidebarActions/state';
   payload: {
-    state: CanvasSidebarState;
+    state: Pick<CanvasSidebarState, 'canvasSurface' | 'filesFeatureEnabled' | 'fileFilters'>;
   };
 };
 
@@ -59,10 +59,11 @@ interface SidebarActionsCopy {
 export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly stateSubscription: vscode.Disposable;
   private view: vscode.WebviewView | undefined;
+  private lastPostedState: string | undefined;
 
   public constructor(private readonly panelManager: CanvasPanelManager) {
-    this.stateSubscription = this.panelManager.onDidChangeSidebarState(() => {
-      void this.postState();
+    this.stateSubscription = this.panelManager.onDidChangeSidebarState((state) => {
+      void this.postState(state);
     });
   }
 
@@ -73,6 +74,7 @@ export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vsc
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    this.lastPostedState = undefined;
     webviewView.webview.options = {
       enableScripts: true
     };
@@ -84,23 +86,36 @@ export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vsc
       }
     });
 
+    webviewView.onDidChangeVisibility(() => {
+      if (this.view === webviewView && webviewView.visible) void this.postState(undefined, true);
+    });
+
     webviewView.webview.onDidReceiveMessage((message) => {
       void this.handleMessage(message);
     });
   }
 
-  private async postState(): Promise<void> {
-    if (!this.view) {
-      return;
-    }
-
-    const message: SidebarActionsOutboundMessage = {
-      type: 'sidebarActions/state',
-      payload: {
-        state: this.panelManager.getSidebarState()
+  private async postState(state?: CanvasSidebarState, force = false): Promise<void> {
+    const view = this.view;
+    if (!view || !view.visible) return;
+    const current = state ?? this.panelManager.getSidebarState();
+    const displayed = {
+      canvasSurface: current.canvasSurface,
+      filesFeatureEnabled: current.filesFeatureEnabled,
+      fileFilters: {
+        includeGlobs: [...current.fileFilters.includeGlobs],
+        excludeGlobs: [...current.fileFilters.excludeGlobs]
       }
     };
-    await this.view.webview.postMessage(message);
+    const key = JSON.stringify(displayed);
+    if (!force && key === this.lastPostedState) return;
+    // Reserve in posting order; a failed delivery must remain retryable.
+    this.lastPostedState = key;
+    const message: SidebarActionsOutboundMessage = { type: 'sidebarActions/state', payload: { state: displayed } };
+    try {
+      if (await view.webview.postMessage(message)) return;
+    } catch { /* The next event or visibility/ready handshake retries the current state. */ }
+    if (this.view === view && this.lastPostedState === key) this.lastPostedState = undefined;
   }
 
   private async handleMessage(message: unknown): Promise<void> {
@@ -111,7 +126,7 @@ export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vsc
 
     switch (parsed.type) {
       case 'sidebarActions/ready':
-        await this.postState();
+        await this.postState(undefined, true);
         return;
       case 'sidebarActions/openCanvas': {
         const state = this.panelManager.getSidebarState();

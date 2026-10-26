@@ -2,7 +2,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const http = require('node:http');
-exports.start = function(manager, vscode, context) {
+exports.start = function(manager, vscode, context, views) {
+  const sidebar = views ? require('./sidebar-driver.cjs').instrument(manager, vscode, views) : undefined;
   const config = require('./configuration-reuse-driver.json');
   let stateLoad;
   const server = http.createServer(async (request, response) => {
@@ -12,7 +13,8 @@ exports.start = function(manager, vscode, context) {
       let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 65536) throw Error('request too large'); }
       const { action, args = {} } = JSON.parse(body);
       let result;
-      if (action === 'initialize') {
+      if (action.startsWith('sidebar-') && sidebar) result = await sidebar(action,args);
+      else if (action === 'initialize') {
         await vscode.workspace.getConfiguration().update('devSessionCanvas.agent.codexCommand',config.fixture,vscode.ConfigurationTarget.Global);
         const command=manager.getRuntimeContext().agentLaunchDefaults.codex.command;
         if(command!==config.fixture)throw Error('Machine-scoped CLI fixture configuration was not applied in this Host');
@@ -28,7 +30,7 @@ exports.start = function(manager, vscode, context) {
           titleOverride: `Probe ${args.index}` });
         result = node?.id;
       } else if (action === 'state-load') {
-        clearInterval(stateLoad); stateLoad = args.enabled ? setInterval(() => manager.postState('host/stateUpdated', {reason:'other'}), 100) : undefined; result = true;
+        clearInterval(stateLoad); stateLoad = args.enabled ? setInterval(() => manager.postState('host/stateUpdated', {reason:'other'}), args.hz === 20 ? 50 : 100) : undefined; result = true;
       } else if (action === 'start-trace') { manager.startExecutionFlowTrace(); result = true; }
       else if (action === 'trace') result = await manager.collectExecutionFlowTrace();
       else if (action === 'reset') { await manager.resetState(); result = true; }
@@ -73,7 +75,8 @@ exports.start = function(manager, vscode, context) {
     } catch (error) { response.writeHead(500).end(JSON.stringify({ error: String(error), stack: error.stack })); }
   });
   server.listen(0, '127.0.0.1', async () => {
-    await fs.writeFile(config.receipt, JSON.stringify({ port: server.address().port, pid: process.pid }));
+    await fs.writeFile(config.receipt + '.tmp', JSON.stringify({ port: server.address().port, pid: process.pid }));
+    await fs.rename(config.receipt + '.tmp', config.receipt);
   });
   context.subscriptions.push({ dispose() { clearInterval(stateLoad); server.close(); } });
 };

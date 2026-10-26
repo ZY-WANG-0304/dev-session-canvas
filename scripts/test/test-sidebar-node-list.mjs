@@ -1,3 +1,4 @@
+import './test-sidebar-state-updates.mjs';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdtemp, rm } from 'node:fs/promises';

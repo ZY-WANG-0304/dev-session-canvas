@@ -22,6 +22,10 @@
 
 - [x] 2026-10-27：分析配置复用后的 27 秒现场采集，记录用户改善反馈、runtime 2.856 ms、侧栏 3.378 ms、85 次 ACK 及仍有每秒约 20 次全量广播；建议先侧栏消费去重、再展示变化筛选，尚未实施。
 
+- [x] 2026-10-27：用户授权侧栏优化；冻结当前配置复用基线 A，并明确三个消费者的展示边界。
+- [x] 2026-10-27：实现 B 事件值复用、C 展示去重及有界节点列表刷新；实际类回归、既有 DOM 测试、链路诊断和类型检查通过；旧基线回归在重复配置读取 51≠1 处明确失败。
+- [x] 2026-10-27：完成 Remote SSH 1.140.0 A/B/C/A 四轮共 480 次回复及真实侧栏 DOM 校验、CLI/夹具清理；更新证据、F5 包与 PR 内容。
+
 ## 上下文与定向
 
 工作区 `/tmp/dsc-journal-input-priority-design`，分支 `docs-journal-input-priority` 基于最新 origin/main，继续现有 PR #337；发布 PR #327 暂停合并。当前主工作区有用户未提交修改，保持隔离。运行时代码在 `extensions/vscode/dev-session-canvas/src/`。common/protocol.ts 定义 Webview 消息，panel/CanvasPanelManager.ts 收发消息、消费 batch、relay 分页并导出诊断，webview/main.tsx 接收 page 并交给 xterm，webview/terminalPagedProjection.ts 管理每 reader 单页在途，supervisor/runtimeSupervisorMain.ts 在 session 操作队列中读取 journal。诊断只观察这些边界。
@@ -116,3 +120,9 @@ Remote SSH 补验中，首次等待命令面板在远程下载/初始化期间�
 修订说明：2026-10-26 完成同现场版本的 Remote SSH A/C，记录 240/240 回复、局部降耗、相同状态次数及未稳定改善的回显；保留端口占用 setup 失败和一列尺寸差异，原问题调查继续。
 
 修订说明：2026-10-27 补入新版现场反馈与完整聚合复算；首次记录 Supervisor 内部读取证据，区分输入 ACK 与真实回显、侧栏构造与同步通知。候选优化顺序仍待设计确认，保留旧长停顿未归因。
+
+决策补充（2026-10-27）：侧栏优化仅改 sidebar 三个消费者；先复用事件状态，再基于展示投影去重。节点列表原 75 ms 尾沿防抖可能被连续事件反复延后，本次改为不重置待执行 timer，异步刷新须串行处理较新状态。验证从当前目录运行 npm run test:sidebar-state-updates、npm run test:sidebar-node-list、npm run test:execution-flow-diagnostics、npm run typecheck 及 build；真实运行使用冻结扩展、独立工作区与显式打开的侧栏。
+
+侧栏验证发现（2026-10-27）：远程首轮连接回执被读取时尚未写完，脚本在业务场景前失败。驱动改为临时文件写完后原子 rename，使用新隔离目录重跑；失败不计入回显通过。远程 A 基线五场景 120 次回复全部通过，CLI/SSH 清理通过，B/C 继续测量。
+
+侧栏结果与复盘（2026-10-27）：三个消费者的复用/展示去重及有界节点列表刷新完成。真实可见场景构造 248→123、筛选面板重复消息和树刷新 124→0，返回基线重复工作恢复；状态、标题/过滤、重开与实际类边界验证通过。四轮共 480 次回显完整，但 P95 未一致改善；B 隐藏场景 1.692 秒异常未归因，记录到技术债。主画布广播及旧现场长停顿仍待后续处理，本总体调查计划保持 active。
