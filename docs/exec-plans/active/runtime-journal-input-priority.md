@@ -20,6 +20,8 @@
 - [x] 2026-10-26：完成 1.140.0 远程 A/C 共 240 次回显；完整方法降耗、状态压力次数相同，回显 P95 未稳定改善；记录第二节点一列尺寸差异及覆盖限制。
 - [x] 2026-10-26：同步实测结果、回归与 PR #337 更新内容；17 秒原始停顿仍需独立归因。
 
+- [x] 2026-10-27：分析配置复用后的 27 秒现场采集，记录用户改善反馈、runtime 2.856 ms、侧栏 3.378 ms、85 次 ACK 及仍有每秒约 20 次全量广播；建议先侧栏消费去重、再展示变化筛选，尚未实施。
+
 ## 上下文与定向
 
 工作区 `/tmp/dsc-journal-input-priority-design`，分支 `docs-journal-input-priority` 基于最新 origin/main，继续现有 PR #337；发布 PR #327 暂停合并。当前主工作区有用户未提交修改，保持隔离。运行时代码在 `extensions/vscode/dev-session-canvas/src/`。common/protocol.ts 定义 Webview 消息，panel/CanvasPanelManager.ts 收发消息、消费 batch、relay 分页并导出诊断，webview/main.tsx 接收 page 并交给 xterm，webview/terminalPagedProjection.ts 管理每 reader 单页在途，supervisor/runtimeSupervisorMain.ts 在 session 操作队列中读取 journal。诊断只观察这些边界。
@@ -112,3 +114,5 @@ Remote SSH 补验中，首次等待命令面板在远程下载/初始化期间�
 修订说明：2026-10-26 记录构造内复用实现、定向验证、本机 A/B/C/A 与同 Host 配对结果；区分局部降耗、自然负载和人工压力，未宣称现场卡顿消失。
 
 修订说明：2026-10-26 完成同现场版本的 Remote SSH A/C，记录 240/240 回复、局部降耗、相同状态次数及未稳定改善的回显；保留端口占用 setup 失败和一列尺寸差异，原问题调查继续。
+
+修订说明：2026-10-27 补入新版现场反馈与完整聚合复算；首次记录 Supervisor 内部读取证据，区分输入 ACK 与真实回显、侧栏构造与同步通知。候选优化顺序仍待设计确认，保留旧长停顿未归因。
