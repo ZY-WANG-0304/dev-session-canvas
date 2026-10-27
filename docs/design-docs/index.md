@@ -134,6 +134,8 @@
 
 | `docs/design-docs/runtime-restore-subscription-fix.md` | 完整恢复任务共享、派发前资格与断连代次；实际订阅先红后绿、协议链/Host634/原生旧升级通过，正式CI及模式切换回调另验 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-restore-subscription-fix.md` | 2026-10-24 |
 
+| [按展示变化批量同步画布](canvas-display-updates.md) | 空更新筛选、节点与关联操作批量同步、版本恢复和三组验证 | 画布交互域、执行编排域 / 宿主、共享模型、呈现 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-27 |
+
 ## 维护约定
 
 - 这里只登记具体设计方案文档，不登记模板或通用原则文档。

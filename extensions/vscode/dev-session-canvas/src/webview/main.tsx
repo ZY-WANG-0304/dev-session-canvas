@@ -1,3 +1,4 @@
+import { applyCanvasDisplayDelta, type CanvasDisplaySnapshot } from '../common/canvasDisplayUpdates';
 import { ExecutionFlowRecorder, type FlowToken } from '../common/executionFlowDiagnostics';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -1599,6 +1600,9 @@ function App(): JSX.Element {
     resolveCanvasOverviewTitleScale(initialPersistedState.viewport?.zoom ?? 1)
   );
 
+  const canvasDisplaySnapshotRef = useRef<CanvasDisplaySnapshot>();
+  const canvasDisplayResyncPendingRef = useRef(false);
+
   hostMessageHandlerRef.current = (message: HostToWebviewMessage): void => {
     const messageLifecycle = extractWebviewMessageLifecycle(message);
     if (requiresHostMessageLifecycle(message.type) && !messageLifecycle) {
@@ -1628,9 +1632,35 @@ function App(): JSX.Element {
         break;
       case 'host/bootstrap':
       case 'host/stateUpdated':
+      case 'host/stateDelta':
         {
-          const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
-          const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+          const previous = canvasDisplaySnapshotRef.current;
+          const incremental = message.type === 'host/stateDelta';
+          const snapshot = incremental
+            ? (!canvasDisplayResyncPendingRef.current && previous ? applyCanvasDisplayDelta(previous, message.payload) : undefined)
+            : message.payload;
+          if (!snapshot) {
+            if (!canvasDisplayResyncPendingRef.current) {
+              canvasDisplayResyncPendingRef.current = true;
+              postMessage({ type: 'webview/requestCanvasState' });
+            }
+            break;
+          }
+          if (!incremental && snapshot.revision !== undefined && previous?.revision !== undefined && snapshot.revision <= previous.revision) break;
+          const normalizedState = incremental ? snapshot.state : normalizeCanvasPrototypeState(snapshot.state);
+          const normalizedRuntime = incremental ? snapshot.runtime : normalizeRuntimeContext(snapshot.runtime);
+          canvasDisplaySnapshotRef.current = { state: normalizedState, runtime: normalizedRuntime, revision: snapshot.revision };
+          if (!incremental) canvasDisplayResyncPendingRef.current = false;
+          const stateChanged = !incremental || normalizedState !== previous?.state;
+          const runtimeChanged = !incremental || normalizedRuntime !== previous?.runtime;
+          const layoutNodeIds = incremental ? new Set([
+            ...(message.payload.layoutAck?.nodes ?? []), ...(message.payload.nodes?.remove ?? []),
+            ...(message.payload.nodes?.upsert.filter(node => {
+              const old = previous?.state.nodes.find(item => item.id === node.id);
+              return !old || old.position.x !== node.position.x || old.position.y !== node.position.y ||
+                old.size.width !== node.size.width || old.size.height !== node.size.height;
+            }).map(node => node.id) ?? [])
+          ]) : undefined;
           hostStateRef.current = normalizedState;
           latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
           latestRuntimeContext = normalizedRuntime;
@@ -1639,13 +1669,13 @@ function App(): JSX.Element {
               `execution mouse diagnostics enabled: ${normalizedRuntime.executionMouseDiagnosticsEnabled === true}`
             );
           }
-          setHostState(normalizedState);
-          setExecutionTerminalTitles((current) =>
+          if (stateChanged) setHostState(normalizedState);
+          if (stateChanged) setExecutionTerminalTitles((current) =>
             message.type === 'host/bootstrap'
               ? terminalTitleProjectionsFromState(normalizedState)
               : mergeTerminalTitleProjectionsFromState(current, normalizedState)
           );
-          setRuntimeContext(normalizedRuntime);
+          if (runtimeChanged) setRuntimeContext(normalizedRuntime);
           setNodeLayoutDrafts((current) => {
             // Host layout wins after a move/resize has been submitted.
             const pendingNodeIds = pendingCommittedNodeLayoutDraftIdsRef.current;
@@ -1655,17 +1685,26 @@ function App(): JSX.Element {
 
             const next = { ...current };
             for (const nodeId of pendingNodeIds) {
+              if (layoutNodeIds && !layoutNodeIds.has(nodeId)) continue;
               delete next[nodeId];
+              pendingNodeIds.delete(nodeId);
             }
-            pendingNodeIds.clear();
             return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
           });
-          setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
-          activeNodeResizeDraftsRef.current = {};
-          setGroupDrafts((current) => {
+          if (!incremental) {
+            setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
+            activeNodeResizeDraftsRef.current = {};
+          }
+          if (!incremental || message.payload.state?.groups || message.payload.layoutAck?.groups) setGroupDrafts((current) => {
             const activeGroupIds = activeGroupInteractionIdsRef.current;
             const committedGroupIds = committedGroupDraftIdsRef.current;
             const knownGroupIds = new Set(normalizedState.groups.map((group) => group.id));
+            const acknowledged = incremental ? new Set(message.payload.layoutAck?.groups ?? []) : undefined;
+            if (acknowledged) for (const group of normalizedState.groups) {
+              const old = previous?.state.groups.find(item => item.id === group.id);
+              if (!old || old.position.x !== group.position.x || old.position.y !== group.position.y ||
+                  old.size.width !== group.size.width || old.size.height !== group.size.height) acknowledged.add(group.id);
+            }
             for (const groupId of Array.from(activeGroupIds)) {
               if (!knownGroupIds.has(groupId)) {
                 activeGroupIds.delete(groupId);
@@ -1675,19 +1714,19 @@ function App(): JSX.Element {
             const next = Object.fromEntries(
               Object.entries(current).filter(([groupId]) =>
                 knownGroupIds.has(groupId) &&
-                activeGroupIds.has(groupId) &&
-                !committedGroupIds.has(groupId)
+                (activeGroupIds.has(groupId) || (acknowledged && committedGroupIds.has(groupId) && !acknowledged.has(groupId))) &&
+                !(committedGroupIds.has(groupId) && (!acknowledged || acknowledged.has(groupId)))
               )
             );
-            committedGroupIds.clear();
+            for (const id of committedGroupIds) if (!knownGroupIds.has(id) || !acknowledged || acknowledged.has(id)) committedGroupIds.delete(id);
             return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
           });
-          applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+          if (!incremental || message.payload.runtime?.terminal) applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
           if (message.type === 'host/bootstrap') {
             postMessage({ type: 'webview/bootstrapAck' });
           }
+          if (!incremental || message.payload.runtime?.terminal) scheduleEmbeddedTerminalAppearanceRefresh();
         }
-        scheduleEmbeddedTerminalAppearanceRefresh();
         break;
       case 'host/templateCatalogUpdated':
         setTemplateMenuEntries(Array.isArray(message.payload.templates) ? message.payload.templates : []);
@@ -3164,7 +3203,7 @@ function App(): JSX.Element {
     setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
   };
 
-  const baseNodes = toFlowNodes({
+  const baseNodes = useCanvasFlowNodes({
     nodes: hostState?.nodes ?? [],
     terminalTitles: executionTerminalTitles,
     selectedNodeId: localUiState.selectedNodeId,
@@ -5645,12 +5684,12 @@ const fileNoteNodeTypes = createFileNoteNodeTypes({
 });
 
 const nodeTypes = {
-  agent: executionNodeTypes.agent,
-  terminal: executionNodeTypes.terminal,
-  note: fileNoteNodeTypes.note,
-  file: fileNoteNodeTypes.file,
-  'file-list': fileNoteNodeTypes['file-list'],
-  card: CompactCanvasCardNode
+  agent: React.memo(executionNodeTypes.agent),
+  terminal: React.memo(executionNodeTypes.terminal),
+  note: React.memo(fileNoteNodeTypes.note),
+  file: React.memo(fileNoteNodeTypes.file),
+  'file-list': React.memo(fileNoteNodeTypes['file-list']),
+  card: React.memo(CompactCanvasCardNode)
 };
 
 function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
@@ -6470,6 +6509,38 @@ const CanvasContextMenu = React.forwardRef<
   );
 });
 
+/** Stable dispatchers read the latest committed handlers; unchanged node data stays referentially stable. */
+function useCanvasFlowNodes(params: Parameters<typeof toFlowNodes>[0]): CanvasFlowNode[] {
+  const handlers = useRef(params);
+  useLayoutEffect(() => { handlers.current = params; });
+  const callbacks = useRef(new Map<string, (...args: unknown[]) => unknown>());
+  const previous = useRef<CanvasFlowNode[]>([]);
+  const stable = { ...params };
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value !== 'function') continue;
+    if (!callbacks.current.has(key)) callbacks.current.set(key, (...args: unknown[]) =>
+      (handlers.current[key as keyof typeof params] as (...values: unknown[]) => unknown)(...args));
+    Object.assign(stable, { [key]: callbacks.current.get(key) });
+  }
+  const prior = new Map(previous.current.map(node => [node.id, node]));
+  const sameRecord = (a: object, b: object): boolean => {
+    const left = a as Record<string, unknown>, right = b as Record<string, unknown>;
+    return Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(key => left[key] === right[key]);
+  };
+  const nodes = toFlowNodes(stable).map(node => {
+    const old = prior.get(node.id);
+    if (!old) return node;
+    if (sameRecord(old.data.size, node.data.size)) node.data.size = old.data.size;
+    if (sameRecord(old.position, node.position) && sameRecord(old.style ?? {}, node.style ?? {}) &&
+        sameRecord(old.data, node.data) && old.type === node.type && old.selected === node.selected &&
+        old.width === node.width && old.height === node.height) return old;
+    return node;
+  });
+  if (nodes.length === previous.current.length && nodes.every((node, index) => node === previous.current[index])) return previous.current;
+  previous.current = nodes;
+  return nodes;
+}
+
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   terminalTitles: Record<string, ExecutionTerminalTitleProjection>;
@@ -6617,8 +6688,8 @@ function toFlowNodes(params: {
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
-        noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
-        workspaceFolders: [...params.workspaceFolders],
+        noteMarkdownImageWorkspaceRoots: params.noteMarkdownImageWorkspaceRoots as NoteMarkdownImageWorkspaceRoot[],
+        workspaceFolders: params.workspaceFolders,
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],

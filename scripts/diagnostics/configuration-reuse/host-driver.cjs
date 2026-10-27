@@ -5,6 +5,7 @@ const http = require('node:http');
 exports.start = function(manager, vscode, context, views) {
   const sidebar = views ? require('./sidebar-driver.cjs').instrument(manager, vscode, views) : undefined;
   const config = require('./configuration-reuse-driver.json');
+  const display = config.canvasDisplay ? require('./canvas-display-driver.cjs').instrument(manager) : undefined;
   let stateLoad;
   const server = http.createServer(async (request, response) => {
     response.setHeader('content-type', 'application/json');
@@ -13,7 +14,8 @@ exports.start = function(manager, vscode, context, views) {
       let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 65536) throw Error('request too large'); }
       const { action, args = {} } = JSON.parse(body);
       let result;
-      if (action.startsWith('sidebar-') && sidebar) result = await sidebar(action,args);
+      if (action.startsWith('display-') && display) result = display(action,args);
+      else if (action.startsWith('sidebar-') && sidebar) result = await sidebar(action,args);
       else if (action === 'initialize') {
         await vscode.workspace.getConfiguration().update('devSessionCanvas.agent.codexCommand',config.fixture,vscode.ConfigurationTarget.Global);
         const command=manager.getRuntimeContext().agentLaunchDefaults.codex.command;
@@ -30,7 +32,17 @@ exports.start = function(manager, vscode, context, views) {
           titleOverride: `Probe ${args.index}` });
         result = node?.id;
       } else if (action === 'state-load') {
-        clearInterval(stateLoad); stateLoad = args.enabled ? setInterval(() => manager.postState('host/stateUpdated', {reason:'other'}), args.hz === 20 ? 50 : 100) : undefined; result = true;
+        clearInterval(stateLoad);
+        let tick=0;
+        stateLoad = args.enabled ? setInterval(() => {
+          if (config.canvasDisplay && ++tick % 5 === 0) {
+            const index=(tick/5-1)%manager.state.nodes.length;
+            const title=`Display-${tick}-${Date.now()}`;
+            manager.state={...manager.state,nodes:manager.state.nodes.map((node,i)=>i===index?{...node,title} :node)};
+            display('display-change',{nodeId:manager.state.nodes[index].id,title});
+          }
+          manager.postState('host/stateUpdated', {reason:'diagnostic-display-pressure'});
+        }, args.hz === 20 ? 50 : 100) : undefined; result = true;
       } else if (action === 'start-trace') { manager.startExecutionFlowTrace(); result = true; }
       else if (action === 'trace') result = await manager.collectExecutionFlowTrace();
       else if (action === 'reset') { await manager.resetState(); result = true; }

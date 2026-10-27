@@ -1,3 +1,4 @@
+import type { CanvasDisplayDelta } from './canvasDisplayUpdates';
 import { normalizeFlowSnapshot, type FlowSnapshot } from './executionFlowDiagnostics.ts';
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
@@ -779,6 +780,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         terminalAvailableReceiptV1?: true;
       } };
     }
+  | { type: 'webview/requestCanvasState' }
   | {
       type: 'webview/bootstrapAck';
     }
@@ -1296,6 +1298,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & {
       payload: {
         state: CanvasPrototypeState;
         runtime: CanvasRuntimeContext;
+        revision?: number;
       };
     }
   | {
@@ -1303,7 +1306,12 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & {
       payload: {
         state: CanvasPrototypeState;
         runtime: CanvasRuntimeContext;
+        revision?: number;
       };
+    }
+  | {
+      type: 'host/stateDelta';
+      payload: CanvasDisplayDelta;
     }
   | {
       type: 'host/templateCatalogUpdated';
@@ -1707,6 +1715,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/bootstrapAck' ||
+    value.type === 'webview/requestCanvasState' ||
     value.type === 'webview/resetDemoState' ||
     value.type === 'webview/saveCanvasAsTemplate'
   ) {

@@ -2,7 +2,7 @@
 export const EXECUTION_FLOW_DURATION_MS = 120_000;
 export const FLOW_STAGES = [
   'input-dispatch', 'input-ack', 'input-host', 'input-write-start', 'input-write', 'state-build',
-  'state-options-build', 'state-options-set', 'state-canvas-build', 'state-runtime-build', 'state-sidebar-notify',
+  'state-options-build', 'state-options-set', 'state-canvas-build', 'state-runtime-build', 'state-diff', 'state-sidebar-notify',
   'message-post', 'message-handle', 'message-roundtrip', 'page-request',
   'page-roundtrip', 'page-host-request', 'page-host', 'page-queue', 'page-apply', 'host-loop', 'webview-loop'
 ] as const;
@@ -141,7 +141,7 @@ export class ExecutionFlowRecorder {
     detail.push(sample); this.details.set(sample.stage, detail);
     const second = Math.min(119, Math.floor(sample.atMs / 1000));
     // Preserve the state broadcast rate separately from other bridge traffic.
-    const messageType = sample.messageType === 'host/stateUpdated' ? sample.messageType : undefined;
+    const messageType = sample.messageType === 'host/stateUpdated' || sample.messageType === 'host/stateDelta' ? sample.messageType : undefined;
     const key = JSON.stringify([second, sample.stage, messageType]);
     const bucket = this.seconds.get(key) ?? { ...aggregate(sample.stage), second, ...(messageType ? { messageType } : {}) };
     add(bucket, sample); this.seconds.set(key, bucket);
@@ -170,7 +170,7 @@ export function normalizeFlowSnapshot(value: unknown): FlowSnapshot | undefined 
       !['startedEpochMs', 'elapsedMs', 'durationMs', 'droppedDetails', 'droppedNodeGroups'].every(k => finite(value[k])) ||
       (value.durationMs as number) > EXECUTION_FLOW_DURATION_MS || (value.elapsedMs as number) > (value.durationMs as number) ||
       !Array.isArray(value.details) || value.details.length > FLOW_STAGES.length * DETAIL_LIMIT ||
-      !Array.isArray(value.seconds) || value.seconds.length > FLOW_STAGES.length * 120 * 2 ||
+      !Array.isArray(value.seconds) || value.seconds.length > FLOW_STAGES.length * 120 * 3 ||
       !Array.isArray(value.groups) || value.groups.length > NODE_LIMIT) return undefined;
   const details = value.details.map(normalizeFlowSample);
   if (details.some(x => !x)) return undefined;

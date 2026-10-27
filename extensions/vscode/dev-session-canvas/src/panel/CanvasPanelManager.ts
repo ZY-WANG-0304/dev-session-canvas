@@ -1,3 +1,4 @@
+import { CanvasDisplayPublisher, type CanvasLayoutAcknowledgement } from '../common/canvasDisplayUpdates';
 import { ExecutionFlowRecorder, EXECUTION_FLOW_DURATION_MS, FLOW_DURATION_BUCKETS_MS, type FlowSnapshot, type FlowToken } from '../common/executionFlowDiagnostics';
 import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -8107,9 +8108,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  private readonly pendingCanvasDisplayCatchup = new Set<CanvasSurfaceLocation>();
+  private readonly canvasDisplayPublishers = new Map<CanvasSurfaceLocation, CanvasDisplayPublisher>();
+
   private postState(
     type: 'host/bootstrap' | 'host/stateUpdated',
-    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity; reason?: string }
+    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity; reason?: string; layoutAck?: CanvasLayoutAcknowledgement; full?: boolean }
   ): void {
     const flowBuild = this.executionFlow.begin();
     const flowIdentity = { requestId: flowBuild ? `state:${++this.flowMessageSequence}` : undefined,
@@ -8133,7 +8137,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         () => this.getRuntimeContext(activeWebview))
     };
     this.executionFlow.finish(flowBuild, { stage: 'state-build', ...flowIdentity });
-    this.postMessage({ type, lifecycle, payload }, targetSurface, options?.reason ?? 'other');
+    if (targetSurface && activeWebview) {
+      let publisher = this.canvasDisplayPublishers.get(targetSurface);
+      if (!publisher) { publisher = new CanvasDisplayPublisher(); this.canvasDisplayPublishers.set(targetSurface, publisher); }
+      if (this.shouldQueueUntilBootstrapAck(targetSurface, { type, lifecycle, payload })) {
+        // The generic queue is bounded and may drop old entries. Keep one catch-up responsibility instead.
+        this.pendingCanvasDisplayCatchup.add(targetSurface);
+        publisher.invalidate();
+      } else {
+        const identity = JSON.stringify(lifecycle);
+        const currentPublisher = publisher;
+        const update = this.executionFlow.measureSync({ stage: 'state-diff', ...flowIdentity },
+          () => currentPublisher.publish(payload, identity, type === 'host/bootstrap' || options?.full === true, options?.layoutAck));
+        if (update) {
+          const message: HostToWebviewMessage = type === 'host/bootstrap'
+            ? { type, lifecycle, payload: update.payload as typeof payload } : { ...update, lifecycle };
+          try {
+            const delivery = this.postMessageWithDeliveryResult(message, targetSurface, options?.reason ?? 'other');
+            if (delivery) void Promise.resolve(delivery).then(delivered => { if (!delivered) currentPublisher.invalidate(identity); }, () => currentPublisher.invalidate(identity));
+          } catch (error) { currentPublisher.invalidate(identity); throw error; }
+        }
+      }
+    }
     if (type === 'host/bootstrap' && targetSurface) this.sendExecutionFlowStart(targetSurface);
     this.executionFlow.measureSync({ stage: 'state-sidebar-notify', ...flowIdentity },
       () => this.notifySidebarStateChanged());
@@ -14679,6 +14704,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
       });
       this.flushPendingBootstrapHostMessages(sourceSurface);
+      if (this.pendingCanvasDisplayCatchup.delete(sourceSurface)) {
+        this.postState('host/stateUpdated', { surface: sourceSurface, full: true, reason: 'bootstrap-catchup' });
+      }
       this.flushTerminalAvailableNotifications(sourceSurface);
       this.attachLocalExecutionsToSurface(sourceSurface);
       this.postWorkspaceRootFocusGroupMessageForCurrentLifecycle(sourceSurface);
@@ -14843,6 +14871,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sourceWebview?: vscode.Webview
   ): void {
     switch (parsedMessage.type) {
+      case 'webview/requestCanvasState':
+        this.postState('host/stateUpdated', { surface: sourceSurface, full: true, reason: 'canvas-resync' });
+        return;
       case 'webview/ready':
         return;
       case 'webview/executionLocalTerminalSettled':
@@ -14961,7 +14992,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             applied: summarizeCanvasGroupGeometryForDiagnostics(this.state, groupId)
           });
           this.persistState();
-          this.postState('host/stateUpdated');
+          this.postState('host/stateUpdated', { layoutAck: { groups: [groupId] } });
         }
         return;
       case 'webview/resizeGroup':
@@ -15002,7 +15033,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               : undefined
           });
           this.persistState();
-          this.postState('host/stateUpdated');
+          this.postState('host/stateUpdated', { layoutAck: { groups: [groupId] } });
         }
         return;
       case 'webview/ungroup':
@@ -15024,7 +15055,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           )
         );
         this.persistState();
-        this.postState('host/stateUpdated');
+        this.postState('host/stateUpdated', { layoutAck: { nodes: [parsedMessage.payload.id, ...(parsedMessage.payload.selectedMoves?.map(move => move.id) ?? [])] } });
         return;
       case 'webview/resizeNode':
         this.state = this.reconcileCanvasFileArtifacts(
@@ -15037,7 +15068,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           )
         );
         this.persistState();
-        this.postState('host/stateUpdated');
+        this.postState('host/stateUpdated', { layoutAck: { nodes: [parsedMessage.payload.nodeId] } });
         return;
       case 'webview/deleteNode':
         void this.deleteNode(parsedMessage.payload.nodeId);

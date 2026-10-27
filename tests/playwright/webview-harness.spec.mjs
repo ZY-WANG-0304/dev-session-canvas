@@ -20430,3 +20430,84 @@ function sizeFor(kind) {
       throw new Error(`Unsupported kind ${kind}`);
   }
 }
+
+test('canvas display delta applies batches and recovers version gaps', async ({ page }) => {
+  await openHarness(page);
+  const state=createCanvasScreenshotState(), runtime=createRuntimeContext();
+  const send=message=>page.evaluate(m=>window.__devSessionCanvasHarness.dispatchHostMessage(m),message);
+  await send({type:'host/bootstrap',payload:{state,runtime,revision:1}});
+  await expect(nodeById(page,'agent-1')).toBeVisible();
+  const agent=structuredClone(state.nodes.find(n=>n.id==='agent-1'));
+  const note=structuredClone(state.nodes.find(n=>n.kind==='note'));
+  agent.title='Batch Agent';note.title='Batch Note';
+  await send({type:'host/stateDelta',payload:{baseRevision:1,revision:2,updatedAt:'batch',nodes:{upsert:[agent,note],remove:[]}}});
+  await expect(nodeById(page,agent.id)).toContainText('Batch Agent');
+  await expect(nodeById(page,note.id)).toContainText('Batch Note');
+  // Reject a missing predecessor, request exactly one full resync, then ignore subsequent deltas until it arrives.
+  agent.title='Must not apply';
+  for(const revision of [4,5])await send({type:'host/stateDelta',payload:{baseRevision:revision-1,revision,updatedAt:'gap',nodes:{upsert:[agent],remove:[]}}});
+  await expect(nodeById(page,agent.id)).toContainText('Batch Agent');
+  await expect.poll(()=>readPostedMessagesByType(page,'webview/requestCanvasState')).toHaveLength(1);
+  const restored=structuredClone(state);restored.nodes.find(n=>n.id===agent.id).title='Recovered Agent';
+  await send({type:'host/stateUpdated',payload:{state:restored,runtime,revision:6}});
+  await expect(nodeById(page,agent.id)).toContainText('Recovered Agent');
+  // Node removal and all associated edges/groups arrive as one operation.
+  await send({type:'host/stateDelta',payload:{baseRevision:6,revision:7,updatedAt:'delete',nodes:{upsert:[],remove:[note.id]},state:{edges:[],groups:[]}}});
+  await expect(nodeById(page,note.id)).toHaveCount(0);
+  await expect(nodeById(page,agent.id)).toContainText('Recovered Agent');
+  await send({type:'host/stateUpdated',payload:{state,runtime,revision:2}});
+  await expect(nodeById(page,note.id)).toHaveCount(0);
+  // A new frame starts with a complete snapshot; old revisions do not survive page reconstruction.
+  await page.reload();await page.waitForFunction(()=>Boolean(window.__devSessionCanvasHarness));
+  await send({type:'host/bootstrap',payload:{state,runtime,revision:1}});
+  await expect(nodeById(page,note.id)).toBeVisible();
+});
+
+test('canvas display delta preserves pending resize until its layout acknowledgement', async ({ page }) => {
+  await openHarness(page,{persistedState:{viewport:{x:0,y:0,zoom:1}}});
+  const state=createNoteNodeState(), runtime=createRuntimeContext();
+  const other=structuredClone(state.nodes[0]);other.id='other';other.title='Other';other.position={x:800,y:30};state.nodes.push(other);
+  const send=message=>page.evaluate(m=>window.__devSessionCanvasHarness.dispatchHostMessage(m),message);
+  await send({type:'host/bootstrap',payload:{state,runtime,revision:1}});
+  const noteNode=nodeById(page,'note-1');await noteNode.locator('.window-chrome').click();await clearPostedMessages(page);
+  const handle=noteNode.locator('[data-node-resize-direction="bottom-right"]');await expect(handle).toBeVisible();
+  const box=await handle.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+  await page.mouse.move(box.x+100,box.y+80,{steps:8});await page.mouse.up();
+  const submitted=await waitForPostedMessageByType(page,'webview/resizeNode');
+  const pending=await noteNode.boundingBox();
+  other.title='Other updated';await send({type:'host/stateDelta',payload:{baseRevision:1,revision:2,updatedAt:'title',nodes:{upsert:[other],remove:[]}}});
+  await expect(nodeById(page,'other')).toContainText('Other updated');
+  expect((await noteNode.boundingBox()).width).toBeCloseTo(pending.width,0);
+  // Host rejected/clamped to old geometry: explicit ACK must clear a draft even when authoritative values did not change.
+  await send({type:'host/stateDelta',payload:{baseRevision:2,revision:3,updatedAt:'ack',layoutAck:{nodes:[submitted.payload.nodeId]}}});
+  await expect.poll(async()=>(await noteNode.boundingBox()).width).toBeCloseTo(state.nodes[0].size.width,0);
+});
+
+test('canvas display delta leaves terminal output buffer intact', async ({ page }) => {
+  const state=createMultiLiveExecutionNodeState('agent',2),runtime=createRuntimeContext(),ids=state.nodes.map(n=>n.id);
+  await openHarness(page);
+  const send=message=>page.evaluate(m=>window.__devSessionCanvasHarness.dispatchHostMessage(m),message);
+  await send({type:'host/bootstrap',payload:{state,runtime,revision:1}});
+  await waitForExecutionTerminalsReady(page,ids);
+  await send({type:'host/executionOutput',payload:{nodeId:ids[0],kind:'agent',chunk:'DISPLAY_BUFFER_PRESERVED\r\n',executionSessionId:'fair-drain-session-1',outputSequence:1}});
+  await expect.poll(async()=>(await readProbeNode(page,ids[0],0))?.terminalVisibleLines?.some(line=>line.includes('DISPLAY_BUFFER_PRESERVED'))).toBe(true);
+  const changed={...state.nodes[1],title:'Changed sibling'};
+  await send({type:'host/stateDelta',payload:{baseRevision:1,revision:2,updatedAt:'title',nodes:{upsert:[changed],remove:[]}}});
+  await expect(nodeById(page,ids[1])).toContainText('Changed sibling');
+  expect((await readProbeNode(page,ids[0],0)).terminalVisibleLines.some(line=>line.includes('DISPLAY_BUFFER_PRESERVED'))).toBe(true);
+});
+
+if (process.env.DSC_DISPLAY_RENDER_COUNTS) test('canvas display component rendering excludes an unchanged sibling', async ({ page }) => {
+  const state=createMultiLiveExecutionNodeState('agent',2),runtime=createRuntimeContext(),ids=state.nodes.map(n=>n.id);
+  await openHarness(page);
+  const send=message=>page.evaluate(m=>window.__devSessionCanvasHarness.dispatchHostMessage(m),message);
+  await send({type:'host/bootstrap',payload:{state,runtime,revision:1}});
+  await waitForExecutionTerminalsReady(page,ids);await settleWebview(page,8);
+  const before=await page.evaluate(()=>({...window.__dscDisplayRenderCounts}));
+  expect(before[ids[0]]).toBeGreaterThan(0);
+  await send({type:'host/stateDelta',payload:{baseRevision:1,revision:2,updatedAt:'title',nodes:{upsert:[{...state.nodes[1],title:'Changed sibling'}],remove:[]}}});
+  await expect(nodeById(page,ids[1])).toContainText('Changed sibling');await settleWebview(page,8);
+  const after=await page.evaluate(()=>({...window.__dscDisplayRenderCounts}));
+  expect(after[ids[0]],'unchanged sibling component must not render for another node title').toBe(before[ids[0]]);
+  expect(after[ids[1]]).toBeGreaterThan(before[ids[1]]);
+});

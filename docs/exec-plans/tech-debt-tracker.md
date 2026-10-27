@@ -2,6 +2,11 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+
+## 2026-10-27：画布展示增量的现场与启动验证边界
+
+第三阶段已完成节点增量、bootstrap追赶、布局确认及受控A/B/C/A和同Host交替对照，1600次回显完整，通信/浏览器成本降低。仍未证实真实Agent与跨机器网络的回显尾延迟收益；40/80样本P99不代表生产P99。Host仍按原时机构造完整投影再比较，未来是否减少构造需要独立依赖和数据支持，不直接增加字段补丁。remote-b在负载开始前发生root readiness未确认，未进入性能样本、重跑成功不等于原因解决；失败日志保留于.debug/canvas-display-updates/remote-b。先前17秒Host与侧栏B隐藏1.7秒异常仍按原条目保留。完整Actions/跨平台发布门禁未由局部测试替代。详见 [画布展示增量](../design-docs/canvas-display-updates.md)。
+
 ## 2026-10-24：文件条目 smoke 原生输入修复的验收边界
 
 文件点击前 documentFocus 的测试门槛已由原生鼠标输入替代，受控编辑器持焦下 source 与原双 VSIX packaged 场景通过。历史 CI 自然夺焦的完整时序缺失，仍不认定上游产品焦点缺陷；后续若再失败，应保存点击前后焦点与可信事件。修改后的 PR head 完整 Actions 验收尚待执行，本地局部诊断不解除发布门禁。方案和证据见 [file-entry-native-smoke.md](../design-docs/file-entry-native-smoke.md)。

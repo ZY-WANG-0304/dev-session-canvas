@@ -62,11 +62,12 @@ try {
       recorder.record({ stage, nodeId: `node:${second}:${stage}`, durationMs: second,
         messageType: 'host/stateUpdated', bytes: 10 });
       recorder.record({ stage, messageType: 'host/executionTerminalPage', bytes: 20 });
+      recorder.record({ stage, messageType: 'host/stateDelta', bytes: 30 });
     }
     now += 1000;
   }
   snapshot = recorder.snapshot();
-  assert.equal(snapshot.seconds.length, 120 * FLOW_STAGES.length * 2);
+  assert.equal(snapshot.seconds.length, 120 * FLOW_STAGES.length * 3);
   assert.equal(snapshot.groups.length, 128);
   assert.ok(snapshot.droppedNodeGroups > 0);
   assert.equal(snapshot.details.length, 64 * FLOW_STAGES.length);
@@ -104,15 +105,21 @@ try {
   const source = await readFile(filename, 'utf8');
   const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
   const declaration = ast.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'CanvasPanelManager');
-  const methods = ['postMessageWithDeliveryResult', 'collectExecutionFlowTrace', 'readExecutionTerminalPage', 'writeExecutionInput', 'postState']
+  const methods = ['postMessageWithDeliveryResult', 'collectExecutionFlowTrace', 'readExecutionTerminalPage', 'writeExecutionInput', 'postState', 'handleWebviewMessage', 'handleActiveWebviewMessage']
     .map(name => declaration.members.find(member => member.name?.getText(ast) === name).getText(ast)).join('\n');
   const harnessFile = path.join(directory, 'host.cjs');
   await esbuild.build({ stdin: { contents: `
     import { randomUUID } from 'node:crypto';
+    import { CanvasDisplayPublisher } from './common/canvasDisplayUpdates';
+    import { parseWebviewMessage } from './common/protocol';
+    const extractWebviewMessageLifecycle = message => message.lifecycle;
+    const hasInvalidWebviewLifecycle = () => false;
+    const summarizeWebviewLifecycleIdentity = value => value;
     import { ExecutionFlowRecorder, FLOW_DURATION_BUCKETS_MS } from './common/executionFlowDiagnostics';
     const formatUnknownError = String;
     export class Harness {
       executionFlow = new ExecutionFlowRecorder();
+      canvasDisplayPublishers = new Map(); pendingCanvasDisplayCatchup = new Set();
       activeSurface = 'panel'; flowSurfaceFrames = new Map(); flowReceipts = new Map(); flowReceiptLastAt = new Map(); flowCollections = new Map();
       flowMessageSequence = 0; sent = []; posted = [];
       isInteractiveSurface(surface) { return surface === 'panel'; }
@@ -181,7 +188,7 @@ try {
     if (active) actual.executionFlow.start('state-trace');
     const calls = [];
     const failure = new Error('controlled state operation failure');
-    const values = { options: { enableScripts: true }, canvas: { body: 'PRIVATE-CANVAS' }, runtime: { body: 'PRIVATE-RUNTIME' } };
+    const values = { options: { enableScripts: true }, canvas: { nodes: [], body: 'PRIVATE-CANVAS' }, runtime: { body: 'PRIVATE-RUNTIME' } };
     const work = (stage, duration, value) => {
       calls.push(stage); clock += duration;
       if (stage === freezeAt) actual.executionFlow.stop();
@@ -203,8 +210,8 @@ try {
       assert.equal(target, interactive ? webview : undefined);
       return work('state-runtime-build', 7, values.runtime);
     };
-    actual.postMessage = message => {
-      assert.equal(message.payload.state, values.canvas);
+    actual.postMessageWithDeliveryResult = message => {
+      assert.deepEqual(message.payload.state, values.canvas);
       assert.equal(message.payload.runtime, values.runtime);
       work('post', 13);
     };
@@ -219,7 +226,7 @@ try {
   const stateTrace = activeState.actual.executionFlow.snapshot();
   assert.deepEqual(stateTrace.details.map(s => [s.stage, s.durationMs]), [
     ['state-options-build', 2], ['state-options-set', 3], ['state-canvas-build', 5],
-    ['state-runtime-build', 7], ['state-build', 17], ['state-sidebar-notify', 11]
+    ['state-runtime-build', 7], ['state-build', 17], ['state-diff', 0], ['state-sidebar-notify', 11]
   ], 'state-build retains its original boundary and excludes message submission/sidebar work');
   for (const sample of stateTrace.details) {
     assert.equal(sample.requestId, 'state:1');
@@ -251,7 +258,7 @@ try {
   }
   const hidden = makeStateHost({ interactive: false });
   hidden.actual.postState('host/stateUpdated');
-  assert.deepEqual(hidden.calls, order.slice(2));
+  assert.deepEqual(hidden.calls, order.slice(2).filter(stage => stage !== 'post'));
   assert.ok(hidden.actual.executionFlow.snapshot().details.every(s => !s.stage.startsWith('state-options-')));
   const bootstrap = makeStateHost();
   bootstrap.actual.postState('host/bootstrap');
@@ -260,6 +267,30 @@ try {
   frozen.actual.postState('host/stateUpdated');
   assert.deepEqual(frozen.calls, order, 'freezing diagnostics must not stop state publication');
   assert.deepEqual(frozen.actual.executionFlow.snapshot().details.map(s => s.stage), stateStages.slice(0, 2));
+  const displayHost = new Harness();
+  displayHost.state = {version:1,updatedAt:'now',nodes:[],edges:[],groups:[],nextGroupSequence:1,fileReferences:[],suppressedFileActivityEdgeIds:[],suppressedAutomaticFileArtifactNodeIds:[]};
+  displayHost.surfaceLifecycle={panel:{bootstrapAck:false}};
+  displayHost.shouldQueueUntilBootstrapAck=(_surface,m)=>m.type!=='host/bootstrap'&&!displayHost.surfaceLifecycle.panel.bootstrapAck;
+  displayHost.getWebviewOptions=()=>({});
+  displayHost.prepareCanvasStateForWebview=()=>displayHost.state;
+  displayHost.getRuntimeContext=()=>({workspaceTrusted:true});
+  let sidebarNotifies=0;
+  displayHost.notifySidebarStateChanged=()=>sidebarNotifies++;
+  displayHost.isCurrentWebviewMessage=()=>true;
+  for(const method of ['flushPendingBootstrapHostMessages','flushTerminalAvailableNotifications','attachLocalExecutionsToSurface','postWorkspaceRootFocusGroupMessageForCurrentLifecycle','postCanvasTemplateCatalogToActiveWebview'])displayHost[method]=()=>{};
+  for(let i=0;i<80;i++){displayHost.state.nextGroupSequence=i+1;displayHost.postState('host/stateUpdated');}
+  assert.equal(displayHost.sent.length,0,'state catchup must not be subject to the 50-message bootstrap queue');
+  assert.equal(displayHost.pendingCanvasDisplayCatchup.size,1);
+  displayHost.handleWebviewMessage('panel',{type:'webview/bootstrapAck'});
+  assert.equal(displayHost.sent.length,1);assert.equal(displayHost.sent[0].payload.state.nextGroupSequence,80);
+  assert.equal(displayHost.sent[0].type,'host/stateUpdated');assert.equal(displayHost.pendingCanvasDisplayCatchup.size,0);
+  displayHost.postState('host/stateUpdated');assert.equal(displayHost.sent.length,1);
+  displayHost.state.nextGroupSequence=81;displayHost.postState('host/stateUpdated');
+  assert.equal(displayHost.sent.at(-1).type,'host/stateDelta');assert.equal(sidebarNotifies,83);
+  displayHost.handleActiveWebviewMessage('panel',{type:'webview/requestCanvasState'});
+  assert.equal(displayHost.sent.at(-1).type,'host/stateUpdated','explicit gap recovery always sends full state');
+  console.log('PASS actual Host canvas transport: bootstrap catchup, no silent queue truncation, empty suppression, sidebar independence, explicit resync');
+
   console.log('PASS actual Host state stages: exact timing boundaries, correlation, payload identity, inactive mode, errors, bootstrap and freeze');
 
 } finally {
@@ -269,3 +300,5 @@ try {
 await import('./test-state-configuration-reuse.mjs');
 
 await import("./test-configuration-echo-probe.mjs");
+
+await import('./test-canvas-display-updates.mjs');

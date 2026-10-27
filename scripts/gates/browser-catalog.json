@@ -28,6 +28,11 @@
       "title": "agent node movement does not resize the provider terminal"
     },
     {
+      "id": "a03daaf9564243b49609-00d05eb839eefb6b18a6",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas display delta leaves terminal output buffer intact"
+    },
+    {
       "id": "a03daaf9564243b49609-0182b7e6b37106a360d6",
       "file": "webview-harness.spec.mjs",
       "title": "note body editor reserves blank gutter rows for soft-wrapped lines"
@@ -1383,6 +1388,11 @@
       "title": "agent hard-wrapped styled path boundary rejects different-style after 4 lines"
     },
     {
+      "id": "a03daaf9564243b49609-a50f66d165f91fe906e8",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas display delta preserves pending resize until its layout acknowledgement"
+    },
+    {
       "id": "a03daaf9564243b49609-a56e090861c985fac925",
       "file": "webview-harness.spec.mjs",
       "title": "Claude Agent Ctrl-Z block is scoped away from Terminal and Codex Agent input"
@@ -1786,6 +1796,11 @@
       "id": "a03daaf9564243b49609-d37a26267fe63bf9cf3d",
       "file": "webview-harness.spec.mjs",
       "title": "agent mixed hard-wrapped styled paths respect continuation"
+    },
+    {
+      "id": "a03daaf9564243b49609-d3968de85adf1db940ee",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas display delta applies batches and recovers version gaps"
     },
     {
       "id": "a03daaf9564243b49609-d40a2ac2a17ddc351a63",

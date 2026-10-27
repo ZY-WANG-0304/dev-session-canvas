@@ -14,9 +14,11 @@ import { chromium } from 'playwright';
 import { prepareRuntime, buildVSCodeArgs, buildVSCodeChildEnv } from '../smoke/vscode-smoke-runner.mjs';
 
 const { values } = parseArgs({ options: { extension: { type: 'string' }, vscode: { type: 'string' },
-  output: { type: 'string' }, sidebar: {type:'boolean',default:false}, remote: {type:'boolean',default:false}, samples: { type: 'string', default: '40' } } });
+  output: { type: 'string' }, 'canvas-display': {type:'boolean',default:false}, 'canvas-paired': {type:'boolean',default:false}, sidebar: {type:'boolean',default:false}, remote: {type:'boolean',default:false}, samples: { type: 'string', default: '40' } } });
 assert(values.extension && values.vscode && values.output, 'Required: --extension frozen-directory --vscode executable --output NEW-directory');
 const output = path.resolve(values.output), source = path.resolve(values.extension);
+const canvasDisplay=values['canvas-display']||values['canvas-paired'];
+const nodeCount=canvasDisplay?4:2;
 const sampleCount = Number(values.samples); assert(Number.isInteger(sampleCount) && sampleCount > 0 && sampleCount <= 120);
 await fs.mkdir(output,{mode:0o700}); // Refuse to overwrite prior evidence.
 const write = (file, data) => fs.writeFile(path.join(output, file), JSON.stringify(data, null, 2));
@@ -29,7 +31,7 @@ async function wait(label, read, ready, timeout = 30000) {
 const port = await new Promise(resolve => { const server = net.createServer(); server.listen(0, '127.0.0.1', () => {
   const port = server.address().port; server.close(() => resolve(port)); }); });
 const workspace = path.join(output, 'workspace'); await fs.mkdir(workspace);
-for (let i=0;i<2;i++) { await fs.mkdir(path.join(workspace, `node${i}`));
+for (let i=0;i<nodeCount;i++) { await fs.mkdir(path.join(workspace, `node${i}`));
   await fs.writeFile(path.join(workspace, `node${i}`, 'load.json'), '{"enabled":false}'); }
 const fixture = path.join(output, 'echo-cli');
 await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/echo-cli.py', import.meta.url)), fixture); await fs.chmod(fixture, 0o755);
@@ -55,12 +57,13 @@ await fs.writeFile(hostFile,host.replace(hostAnchor,hostAnchor+'\n  require("./c
 await fs.writeFile(webFile,web.replace(webAnchor,webAnchor+'\n  window.__dscConfigurationProbeRegistry = executionTerminalRegistry;'));
 await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/host-driver.cjs',import.meta.url)),path.join(staged,'dist/configuration-reuse-driver.cjs'));
 if(values.sidebar)await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/sidebar-driver.cjs',import.meta.url)),path.join(staged,'dist/sidebar-driver.cjs'));
+if(canvasDisplay)await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/canvas-display-driver.cjs',import.meta.url)),path.join(staged,'dist/canvas-display-driver.cjs'));
 const token=randomUUID(),receipt=path.join(output,'host.json');
-await fs.writeFile(path.join(staged,'dist/configuration-reuse-driver.json'),JSON.stringify({token,receipt,workspace,fixture}),{mode:0o600});
+await fs.writeFile(path.join(staged,'dist/configuration-reuse-driver.json'),JSON.stringify({token,receipt,workspace,fixture,canvasDisplay}),{mode:0o600});
 const reference=await buildReference(path.join(staged,'dist/configuration-reuse-reference.cjs'));
 await write('input.json',{reference,source,hostSha256:createHash('sha256').update(host).digest('hex'),webviewSha256:createHash('sha256').update(web).digest('hex'),
   vscode:path.resolve(values.vscode),sampleCount,intervalMs:250,load:{tickMs:50,linesPerTick:12},
-  remoteRequested:values.remote,sidebarRequested:values.sidebar,
+  remoteRequested:values.remote,sidebarRequested:values.sidebar,canvasDisplayRequested:canvasDisplay,paired:values['canvas-paired'],inputIntervalsMs:values['canvas-paired']?[181,223,277,319]:[250],
   runnerSha256:createHash('sha256').update(await fs.readFile(fileURLToPath(import.meta.url))).digest('hex'),
   sidebarDriverSha256:values.sidebar?createHash('sha256').update(await fs.readFile(path.join(staged,'dist/sidebar-driver.cjs'))).digest('hex'):undefined,
   driverSha256:createHash('sha256').update(await fs.readFile(path.join(staged,'dist/configuration-reuse-driver.cjs'))).digest('hex'),
@@ -141,7 +144,14 @@ try {
   await create(0);
   // Observe normal keyboard events and actual xterm parse completion in one clock domain.
   await frame.evaluate(installEchoProbe,ids[0]);
-  const scenes=values.sidebar ? [
+  const scenes=values['canvas-paired'] ? [1,2].flatMap(count=>['skip','delta','delta','skip'].map((mode,index)=>({name:`paired-${count}-${index}-${mode}`,count,mode,loads:[true,false,false,false],stateLoad:true}))) : canvasDisplay ? [
+    {name:'single',loads:[true,false,false,false],count:1,stateLoad:true},
+    {name:'two-second-silent',loads:[true,false,false,false],count:2,stateLoad:true},
+    {name:'two-second-output',loads:[false,true,false,false],count:2,stateLoad:true},
+    {name:'two-both-output',loads:[true,true,false,false],count:2,stateLoad:true},
+    {name:'four-output',loads:[true,true,true,true],count:4,stateLoad:true},
+    {name:'four-natural-output',loads:[true,true,true,true],count:4}
+  ] : values.sidebar ? [
     {name:'sidebar-never-open',loads:[true,true],stateLoad:true},
     {name:'sidebar-visible',loads:[true,true],stateLoad:true,sidebarVisible:true},
     {name:'sidebar-hidden',loads:[true,true],stateLoad:true,sidebarVisible:false},
@@ -151,30 +161,64 @@ try {
     {name:'two-second-output',loads:[false,true]},{name:'two-both-output',loads:[true,true]},
     {name:'two-both-output-state-10hz',loads:[true,true],stateLoad:true}];
   for(const scene of scenes) {
-    if(scene.name!=='single'&&ids.length===1)await create(1);
-    for(let i=0;i<2;i++)await fs.writeFile(path.join(workspace,`node${i}`,'load.json'),JSON.stringify({enabled:scene.loads[i]}));
+    if(canvasDisplay) {while(ids.length<scene.count)await create(ids.length);}
+    else if(scene.name!=='single'&&ids.length===1)await create(1);
+    if(scene.mode)await request('display-mode',{mode:scene.mode});
+    for(let i=0;i<nodeCount;i++)await fs.writeFile(path.join(workspace,`node${i}`,'load.json'),JSON.stringify({enabled:scene.loads[i]}));
     if(values.sidebar && scene.sidebarVisible!==undefined) {
       await request('sidebar-show',{visible:scene.sidebarVisible});
       await wait('sidebar visibility',()=>request('sidebar-metrics'),m=>Object.values(m.views).every(v=>v.created && v.visible===scene.sidebarVisible));
     }
-    await request('state-load',{enabled:scene.stateLoad===true,hz:values.sidebar?20:10});
+    await request('state-load',{enabled:scene.stateLoad===true,hz:(values.sidebar||canvasDisplay)?20:10});
     await frame.getByRole('button',{name:'Fit view',exact:true}).click();
     await pause(1500);
     await frame.evaluate(id=>{const t=window.__dscConfigurationProbeRegistry.get(id).terminal;t.focus();},ids[0]);
     const node=frame.locator(`[data-node-id="${ids[0]}"]`);
     await node.locator('.xterm-helper-textarea').focus();
     if(values.sidebar)await request('sidebar-reset-metrics');
+    if(canvasDisplay)await request('display-reset');
+    let cdp, metricScope;
+    if(canvasDisplay) {
+      for(let target=frame;target;target=target.parentFrame()) {
+        try { cdp=await page.context().newCDPSession(target);metricScope=target.url();break; } catch {}
+      }
+      if(!cdp) { cdp=await page.context().newCDPSession(page);metricScope='workbench shared renderer'; }
+    }
+    if(cdp)await cdp.send('Performance.enable');
+    const beforeMetrics=cdp?await cdp.send('Performance.getMetrics'):undefined;
+    if(canvasDisplay)await frame.evaluate(()=>{
+      const p=window.__dscDisplayProbe={waits:[],longTasks:[],frames:[],last:performance.now(),seen:new Set(),active:true};
+      for(const e of document.querySelectorAll('.window-title-input'))p.seen.add(e.value);
+      p.scan=()=>{
+        for(const e of document.querySelectorAll('.window-title-input'))for(const m of e.value.matchAll(/Display-(\d+)-(\d+)/g)) {
+          if(p.seen.has(m[0]))continue;p.seen.add(m[0]);p.waits.push({key:m[0],ms:Date.now()-Number(m[2])});
+        }
+      };
+      p.longObserver=new PerformanceObserver(list=>p.longTasks.push(...list.getEntries().map(e=>({duration:e.duration,start:e.startTime}))));p.longObserver.observe({entryTypes:['longtask']});
+      const tick=now=>{if(!p.active)return;p.frames.push(now-p.last);p.last=now;p.scan();requestAnimationFrame(tick);};requestAnimationFrame(tick);
+    });
     await request('start-trace');
     await frame.evaluate(()=>{window.__dscEchoProbe.active=true;window.__dscEchoProbe.samples=[];window.__dscEchoProbe.parsed=0;window.__dscEchoProbe.renders=0;});
-    for(let i=0;i<sampleCount;i++){await page.keyboard.press(String.fromCharCode(97+i%26));await pause(250);}
+    for(let i=0;i<sampleCount;i++){await page.keyboard.press(String.fromCharCode(97+i%26));await pause(values['canvas-paired']?[181,223,277,319][i%4]:250);}
     await wait('all replies or timeout',()=>frame.evaluate(()=>window.__dscEchoProbe.samples.every(s=>s.applied!==undefined)),Boolean,20000).catch(()=>{});
     const observation=await frame.evaluate(()=>{const p=window.__dscEchoProbe;p.active=false;return {samples:p.samples,parsed:p.parsed,renders:p.renders};});
     const sidebar=values.sidebar?await request('sidebar-metrics'):undefined;
+    if(canvasDisplay) {
+      await request('state-load',{enabled:false});
+      const expected=(await request('display-metrics')).changes;
+      const latest=[...new Map(expected.map(c=>[c.nodeId,c.title]))];
+      await wait('latest background titles appear',()=>frame.evaluate(latest=>latest.every(([id,title])=>document.querySelector(`[data-node-id="${id}"] .window-title-input`)?.value===title),latest),Boolean);
+      await pause(50);
+    }
+    const display=canvasDisplay?{metricScope,host:await request('display-metrics'),browser:await frame.evaluate(()=>{
+      const p=window.__dscDisplayProbe;p.active=false;p.scan();p.longObserver.disconnect();return {waits:p.waits,longTasks:p.longTasks,frames:p.frames};
+    }),before:beforeMetrics,after:await cdp.send('Performance.getMetrics')}:undefined;
+    await cdp?.detach();
     const trace=await request('trace');
     await request('state-load',{enabled:false});
     const dimensions=await frame.evaluate(()=>[...window.__dscConfigurationProbeRegistry].map(([id,e])=>({id,cols:e.terminal.cols,rows:e.terminal.rows})));
-    const result={scene:scene.name,controlledStateLoadHz:scene.stateLoad?(values.sidebar?20:10):0,requested:sampleCount,observed:observation.samples.length,missing:sampleCount-observation.samples.filter(s=>s.applied!==undefined).length,
-      ...observation,dimensions,sidebar};results.push(result);
+    const result={scene:scene.name,controlledStateLoadHz:scene.stateLoad?((values.sidebar||canvasDisplay)?20:10):0,requested:sampleCount,observed:observation.samples.length,missing:sampleCount-observation.samples.filter(s=>s.applied!==undefined).length,
+      ...observation,dimensions,sidebar,display};results.push(result);
     await write(`${scene.name}.json`,{...result,trace});
     await page.screenshot({path:path.join(output,`${scene.name}.png`)});
     if(values.sidebar && scene.sidebarVisible) {
@@ -196,9 +240,9 @@ try {
     if(values.sidebar && scene.name==='sidebar-hidden')await request('sidebar-mutate',{nodeId:ids[0]});
     console.log(JSON.stringify({scene:scene.name,missing:result.missing,maxMs:Math.max(...result.samples.map(s=>s.durationMs??0))}));
   }
-  for(let i=0;i<2;i++)await fs.writeFile(path.join(workspace,`node${i}`,'load.json'),JSON.stringify({enabled:false}));
+  for(let i=0;i<nodeCount;i++)await fs.writeFile(path.join(workspace,`node${i}`,'load.json'),JSON.stringify({enabled:false}));
   await pause(200);
-  const visibleReply = `REPLY_${String(sampleCount*5+1).padStart(6,'0')}_7a`;
+  const visibleReply = `REPLY_${String(sampleCount*scenes.length+1).padStart(6,'0')}_7a`;
   await page.keyboard.press('z');
   await wait('visible final PTY reply',()=>frame.evaluate(({id,reply})=>{
     const t=window.__dscConfigurationProbeRegistry.get(id).terminal,b=t.buffer.active;
@@ -210,13 +254,13 @@ try {
   await write('final-state.json',await request('status'));
   success=results.every(r=>r.missing===0&&r.observed===r.requested);
   if(!success)throw Error('missing input/replies; retain failed samples in denominator');
-} catch(error) { if(request)await write('diagnostic-events.json',await request('diagnostics').catch(e=>String(e))); await write('failure.json',{error:String(error),stack:error.stack}); throw error; }
+} catch(error) { if(request)await write('failure-host.json',await request('status').catch(e=>String(e))); if(request)await write('diagnostic-events.json',await request('diagnostics').catch(e=>String(e))); await write('failure.json',{error:String(error),stack:error.stack}); throw error; }
 finally {
   let cleanup;
   try {cleanup=await request?.('reset');}catch(error){cleanup=String(error);}
   await write('result.json',{success,cleanup,scenes:results.map(r=>({name:r.scene,requested:r.requested,observed:r.observed,missing:r.missing}))});
   const cliCleanup=[];
-  for(let index=0;index<2;index++) {
+  for(let index=0;index<nodeCount;index++) {
     const pidFile=path.join(workspace,`node${index}`,'probe-pid.json');
     const pid=JSON.parse(await fs.readFile(pidFile,'utf8').catch(()=>'null'))?.pid;
     if(!pid)continue;
