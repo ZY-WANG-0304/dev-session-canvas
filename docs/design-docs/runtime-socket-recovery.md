@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [执行编排域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/active/runtime-socket-recovery.md]
+related_plans: [docs/exec-plans/completed/runtime-socket-recovery.md]
 updated_at: 2026-10-28
 ---
 

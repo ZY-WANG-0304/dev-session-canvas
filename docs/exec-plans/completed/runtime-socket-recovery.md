@@ -13,7 +13,7 @@
 - [x] 实现 Unix socket 修复及停止边界，7 项真实 socket 回归通过。
 - [x] 实现失联节点删除与持久诊断记录，10 项专项及完整 644 项 Host 回归通过。
 - [x] 独立真实 Codex CLI 0.164.0、Supervisor/Provider/PTY、实际 Host 删除和共享存储组合验收通过；正常构建及相关回归通过。
-- [ ] 同步证据、提交、推送并创建一个 PR。
+- [x] 同步证据、提交、推送并创建唯一 PR [#338](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/338)，未合并。
 
 ## 意外与发现
 
@@ -27,7 +27,7 @@
 
 ## 结果与复盘
 
-本地实现与具名 Linux 验收已完成，证据在 `docs/references/runtime-socket-recovery/local-validation.json`。两处旧 Host 夹具补齐真实 ExecutionFlowRecorder 初始化，未放宽断言；一次完整套件的 3 秒模式切换超时保留，隔离主线和本分支通过，最终全套 644/644。原用户环境只读取证，未终止进程。PR/Actions 状态在提交后更新，不将本地结果称发布门禁通过。
+本地实现与具名 Linux 验收已完成，证据在 `docs/references/runtime-socket-recovery/local-validation.json`。两处旧 Host 夹具补齐真实 ExecutionFlowRecorder 初始化，未放宽断言；一次完整套件的 3 秒模式切换超时保留，隔离主线和本分支通过，最终全套 644/644。原用户环境只读取证，未终止进程。唯一 PR #338 已创建，Actions 单独跟踪；本地验收与提交交付完成，不将本地结果称完整发布门禁通过，也不据此授权合并。
 
 ## 上下文与定向
 
@@ -77,3 +77,5 @@
 其余命令为 `npm run test:shared-root-canvas`、`npm run test:runtime-root-ownership`、`npm run test:runtime-supervisor-request-timeout`、`npm run test:runtime-completed-history`、`npm run typecheck`、`npm run test:ui-copy-localization` 与 `npm run build -- --execution-assets-set <原仓库 generated/execution-assets>`，均通过。原始日志保留于本工作树 `.debug/socket-recovery/`，不提交私人目录或终端正文。
 
 修订记录：2026-10-28 更新实际实现、首败与修复边界、完整 644 项和真实 CLI 组合验收；跨平台/UI/Actions 及旧进程处理边界已登记技术债。
+
+修订记录：2026-10-28 完成本地验收与 PR #338 交付，移入 completed；Actions/跨平台/UI 的证据边界保留，不伪报远端验收通过。
