@@ -1,3 +1,4 @@
+import { RuntimeSocketListener } from './runtimeSocketListener';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as net from 'net';
@@ -332,7 +333,7 @@ export class RuntimeSupervisorServer {
   private persistRegistryChain: Promise<void> = Promise.resolve();
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
-  private server: net.Server | undefined;
+  private server: net.Server | RuntimeSocketListener | undefined;
   private namespaceClaim: net.Server | undefined;
   private candidateStartAttempted = false;
   private readonly executionOwner?: ExecutionOwnerLifecycle;
@@ -573,16 +574,26 @@ export class RuntimeSupervisorServer {
   }
 
   private async listen(): Promise<void> {
+    if (this.runtimeOwner && process.platform !== 'win32') {
+      const listener = new RuntimeSocketListener(this.paths.socketPath,
+        () => ensureRuntimeRootSocketDirectory(this.paths, this.runtimeBackend, true),
+        socket => this.acceptSocket(socket),
+        error => console.error('Runtime Supervisor socket repair failed:', error));
+      this.server = listener;
+      await listener.start();
+      return;
+    }
     if (this.executionProfile === undefined && process.platform !== 'win32' && fs.existsSync(this.paths.socketPath)) {
       fs.unlinkSync(this.paths.socketPath);
     }
 
-    this.server = net.createServer((socket) => this.acceptSocket(socket));
+    const server = net.createServer((socket) => this.acceptSocket(socket));
+    this.server = server;
 
     await new Promise<void>((resolve, reject) => {
-      this.server?.once('error', reject);
-      this.server?.listen(this.paths.socketPath, () => {
-        this.server?.removeListener('error', reject);
+      server.once('error', reject);
+      server.listen(this.paths.socketPath, () => {
+        server.removeListener('error', reject);
         resolve();
       });
     });
