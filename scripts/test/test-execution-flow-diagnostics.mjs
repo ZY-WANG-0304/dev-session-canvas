@@ -16,7 +16,7 @@ try {
     export { parseWebviewMessage } from './common/protocol';
     export { normalizeTerminalStreamPage } from './common/terminalStreamPaging';`,
     resolveDir: root, loader: 'ts' }, outfile, bundle: true, platform: 'node', format: 'cjs' });
-  const { ExecutionFlowRecorder, FLOW_STAGES, FLOW_DURATION_BUCKETS_MS, normalizeFlowSnapshot,
+  const { ExecutionFlowRecorder, FLOW_STAGES, FLOW_DURATION_BUCKETS_MS, FLOW_PENDING_LIMIT, normalizeFlowSnapshot,
     normalizeFlowSample, parseWebviewMessage, normalizeTerminalStreamPage } = require(outfile);
   let now = 0;
   const recorder = new ExecutionFlowRecorder(() => now);
@@ -100,6 +100,73 @@ try {
   assert.equal(FLOW_DURATION_BUCKETS_MS.length + 1, snapshot.seconds[0].durationBuckets.length);
   console.log('PASS recorder: inactive/freeze/reset, full-window aggregation, bounds, privacy and optional protocol');
 
+  // Pending observations are censored at the stop/deadline, never completed durations.
+  now = 0;
+  recorder.start('pending', 100);
+  now = 10;
+  const pendingToken = recorder.begin({ stage: 'page-host', nodeId: 'node', requestId: 'slow',
+    sessionId: 'session', afterRevision: 3, data: 'PRIVATE-BODY', success: true, durationMs: 999 });
+  const doneToken = recorder.begin({ stage: 'input-write', nodeId: 'node', sequence: 2 });
+  now = 25;
+  recorder.finish(doneToken, { stage: 'input-write', success: false });
+  now = 60;
+  recorder.stop();
+  const stopped = recorder.snapshot();
+  assert.deepEqual(stopped.pendingSpans, [{ stage: 'page-host', atMs: 10, nodeId: 'node',
+    requestId: 'slow', sessionId: 'session', afterRevision: 3, status: 'pending', elapsedMs: 50 }]);
+  assert.equal(stopped.seconds.length, 1);
+  assert.equal(stopped.seconds[0].stage, 'input-write');
+  assert.equal(stopped.seconds[0].totalDurationMs, 15);
+  now = 200;
+  recorder.finish(pendingToken, { stage: 'page-host', success: true });
+  assert.deepEqual(recorder.snapshot(), stopped, 'late finish cannot erase a pending observation');
+  assert.deepEqual(normalizeFlowSnapshot(stopped), stopped);
+  const { pendingSpans, droppedPendingSpans, ...legacy } = stopped;
+  assert.deepEqual(normalizeFlowSnapshot(legacy), legacy, 'missing pending fields remain unknown, not empty');
+  const pendingDirty = { ...stopped, pendingSpans: [{ ...pendingSpans[0], data: 'PRIVATE-BODY', success: true, durationMs: 999 }] };
+  assert.deepEqual(normalizeFlowSnapshot(pendingDirty), stopped);
+  for (const overrides of [{ status: 'completed' }, { elapsedMs: NaN }, { elapsedMs: -1 },
+    { elapsedMs: 61 }, { atMs: 61 }, { stage: 'unknown' }]) {
+    assert.equal(normalizeFlowSnapshot({ ...stopped, pendingSpans: [{ ...pendingSpans[0], ...overrides }] }), undefined);
+  }
+  assert.equal(normalizeFlowSnapshot({ ...stopped, pendingSpans: Array(FLOW_PENDING_LIMIT + 1).fill(pendingSpans[0]) }), undefined);
+  assert.equal(normalizeFlowSnapshot({ ...stopped, droppedPendingSpans: -1 }), undefined);
+  assert.equal(normalizeFlowSnapshot({ ...stopped, droppedPendingSpans: 0.5 }), undefined);
+  assert.deepEqual(parseWebviewMessage({ type: 'webview/executionFlowSnapshot',
+    payload: { requestId: 'pending-export', snapshot: stopped } }).payload.snapshot, stopped);
+  stopped.pendingSpans[0].elapsedMs = 0;
+  assert.equal(recorder.snapshot().pendingSpans[0].elapsedMs, 50, 'pending exports are independent copies');
+  recorder.start('expired', 100);
+  now = 220;
+  const expired = recorder.begin({ stage: 'page-roundtrip', requestId: 'deadline' });
+  now = 400;
+  recorder.finish(expired, { stage: 'page-roundtrip' });
+  assert.equal(recorder.snapshot().pendingSpans[0].elapsedMs, 80, 'natural expiry seals at deadline before late finish');
+  recorder.stop();
+  now = 500;
+  assert.equal(recorder.snapshot().pendingSpans[0].elapsedMs, 80, 'late stop cannot extend the deadline');
+  recorder.start('new-trace');
+  recorder.finish(expired, { stage: 'page-roundtrip' });
+  assert.deepEqual(recorder.snapshot().pendingSpans, []);
+  assert.deepEqual(recorder.snapshot().details, []);
+  const capacity = Array.from({ length: FLOW_PENDING_LIMIT }, (_, index) =>
+    recorder.begin({ stage: 'page-host', requestId: `bounded:${index}` }));
+  const overflow = recorder.begin({ stage: 'input-write', nodeId: 'overflow' });
+  assert.ok(overflow, 'capacity cannot disable normal completed tracing');
+  assert.equal(recorder.snapshot().droppedPendingSpans, 1);
+  assert.equal(recorder.snapshot().pendingSpans.length, FLOW_PENDING_LIMIT);
+  recorder.finish(capacity[0], { stage: 'page-host' });
+  recorder.begin({ stage: 'page-host', requestId: 'replacement' });
+  recorder.finish(overflow, { stage: 'input-write' });
+  assert.equal(recorder.snapshot().pendingSpans.length, FLOW_PENDING_LIMIT);
+  assert.equal(recorder.snapshot().details.length, 2);
+  assert.equal(recorder.snapshot().droppedPendingSpans, 1);
+  recorder.start('sync-deadline', 10);
+  recorder.measureSync({ stage: 'state-build' }, () => { now += 20; });
+  assert.equal(recorder.snapshot().pendingSpans[0].elapsedMs, 10);
+  assert.equal(recorder.snapshot().details.length, 0);
+  console.log('PASS pending: manual stop/deadline, late completion/restart, capacity, privacy and legacy protocol');
+
   // Exercise the production Host methods, with only VS Code and transport boundaries replaced.
   const filename = path.join(root, 'panel/CanvasPanelManager.ts');
   const source = await readFile(filename, 'utf8');
@@ -142,6 +209,7 @@ try {
   assert.equal(host.sent[1].flowTrace.receipt, true);
   assert.equal(host.sent[2].flowTrace.receipt, false);
   assert.equal(host.flowReceipts.size, 1);
+  assert.equal(host.executionFlow.snapshot().pendingSpans[0].stage, 'message-roundtrip', 'message-post must not finish its receipt span');
   host.flowReceipts.clear();
   await host.postMessageWithDeliveryResult(stateMessage);
   assert.equal(host.sent[3].flowTrace.receipt, false, 'rate limit also applies after receipt');
@@ -174,6 +242,38 @@ try {
   host.executionFlow.stop();
   await host.readExecutionTerminalPage('panel', payload);
   assert.equal(receivedParams.diagnostics, undefined, 'inactive Host uses the original Supervisor request');
+  let hostClock = 0;
+  const slowHost = new Harness();
+  slowHost.executionFlow = new ExecutionFlowRecorder(() => hostClock);
+  slowHost.executionFlow.start('slow-host');
+  let resolvePage, resolveInput;
+  slowHost.terminalReadRelay = { read: () => new Promise(resolve => { resolvePage = resolve; }) };
+  slowHost.writeExecutionInputUntraced = () => new Promise(resolve => { resolveInput = resolve; });
+  slowHost.postMessage = message => {
+    if (message.type === 'host/executionFlowCollect') slowHost.flowCollections.get(message.payload.requestId).resolve(undefined);
+  };
+  hostClock = 10;
+  const reading = slowHost.readExecutionTerminalPage('panel', payload);
+  const writing = slowHost.writeExecutionInput('agent', 'n', 'PRIVATE-INPUT', { sequence: 4 });
+  hostClock = 75;
+  const slowExport = await slowHost.collectExecutionFlowTrace();
+  assert.deepEqual(slowExport.host.pendingSpans.map(s => [s.stage, s.elapsedMs]), [['page-host', 65], ['input-write', 65]]);
+  assert.equal(slowExport.host.pendingSpans[0].requestId, payload.requestId);
+  assert.equal(slowExport.host.pendingSpans[0].sessionId, 's');
+  assert.equal(slowExport.host.details.some(s => s.stage === 'page-host'), false);
+  assert.equal(JSON.stringify(slowExport).includes('PRIVATE-INPUT'), false);
+  const savedExport = JSON.stringify(slowExport);
+  hostClock = 100;
+  resolvePage(page);
+  await reading;
+  assert.deepEqual(slowHost.executionFlow.snapshot(), slowExport.host);
+  slowHost.executionFlow.start('restarted-host');
+  resolveInput(true);
+  await writing;
+  assert.equal(JSON.stringify(slowExport), savedExport);
+  assert.deepEqual(slowHost.executionFlow.snapshot().pendingSpans, []);
+  assert.deepEqual(slowHost.executionFlow.snapshot().details, []);
+  console.log('PASS actual Host: export unresolved page/input with identity; late completions preserve stop and restart');
   console.log('PASS actual Host: disabled transport, bounded receipt sampling, page/input tracing and capture isolation');
 
   const stateStages = ['state-options-build', 'state-options-set', 'state-canvas-build',

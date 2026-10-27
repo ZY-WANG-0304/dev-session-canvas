@@ -987,3 +987,10 @@ PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败
 侧栏自动化中间版本 B 在隐藏场景出现 1.692 秒回显，完整样本保留；该窗口状态构造最大 2.19 ms、侧栏通知最大 11.14 ms、Host page 最大 446.7 ms、Webview page RTT 最大 491.3 ms，未见达到 120 ms 阈值的 Host/Webview loop 样本。证据不足以归因为侧栏复用或环境，必须与完整候选及返回基线分别报告，不能从无缺失推导无延迟。正式结果及测试覆盖见 `docs/design-docs/runtime-journal-input-priority.md`，原始数据在当前工作区 `.debug/sidebar-reuse/`，不依赖旧的 `/tmp` 工作区。
 
 PR337 侧栏 A/B/C/A 四轮各 120 次回显及重开 DOM 验证均完成，最终 C 最长 205.6 ms，返回 A 最长 185.8 ms；B 的尖峰并未因此被关闭。已确认局部降耗，端到端 P95 未一致改善，后续主画布策略仍按独立证据推进。
+
+
+## PR337 review：诊断停止时未完成跨度的证据限制（2026-10-27）
+
+review comment 6440232755 指出的遗漏已修复：recorder 在开始时登记身份，停止/deadline 以 pendingSpans 保存已等待时间，独立于完成分布；Host read/input、消息回执和 Webview 分页往返/队列/xterm 应用已接入。旧 bfb166bb 反例预期失败，当前受控回归及 Webview 54/54、Host batch 10/10、类型检查和构建通过。修复没有遗留实现待办；新 head 仍需复审及正式 CI，draft skipped 不算验收。
+
+历史日志无法追溯补全未完成跨度，旧完成样本的最大值不能排除更慢的在途请求。现场 17 秒停顿及侧栏 B 尖峰继续未归因，后续使用新采集时应同时检查 pendingSpans、droppedPendingSpans 和完成分布；旧文件缺少 pending 字段表示未知，而非零。设计和验证记录见 docs/design-docs/runtime-journal-input-priority.md「停止时保留未完成跨度」。

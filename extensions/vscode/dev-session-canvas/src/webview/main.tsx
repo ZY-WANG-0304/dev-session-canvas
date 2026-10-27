@@ -8753,7 +8753,8 @@ function createExecutionTerminalController(
 
   const pagedProjection = new TerminalPagedProjection({
     request: (read, afterRevision, requestId, stateOffset) => {
-      const flowRequest = executionFlow.begin();
+      const flowRequest = executionFlow.begin(flowPageRequests.size < 256
+        ? { stage: 'page-roundtrip', nodeId, sessionId: read.sessionId, requestId, afterRevision } : undefined);
       if (flowRequest) {
         executionFlow.record({ stage: 'page-request', nodeId, sessionId: read.sessionId, requestId, afterRevision,
           success: flowPageRequests.size < 256 });
@@ -8863,8 +8864,8 @@ function createExecutionTerminalController(
       });
     },
     events: (events, revision, current, applied, requestId) => {
-      const flowQueued = executionFlow.begin();
       const flowIdentity = { nodeId, sessionId: currentExecutionSessionId, requestId, revision, events: events.length };
+      const flowQueued = executionFlow.begin({ stage: 'page-queue', ...flowIdentity });
       let flowApplying: FlowToken | undefined;
       let flowBytes: number | undefined;
       if (flowQueued) {
@@ -8891,7 +8892,8 @@ function createExecutionTerminalController(
       queueTerminalWrite((done, _markStarted, failed) => {
         if (!current()) { done(false); return; }
         executionFlow.finish(flowQueued, { stage: 'page-queue', ...flowIdentity, bytes: flowBytes });
-        flowApplying = flowQueued?.traceId === executionFlow.currentTraceId ? executionFlow.begin() : undefined;
+        flowApplying = flowQueued?.traceId === executionFlow.currentTraceId
+          ? executionFlow.begin({ stage: 'page-apply', ...flowIdentity, bytes: flowBytes }) : undefined;
         releaseSnapshotRestore = beginSnapshotRestore();
         applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
       }, { reason: 'paged-events', replayEventCount: events.length,

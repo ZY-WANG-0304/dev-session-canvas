@@ -8216,7 +8216,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const token = this.executionFlow.begin();
     if (receipt && targetSurface && token) {
       this.flowReceiptLastAt.set(targetSurface, now);
-      this.flowReceipts.set(targetSurface, { token, requestId, frameId: this.getSurfaceLifecycleIdentity(targetSurface)?.frameId, messageType: preparedMessage.type });
+      const receiptToken = this.executionFlow.begin({ stage: 'message-roundtrip', requestId, messageType: preparedMessage.type });
+      if (receiptToken) this.flowReceipts.set(targetSurface, { token: receiptToken, requestId, frameId: this.getSurfaceLifecycleIdentity(targetSurface)?.frameId, messageType: preparedMessage.type });
     }
     try { return targetWebview.postMessage(tracedMessage); }
     finally { this.executionFlow.finish(token, { stage: 'message-post', requestId,
@@ -20507,7 +20508,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     data: string,
     diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
   ): Promise<boolean> {
-    const token = this.executionFlow.begin();
+    const token = this.executionFlow.begin({ stage: 'input-write', nodeId, sequence: diagnosticMetadata.sequence });
     if (!token) return this.writeExecutionInputUntraced(kind, nodeId, data, diagnosticMetadata);
     this.executionFlow.record({ stage: 'input-write-start', nodeId, sequence: diagnosticMetadata.sequence });
     let success = false;
@@ -23150,7 +23151,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const lifecycle = this.getSurfaceLifecycleIdentity(surface);
     const { nodeId, kind, executionSessionId, authorityId, readId, requestId, afterRevision, stateOffset } = payload;
-    const flowPage = this.executionFlow.begin();
+    const flowPage = this.executionFlow.begin({ stage: 'page-host', nodeId, sessionId: executionSessionId, requestId, afterRevision });
     this.executionFlow.record({ stage: 'page-host-request', nodeId, sessionId: executionSessionId, requestId, afterRevision });
     let flowSuccess = false;
     let flowTiming: { queueMs: number; readMs: number; totalMs: number } | undefined;

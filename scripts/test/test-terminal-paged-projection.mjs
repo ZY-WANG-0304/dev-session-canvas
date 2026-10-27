@@ -1127,6 +1127,41 @@ async function verifyControllerSettlement(directory) {
     } finally { f.dispose(); }
   });
 
+  for (const stage of ['page-roundtrip', 'page-queue', 'page-apply']) {
+    await check(`diagnostic stop retains unfinished ${stage} without delaying the actual reader`, async () => {
+      let clock = 0;
+      const executionFlow = new ExecutionFlowRecorder(() => clock);
+      executionFlow.start(`pending-${stage}`);
+      const f = fixture(`pending-${stage}`, 1, 'final-application-v1', { executionFlow });
+      let release;
+      try {
+        f.start();
+        await until(() => f.requests().length === 1, 'pending diagnostic request');
+        const requestId = f.requests()[0].payload.requestId;
+        if (stage === 'page-apply') {
+          const write = f.terminal.write.bind(f.terminal);
+          f.terminal.write = (text, done) => write(text, () => { release = done; });
+        }
+        const events = [{ type: 'output', revision: 1, createdAtMs: 1, data: 'PRIVATE-PENDING-TEXT' }];
+        if (stage !== 'page-roundtrip') f.sendPage(events);
+        if (stage === 'page-apply') await until(() => release !== undefined, 'held actual xterm callback');
+        clock = 75;
+        executionFlow.stop();
+        const snapshot = executionFlow.snapshot();
+        assert.deepEqual(snapshot.pendingSpans.map(s => [s.stage, s.requestId, s.elapsedMs]), [[stage, requestId, 75]]);
+        assert.equal(snapshot.pendingSpans[0].nodeId, 'node');
+        assert.equal(snapshot.pendingSpans[0].sessionId, 'session');
+        assert.equal(snapshot.details.some(s => s.stage === stage), false);
+        assert.equal(JSON.stringify(snapshot).includes('PRIVATE-PENDING-TEXT'), false);
+        clock = 150;
+        if (stage === 'page-roundtrip') f.sendPage(events);
+        release?.();
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'reader completes after diagnostic stop');
+        assert.deepEqual(executionFlow.snapshot(), snapshot);
+      } finally { release?.(); f.dispose(); }
+    });
+  }
+
   await check('current-state chunks import the actual buffers before consuming live tail and final revision', async () => {
     const f = fixture('current-state-reader', 1);
     const source = new Terminal({ cols: 80, rows: 24, scrollback: 100, allowProposedApi: true });

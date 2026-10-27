@@ -291,3 +291,18 @@ P95 为 24 个样本的 nearest-rank；无缺失样本排除。已确认的是�
 ## 第三阶段：画布展示增量（2026-10-27）
 
 用户确认按展示变化筛选并按节点批量更新，保持现有发送时机。实现、版本恢复/布局确认、1600次真实回显对照与结果见 [按展示变化批量同步画布](canvas-display-updates.md)。通信及浏览器工作下降成立，构造次数不变，回显P95没有一致改善；不把已有用户正向反馈归因于尚未由用户测试的新阶段。
+
+
+## 正式方案：停止时保留未完成跨度（PR337 review）
+
+2026-10-27 review 指出：`collectExecutionFlowTrace` 和 Webview collect 均先停止 recorder，未完成的 page-host/page-roundtrip 随后被 active 检查丢弃。选用有界 pending 快照，不等待请求完成；等待会让正在诊断的慢请求反过来阻塞导出。
+
+`common/executionFlowDiagnostics.ts` 在 begin 时接收可选阶段与关联标识，最多登记 256 个在途跨度；完成时移除并照常统计，容量不足累计 droppedPendingSpans，但不影响业务执行或已完成样本。snapshot 单独输出 pendingSpans，每项包含 status=pending、起始 atMs、elapsedMs 和已知关联标识，elapsedMs 仅是截至观察结束的耗时下界，不进入完成样本/直方图。手动停止以停止时刻为界，自然到期以 trace deadline 为界；晚到回调不能改写停止快照，新 trace 清空旧登记。无需定时器或等待。
+
+Host 的异步输入写入、分页读取、抽样消息回执，以及 Webview 的分页往返、排队、xterm 应用在开始时登记身份。消息发送和回执使用独立 token，避免一次 finish 误结算另一阶段。同步 measureSync 同样传入已知阶段，跨观察期限的同步操作可保留为未完成。匿名 begin 仅用于不需要 pending 归属的同步观察。Webview 请求关联表满时不登记无法被正常结算的请求。
+
+新增字段在 schema 1 中可选，旧导出仍可读取；缺少字段表示旧版不支持该观察，不能解释为没有 pending。normalizer 校验数组上限、时间范围和 status，按白名单剥离未知字段，不保存输入或终端正文。Host 和 Webview 各自停止时刻不同，pending 是各进程观察结束的状态，不据此推导跨进程同时性。
+
+验证口径：受控时钟核验手动停止/自然到期、迟到完成/重启、容量释放、隐私和旧格式；真实 Host 方法挂起 read 后导出再完成；真实 Webview controller 分别挂起响应、写队列和 xterm 回调。保持请求、广播时机与频率不变。本轮定向回归已通过，详见下述验证记录。历史导出缺少此信息，已有延迟统计只覆盖完成样本，不能证明不存在在途长请求；本修复不能追溯补全旧证据。
+
+验证记录（2026-10-27）：对旧 bfb166bb recorder 运行未完成分页的受控反例，停止 75 ms 后 pending 断言失败（actual=undefined），迟到 finish 仍不产生完成样本。当前测试通过手动停止、deadline、迟到完成/重启、256 项容量和释放、旧格式与隐私清洗；提取真实 Host 方法验证未完成 read/input 先导出后完成，真实 Webview controller 新增三个阶段用例，54/54 通过，Host batch 10/10 通过。`npm run test:terminal-paged-projection`（含 execution-flow-diagnostics）、`npm run typecheck`、`npm run build` 和 `npm run prepare:debug-main-only-extension` 均成功。原始日志 `.debug/review337-pending-{baseline,tests,typecheck,build,prepare}.log`；旧基线日志为预期红灯，其余通过。此次为诊断边界修复，未重复性能 A/B 对照或真实 GUI 复测，不代替正式 CI。

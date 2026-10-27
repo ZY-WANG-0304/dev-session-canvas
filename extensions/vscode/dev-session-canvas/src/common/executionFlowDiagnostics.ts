@@ -10,6 +10,7 @@ export type FlowStage = typeof FLOW_STAGES[number];
 export const FLOW_DURATION_BUCKETS_MS = [1, 4, 16, 50, 100, 250, 500, 1000, 2500, 5000, 15000, 60000];
 const DETAIL_LIMIT = 64;
 const NODE_LIMIT = 128;
+export const FLOW_PENDING_LIMIT = 256;
 const numberFields = ['durationMs', 'sequence', 'afterRevision', 'revision', 'headRevision', 'bytes', 'events',
   'processingMs', 'measurementMs', 'supervisorQueueMs', 'supervisorReadMs', 'supervisorTotalMs'] as const;
 const stringFields = ['nodeId', 'sessionId', 'requestId', 'messageType', 'reason'] as const;
@@ -61,6 +62,15 @@ export interface FlowSnapshot {
   details: FlowSample[];
   seconds: FlowAggregate[];
   groups: FlowAggregate[];
+  /** Absent in older exports; pending durations are lower bounds, not completed samples. */
+  pendingSpans?: FlowPendingSpan[];
+  droppedPendingSpans?: number;
+}
+export type FlowSpanIdentity = Omit<FlowSample, 'atMs' | 'durationMs' | 'success'>;
+export interface FlowPendingSpan extends FlowSpanIdentity {
+  status: 'pending';
+  atMs: number;
+  elapsedMs: number;
 }
 export interface FlowToken { traceId: string; started: number }
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -101,27 +111,49 @@ export class ExecutionFlowRecorder {
   private nodes = new Map<string, FlowAggregate>();
   private droppedDetails = 0;
   private droppedNodeGroups = 0;
+  private pending = new Map<FlowToken, Omit<FlowPendingSpan, 'status' | 'elapsedMs'>>();
+  private droppedPendingSpans = 0;
   public constructor(private readonly now: () => number = () => performance.now()) {}
   public start(traceId: string, durationMs = EXECUTION_FLOW_DURATION_MS): void {
     if (!id(traceId) || !finite(durationMs) || durationMs <= 0) return;
     this.traceId = traceId; this.started = this.now(); this.epoch = Date.now();
     this.duration = Math.min(durationMs, EXECUTION_FLOW_DURATION_MS); this.stoppedAt = undefined;
     this.details.clear(); this.seconds.clear(); this.nodes.clear(); this.droppedDetails = 0; this.droppedNodeGroups = 0;
+    this.pending.clear(); this.droppedPendingSpans = 0;
   }
-  public stop(): void { if (this.traceId && this.stoppedAt === undefined) this.stoppedAt = this.now(); }
+  public stop(): void {
+    if (this.traceId && this.stoppedAt === undefined) this.stoppedAt = Math.min(this.now(), this.started + this.duration);
+  }
   public get active(): boolean {
     return !!this.traceId && this.stoppedAt === undefined && this.now() - this.started < this.duration;
   }
   public get currentTraceId(): string | undefined { return this.traceId; }
   public get remainingMs(): number { return this.active ? Math.max(0, this.duration - (this.now() - this.started)) : 0; }
-  public begin(): FlowToken | undefined { return this.active ? { traceId: this.traceId!, started: this.now() } : undefined; }
+  public begin(identity?: FlowSpanIdentity): FlowToken | undefined {
+    if (!this.active) return undefined;
+    const token = { traceId: this.traceId!, started: this.now() };
+    if (token.started >= this.started + this.duration) return undefined;
+    if (identity) {
+      const sample = normalizeFlowSample({ ...identity, atMs: token.started - this.started });
+      if (sample) {
+        const { durationMs: _duration, success: _success, ...metadata } = sample;
+        if (this.pending.size < FLOW_PENDING_LIMIT) this.pending.set(token, metadata);
+        else this.droppedPendingSpans++;
+      }
+    }
+    return token;
+  }
   public finish(token: FlowToken | undefined, sample: Omit<FlowSample, 'atMs'>): void {
-    if (!token || token.traceId !== this.traceId || !this.active) return;
-    this.record({ ...sample, durationMs: this.now() - token.started });
+    if (!token || token.traceId !== this.traceId || this.stoppedAt !== undefined) return;
+    const end = this.now();
+    if (end >= this.started + this.duration) return;
+    // Once stopped/expired, retain outstanding spans at the observation boundary.
+    this.pending.delete(token);
+    this.recordAt({ ...sample, durationMs: end - token.started }, end);
   }
   /** Measure synchronous work only; keep the operation's return value and thrown error. */
   public measureSync<T>(sample: Omit<FlowSample, 'atMs' | 'durationMs' | 'success'>, operation: () => T): T {
-    const token = this.begin();
+    const token = this.begin(sample);
     if (!token) return operation();
     let success = false;
     try {
@@ -133,8 +165,13 @@ export class ExecutionFlowRecorder {
     }
   }
   public record(value: Omit<FlowSample, 'atMs'>): void {
-    if (!this.active) return;
-    const sample = normalizeFlowSample({ ...value, atMs: this.now() - this.started });
+    if (!this.traceId || this.stoppedAt !== undefined) return;
+    const at = this.now();
+    if (at >= this.started + this.duration) return;
+    this.recordAt(value, at);
+  }
+  private recordAt(value: Omit<FlowSample, 'atMs'>, at: number): void {
+    const sample = normalizeFlowSample({ ...value, atMs: at - this.started });
     if (!sample) return;
     const detail = this.details.get(sample.stage) ?? [];
     if (detail.length >= DETAIL_LIMIT) { detail.shift(); this.droppedDetails++; }
@@ -157,9 +194,13 @@ export class ExecutionFlowRecorder {
   }
   public snapshot(): FlowSnapshot | undefined {
     if (!this.traceId) return undefined;
+    const end = Math.min(this.stoppedAt ?? this.now(), this.started + this.duration);
     return JSON.parse(JSON.stringify({ schema: 1, traceId: this.traceId, startedEpochMs: this.epoch,
-      elapsedMs: Math.min(this.duration, (this.stoppedAt ?? this.now()) - this.started), durationMs: this.duration,
-      stopped: !this.active, droppedDetails: this.droppedDetails, droppedNodeGroups: this.droppedNodeGroups,
+      elapsedMs: end - this.started, durationMs: this.duration,
+      stopped: this.stoppedAt !== undefined || end >= this.started + this.duration,
+      droppedDetails: this.droppedDetails, droppedNodeGroups: this.droppedNodeGroups,
+      pendingSpans: [...this.pending].map(([token, identity]) => ({ ...identity, status: 'pending', elapsedMs: Math.max(0, end - token.started) })),
+      droppedPendingSpans: this.droppedPendingSpans,
       details: [...this.details.values()].flat().sort((a, b) => a.atMs - b.atMs),
       seconds: [...this.seconds.values()], groups: [...this.nodes.values()] }));
   }
@@ -174,6 +215,19 @@ export function normalizeFlowSnapshot(value: unknown): FlowSnapshot | undefined 
       !Array.isArray(value.groups) || value.groups.length > NODE_LIMIT) return undefined;
   const details = value.details.map(normalizeFlowSample);
   if (details.some(x => !x)) return undefined;
+  let pendingSpans: FlowPendingSpan[] | undefined;
+  if (value.pendingSpans !== undefined || value.droppedPendingSpans !== undefined) {
+    if (!Array.isArray(value.pendingSpans) || value.pendingSpans.length > FLOW_PENDING_LIMIT ||
+        !Number.isSafeInteger(value.droppedPendingSpans) || !finite(value.droppedPendingSpans)) return undefined;
+    pendingSpans = [];
+    for (const entry of value.pendingSpans) {
+      const sample = normalizeFlowSample(entry);
+      if (!object(entry) || !sample || entry.status !== 'pending' || !finite(entry.elapsedMs) ||
+          sample.atMs > (value.elapsedMs as number) || entry.elapsedMs > (value.elapsedMs as number)) return undefined;
+      const { durationMs: _duration, success: _success, ...identity } = sample;
+      pendingSpans.push({ ...identity, status: 'pending', elapsedMs: entry.elapsedMs });
+    }
+  }
   const parseAggregate = (v: unknown): FlowAggregate | undefined => {
     if (!object(v) || !FLOW_STAGES.includes(v.stage as FlowStage) ||
         !['count', 'bytes', 'failures', 'durationCount', 'totalDurationMs', 'maxDurationMs'].every(k => finite(v[k])) ||
@@ -192,5 +246,6 @@ export function normalizeFlowSnapshot(value: unknown): FlowSnapshot | undefined 
   return { schema: 1, traceId: value.traceId, startedEpochMs: value.startedEpochMs as number,
     elapsedMs: value.elapsedMs as number, durationMs: value.durationMs as number, stopped: value.stopped,
     droppedDetails: value.droppedDetails as number, droppedNodeGroups: value.droppedNodeGroups as number,
+    ...(pendingSpans ? { pendingSpans, droppedPendingSpans: value.droppedPendingSpans as number } : {}),
     details: details as FlowSample[], seconds: seconds as FlowAggregate[], groups: nodes as FlowAggregate[] };
 }
