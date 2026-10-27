@@ -14,7 +14,7 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/runtime-paged-terminal-projection.md
-updated_at: 2026-09-18
+updated_at: 2026-10-25
 ---
 
 # Runtime live 终端的消费驱动分页投影
@@ -42,6 +42,8 @@ updated_at: 2026-09-18
 ### 客户端消费
 
 Webview 应用 checkpoint 后串行请求页面，一次最多一个读取/写入中的页面，所有 xterm 回调完成才推进游标/ACK。output、resize、scrollback 保持顺序。head 通知只记录最大位置，无 body；同一读取链从恢复持续到实时，没有第二条实时 body 队列。
+
+该规则提供的是每个 reader 内的顺序与背压，不提供多个 reader 之间的输入优先级。2026-10-25 对 `origin/main@37ff8554` 的实现核对发现，`TerminalPagedProjection.pull()` 直接发起 page read，Host relay 直接转发；页面到达后 Webview 的分页 `events` 回调直接排入该节点 write chain。它们不经过普通 `host/executionOutput` scheduler 或普通 Webview output drain 的跨节点选择。该差异是静态架构事实，尚未证明造成用户回显卡顿；现阶段先补充通信与分页阶段诊断，再据实测决定是否改变调度，见 [`runtime-journal-input-priority.md`](runtime-journal-input-priority.md)。
 
 `webview/terminalPagedProjection.ts` 管理单页消费状态，`main.tsx` 用同一事件应用函数处理完整旧协议和新页面；在 xterm parser 回调之外应用后续 resize/options。节点绑定、Webview 生命周期、读取 ID 和请求 ID 隔离旧响应。重建/替换/关闭释放读者，旧代际写入不能 ACK。页错误以 250ms 间隔从相同位置重试，不推进消费；socket 断开时新模式保持原会话身份、进入 reattaching，以 500ms 间隔连接原 endpoint 并重新建立投影，只有明确 session-not-found 才进入历史态，不自动启动新 Agent。分页 open/read/close 与重新 attach/subscribe 的 Host/client 连接步骤均不允许为清理或重试启动 Supervisor，不能只在首次取 client 时禁止启动。已有 RPC 无响应期限问题 F-01 不在本次解决，连接保持但完全不响应时仍可能等待。
 

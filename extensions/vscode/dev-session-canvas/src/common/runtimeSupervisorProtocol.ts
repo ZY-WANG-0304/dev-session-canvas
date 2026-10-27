@@ -234,6 +234,7 @@ export interface RuntimeSupervisorCloseTerminalReadResult {
 }
 
 export interface RuntimeSupervisorReadTerminalPageParams extends Omit<RuntimeSupervisorCloseTerminalReadParams, 'outcome'> {
+  diagnostics?: boolean;
   afterRevision: number;
   stateOffset?: number;
 }

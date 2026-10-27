@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import ts from 'typescript';
+import { readCanvasRuntimeUpdate } from '../../tests/vscode-smoke/canvas-runtime-update.cjs';
 import contract from '../../tests/vscode-smoke/runtime-reload-contract.cjs';
 import windows from '../../tests/vscode-smoke/agent-candidate-windows-observer.cjs';
 import processObserver from '../../tests/vscode-smoke/agent-candidate-process-observer.cjs';
@@ -154,11 +155,11 @@ test('pair reader requires its requested snapshot and actual mounted page, not a
 });
 
 test('PaneGallery round trip observes actual group frames and rejects a replacement execution', async () => {
-  for (const starts of [[], [{ kind: 'execution/started' }]]) {
+  for (const type of ['host/stateUpdated', 'host/stateDelta']) for (const starts of [[], [{ kind: 'execution/started' }]]) {
     let mode = 'rootGroups';
     const updates = [], captures = [], cleared = [];
     const subject = { binding: { runtimeSessionId: 'original' } };
-    const api = compile(['pairSwitchGallery'], { assert,
+    const api = compile(['pairSwitchGallery'], { assert, readCanvasRuntimeUpdate,
       snapshot: async () => ({ state: { groups: ['A', 'B'].map(id => ({ id, role: 'workspace-root' })) } }),
       vscode: { ConfigurationTarget: { Workspace: 2 }, workspace: { getConfiguration: section => {
         assert.equal(section, 'devSessionCanvas'); return { update: async (key, value, target) => {
@@ -167,7 +168,8 @@ test('PaneGallery round trip observes actual group frames and rejects a replacem
       command: async name => {
         if (name.startsWith('clear')) { cleared.push(name); return; }
         if (name === 'getDiagnosticEvents') return starts;
-        return [{ type: 'host/stateUpdated', payload: { runtime: { multiRootPresentationMode: mode } } }];
+        const runtime = { multiRootPresentationMode: mode };
+        return [{ type, payload: { runtime: type === 'host/stateDelta' ? { presentation: runtime } : runtime } }];
       },
       probe: async () => ({ groups: mode === 'paneGallery' ? [] : ['A', 'B'].map(groupId => ({ groupId })) }),
       poll: async (_label, get, accept) => { const value = await get(); assert(accept(value)); return value; },

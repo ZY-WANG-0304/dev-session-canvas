@@ -28,7 +28,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-10-02
+updated_at: 2026-10-25
 ---
 
 # Agent / Terminal 无损输入输出与恢复
@@ -459,6 +459,8 @@ deferred attach revision 在 `subscribeSession(afterRevision)` 完成前收紧 r
 
 ### 10.17 live 投影的消费驱动分页
 
+2026-10-25 对 `origin/main@37ff8554` 的实现核对补充：各 reader 的单页顺序和 applied 回执不代表跨 reader 的输入优先。`TerminalPagedProjection.pull()` 自行发起 read，Host `readExecutionTerminalPage()` 直接 relay，Webview 的 page `events` 回调直接排入节点 write chain；这三个环节不经过普通 output scheduler。该差异尚未被证实为用户卡顿的唯一根因，修正方案仍待确认，见 [`runtime-journal-input-priority.md`](runtime-journal-input-priority.md)。
+
 `runtimeSupervisorMain.ts` 发布 `terminalPagedReadV1`，新 Host 在 create/attach/subscribe 协商分页模式。live 快照与普通生命周期消息只包含有限摘要、authority/head，不构造完整 stream；显式旧 `getSessionSnapshot` 和正常 completed 保持完整协议。`CanvasPanelManager.ts` 不为分页会话积累完整 events，也不把实时 body 推送到 Webview 的恢复队列。
 
 Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。每页沿用 256 KiB 事件数组 JSON / 256 条预算，单个大事件例外。`runtimeTerminalReadRelay.ts` 只转发一页；`webview/terminalPagedProjection.ts` 只有在 xterm 应用整页后才请求下一页，以相同游标衔接恢复与实时。head 通知不是消费证明，失败重试不推进位置，重复/旧代际响应不能二次应用。关闭 surface、替换读者或断开 socket 释放其保留资格，不结束 PTY。
@@ -525,7 +527,7 @@ Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。�
 - Host/Webview 以 authority 和 revision range 校验 coalesced output，在 resize/scrollback 前 flush 旧 output；gap 或 authority 变化会 fail closed 并重新 attach。Webview 已删除 backlog 阈值触发的 snapshot replacement，健康 live backlog 不再被 checkpoint 清空。
 - 健康 authority 的新 Webview 投影 attach 前会通过只读 `getSessionSnapshot` 刷新 Supervisor checkpoint；刷新期间到达 Host 的 live 尾部按连续 revision 无损合并。该方法受 `terminalProjectionSnapshotV1` capability 保护，不改变当前 subscription。
 - Webview 将连续 output journal events 合并为目标上限 256 Ki 个 UTF-16 code unit 的 xterm write（单个 event 不拆分），resize/scrollback 保持批次边界；Pane Gallery 新激活主 Pane 的 hydrate 优先于旧输入节点。诊断已覆盖 checkpoint/replay 字符数、事件数和 revision 区间。
-- Host 与 Webview 均按 `kind + nodeId` 维护唯一输入优先级；Host 对超时后台输出逐轮放行，Webview 用每-controller 排队年龄和额外公平预算保证持续输入期间的有界推进。节点内 output 始终从队首切片，未选中内容不会被清空。
+- 普通 push output 由 Host 与 Webview 按 `kind + nodeId` 维护唯一输入优先级；Host 对超时后台输出逐轮放行，Webview 用每-controller 排队年龄和额外公平预算保证持续输入期间的有界推进。节点内 output 始终从队首切片，未选中内容不会被清空。该结论不覆盖第 10.17 节的 journal page request/application；两者缺口见 [`runtime-journal-input-priority.md`](runtime-journal-input-priority.md)。
 - 缺少 `terminalSessionStreamV1` 的旧 Supervisor 会话显式进入 `legacy-interactive`：旧进程继续承载既有 PTY 的 output、input、resize、stop 与 delete，Host 不把 raw tail 冒充完整 checkpoint / journal；新 session 则进入当前 generation 的独立 Supervisor。最后一个已知旧会话退出后释放旧 client，让旧进程按 idle shutdown 退役。
 - Webview 只在 xterm write callback、前序 write 后的 resize/scrollback 或完整 snapshot replay 完成时发送 `webview/executionTerminalApplied`。Host 按 surface 校验，Supervisor 按同 socket 内的 `consumerId=panel|editor` 分水位记录；ACK 不推进 authority revision，也不删除 journal。
 - Host 以 10–12 秒确定性错峰周期检查健康 authority cache；只有 checkpoint 落后时请求权威 snapshot，并与 RPC 期间连续 live tail 无损合并。attach、周期和并发刷新复用同一 in-flight，所有 session/Host 生命周期边界都会清 timer。

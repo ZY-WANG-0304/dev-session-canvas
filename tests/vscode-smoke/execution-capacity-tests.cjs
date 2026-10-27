@@ -1,3 +1,4 @@
+const { readCanvasRuntimeUpdate } = require('./canvas-runtime-update.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const { createReadStream } = require('node:fs');
@@ -69,8 +70,7 @@ async function setLiveScrollback(value, subject) {
   await vscode.workspace.getConfiguration('terminal.integrated').update(
     'scrollback', value, vscode.ConfigurationTarget.Workspace);
   await poll(`host scrollback update ${value}`, () => command('getHostMessages'), messages =>
-    messages.some(message => message.type === 'host/stateUpdated' &&
-      message.payload?.runtime?.terminalScrollback === value));
+    messages.some(message => readCanvasRuntimeUpdate(message)?.terminalScrollback === value));
   if (subject) {
     await poll(`runtime scrollback update ${value}`, () => command('getRuntimeSupervisorState'), state =>
       Object.values(state.registries ?? {}).some(entry => entry.registry?.sessions?.some(session =>

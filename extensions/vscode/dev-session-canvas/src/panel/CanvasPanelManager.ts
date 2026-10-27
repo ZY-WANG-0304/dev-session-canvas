@@ -1,3 +1,5 @@
+import { CanvasDisplayPublisher, type CanvasLayoutAcknowledgement } from '../common/canvasDisplayUpdates';
+import { ExecutionFlowRecorder, EXECUTION_FLOW_DURATION_MS, FLOW_DURATION_BUCKETS_MS, type FlowSnapshot, type FlowToken } from '../common/executionFlowDiagnostics';
 import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1476,6 +1478,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly sidebarStateEmitter = new vscode.EventEmitter<CanvasSidebarState>();
   private readonly templateCatalogEmitter = new vscode.EventEmitter<void>();
   private readonly diagnosticHostMessages: CanvasHostMessageDiagnosticRecord[] = [];
+  private readonly executionFlow = new ExecutionFlowRecorder();
+  private flowMessageSequence = 0;
+  private readonly flowReceipts = new Map<CanvasSurfaceLocation, { token: FlowToken; requestId: string; frameId?: string; messageType: string }>();
+  private readonly flowSurfaceFrames = new Map<CanvasSurfaceLocation, { initialFrameId?: string; currentFrameId?: string; replacements: number }>();
+  private readonly flowReceiptLastAt = new Map<CanvasSurfaceLocation, number>();
+  private readonly flowCollections = new Map<string, { surface: CanvasSurfaceLocation; frameId?: string;
+    resolve: (snapshot: FlowSnapshot | undefined) => void }>();
+
   private readonly executionFileLinkResolveDiagnostics: ExecutionFileLinkResolveDiagnosticSample[] = [];
   private readonly executionPerformanceDiagnostics: ExecutionPerformanceDiagnosticSample[] = [];
   private readonly executionFileLinkResolveQueueByNode = new Map<string, Promise<void>>();
@@ -1857,12 +1867,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   public getSidebarState(): CanvasSidebarState {
+    const configuration = vscode.workspace.getConfiguration();
     const configuredSurface = this.getConfiguredSurface();
     const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
     const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
-    const fileConfiguration = this.getCanvasFileViewConfiguration();
-    const terminalShell = getConfiguredTerminalShell();
-    const agentCliConfig = this.getAgentCliConfig();
+    const fileConfiguration = this.getCanvasFileViewConfiguration(configuration);
+    const terminalShell = getConfiguredTerminalShell(configuration);
+    const agentCliConfig = this.getAgentCliConfig(configuration);
 
     return {
       canvasSurface,
@@ -2497,7 +2508,57 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
+  public startExecutionFlowTrace(): void {
+    this.executionFlow.start(randomUUID());
+    this.flowReceipts.clear(); this.flowReceiptLastAt.clear(); this.flowSurfaceFrames.clear();
+    for (const surface of ['panel', 'editor'] as const) this.sendExecutionFlowStart(surface);
+  }
+
+  private sendExecutionFlowStart(surface: CanvasSurfaceLocation): void {
+    if (!this.executionFlow.active || !this.isInteractiveSurface(surface)) return;
+    const frameId = this.getSurfaceLifecycleIdentity(surface)?.frameId;
+    const previous = this.flowSurfaceFrames.get(surface);
+    this.flowSurfaceFrames.set(surface, previous ? { ...previous, currentFrameId: frameId,
+      replacements: previous.replacements + (previous.currentFrameId === frameId ? 0 : 1) }
+      : { initialFrameId: frameId, currentFrameId: frameId, replacements: 0 });
+    this.postMessage({ type: 'host/executionFlowStart', payload: {
+      traceId: this.executionFlow.currentTraceId!, durationMs: this.executionFlow.remainingMs
+    } }, surface);
+  }
+
+  private async collectExecutionFlowTrace(): Promise<unknown> {
+    this.executionFlow.stop();
+    const traceId = this.executionFlow.currentTraceId;
+    const host = this.executionFlow.snapshot();
+    const participatingFrames = [...this.flowSurfaceFrames].map(([surface, frames]) => ({ surface, ...frames }));
+    const pendingMessageReceipts = [...this.flowReceipts].map(([surface, pending]) => ({ surface,
+      requestId: pending.requestId, ageMs: performance.now() - pending.token.started }));
+    const surfaces = await Promise.all((['panel', 'editor'] as const).map(async surface => {
+      if (!traceId || !this.isInteractiveSurface(surface)) return { surface, status: 'not-participating' };
+      if (this.flowCollections.size >= 2) return { surface, status: 'collection-busy' };
+      const requestId = randomUUID();
+      const frameId = this.getSurfaceLifecycleIdentity(surface)?.frameId;
+      return new Promise<unknown>(resolve => {
+        const timer = setTimeout(() => {
+          this.flowCollections.delete(requestId); resolve({ surface, frameId, status:
+            this.getSurfaceLifecycleIdentity(surface)?.frameId === frameId ? 'timeout' : 'lifecycle-replaced' });
+        }, 3000);
+        this.flowCollections.set(requestId, { surface, frameId, resolve: snapshot => {
+          clearTimeout(timer); this.flowCollections.delete(requestId);
+          resolve({ surface, frameId, status: snapshot?.traceId === traceId ? 'collected' : 'not-participating',
+            ...(snapshot?.traceId === traceId ? { snapshot } : {}) });
+        } });
+        try { this.postMessage({ type: 'host/executionFlowCollect', payload: { requestId, traceId } }, surface); }
+        catch { clearTimeout(timer); this.flowCollections.delete(requestId); resolve({ surface, frameId, status: 'post-failed' }); }
+      });
+    }));
+    return { schema: 1, durationBucketsMs: FLOW_DURATION_BUCKETS_MS,
+      clockSemantics: 'atMs/durationMs are process-local monotonic times; epoch is context only; do not subtract clocks across processes',
+      host, surfaces, participatingFrames, pendingMessageReceipts };
+  }
+
   public async dumpCurrentHostDiagnostics(): Promise<CanvasHostDiagnosticsDumpResult> {
+    const flowDiagnosticsPromise = this.collectExecutionFlowTrace();
     await this.flushDeferredCanvasStatePersist('diagnostics');
     await this.waitForPendingWorkspaceStateUpdates();
 
@@ -2640,6 +2701,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         executionPerformanceDiagnosticsPath,
         executionPerformanceDiagnostics
       ),
+      writeJsonFile(path.join(outputDir, 'execution-flow-diagnostics.json'), await flowDiagnosticsPromise),
       writeJsonFile(path.join(outputDir, 'diagnostic-events.json'), diagnosticEvents),
       writeJsonFile(path.join(outputDir, 'note-markdown-diagnostics.json'), noteMarkdownDiagnostics),
       writeJsonFile(
@@ -5161,6 +5223,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       diagnosticHostMessages: [],
       testHostMessages: [],
       testDiagnosticEvents: [],
+      executionFlow: new ExecutionFlowRecorder(), flowMessageSequence: 0,
+      flowReceipts: new Map(), flowSurfaceFrames: new Map(), flowReceiptLastAt: new Map(), flowCollections: new Map(),
+      canvasDisplayPublishers: new Map(), pendingCanvasDisplayCatchup: new Set(),
       terminalReadRelay: new RuntimeTerminalReadRelay(),
       terminalAvailableNotifications: new TerminalAvailableNotifications(),
       nonNativeHostExecutions: new Map<string, NonNativeHostExecution>(),
@@ -8046,28 +8111,60 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
+  private readonly pendingCanvasDisplayCatchup = new Set<CanvasSurfaceLocation>();
+  private readonly canvasDisplayPublishers = new Map<CanvasSurfaceLocation, CanvasDisplayPublisher>();
+
   private postState(
     type: 'host/bootstrap' | 'host/stateUpdated',
-    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity }
+    options?: { surface?: CanvasSurfaceLocation; lifecycle?: WebviewLifecycleIdentity; reason?: string; layoutAck?: CanvasLayoutAcknowledgement; full?: boolean }
   ): void {
+    const flowBuild = this.executionFlow.begin();
+    const flowIdentity = { requestId: flowBuild ? `state:${++this.flowMessageSequence}` : undefined,
+      reason: options?.reason ?? 'other', messageType: type };
     const targetSurface = options?.surface ?? this.activeSurface;
     const activeWebview =
       targetSurface && this.isInteractiveSurface(targetSurface)
         ? this.getSurfaceMessageWebview(targetSurface)
         : undefined;
     if (activeWebview) {
-      activeWebview.options = this.getWebviewOptions();
+      const webviewOptions = this.executionFlow.measureSync({ stage: 'state-options-build', ...flowIdentity },
+        () => this.getWebviewOptions());
+      this.executionFlow.measureSync({ stage: 'state-options-set', ...flowIdentity },
+        () => { activeWebview.options = webviewOptions; });
     }
     const lifecycle = options?.lifecycle ?? (targetSurface ? this.getSurfaceLifecycleIdentity(targetSurface) : undefined);
-    this.postMessage({
-      type,
-      lifecycle,
-      payload: {
-        state: this.prepareCanvasStateForWebview(activeWebview),
-        runtime: this.getRuntimeContext(activeWebview)
+    const payload = {
+      state: this.executionFlow.measureSync({ stage: 'state-canvas-build', ...flowIdentity },
+        () => this.prepareCanvasStateForWebview(activeWebview)),
+      runtime: this.executionFlow.measureSync({ stage: 'state-runtime-build', ...flowIdentity },
+        () => this.getRuntimeContext(activeWebview))
+    };
+    this.executionFlow.finish(flowBuild, { stage: 'state-build', ...flowIdentity });
+    if (targetSurface && activeWebview) {
+      let publisher = this.canvasDisplayPublishers.get(targetSurface);
+      if (!publisher) { publisher = new CanvasDisplayPublisher(); this.canvasDisplayPublishers.set(targetSurface, publisher); }
+      if (this.shouldQueueUntilBootstrapAck(targetSurface, { type, lifecycle, payload })) {
+        // The generic queue is bounded and may drop old entries. Keep one catch-up responsibility instead.
+        this.pendingCanvasDisplayCatchup.add(targetSurface);
+        publisher.invalidate();
+      } else {
+        const identity = JSON.stringify(lifecycle);
+        const currentPublisher = publisher;
+        const update = this.executionFlow.measureSync({ stage: 'state-diff', ...flowIdentity },
+          () => currentPublisher.publish(payload, identity, type === 'host/bootstrap' || options?.full === true, options?.layoutAck));
+        if (update) {
+          const message: HostToWebviewMessage = type === 'host/bootstrap'
+            ? { type, lifecycle, payload: update.payload as typeof payload } : { ...update, lifecycle };
+          try {
+            const delivery = this.postMessageWithDeliveryResult(message, targetSurface, options?.reason ?? 'other');
+            if (delivery) void Promise.resolve(delivery).then(delivered => { if (!delivered) currentPublisher.invalidate(identity); }, () => currentPublisher.invalidate(identity));
+          } catch (error) { currentPublisher.invalidate(identity); throw error; }
+        }
       }
-    }, targetSurface);
-    this.notifySidebarStateChanged();
+    }
+    if (type === 'host/bootstrap' && targetSurface) this.sendExecutionFlowStart(targetSurface);
+    this.executionFlow.measureSync({ stage: 'state-sidebar-notify', ...flowIdentity },
+      () => this.notifySidebarStateChanged());
   }
 
   private prepareCanvasStateForWebview(webview: vscode.Webview | undefined): CanvasPrototypeState {
@@ -8076,12 +8173,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return stripExecutionTerminalRecoveryPayloadsFromCanvasState(stateWithImageResources);
   }
 
-  private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation): void {
-    void this.postMessageWithDeliveryResult(message, surface);
+  private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation, reason?: string): void {
+    void this.postMessageWithDeliveryResult(message, surface, reason);
   }
 
   private postMessageWithDeliveryResult(
-    message: HostToWebviewMessage, surface?: CanvasSurfaceLocation
+    message: HostToWebviewMessage, surface?: CanvasSurfaceLocation, reason?: string
   ): Thenable<boolean> | undefined {
     const targetSurface = surface ?? this.activeSurface;
     const targetWebview =
@@ -8100,7 +8197,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    return targetWebview.postMessage(preparedMessage);
+    if (!this.executionFlow.active || preparedMessage.type.startsWith('host/executionFlow')) {
+      return targetWebview.postMessage(preparedMessage);
+    }
+    const requestId = `message:${++this.flowMessageSequence}`;
+    const now = performance.now();
+    const pending = targetSurface && this.flowReceipts.get(targetSurface);
+    if (targetSurface && pending && now - pending.token.started > 30_000) {
+      this.executionFlow.finish(pending.token, { stage: 'message-roundtrip', requestId: pending.requestId, messageType: pending.messageType, success: false });
+      this.flowReceipts.delete(targetSurface);
+    }
+    const receipt = !!targetSurface && !this.flowReceipts.has(targetSurface) &&
+      now - (this.flowReceiptLastAt.get(targetSurface) ?? -Infinity) >= 1000;
+    const tracedMessage: HostToWebviewMessage = { ...preparedMessage, flowTrace: {
+      traceId: this.executionFlow.currentTraceId!, requestId, receipt
+    } };
+    let bytes: number | undefined;
+    const measureAt = performance.now();
+    try { bytes = Buffer.byteLength(JSON.stringify(tracedMessage), 'utf8'); } catch { /* diagnostic only */ }
+    const measurementMs = performance.now() - measureAt;
+    const token = this.executionFlow.begin();
+    if (receipt && targetSurface && token) {
+      this.flowReceiptLastAt.set(targetSurface, now);
+      const receiptToken = this.executionFlow.begin({ stage: 'message-roundtrip', requestId, messageType: preparedMessage.type });
+      if (receiptToken) this.flowReceipts.set(targetSurface, { token: receiptToken, requestId, frameId: this.getSurfaceLifecycleIdentity(targetSurface)?.frameId, messageType: preparedMessage.type });
+    }
+    try { return targetWebview.postMessage(tracedMessage); }
+    finally { this.executionFlow.finish(token, { stage: 'message-post', requestId,
+      messageType: preparedMessage.type, reason, bytes, measurementMs }); }
   }
 
   private withSurfaceLifecycle(
@@ -8167,14 +8291,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
-    const fileConfiguration = this.getCanvasFileViewConfiguration();
+    const configuration = vscode.workspace.getConfiguration();
+    const fileConfiguration = this.getCanvasFileViewConfiguration(configuration);
+    const agentCliConfig = this.getAgentCliConfig(configuration);
     return {
       executionMouseDiagnosticsEnabled: this.context.extensionMode === vscode.ExtensionMode.Development,
       workspaceTrusted: vscode.workspace.isTrusted,
       surfaceLocation: this.activeSurface ?? this.getConfiguredSurface(),
       workspaceFolders: this.getWorkspaceFoldersForDisplay(),
-      defaultAgentProvider: this.getAgentCliConfig().defaultProvider,
-      agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(),
+      defaultAgentProvider: agentCliConfig.defaultProvider,
+      agentLaunchDefaults: this.getAgentLaunchDefaultsByProvider(agentCliConfig),
       strongTerminalAttentionReminderMode: this.strongTerminalAttentionReminderMode,
       terminalScrollback: this.getTerminalScrollback(),
       editorMultiCursorModifier: normalizeEditorMultiCursorModifier(
@@ -8185,10 +8311,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       terminalWordSeparators: normalizeExecutionTerminalWordSeparators(
         vscode.workspace.getConfiguration('terminal.integrated').get<string>('wordSeparators')
       ),
-      overviewMode: this.getCanvasOverviewMode(),
-      overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(),
-      multiRootPresentationMode: this.getCanvasMultiRootPresentationMode(),
-      workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(),
+      overviewMode: this.getCanvasOverviewMode(configuration),
+      overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(configuration),
+      multiRootPresentationMode: this.getCanvasMultiRootPresentationMode(configuration),
+      workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(configuration),
       filePresentationMode: fileConfiguration.presentationMode,
       fileNodeDisplayStyle: fileConfiguration.displayStyle,
       fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
@@ -8223,21 +8349,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private getCanvasOverviewMode(): CanvasOverviewMode {
+  private getCanvasOverviewMode(configuration?: vscode.WorkspaceConfiguration): CanvasOverviewMode {
     return normalizeCanvasOverviewMode(
-      getConfigurationValue<CanvasOverviewMode>('canvasOverviewMode', 'title')
+      getConfigurationValue<CanvasOverviewMode>('canvasOverviewMode', 'title', configuration)
     );
   }
 
-  private getCanvasOverviewZoomThreshold(): number {
+  private getCanvasOverviewZoomThreshold(configuration?: vscode.WorkspaceConfiguration): number {
     return normalizeCanvasOverviewZoomThreshold(
-      getConfigurationValue<number>('canvasOverviewZoomThreshold', DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD)
+      getConfigurationValue<number>('canvasOverviewZoomThreshold', DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD, configuration)
     );
   }
 
-  private getCanvasMultiRootPresentationMode(): CanvasMultiRootPresentationMode {
+  private getCanvasMultiRootPresentationMode(configuration?: vscode.WorkspaceConfiguration): CanvasMultiRootPresentationMode {
     return normalizeCanvasMultiRootPresentationMode(
-      getConfigurationValue<CanvasMultiRootPresentationMode>('canvasMultiRootPresentationMode', 'rootGroups')
+      getConfigurationValue<CanvasMultiRootPresentationMode>('canvasMultiRootPresentationMode', 'rootGroups', configuration)
     );
   }
 
@@ -8247,15 +8373,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private getWorkspaceRootWatermarksEnabled(): boolean {
-    return getConfigurationValue<boolean>('canvasWorkspaceRootWatermarksEnabled', true);
+  private getWorkspaceRootWatermarksEnabled(configuration?: vscode.WorkspaceConfiguration): boolean {
+    return getConfigurationValue<boolean>('canvasWorkspaceRootWatermarksEnabled', true, configuration);
   }
 
-  private getCanvasFileViewConfiguration(): CanvasFileViewConfiguration {
-    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists');
-    const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal');
-    const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path');
-    const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename');
+  private getCanvasFileViewConfiguration(configuration?: vscode.WorkspaceConfiguration): CanvasFileViewConfiguration {
+    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists', configuration);
+    const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal', configuration);
+    const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path', configuration);
+    const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename', configuration);
 
     return {
       enabled: this.appliedStartupConfiguration.filesFeatureEnabled,
@@ -13550,7 +13676,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         })
       });
       await this.persistState({ reason: 'runtime-supervisor-live-snapshot' });
-      this.postState('host/stateUpdated');
+      this.postState('host/stateUpdated', { reason: 'runtime-supervisor-live-snapshot' });
       if (options.postSnapshot) {
         void this.postExecutionSnapshot(kind, nodeId, {
           executionSessionId: session.sessionId
@@ -14492,6 +14618,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
+    if (parsedMessage.type === 'webview/executionFlowSnapshot' || parsedMessage.type === 'webview/executionFlowReceipt') {
+      if (!this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, { recordIgnored: false })) return;
+      const p = parsedMessage.payload;
+      if (parsedMessage.type === 'webview/executionFlowSnapshot') {
+        const pending = this.flowCollections.get(p.requestId);
+        if (pending?.surface === sourceSurface && pending.frameId === lifecycle?.frameId) pending.resolve(parsedMessage.payload.snapshot);
+      } else {
+        const pending = this.flowReceipts.get(sourceSurface);
+        if (pending?.requestId === p.requestId && pending.frameId === lifecycle?.frameId &&
+            pending.token.traceId === parsedMessage.payload.traceId) {
+          this.executionFlow.finish(pending.token, { stage: 'message-roundtrip', requestId: p.requestId,
+            messageType: pending.messageType, processingMs: parsedMessage.payload.processingMs, success: true });
+          this.flowReceipts.delete(sourceSurface);
+        }
+      }
+      return;
+    }
+
     if (parsedMessage.type === 'webview/executionPerformanceDiagnostic') {
       const current = this.isCurrentWebviewMessage(sourceSurface, sourceWebview, lifecycle, parsedMessage.type, {
         recordIgnored: false
@@ -14564,6 +14708,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lifecycle: summarizeWebviewLifecycleIdentity(this.getSurfaceLifecycleIdentity(sourceSurface))
       });
       this.flushPendingBootstrapHostMessages(sourceSurface);
+      if (this.pendingCanvasDisplayCatchup.delete(sourceSurface)) {
+        this.postState('host/stateUpdated', { surface: sourceSurface, full: true, reason: 'bootstrap-catchup' });
+      }
       this.flushTerminalAvailableNotifications(sourceSurface);
       this.attachLocalExecutionsToSurface(sourceSurface);
       this.postWorkspaceRootFocusGroupMessageForCurrentLifecycle(sourceSurface);
@@ -14728,6 +14875,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sourceWebview?: vscode.Webview
   ): void {
     switch (parsedMessage.type) {
+      case 'webview/requestCanvasState':
+        this.postState('host/stateUpdated', { surface: sourceSurface, full: true, reason: 'canvas-resync' });
+        return;
       case 'webview/ready':
         return;
       case 'webview/executionLocalTerminalSettled':
@@ -14846,7 +14996,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             applied: summarizeCanvasGroupGeometryForDiagnostics(this.state, groupId)
           });
           this.persistState();
-          this.postState('host/stateUpdated');
+          this.postState('host/stateUpdated', { layoutAck: { groups: [groupId] } });
         }
         return;
       case 'webview/resizeGroup':
@@ -14887,7 +15037,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               : undefined
           });
           this.persistState();
-          this.postState('host/stateUpdated');
+          this.postState('host/stateUpdated', { layoutAck: { groups: [groupId] } });
         }
         return;
       case 'webview/ungroup':
@@ -14909,7 +15059,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           )
         );
         this.persistState();
-        this.postState('host/stateUpdated');
+        this.postState('host/stateUpdated', { layoutAck: { nodes: [parsedMessage.payload.id, ...(parsedMessage.payload.selectedMoves?.map(move => move.id) ?? [])] } });
         return;
       case 'webview/resizeNode':
         this.state = this.reconcileCanvasFileArtifacts(
@@ -14922,7 +15072,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           )
         );
         this.persistState();
-        this.postState('host/stateUpdated');
+        this.postState('host/stateUpdated', { layoutAck: { nodes: [parsedMessage.payload.nodeId] } });
         return;
       case 'webview/deleteNode':
         void this.deleteNode(parsedMessage.payload.nodeId);
@@ -14970,6 +15120,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       case 'webview/executionInput':
         {
+          const flowInput = this.executionFlow.begin();
           const hostReceivedEpochMs = Date.now();
           const queueDelayMs =
             typeof parsedMessage.payload.webviewEpochMs === 'number'
@@ -15016,6 +15167,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               pendingOutputLength: schedulerStateBeforeAck.pendingOutputLength
             }
           });
+          this.executionFlow.finish(flowInput, { stage: 'input-host', nodeId: parsedMessage.payload.nodeId,
+            sequence: parsedMessage.payload.sequence, bytes: Buffer.byteLength(parsedMessage.payload.data, 'utf8') });
           void this.writeExecutionInput(
             parsedMessage.payload.kind,
             parsedMessage.payload.nodeId,
@@ -17706,12 +17859,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
   }
 
-  private getAgentCliConfig(): AgentCliConfig {
-    const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex');
-    const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex').trim() || 'codex';
-    const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude').trim() || 'claude';
-    const codexDefaultArgs = getConfigurationValue<string>('agentCodexDefaultArgs', '').trim();
-    const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '').trim();
+  private getAgentCliConfig(configuration?: vscode.WorkspaceConfiguration): AgentCliConfig {
+    const defaultProvider = getConfigurationValue<AgentProviderKind>('agentDefaultProvider', 'codex', configuration);
+    const configuredCodexCommand = getConfigurationValue<string>('agentCodexCommand', 'codex', configuration).trim() || 'codex';
+    const configuredClaudeCommand = getConfigurationValue<string>('agentClaudeCommand', 'claude', configuration).trim() || 'claude';
+    const codexDefaultArgs = getConfigurationValue<string>('agentCodexDefaultArgs', '', configuration).trim();
+    const claudeDefaultArgs = getConfigurationValue<string>('agentClaudeDefaultArgs', '', configuration).trim();
 
     const codexCommand =
       isTestHarnessMode(this.context.extensionMode)
@@ -17731,8 +17884,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     };
   }
 
-  private getAgentLaunchDefaults(provider: AgentProviderKind): AgentProviderLaunchDefaults {
-    const configuration = this.getAgentCliConfig();
+  private getAgentLaunchDefaults(
+    provider: AgentProviderKind,
+    configuration: AgentCliConfig = this.getAgentCliConfig()
+  ): AgentProviderLaunchDefaults {
     return provider === 'claude'
       ? {
           command: configuration.claudeCommand,
@@ -17744,10 +17899,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         };
   }
 
-  private getAgentLaunchDefaultsByProvider(): AgentLaunchDefaultsByProvider {
+  private getAgentLaunchDefaultsByProvider(configuration?: AgentCliConfig): AgentLaunchDefaultsByProvider {
     return {
-      codex: this.getAgentLaunchDefaults('codex'),
-      claude: this.getAgentLaunchDefaults('claude')
+      codex: this.getAgentLaunchDefaults('codex', configuration),
+      claude: this.getAgentLaunchDefaults('claude', configuration)
     };
   }
 
@@ -20356,6 +20511,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     data: string,
     diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
   ): Promise<boolean> {
+    const token = this.executionFlow.begin({ stage: 'input-write', nodeId, sequence: diagnosticMetadata.sequence });
+    if (!token) return this.writeExecutionInputUntraced(kind, nodeId, data, diagnosticMetadata);
+    this.executionFlow.record({ stage: 'input-write-start', nodeId, sequence: diagnosticMetadata.sequence });
+    let success = false;
+    try { success = await this.writeExecutionInputUntraced(kind, nodeId, data, diagnosticMetadata); return success; }
+    finally { this.executionFlow.finish(token, { stage: 'input-write', nodeId, sequence: diagnosticMetadata.sequence,
+      bytes: Buffer.byteLength(data, 'utf8'), success }); }
+  }
+
+  private async writeExecutionInputUntraced(
+    kind: ExecutionNodeKind,
+    nodeId: string,
+    data: string,
+    diagnosticMetadata: ExecutionInputDiagnosticMetadata = {}
+  ): Promise<boolean> {
     const ownedRecord = this.nonNativeHostExecutions.get(this.getExecutionSessionOperationKey(kind, nodeId));
     if (ownedRecord?.business) return this.writeNonNativeHostInput(ownedRecord, data);
     if (this.nonNativeExecutionOwner?.get(this.getExecutionSessionOperationKey(kind, nodeId))) {
@@ -22483,7 +22653,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.postState !== false &&
       (options.postState === true || options.persistMode === 'immediate' || !this.hasActiveExecutionSessions())
     ) {
-      this.postState('host/stateUpdated');
+      this.postState('host/stateUpdated', { reason: 'execution-state-sync' });
     }
   }
 
@@ -22984,12 +23154,18 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   ): Promise<void> {
     const lifecycle = this.getSurfaceLifecycleIdentity(surface);
     const { nodeId, kind, executionSessionId, authorityId, readId, requestId, afterRevision, stateOffset } = payload;
+    const flowPage = this.executionFlow.begin({ stage: 'page-host', nodeId, sessionId: executionSessionId, requestId, afterRevision });
+    this.executionFlow.record({ stage: 'page-host-request', nodeId, sessionId: executionSessionId, requestId, afterRevision });
+    let flowSuccess = false;
+    let flowTiming: { queueMs: number; readMs: number; totalMs: number } | undefined;
     try {
       const page = await this.terminalReadRelay.read(`${surface}:${kind}:${nodeId}`, {
         sessionId: executionSessionId, authorityId, readId, afterRevision,
+        ...(flowPage ? { diagnostics: true } : {}),
         ...(stateOffset !== undefined ? { stateOffset } : {})
       });
       if (page) {
+        flowSuccess = true; flowTiming = page.diagnostics;
         this.postMessage({ type: 'host/executionTerminalPage', lifecycle, payload: {
           nodeId, kind, executionSessionId, authorityId, readId, requestId, page
         } }, surface);
@@ -23009,6 +23185,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         nodeId, kind, executionSessionId, authorityId, readId, requestId, error: formatUnknownError(error),
         ...(readClosed ? { readClosed: true as const } : {})
       } }, surface);
+    } finally {
+      this.executionFlow.finish(flowPage, { stage: 'page-host', nodeId, sessionId: executionSessionId,
+        requestId, afterRevision, success: flowSuccess, supervisorQueueMs: flowTiming?.queueMs,
+        supervisorReadMs: flowTiming?.readMs, supervisorTotalMs: flowTiming?.totalMs });
     }
   }
 
@@ -23487,9 +23667,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private startHostEventLoopLagMonitor(): void {
+    let flowExpected = performance.now() + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
     this.hostEventLoopLagMonitorExpectedAtMs = Date.now() + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
     const tick = (): void => {
       const now = Date.now();
+      const flowNow = performance.now();
+      const flowLag = Math.max(0, flowNow - flowExpected);
+      if (flowLag >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS) this.executionFlow.record({ stage: 'host-loop', durationMs: flowLag });
+      flowExpected = flowNow + EXECUTION_HOST_EVENT_LOOP_LAG_INTERVAL_MS;
       const lagMs = Math.max(0, now - this.hostEventLoopLagMonitorExpectedAtMs);
       if (lagMs >= EXECUTION_HOST_EVENT_LOOP_LAG_REPORT_THRESHOLD_MS) {
         this.recordExecutionPerformanceDiagnostics({

@@ -1543,6 +1543,7 @@ async function assertPagedTerminalRecovery(socket, messages, registryPath, tempD
     while (revision < full.terminalRevision) {
       const params = { ...identity, readId: fast.readId, afterRevision: revision };
       const page = await sendRuntimeSupervisorRequest(socket, messages, 'readTerminalPage', params);
+      assert.equal(page.diagnostics, undefined, 'normal read adds no diagnostic fields');
       assert.equal(page.afterRevision, revision);
       assert.equal(page.events[0].revision, revision + 1);
       assert.ok(page.events.length <= 256);
@@ -1577,8 +1578,11 @@ async function assertPagedTerminalRecovery(socket, messages, registryPath, tempD
     });
     assert.ok(geometry.events.some((event) => event.type === 'resize'));
     const slowPage = await sendRuntimeSupervisorRequest(socket, messages, 'readTerminalPage', {
-      ...identity, readId: slow.readId, afterRevision: slow.checkpoint.revision
+      ...identity, readId: slow.readId, afterRevision: slow.checkpoint.revision, diagnostics: true
     });
+    assert.ok(slowPage.diagnostics.queueMs >= 0);
+    assert.ok(slowPage.diagnostics.readMs >= 0);
+    assert.ok(slowPage.diagnostics.totalMs >= slowPage.diagnostics.queueMs + slowPage.diagnostics.readMs);
     assert.equal(slowPage.events[0].revision, slow.checkpoint.revision + 1);
     await sendRuntimeSupervisorRequest(socket, messages, 'closeTerminalRead', { ...identity, readId: fast.readId });
     await sendRuntimeSupervisorRequest(socket, messages, 'closeTerminalRead', { ...identity, readId: fast.readId });

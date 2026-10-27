@@ -5,6 +5,8 @@ import esbuild from 'esbuild';
 // Execute the actual manager and its protocol methods; only VS Code and payload I/O are boundaries.
 const bundled = await esbuild.build({
   stdin: { contents: `
+    export { ExecutionFlowRecorder } from './extensions/vscode/dev-session-canvas/src/common/executionFlowDiagnostics';
+    export { CanvasDisplayPublisher } from './extensions/vscode/dev-session-canvas/src/common/canvasDisplayUpdates';
     export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
     export { RuntimeTerminalReadRelay } from './extensions/vscode/dev-session-canvas/src/panel/runtimeTerminalReadRelay';
     export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
@@ -21,7 +23,7 @@ const bundled = await esbuild.build({
 });
 const loaded = { exports: {} };
 new Function('require', 'module', 'exports', bundled.outputFiles[0].text)(createRequire(import.meta.url), loaded, loaded.exports);
-const { CanvasPanelManager, RuntimeTerminalReadRelay, TerminalAvailableNotifications } = loaded.exports;
+const { CanvasPanelManager, RuntimeTerminalReadRelay, TerminalAvailableNotifications, ExecutionFlowRecorder, CanvasDisplayPublisher } = loaded.exports;
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
@@ -44,6 +46,9 @@ function fixture(surface) {
     pendingWorkspaceRootFocusReplay: {}, pendingVisibilityRestore: { editor: false, panel: false },
     pendingVisibilityRestoreFocus: {}, lastVisibleCanvasCenterBySurface: { panel: { x: 5, y: 6 } },
     diagnosticHostMessages: [], testHostMessages: [], testDiagnosticEvents: [],
+    executionFlow: new ExecutionFlowRecorder(), flowMessageSequence: 0,
+    flowReceipts: new Map(), flowSurfaceFrames: new Map(), flowReceiptLastAt: new Map(), flowCollections: new Map(),
+    canvasDisplayPublishers: new Map(), pendingCanvasDisplayCatchup: new Set(),
     terminalReadRelay: new RuntimeTerminalReadRelay(), terminalAvailableNotifications: new TerminalAvailableNotifications(),
     getWebviewOptions: () => ({}), prepareCanvasStateForWebview: () => structuredClone(host.state),
     getRuntimeContext: () => structuredClone(runtime), notifySidebarStateChanged() {},
@@ -73,6 +78,20 @@ function assertFake(result) {
 async function protectResponsibilities(f) {
   const { host } = f;
   let released = 0;
+  host.executionFlow.start('live-trace');
+  host.executionFlow.begin({ stage: 'page-host', requestId: 'live-page' });
+  const publisher = new CanvasDisplayPublisher();
+  host.canvasDisplayPublishers.set('editor', publisher);
+  host.pendingCanvasDisplayCatchup.add('editor');
+  const flowReceipt = { token: host.executionFlow.begin({ stage: 'message-roundtrip', requestId: 'live-message' }),
+    requestId: 'live-message', messageType: 'host/stateUpdated' };
+  host.flowReceipts.set('editor', flowReceipt);
+  const diagnostic = host.createWebviewLifecycleRaceDiagnosticManager();
+  for (const key of ['executionFlow', 'flowReceipts', 'flowSurfaceFrames', 'flowReceiptLastAt', 'flowCollections',
+    'canvasDisplayPublishers', 'pendingCanvasDisplayCatchup']) assert.notEqual(diagnostic[key], host[key], key);
+  assert.equal(diagnostic.executionFlow.active, false);
+  assert.equal(diagnostic.canvasDisplayPublishers.size, 0);
+  assert.equal(diagnostic.pendingCanvasDisplayCatchup.size, 0);
   // A live panel reader must never be cancelled by diagnostic fake panel renders.
   const descriptor = { readId: 'retained-read', sessionId: 'retained-session', authorityId: 'retained-authority', headRevision: 0,
     checkpoint: { version: 1, sessionId: 'retained-session', authorityId: 'retained-authority', revision: 0,
@@ -104,6 +123,11 @@ async function protectResponsibilities(f) {
   host.recordDiagnosticEvent('retained/event'); host.recordHostMessage('editor', { type: 'host/themeChanged' }, true);
   return {
     check() {
+      assert.equal(host.executionFlow.currentTraceId, 'live-trace');
+      assert.deepEqual(host.executionFlow.snapshot().pendingSpans.map(span => span.requestId), ['live-page', 'live-message']);
+      assert.equal(host.canvasDisplayPublishers.get('editor'), publisher);
+      assert.deepEqual([...host.pendingCanvasDisplayCatchup], ['editor']);
+      assert.equal(host.flowReceipts.get('editor'), flowReceipt);
       assert.equal(released, 0, 'Diagnostic must not close real terminal reader');
       assert.equal(host.terminalAvailableNotifications.size, 1, 'Diagnostic must not clear real notifications');
       assert.equal(host.pendingWorkspaceRootFocusReplay.editor, focus, 'Diagnostic must preserve focus replay');

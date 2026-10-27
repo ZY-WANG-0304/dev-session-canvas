@@ -1,3 +1,5 @@
+import { applyCanvasDisplayDelta, type CanvasDisplaySnapshot } from '../common/canvasDisplayUpdates';
+import { ExecutionFlowRecorder, type FlowToken } from '../common/executionFlowDiagnostics';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
@@ -861,6 +863,7 @@ function handleExecutionInputAck(payload: {
   const now = readPerformanceNow();
   const startedAt = pending?.webviewPerformanceNowMs ?? payload.webviewPerformanceNowMs;
   const durationMs = typeof startedAt === 'number' ? Math.max(0, now - startedAt) : undefined;
+  executionFlow.record({ stage: 'input-ack', nodeId: payload.nodeId, sequence: payload.sequence, durationMs });
   reportExecutionPerformanceDiagnostic(
     {
       source: 'webview-input-ack',
@@ -919,6 +922,9 @@ function estimateUtf8ByteLength(value: string): number {
   }
 }
 
+const executionFlow = new ExecutionFlowRecorder();
+const flowPageRequests = new Map<string, { token: FlowToken; readId: string; nodeId: string; sessionId: string; afterRevision: number }>();
+
 function readPerformanceNow(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
 }
@@ -929,6 +935,7 @@ function startExecutionMainThreadLagMonitor(): void {
     const now = readPerformanceNow();
     const lagMs = Math.max(0, now - expectedAt);
     if (lagMs >= EXECUTION_MAIN_THREAD_LAG_REPORT_THRESHOLD_MS) {
+      executionFlow.record({ stage: 'webview-loop', durationMs: lagMs });
       lastExecutionMainThreadLagAtMs = now;
       reportExecutionPerformanceDiagnostic(
         {
@@ -1593,6 +1600,9 @@ function App(): JSX.Element {
     resolveCanvasOverviewTitleScale(initialPersistedState.viewport?.zoom ?? 1)
   );
 
+  const canvasDisplaySnapshotRef = useRef<CanvasDisplaySnapshot>();
+  const canvasDisplayResyncPendingRef = useRef(false);
+
   hostMessageHandlerRef.current = (message: HostToWebviewMessage): void => {
     const messageLifecycle = extractWebviewMessageLifecycle(message);
     if (requiresHostMessageLifecycle(message.type) && !messageLifecycle) {
@@ -1605,12 +1615,52 @@ function App(): JSX.Element {
       return;
     }
 
+    const flowHandle = executionFlow.begin();
+    try {
     switch (message.type) {
+      case 'host/executionFlowStart':
+        if (executionFlow.currentTraceId !== message.payload.traceId) {
+          executionFlow.start(message.payload.traceId, message.payload.durationMs);
+          flowPageRequests.clear();
+        }
+        break;
+      case 'host/executionFlowCollect':
+        if (message.payload.traceId === executionFlow.currentTraceId) executionFlow.stop();
+        postMessage({ type: 'webview/executionFlowSnapshot', payload: {
+          requestId: message.payload.requestId, snapshot: message.payload.traceId === executionFlow.currentTraceId ? executionFlow.snapshot() : undefined
+        } });
+        break;
       case 'host/bootstrap':
       case 'host/stateUpdated':
+      case 'host/stateDelta':
         {
-          const normalizedState = normalizeCanvasPrototypeState(message.payload.state);
-          const normalizedRuntime = normalizeRuntimeContext(message.payload.runtime);
+          const previous = canvasDisplaySnapshotRef.current;
+          const incremental = message.type === 'host/stateDelta';
+          const snapshot = incremental
+            ? (!canvasDisplayResyncPendingRef.current && previous ? applyCanvasDisplayDelta(previous, message.payload) : undefined)
+            : message.payload;
+          if (!snapshot) {
+            if (!canvasDisplayResyncPendingRef.current) {
+              canvasDisplayResyncPendingRef.current = true;
+              postMessage({ type: 'webview/requestCanvasState' });
+            }
+            break;
+          }
+          if (!incremental && snapshot.revision !== undefined && previous?.revision !== undefined && snapshot.revision <= previous.revision) break;
+          const normalizedState = incremental ? snapshot.state : normalizeCanvasPrototypeState(snapshot.state);
+          const normalizedRuntime = incremental ? snapshot.runtime : normalizeRuntimeContext(snapshot.runtime);
+          canvasDisplaySnapshotRef.current = { state: normalizedState, runtime: normalizedRuntime, revision: snapshot.revision };
+          if (!incremental) canvasDisplayResyncPendingRef.current = false;
+          const stateChanged = !incremental || normalizedState !== previous?.state;
+          const runtimeChanged = !incremental || normalizedRuntime !== previous?.runtime;
+          const layoutNodeIds = incremental ? new Set([
+            ...(message.payload.layoutAck?.nodes ?? []), ...(message.payload.nodes?.remove ?? []),
+            ...(message.payload.nodes?.upsert.filter(node => {
+              const old = previous?.state.nodes.find(item => item.id === node.id);
+              return !old || old.position.x !== node.position.x || old.position.y !== node.position.y ||
+                old.size.width !== node.size.width || old.size.height !== node.size.height;
+            }).map(node => node.id) ?? [])
+          ]) : undefined;
           hostStateRef.current = normalizedState;
           latestHostNodeIdsRef.current = new Set(normalizedState.nodes.map((node) => node.id));
           latestRuntimeContext = normalizedRuntime;
@@ -1619,13 +1669,13 @@ function App(): JSX.Element {
               `execution mouse diagnostics enabled: ${normalizedRuntime.executionMouseDiagnosticsEnabled === true}`
             );
           }
-          setHostState(normalizedState);
-          setExecutionTerminalTitles((current) =>
+          if (stateChanged) setHostState(normalizedState);
+          if (stateChanged) setExecutionTerminalTitles((current) =>
             message.type === 'host/bootstrap'
               ? terminalTitleProjectionsFromState(normalizedState)
               : mergeTerminalTitleProjectionsFromState(current, normalizedState)
           );
-          setRuntimeContext(normalizedRuntime);
+          if (runtimeChanged) setRuntimeContext(normalizedRuntime);
           setNodeLayoutDrafts((current) => {
             // Host layout wins after a move/resize has been submitted.
             const pendingNodeIds = pendingCommittedNodeLayoutDraftIdsRef.current;
@@ -1635,17 +1685,26 @@ function App(): JSX.Element {
 
             const next = { ...current };
             for (const nodeId of pendingNodeIds) {
+              if (layoutNodeIds && !layoutNodeIds.has(nodeId)) continue;
               delete next[nodeId];
+              pendingNodeIds.delete(nodeId);
             }
-            pendingNodeIds.clear();
             return shallowEqualCanvasNodeLayoutDrafts(current, next) ? current : next;
           });
-          setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
-          activeNodeResizeDraftsRef.current = {};
-          setGroupDrafts((current) => {
+          if (!incremental) {
+            setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
+            activeNodeResizeDraftsRef.current = {};
+          }
+          if (!incremental || message.payload.state?.groups || message.payload.layoutAck?.groups) setGroupDrafts((current) => {
             const activeGroupIds = activeGroupInteractionIdsRef.current;
             const committedGroupIds = committedGroupDraftIdsRef.current;
             const knownGroupIds = new Set(normalizedState.groups.map((group) => group.id));
+            const acknowledged = incremental ? new Set(message.payload.layoutAck?.groups ?? []) : undefined;
+            if (acknowledged) for (const group of normalizedState.groups) {
+              const old = previous?.state.groups.find(item => item.id === group.id);
+              if (!old || old.position.x !== group.position.x || old.position.y !== group.position.y ||
+                  old.size.width !== group.size.width || old.size.height !== group.size.height) acknowledged.add(group.id);
+            }
             for (const groupId of Array.from(activeGroupIds)) {
               if (!knownGroupIds.has(groupId)) {
                 activeGroupIds.delete(groupId);
@@ -1655,19 +1714,19 @@ function App(): JSX.Element {
             const next = Object.fromEntries(
               Object.entries(current).filter(([groupId]) =>
                 knownGroupIds.has(groupId) &&
-                activeGroupIds.has(groupId) &&
-                !committedGroupIds.has(groupId)
+                (activeGroupIds.has(groupId) || (acknowledged && committedGroupIds.has(groupId) && !acknowledged.has(groupId))) &&
+                !(committedGroupIds.has(groupId) && (!acknowledged || acknowledged.has(groupId)))
               )
             );
-            committedGroupIds.clear();
+            for (const id of committedGroupIds) if (!knownGroupIds.has(id) || !acknowledged || acknowledged.has(id)) committedGroupIds.delete(id);
             return shallowEqualCanvasGroupDrafts(current, next) ? current : next;
           });
-          applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
+          if (!incremental || message.payload.runtime?.terminal) applyEmbeddedTerminalRuntimeContext(normalizedRuntime);
           if (message.type === 'host/bootstrap') {
             postMessage({ type: 'webview/bootstrapAck' });
           }
+          if (!incremental || message.payload.runtime?.terminal) scheduleEmbeddedTerminalAppearanceRefresh();
         }
-        scheduleEmbeddedTerminalAppearanceRefresh();
         break;
       case 'host/templateCatalogUpdated':
         setTemplateMenuEntries(Array.isArray(message.payload.templates) ? message.payload.templates : []);
@@ -1848,6 +1907,15 @@ function App(): JSX.Element {
       case 'host/testDomAction':
         void performWebviewDomAction(message.payload.requestId, message.payload.action);
         break;
+    }
+    } finally {
+      const trace = message.flowTrace;
+      const processingMs = flowHandle ? readPerformanceNow() - flowHandle.started : 0;
+      executionFlow.finish(flowHandle, { stage: 'message-handle', messageType: message.type,
+        requestId: trace?.requestId });
+      if (flowHandle && trace?.receipt && trace.traceId === flowHandle.traceId) postMessage({
+        type: 'webview/executionFlowReceipt', payload: { traceId: trace.traceId, requestId: trace.requestId, processingMs }
+      });
     }
   };
 
@@ -3135,7 +3203,7 @@ function App(): JSX.Element {
     setNodeResizeDrafts((current) => (Object.keys(current).length > 0 ? {} : current));
   };
 
-  const baseNodes = toFlowNodes({
+  const baseNodes = useCanvasFlowNodes({
     nodes: hostState?.nodes ?? [],
     terminalTitles: executionTerminalTitles,
     selectedNodeId: localUiState.selectedNodeId,
@@ -5616,12 +5684,12 @@ const fileNoteNodeTypes = createFileNoteNodeTypes({
 });
 
 const nodeTypes = {
-  agent: executionNodeTypes.agent,
-  terminal: executionNodeTypes.terminal,
-  note: fileNoteNodeTypes.note,
-  file: fileNoteNodeTypes.file,
-  'file-list': fileNoteNodeTypes['file-list'],
-  card: CompactCanvasCardNode
+  agent: React.memo(executionNodeTypes.agent),
+  terminal: React.memo(executionNodeTypes.terminal),
+  note: React.memo(fileNoteNodeTypes.note),
+  file: React.memo(fileNoteNodeTypes.file),
+  'file-list': React.memo(fileNoteNodeTypes['file-list']),
+  card: React.memo(CompactCanvasCardNode)
 };
 
 function CanvasExecutionHelpPanel(props: { help: ExecutionNodeHelpContent }): JSX.Element {
@@ -6441,6 +6509,38 @@ const CanvasContextMenu = React.forwardRef<
   );
 });
 
+/** Stable dispatchers read the latest committed handlers; unchanged node data stays referentially stable. */
+function useCanvasFlowNodes(params: Parameters<typeof toFlowNodes>[0]): CanvasFlowNode[] {
+  const handlers = useRef(params);
+  useLayoutEffect(() => { handlers.current = params; });
+  const callbacks = useRef(new Map<string, (...args: unknown[]) => unknown>());
+  const previous = useRef<CanvasFlowNode[]>([]);
+  const stable = { ...params };
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value !== 'function') continue;
+    if (!callbacks.current.has(key)) callbacks.current.set(key, (...args: unknown[]) =>
+      (handlers.current[key as keyof typeof params] as (...values: unknown[]) => unknown)(...args));
+    Object.assign(stable, { [key]: callbacks.current.get(key) });
+  }
+  const prior = new Map(previous.current.map(node => [node.id, node]));
+  const sameRecord = (a: object, b: object): boolean => {
+    const left = a as Record<string, unknown>, right = b as Record<string, unknown>;
+    return Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(key => left[key] === right[key]);
+  };
+  const nodes = toFlowNodes(stable).map(node => {
+    const old = prior.get(node.id);
+    if (!old) return node;
+    if (sameRecord(old.data.size, node.data.size)) node.data.size = old.data.size;
+    if (sameRecord(old.position, node.position) && sameRecord(old.style ?? {}, node.style ?? {}) &&
+        sameRecord(old.data, node.data) && old.type === node.type && old.selected === node.selected &&
+        old.width === node.width && old.height === node.height) return old;
+    return node;
+  });
+  if (nodes.length === previous.current.length && nodes.every((node, index) => node === previous.current[index])) return previous.current;
+  previous.current = nodes;
+  return nodes;
+}
+
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
   terminalTitles: Record<string, ExecutionTerminalTitleProjection>;
@@ -6588,8 +6688,8 @@ function toFlowNodes(params: {
         fileNodeDisplayStyle: params.fileNodeDisplayStyle,
         fileNodeDisplayMode: params.fileNodeDisplayMode,
         filePathDisplayMode: params.filePathDisplayMode,
-        noteMarkdownImageWorkspaceRoots: [...params.noteMarkdownImageWorkspaceRoots],
-        workspaceFolders: [...params.workspaceFolders],
+        noteMarkdownImageWorkspaceRoots: params.noteMarkdownImageWorkspaceRoots as NoteMarkdownImageWorkspaceRoot[],
+        workspaceFolders: params.workspaceFolders,
         fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
         selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
         collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
@@ -8025,6 +8125,14 @@ function createExecutionTerminalController(
       pagedProjection.available(sessionId, authorityId, revision, completed, finalRevision);
     },
     applyTerminalPage(readId, requestId, page, closedError) {
+      const request = flowPageRequests.get(requestId);
+      if (request?.readId === readId) {
+        flowPageRequests.delete(requestId);
+        executionFlow.finish(request.token, { stage: 'page-roundtrip', nodeId, sessionId: request.sessionId,
+          requestId, afterRevision: request.afterRevision, revision: page?.revision, headRevision: page?.headRevision,
+          supervisorQueueMs: page?.diagnostics?.queueMs, supervisorReadMs: page?.diagnostics?.readMs,
+          supervisorTotalMs: page?.diagnostics?.totalMs, success: !!page && !closedError });
+      }
       pagedProjection.accept(readId, requestId, page, closedError);
     },
     applySnapshot(detail) {
@@ -8645,6 +8753,15 @@ function createExecutionTerminalController(
 
   const pagedProjection = new TerminalPagedProjection({
     request: (read, afterRevision, requestId, stateOffset) => {
+      const flowRequest = executionFlow.begin(flowPageRequests.size < 256
+        ? { stage: 'page-roundtrip', nodeId, sessionId: read.sessionId, requestId, afterRevision } : undefined);
+      if (flowRequest) {
+        executionFlow.record({ stage: 'page-request', nodeId, sessionId: read.sessionId, requestId, afterRevision,
+          success: flowPageRequests.size < 256 });
+        if (flowPageRequests.size < 256) flowPageRequests.set(requestId, {
+          token: flowRequest, readId: read.readId, nodeId, sessionId: read.sessionId, afterRevision
+        });
+      }
       reportTerminalDrainDiagnostic(
         {
           source: 'webview-terminal-drain',
@@ -8666,10 +8783,16 @@ function createExecutionTerminalController(
         }
       });
     },
-    close: (read, outcome) => postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
+    close: (read, outcome) => {
+      for (const [requestId, request] of flowPageRequests) if (request.readId === read.readId) {
+        executionFlow.finish(request.token, { stage: 'page-roundtrip', nodeId, sessionId: read.sessionId,
+          requestId, success: false, reason: 'reader-closed' });
+        flowPageRequests.delete(requestId);
+      }
+      postMessage({ type: 'webview/closeExecutionTerminalRead', payload: {
       nodeId, kind, executionSessionId: read.sessionId, authorityId: read.authorityId, readId: read.readId,
       ...(outcome ? { outcome } : {})
-    } }),
+    } }); },
     currentStateProgress: (read, offset, chunkCount, assemblyPeakCharacters) => {
       reportExecutionPerformanceDiagnostic({
         source: 'webview-terminal-drain', nodeId, kind,
@@ -8740,7 +8863,15 @@ function createExecutionTerminalController(
         applied(restored && current());
       });
     },
-    events: (events, revision, current, applied) => {
+    events: (events, revision, current, applied, requestId) => {
+      const flowIdentity = { nodeId, sessionId: currentExecutionSessionId, requestId, revision, events: events.length };
+      const flowQueued = executionFlow.begin({ stage: 'page-queue', ...flowIdentity });
+      let flowApplying: FlowToken | undefined;
+      let flowBytes: number | undefined;
+      if (flowQueued) {
+        // Actual terminal input bytes, distinct from the serialized page/envelope bytes measured at Host.
+        flowBytes = events.reduce((size, event) => size + (event.type === 'output' ? estimateUtf8ByteLength(event.data) : 0), 0);
+      }
       options?.onContentWillChange?.('output');
       let releaseSnapshotRestore: (() => void) | undefined;
       const snapshotGeneration = writeGeneration;
@@ -8760,11 +8891,16 @@ function createExecutionTerminalController(
       );
       queueTerminalWrite((done, _markStarted, failed) => {
         if (!current()) { done(false); return; }
+        executionFlow.finish(flowQueued, { stage: 'page-queue', ...flowIdentity, bytes: flowBytes });
+        flowApplying = flowQueued?.traceId === executionFlow.currentTraceId
+          ? executionFlow.begin({ stage: 'page-apply', ...flowIdentity, bytes: flowBytes }) : undefined;
         releaseSnapshotRestore = beginSnapshotRestore();
         applyTerminalStreamEvents(terminal, events, () => done(current()), current, failed);
       }, { reason: 'paged-events', replayEventCount: events.length,
         replayOutputCharacters: events.reduce((size, event) => size + (event.type === 'output' ? event.data.length : 0), 0)
       }, (success) => {
+        executionFlow.finish(flowApplying ?? flowQueued, { stage: flowApplying ? 'page-apply' : 'page-queue',
+          ...flowIdentity, bytes: flowBytes, success: success && current() });
         const restored = finishSnapshotRestore(undefined, releaseSnapshotRestore, success && current(), snapshotGeneration);
         if (restored && current() && currentTerminalAuthorityId !== undefined) {
           currentTerminalRevision = Math.max(currentTerminalRevision, revision);
@@ -10482,6 +10618,10 @@ function clearPendingExecutionPasteRequests(): void {
 }
 
 function postMessage(message: WebviewToHostMessage): void {
+  if (message.type === 'webview/executionInput' && executionFlow.active) executionFlow.record({
+    stage: 'input-dispatch', nodeId: message.payload.nodeId, sequence: message.payload.sequence,
+    bytes: estimateUtf8ByteLength(message.payload.data)
+  });
   vscode.postMessage({
     ...message,
     lifecycle: webviewLifecycleIdentity

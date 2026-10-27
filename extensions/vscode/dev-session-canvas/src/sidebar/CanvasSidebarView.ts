@@ -40,10 +40,12 @@ export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarI
   public readonly onDidChangeTreeData = this.changeEmitter.event;
 
   private readonly stateSubscription: vscode.Disposable;
+  private summary: CanvasSidebarSummaryItemSnapshot[] | undefined;
+  private summaryKey: string | undefined;
 
   public constructor(private readonly panelManager: CanvasPanelManager) {
-    this.stateSubscription = this.panelManager.onDidChangeSidebarState(() => {
-      this.changeEmitter.fire();
+    this.stateSubscription = this.panelManager.onDidChangeSidebarState((state) => {
+      if (this.acceptState(state)) this.changeEmitter.fire();
     });
   }
 
@@ -61,12 +63,22 @@ export class CanvasSidebarView implements vscode.TreeDataProvider<CanvasSidebarI
       return [];
     }
 
-    return buildSummaryItems(this.panelManager.getSidebarState());
+    if (!this.summary) this.acceptState(this.panelManager.getSidebarState());
+    return buildSummaryItems(this.summary!);
+  }
+
+  private acceptState(state: CanvasSidebarState): boolean {
+    const summary = getCanvasSidebarSummaryItems(state);
+    const key = JSON.stringify(summary);
+    if (key === this.summaryKey) return false;
+    this.summary = summary;
+    this.summaryKey = key;
+    return true;
   }
 }
 
-function buildSummaryItems(state: CanvasSidebarState): CanvasSidebarItem[] {
-  return getCanvasSidebarSummaryItems(state).map(
+function buildSummaryItems(summary: CanvasSidebarSummaryItemSnapshot[]): CanvasSidebarItem[] {
+  return summary.map(
     (item) => new CanvasSidebarItem(item.id, item.label, item.description, item.tooltip, item.command, item.contextValue)
   );
 }

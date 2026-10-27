@@ -1,3 +1,5 @@
+import type { CanvasDisplayDelta } from './canvasDisplayUpdates';
+import { normalizeFlowSnapshot, type FlowSnapshot } from './executionFlowDiagnostics.ts';
 import type { SerializedTerminalState } from './serializedTerminalState';
 import type { TerminalStreamAttachPayload, TerminalStreamEvent } from './terminalSessionStream';
 import type { TerminalStreamPage, TerminalStreamReadDescriptor } from './terminalStreamPaging';
@@ -766,6 +768,8 @@ export type WebviewDomAction =
     };
 
 export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
+  | { type: 'webview/executionFlowSnapshot'; payload: { requestId: string; snapshot?: FlowSnapshot } }
+  | { type: 'webview/executionFlowReceipt'; payload: { traceId: string; requestId: string; processingMs: number } }
   | {
       type: 'webview/ready';
       payload?: { capabilities?: {
@@ -776,6 +780,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         terminalAvailableReceiptV1?: true;
       } };
     }
+  | { type: 'webview/requestCanvasState' }
   | {
       type: 'webview/bootstrapAck';
     }
@@ -1283,12 +1288,17 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
     }
 );
 
-export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
+export type HostToWebviewMessage = WebviewLifecycleEnvelope & {
+  flowTrace?: { traceId: string; requestId: string; receipt: boolean };
+} & (
+  | { type: 'host/executionFlowStart'; payload: { traceId: string; durationMs: number } }
+  | { type: 'host/executionFlowCollect'; payload: { requestId: string; traceId: string } }
   | {
       type: 'host/bootstrap';
       payload: {
         state: CanvasPrototypeState;
         runtime: CanvasRuntimeContext;
+        revision?: number;
       };
     }
   | {
@@ -1296,7 +1306,12 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & (
       payload: {
         state: CanvasPrototypeState;
         runtime: CanvasRuntimeContext;
+        revision?: number;
       };
+    }
+  | {
+      type: 'host/stateDelta';
+      payload: CanvasDisplayDelta;
     }
   | {
       type: 'host/templateCatalogUpdated';
@@ -1700,6 +1715,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
 
   if (
     value.type === 'webview/bootstrapAck' ||
+    value.type === 'webview/requestCanvasState' ||
     value.type === 'webview/resetDemoState' ||
     value.type === 'webview/saveCanvasAsTemplate'
   ) {
@@ -2664,6 +2680,19 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
             : undefined
       }
     };
+  }
+
+  if (value.type === 'webview/executionFlowSnapshot' || value.type === 'webview/executionFlowReceipt') {
+    const p = value.payload;
+    if (!isRecord(p) || typeof p.requestId !== 'string' || !p.requestId || p.requestId.length > 256) return null;
+    if (value.type === 'webview/executionFlowSnapshot') {
+      const snapshot = normalizeFlowSnapshot(p.snapshot);
+      if (p.snapshot !== undefined && !snapshot) return null;
+      return { type: value.type, payload: { requestId: p.requestId, ...(snapshot ? { snapshot } : {}) } };
+    }
+    if (typeof p.traceId !== 'string' || !p.traceId || p.traceId.length > 256 ||
+        typeof p.processingMs !== 'number' || !Number.isFinite(p.processingMs) || p.processingMs < 0 || p.processingMs > 1e15) return null;
+    return { type: value.type, payload: { requestId: p.requestId, traceId: p.traceId, processingMs: p.processingMs } };
   }
 
   if (value.type === 'webview/executionPerformanceDiagnostic') {

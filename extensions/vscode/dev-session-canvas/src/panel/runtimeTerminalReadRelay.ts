@@ -214,7 +214,8 @@ export class RuntimeTerminalReadRelay {
         return undefined;
       }
       const events = takeTerminalStreamPage(stream.events, params.afterRevision - stream.checkpoint.revision);
-      return { ...params, revision: events[events.length - 1]?.revision ?? params.afterRevision,
+      return { sessionId: params.sessionId, authorityId: params.authorityId, readId: params.readId,
+        afterRevision: params.afterRevision, revision: events[events.length - 1]?.revision ?? params.afterRevision,
         headRevision: stream.revision, events };
     };
     binding.pending = true;

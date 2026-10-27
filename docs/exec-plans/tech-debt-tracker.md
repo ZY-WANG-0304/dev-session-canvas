@@ -2,6 +2,11 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+
+## 2026-10-27：画布展示增量的现场与启动验证边界
+
+第三阶段已完成节点增量、bootstrap追赶、布局确认及受控A/B/C/A和同Host交替对照，1600次回显完整，通信/浏览器成本降低。仍未证实真实Agent与跨机器网络的回显尾延迟收益；40/80样本P99不代表生产P99。Host仍按原时机构造完整投影再比较，未来是否减少构造需要独立依赖和数据支持，不直接增加字段补丁。remote-b在负载开始前发生root readiness未确认，未进入性能样本、重跑成功不等于原因解决；失败日志保留于.debug/canvas-display-updates/remote-b。先前17秒Host与侧栏B隐藏1.7秒异常仍按原条目保留。完整Actions/跨平台发布门禁未由局部测试替代。详见 [画布展示增量](../design-docs/canvas-display-updates.md)。
+
 ## 2026-10-24：文件条目 smoke 原生输入修复的验收边界
 
 文件点击前 documentFocus 的测试门槛已由原生鼠标输入替代，受控编辑器持焦下 source 与原双 VSIX packaged 场景通过。历史 CI 自然夺焦的完整时序缺失，仍不认定上游产品焦点缺陷；后续若再失败，应保存点击前后焦点与可信事件。修改后的 PR head 完整 Actions 验收尚待执行，本地局部诊断不解除发布门禁。方案和证据见 [file-entry-native-smoke.md](../design-docs/file-entry-native-smoke.md)。
@@ -973,3 +978,30 @@ PR336 已接续实现原绑定回调结算、旧 workspace 保存代次和失败
 ### PR336 review 两项缺口接续（2026-10-24）
 
 4d455028 的 P1（保存失败后成为最后参与者却跳过删除）与 P2（终态投影清除 live 字段后丢失 pending 保存失败）已在本轮修复：每次共享 departure 重验原绑定删除，Promise 登记保留接纳时的完整身份，首轮已知保存失败在派发删除前传播。新增八项默认行为回归，两个旧输入反例均先红，当前 29 项通过。证据见 `docs/references/runtime-mode-switch-settlement/review-fixes.json`。必须针对更新 head 复审和验 CI；旧 head 的本地/GUI 通过不能替代该复审，也不表示 PR327 已可合并。
+
+
+## PR337 侧栏优化后的性能验证边界（2026-10-27）
+
+配置构造复用后用户现场反馈改善，仍有约 20 Hz 主画布全量广播。当前侧栏消费端优化不改变该广播、持久化或 journal；主画布按展示变化筛选仍待单独设计。节点列表保留每次实际刷新时的目录类型检测与快照获取，未引入长期文件系统缓存；若后续样本显示它们成为热点，再补对应失效边界，不能靠跳过必要状态更新降耗。原现场 17 秒停顿继续未归因。
+
+侧栏自动化中间版本 B 在隐藏场景出现 1.692 秒回显，完整样本保留；该窗口状态构造最大 2.19 ms、侧栏通知最大 11.14 ms、Host page 最大 446.7 ms、Webview page RTT 最大 491.3 ms，未见达到 120 ms 阈值的 Host/Webview loop 样本。证据不足以归因为侧栏复用或环境，必须与完整候选及返回基线分别报告，不能从无缺失推导无延迟。正式结果及测试覆盖见 `docs/design-docs/runtime-journal-input-priority.md`，原始数据在当前工作区 `.debug/sidebar-reuse/`，不依赖旧的 `/tmp` 工作区。
+
+PR337 侧栏 A/B/C/A 四轮各 120 次回显及重开 DOM 验证均完成，最终 C 最长 205.6 ms，返回 A 最长 185.8 ms；B 的尖峰并未因此被关闭。已确认局部降耗，端到端 P95 未一致改善，后续主画布策略仍按独立证据推进。
+
+
+## PR337 review：诊断停止时未完成跨度的证据限制（2026-10-27）
+
+review comment 6440232755 指出的遗漏已修复：recorder 在开始时登记身份，停止/deadline 以 pendingSpans 保存已等待时间，独立于完成分布；Host read/input、消息回执和 Webview 分页往返/队列/xterm 应用已接入。旧 bfb166bb 反例预期失败，当前受控回归及 Webview 54/54、Host batch 10/10、类型检查和构建通过。修复没有遗留实现待办；新 head 仍需复审及正式 CI，draft skipped 不算验收。
+
+历史日志无法追溯补全未完成跨度，旧完成样本的最大值不能排除更慢的在途请求。现场 17 秒停顿及侧栏 B 尖峰继续未归因，后续使用新采集时应同时检查 pendingSpans、droppedPendingSpans 和完成分布；旧文件缺少 pending 字段表示未知，而非零。设计和验证记录见 docs/design-docs/runtime-journal-input-priority.md「停止时保留未完成跨度」。
+
+
+## PR337 正式门禁回归接续（2026-10-27）
+
+run 40516969808 的 regression shard-1 中生命周期原型夹具缺少 executionFlow/publisher，已本地先红后绿修复；同时补齐实际隔离诊断 manager 的独立依赖。source-build/package-clean 来源核验读到未完成状态的问题，已加入原 300 秒期限内的 producer 终态观察。最终 job 记录显示 producer 先于消费者失败完成，但缺少当时的 job ID，具体缓存原因仍未知；新日志记录 ID 与等待次数，不跳过来源核验。lifecycle 10 项、provenance 14 项定向回归和完整 gate contracts 101/101 通过，类型检查与构建通过；完整新 head 正式门禁仍待取得。旧失败与本地通过均不构成可合并的 CI 验收。证据与方案见 docs/design-docs/release-gate-redesign.md 和 docs/design-docs/runtime-journal-input-priority.md。
+
+PR337 后续完整 gate（40528627405，ddf22a99）：原 review 的 regression shard-1、source-build、package-clean 已通过，但 runtime 配置/scrollback/预设创建等 smoke 只等待旧全量消息，导致实际正确的 stateDelta 被忽略；已统一迁移观察器并补齐独立 driver 输入。Windows installed-pair 在输入输出成功后因两侧栏挤压视口、没有40px增长空间而在拖动前失败；已添加公开导航准备，保持原实际几何断言。完整本地 contracts 102/102、Agent45/45、容量6/6通过；Windows实机和最新head完整门禁仍待验，旧失败不删除。
+
+PR337 c6e11535 完整门禁后续（2026-10-28）：Windows installed-pair 通过，macOS 在新增无条件扩宽视口后通知回跳 y=-38px，原 ddf22a99 默认布局该场景通过。准备逻辑已收窄为仅在无有效拖动路径时导航，保留原通知居中断言；宽视口居中差异仍未归因，增加 flow/wrapper/window 几何用于后续定位，不声明产品定位问题已修。source-host 的 auto-start、codex-queued-exit 在 apt-get update 访问 Ubuntu 镜像阶段达到原5分钟期限，尚未运行产品用例，首败日志保留于 .debug/review337-autostart-failed.log、review337-codex-exit-failed.log。
+
+条件式视口准备及按实际包状态避免无必要apt请求已完成，完整contracts 103/103与工作流契约通过；是否发生依赖安装会在步骤日志中记录。c6e11535 的所有上一轮13项失败已通过，当前264个业务job成功；新head需独立完整验收。macOS宽视口居中偏差的产品归因仍未完成，默认布局恢复或后续CI成功不关闭这一观察缺口。

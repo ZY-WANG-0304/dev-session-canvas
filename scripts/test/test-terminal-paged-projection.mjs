@@ -53,7 +53,7 @@ try {
     request: (read, afterRevision, requestId) => requests.push({ read, afterRevision, requestId }),
     close: (read) => closes.push(read),
     checkpoint: (read, current, done) => writes.push({ checkpoint: read, current, done }),
-    events: (events, revision, current, done) => writes.push({ events, revision, current, done }),
+    events: (events, revision, current, done, requestId) => writes.push({ events, revision, current, done, requestId }),
     exit: (message) => exits.push(message)
   });
   projection.start(descriptor);
@@ -69,6 +69,7 @@ try {
   projection.available('session', 'authority', 5);
   assert.equal(requests.length, 1, 'slow xterm must not admit a second page');
   assert.equal(writes.length, 1, 'duplicate response must not enqueue twice');
+  assert.equal(writes[0].requestId, first.requestId);
   writes.shift().done();
   assert.equal(requests[1].afterRevision, 2);
   projection.accept('reader', requests[1].requestId, page(2, [event(3), event(4)], 5));
@@ -964,6 +965,8 @@ async function verifyControllerSettlement(directory) {
   };
   const contents = `
     import { TerminalPagedProjection } from './terminalPagedProjection';
+    import { ExecutionFlowRecorder } from '../common/executionFlowDiagnostics';
+    export { ExecutionFlowRecorder };
     import { normalizeTerminalStreamAttachPayload } from '../common/terminalSessionStream';
     import { normalizeLocalTerminalCompletion } from '../common/protocol';
     import { restoreTerminalCurrentState, captureTerminalCurrentState,
@@ -983,6 +986,9 @@ async function verifyControllerSettlement(directory) {
     ${extract('restoreExecutionTerminalSnapshot')}
     ${extract('normalizeTerminalSnapshotOutputSequence')}
     export function createController(terminal, postMessage, options, reportExecutionPerformanceDiagnostic, environment = {}) {
+      const executionFlow = environment.executionFlow ?? new ExecutionFlowRecorder();
+      const flowPageRequests = new Map();
+      const estimateUtf8ByteLength = value => Buffer.byteLength(value, 'utf8');
       const pendingExecutionTerminalSnapshotWrites = environment.snapshotTasks ?? [];
       const activeExecutionTerminalSnapshotWrite = undefined;
       const scheduleExecutionTerminalSnapshotWrite = task => environment.snapshotTasks
@@ -999,7 +1005,7 @@ async function verifyControllerSettlement(directory) {
   await esbuild.build({ stdin: { contents, resolveDir: path.dirname(filename), loader: 'ts' },
     outfile, bundle: true, platform: 'node', format: 'cjs', target: 'node18' });
   const require = createRequire(import.meta.url);
-  const { createController, routeExit, captureTerminalCurrentState,
+  const { createController, routeExit, captureTerminalCurrentState, ExecutionFlowRecorder,
     createTerminalCurrentColors, applyTerminalCurrentColorRequests } = require(outfile);
   const { Terminal } = require('@xterm/headless');
   let passed = 0;
@@ -1094,6 +1100,67 @@ async function verifyControllerSettlement(directory) {
         terminal.dispose();
       } };
   };
+
+  await check('diagnostics correlate actual request and xterm completion without retaining terminal content', async () => {
+    const executionFlow = new ExecutionFlowRecorder();
+    executionFlow.start('actual-controller');
+    const f = fixture('traced-reader', 1, 'final-application-v1', { executionFlow });
+    try {
+      f.start();
+      await until(() => f.requests().length === 1, 'traced request');
+      const requestId = f.requests()[0].payload.requestId;
+      f.sendPage([{ type: 'output', revision: 1, createdAtMs: 1, data: 'secret-terminal-text\r\n' }]);
+      await until(() => executionFlow.snapshot().details.some(event => event.stage === 'page-apply'), 'traced apply');
+      const snapshot = executionFlow.snapshot();
+      for (const stage of ['page-request', 'page-roundtrip', 'page-queue', 'page-apply']) {
+        const samples = snapshot.details.filter(event => event.stage === stage);
+        assert.equal(samples.length, 1, stage);
+        assert.equal(samples[0].requestId, requestId, stage);
+      }
+      assert.equal(snapshot.details.find(event => event.stage === 'page-apply').success, true);
+      assert.equal(JSON.stringify(snapshot).includes('secret-terminal-text'), false);
+      f.controller.terminalAvailable('session', 'authority', 2);
+      assert.equal(f.requests().length, 2);
+      f.controller.dispose();
+      assert.equal(executionFlow.snapshot().details.at(-1).reason, 'reader-closed');
+      assert.equal(executionFlow.snapshot().details.at(-1).success, false);
+    } finally { f.dispose(); }
+  });
+
+  for (const stage of ['page-roundtrip', 'page-queue', 'page-apply']) {
+    await check(`diagnostic stop retains unfinished ${stage} without delaying the actual reader`, async () => {
+      let clock = 0;
+      const executionFlow = new ExecutionFlowRecorder(() => clock);
+      executionFlow.start(`pending-${stage}`);
+      const f = fixture(`pending-${stage}`, 1, 'final-application-v1', { executionFlow });
+      let release;
+      try {
+        f.start();
+        await until(() => f.requests().length === 1, 'pending diagnostic request');
+        const requestId = f.requests()[0].payload.requestId;
+        if (stage === 'page-apply') {
+          const write = f.terminal.write.bind(f.terminal);
+          f.terminal.write = (text, done) => write(text, () => { release = done; });
+        }
+        const events = [{ type: 'output', revision: 1, createdAtMs: 1, data: 'PRIVATE-PENDING-TEXT' }];
+        if (stage !== 'page-roundtrip') f.sendPage(events);
+        if (stage === 'page-apply') await until(() => release !== undefined, 'held actual xterm callback');
+        clock = 75;
+        executionFlow.stop();
+        const snapshot = executionFlow.snapshot();
+        assert.deepEqual(snapshot.pendingSpans.map(s => [s.stage, s.requestId, s.elapsedMs]), [[stage, requestId, 75]]);
+        assert.equal(snapshot.pendingSpans[0].nodeId, 'node');
+        assert.equal(snapshot.pendingSpans[0].sessionId, 'session');
+        assert.equal(snapshot.details.some(s => s.stage === stage), false);
+        assert.equal(JSON.stringify(snapshot).includes('PRIVATE-PENDING-TEXT'), false);
+        clock = 150;
+        if (stage === 'page-roundtrip') f.sendPage(events);
+        release?.();
+        await until(() => f.controller.getQueuedWriteCount() === 0, 'reader completes after diagnostic stop');
+        assert.deepEqual(executionFlow.snapshot(), snapshot);
+      } finally { release?.(); f.dispose(); }
+    });
+  }
 
   await check('current-state chunks import the actual buffers before consuming live tail and final revision', async () => {
     const f = fixture('current-state-reader', 1);
@@ -1810,7 +1877,8 @@ async function loadActualHost() {
   const bundled = await esbuild.build({
     stdin: { contents: `export { CanvasPanelManager as Harness, reconnectTestTimers as timers }
       from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
-      export { RUNTIME_SUPERVISOR_ERROR_CODES } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';`,
+      export { RUNTIME_SUPERVISOR_ERROR_CODES } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
+      export { ExecutionFlowRecorder } from './extensions/vscode/dev-session-canvas/src/common/executionFlowDiagnostics';`,
       resolveDir: process.cwd(), loader: 'ts' },
     bundle: true, write: false, platform: 'node', format: 'cjs', external: ['node-pty'],
     plugins: [{ name: 'paged-host-boundaries', setup(build) {
@@ -1832,6 +1900,7 @@ async function loadActualHost() {
   const ActualHost = loaded.exports.Harness;
   function Harness() {
     const host = Object.create(ActualHost.prototype);
+    host.executionFlow = new loaded.exports.ExecutionFlowRecorder();
     host.runtimeSupervisorEventAdmissionOpen = true;
     host.runtimeSupervisorClientEpochs = new Map();
     return host;

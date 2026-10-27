@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-24
+updated_at: 2026-10-28
 ---
 
 # CI与发布门禁重设计
@@ -350,3 +350,21 @@ PR3352c4a16af+PR3278313fc72临时0.26.1组合[39101774719](https://github.com/ZY
 ## 依赖安装范围（2026-10-23）
 
 正式任务图的安装范围现按实际调用派生：插件、notifier、共享包及根工具使用plugin，含市场workspace类型/API/web的regression使用marketplace；候选双包独立checkout也用plugin。市场Host的Node HTTP夹具及市场浏览器API拦截不启动Worker。完整任务、预算和验收规则不变，细节与本地证据见[依赖安装边界](smoke-dependency-install-scope.md)。本轮移除根Wrangler/workers-types重复声明，保留app所有权和原锁版本；原CI ECONNRESET仍缺包名证据，不声称已修复网络根因。
+
+
+## 正式方案：producer 终态观察等待（PR337 门禁 review）
+
+run 40516969808 的 source-build/package-clean 在核验 native-load artifact 时，从 jobs API 读到 producer in_progress 后立即失败。当前实现只读取一次 jobs，不能处理实际 job 结束与 API 终态可见之间的时间窗口。选定改法：仅对本 scope 已选 artifact 的、已唯一绑定到当前 attempt 的 producer，在原 300 秒绝对采集期限内每秒重新查询；未完成状态不会直接当成成功。每轮重验 run/head/attempt，保持 producer job ID 不变。未知状态、缺失/重复 producer、身份变化立即失败；持续未完成在原 deadline 失败，不重置期限或一般性重试其他校验错误。获取日志/下载 ZIP 仍在 producer completed 后执行，结论、upload ID、digest 和回执核验维持原约束。无关运行中 job 不参与等待。不把最终完成本身视为产物验收。
+
+证据：最终 jobs 记录中六个 native producer 全部成功，最晚 win32-arm64 于 14:06:36Z 完成；package-clean 在 14:07:01Z 开始来源核验、14:07:03.085Z 抛出 in_progress，source-build 于 14:07:06Z 开始同样失败。说明终态查询与最终 job 记录不一致，但旧日志未打印具体 producer ID，不能进一步指定是哪一个 job 或断言具体缓存层。原始记录位于 `.debug/review337-gate-jobs.json`、`.debug/review337-package-job.log`。新等待日志会保留首次未完成的 job ID/状态以及观察次数。定向 provenance 测试 14/14 通过，覆盖迟后完成、无关运行中 job、run/head/attempt/job ID 变化、缺失/重复/未知 job、超时、上传 ID/ZIP digest 以及 HTTP 原期限与重定向凭据隔离。完整 `node --test scripts/test/test-gate-contracts.mjs` 101/101 通过（约 186 秒），lifecycle 10 项、execution-flow-diagnostics、typecheck/build 和 F5 目录准备通过；日志 `.debug/review337-gate-contracts.log`、`.debug/review337-lifecycle-{before,after}.log`、`.debug/review337-gate-{flow,typecheck,build,prepare}.log`。新 head 正式 CI 待验。
+
+
+PR337 完整门禁跟进：runtime 配置 smoke 应观察全量或节点增量中的实际配置分组通知，不固化 stateUpdated 消息形状；缺少目标字段的无关 delta 不算配置刷新。installed-pair 在狭窄默认窗口中先用公开 closeSidebar/closeAuxiliaryBar 和原标题双击定位，为严格有界增长手势准备空间；此准备必须在原 PTY 子进程尺寸基线前完成，仍由随后拖动和新 nonce 的内核查询证明 resize。业务协议、视图配置和尺寸断言不放宽，原全任务期限不增加。
+
+验证补充：新 helper `tests/vscode-smoke/canvas-runtime-update.cjs` 供普通 smoke、容量场景及 Agent 多根视图共享，只读取实际消息中的 runtime 字段，已补齐独立 driver 的 staging 和输入哈希。真实 CanvasDisplayPublisher 的消息驱动原配置更新/恢复函数通过；Agent driver 45/45、容量 6/6、完整 gate contracts 102/102（约216秒）通过。Windows 原截图节点 x=350.3..725.7、画布约 x=308..768，扣除12px边距后，两侧均不足40px增长要求；回归保留该失败几何，证明公共关闭侧栏/原标题定位在原期限内取得有效增长路径，且准备发生在子进程几何基线之前。尚需下一轮 Windows 实机 gate 验证；本轮未降低拖动阈值或内核几何断言。预算清单已重生成并比较，除新增 helper 哈希、已有源码哈希和行号外，所有预算/场景条目不变。
+
+2026-10-28 修订：c6e11535 的 Windows installed-pair 已通过，配置场景也已通过。新增视口准备在已有足够拖动空间的 macOS 上仍无条件改变布局，随后通知居中检查出现 -38px 垂直偏差；旧 ddf22a99 的同平台原布局场景通过，但不足以判定偏差根因。准备策略收窄为：先计算现有有效增长路径，仅无路径时关闭侧栏/定位；已有路径时保持原布局。保留严格居中4px断言，增加 flow/wrapper/window 几何观察，宽视口偏差作为未归因问题记录。另有两个 source-host 在产品场景前因 azure.archive.ubuntu.com apt update 超出原5分钟失败，不改等待预算；下一完整运行重验，不把网络失败解释为产品回归。
+
+浏览器系统依赖安装补充（2026-10-28）：失败镜像为 ubuntu-22.04/20261012.322.1，apt 在 azure.archive.ubuntu.com 更新索引时超时；其他 runner 的成功日志显示 xvfb/libgtk-3-0/libnss3/libasound2 已安装，0升级/0新装。不能假定失败 runner 的包状态，因此七个 Linux 浏览器依赖步骤统一先由 dpkg-query 检查四个实际安装状态，齐全时免除无必要的索引更新；缺少时保留原 apt update/install 并再次检查。dpkg异常、安装失败、仍缺包均失败，不增加重试或延长原5分钟期限。当前 Linux门禁仍消费这些依赖并执行原产品断言，不因预装检测跳过场景。
+
+本轮验证：条件式视口准备/原路径保留/原期限、依赖预装与各失败分支、严格几何判定共5项定向检查通过；完整 gate contracts 103/103（约249秒）与 Release preflight/workflow contracts 通过。日志 `.debug/review337-final-preparation-tests.log`、`review337-final-contracts.log`、`review337-final-workflow-tests.log`。c6e11535 正式运行的267项业务job中264项通过，剩余为两项apt基础设施超时与上述macOS宽视口问题；最终汇总另计。已确认上一轮13个失败场景全部通过，但新提交仍需独立正式验收。

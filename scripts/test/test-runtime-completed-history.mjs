@@ -29,6 +29,7 @@ const functions = ['getCompleteRuntimeSupervisorTerminalStream', 'normalizeExecu
   return fn.getText(ast);
 });
 const bundle = await esbuild.build({ stdin: { contents: `
+  import { ExecutionFlowRecorder } from './common/executionFlowDiagnostics';
   import fs from 'node:fs';
   import path from 'node:path';
   import { normalizeCompletedRuntimeHistory } from './common/completedRuntimeHistory';
@@ -51,7 +52,7 @@ const bundle = await esbuild.build({ stdin: { contents: `
   const updateExecutionNode = (state, id, kind, patch) => ({ ...state,
     nodes: state.nodes.map(node => node.id === id ? { ...node, ...patch } : node) });
   ${functions.join('\n')}
-  class Harness { ${methods.join('\n')} }
+  class Harness { executionFlow = new ExecutionFlowRecorder(); ${methods.join('\n')} }
   export { Harness, RuntimeTerminalReadRelay, TerminalAvailableNotifications, normalizeCompletedRuntimeHistory, buildExecutionMetadataPatch,
     createRuntimeOwnerDescriptor, resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath };
 `, resolveDir: sourceRoot, loader: 'ts' }, bundle: true, write: false, format: 'cjs', platform: 'node' });
@@ -253,7 +254,8 @@ async function verifyTransientReaders() {
   await host.terminalReadRelay.read(key, params);
   await host.applyCompletedRuntimeSupervisorSnapshot('node', 'terminal', snapshot);
   remoteDeleted = true;
-  const tail = await host.terminalReadRelay.read(key, { ...params, afterRevision: 1 });
+  const tail = await host.terminalReadRelay.read(key, { ...params, afterRevision: 1, diagnostics: true });
+  assert.equal(tail.diagnostics, undefined, 'local completed fallback must not expose the request flag as timings');
   assert.deepEqual(tail.events, [stream.events[1]]);
   assertNoHistory(host.state.nodes[0].metadata.terminal);
   const final = { snapshot, surface: 'editor', lifecycle: host.getSurfaceLifecycleIdentity() };

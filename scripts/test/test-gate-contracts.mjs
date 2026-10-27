@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { ensureBrowserSystemDependencies, browserSystemPackages } from '../gates/browser-system-dependencies.mjs';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import fs from 'node:fs/promises';
@@ -26,7 +27,7 @@ import { openInstalledNotificationCallback } from '../smoke/installed-notificati
 import { observeInstalledPublicExit, installedPublicExitCommand } from '../smoke/installed-public-exit.mjs';
 import { readWindowsProcessIdentity } from '../smoke/windows-process-identity.mjs';
 import { chromium } from 'playwright';
-import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
+import { prepareInstalledResizeViewport, selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
   prepareInstalledLocalizedStop, findUniqueInstalledTerminalCreation } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { regressionScripts } from '../gates/catalog.mjs';
@@ -616,6 +617,29 @@ test('fixed host download refuses semantic errors and cannot extend its deadline
     } }), failure => failure === checksum);
   assert.equal(requests, 1);
 });
+test('browser dependencies inspect actual packages and preserve install failures without unconditional network access',()=>{
+  const calls=[];
+  const allReady=ensureBrowserSystemDependencies((cmd,args)=>{calls.push([cmd,...args]);assert.equal(cmd,'dpkg-query');return 'install ok installed';});
+  assert.equal(allReady.installed,false);assert.deepEqual(calls.map(call=>call.at(-1)),browserSystemPackages);
+  for(const fault of [undefined,'update','install','still-missing','query']) {
+    let installed=false;const commands=[];
+    const run=(cmd,args)=>{
+      commands.push([cmd,...args]);
+      if(cmd==='dpkg-query') {
+        if(fault==='query')throw Object.assign(new Error('dpkg command unavailable'),{code:'ENOENT'});
+        if(args.at(-1)==='libnss3'&&(!installed||fault==='still-missing'))throw Object.assign(new Error('missing package'),{status:1});
+        return 'install ok installed';
+      }
+      assert.equal(cmd,'sudo');
+      if(args[1]===fault)throw new Error(`${fault} failed`);
+      if(args[1]==='install') {assert.deepEqual(args,['apt-get','install','-y',...browserSystemPackages]);installed=true;}
+    };
+    if(fault)assert.throws(()=>ensureBrowserSystemDependencies(run),fault==='still-missing'?/remain unavailable/:fault==='query'?/dpkg command unavailable/:/failed/);
+    else assert.equal(ensureBrowserSystemDependencies(run).installed,true);
+    if(fault==='update')assert.equal(commands.some(call=>call[2]==='install'),false);
+    if(fault==='query')assert.equal(commands.some(call=>call[0]==='sudo'),false);
+  }
+});
 test('installed resize requires a fresh request from the original child and rejects cached or unrelated evidence', () => {
   const before = { pid: 40, ppid: 30, cols: 70, rows: 22 };
   const request = { nonce: 'a'.repeat(32), requestedAt: 100 };
@@ -1156,6 +1180,65 @@ test('native input provenance ignores unrelated running jobs and binds actual ZI
     await assert.rejects(()=>inspectArtifactArchive(traversal.generateAsync({type:'nodebuffer'}),path.join(temp,'unsafe')));
   }finally{await fs.rm(temp,{recursive:true,force:true});}
 });
+test('provenance waits for selected producer visibility without weakening identity or archive checks', async t => {
+  const f=fixture({changedPaths:['packages/a.ts']});
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-producer-wait-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const zip=new JSZip();zip.file('native-load.task.json',JSON.stringify(f.receipts.find(r=>r.taskID==='native-load')));
+  const bytes=await zip.generateAsync({type:'nodebuffer'});
+  const artifact={id:100,name:`gate-native-load-linux-x64-glibc-${f.plan.run.id}-${f.plan.run.attempt}`,
+    expired:false,digest:`sha256:${digest(bytes)}`,workflow_run:{id:12345,head_sha:sha}};
+  for(const [scenario,pattern]of [['completed',null],['attempt',/Run attempt changed/],['head',/strictly equal/],
+    ['job-id',/job identity changed/],['missing',/Cannot bind/],['duplicate',/Cannot bind/],
+    ['unknown',/Unknown artifact producer status/],['upload',/bind artifact ID/],['digest',/archive differs/]]) {
+    await t.test(scenario,async()=>{
+      let waits=0,downloads=0,logs=0,runQueries=0;
+      const api=async route=>{
+        if(route.endsWith('/12345')) {runQueries++;return {id:12345,run_attempt:scenario==='attempt'&&waits?3:2,
+          head_sha:scenario==='head'&&waits?base:sha};}
+        if(route.includes('/jobs?')) {
+          const producer={id:scenario==='job-id'&&waits?3:1,name:'Validation / Gate native-assets (linux-x64-glibc)',
+            status:waits<2?'in_progress':'completed',conclusion:waits<2?null:'failure',
+            steps:[{name:'native load',status:'completed',conclusion:'success'}]};
+          if(scenario==='unknown')producer.status='unexpected';
+          return {jobs:[...(scenario==='missing'&&waits?[]:[producer]),
+            ...(scenario==='duplicate'&&waits?[{...producer,id:4}]:[]),
+            {id:2,name:'Validation / Gate regression (shard-1)',status:'in_progress',conclusion:null}]};
+        }
+        return {artifacts:[scenario==='digest'?{...artifact,digest:`sha256:${hash}`}:artifact]};
+      };
+      const collect=()=>collectGitHubProvenance(f.plan,{repository:'test/repo',output:path.join(root,scenario),scope:'native-load',api,
+        wait:async ms=>{assert(ms>0&&ms<=1000);assert.equal(logs,0);assert.equal(downloads,0);waits++;},
+        log:async()=>{assert.equal(waits,2);logs++;return `Artifact ID is ${scenario==='upload'?101:100}`;},
+        download:async()=>{assert.equal(waits,2);downloads++;return bytes;}});
+      if(pattern)await assert.rejects(collect,pattern);
+      else {
+        const result=await collect();
+        assert.equal(waits,2);assert.equal(runQueries,3);assert.equal(downloads,1);
+        assert.equal(result.jobs[0].status,'completed');
+        assert.equal(result.jobs[0].conclusion,'failure','Observation must preserve actual failure for downstream acceptance');
+        assert.equal(result.jobs[1].status,'in_progress','Unrelated jobs must not block scoped provenance');
+        assert.equal(result.artifacts[0].jobID,1);assert.equal(result.artifacts[0].archiveHash,digest(bytes));
+      }
+      if(['attempt','head','job-id','missing','duplicate','unknown'].includes(scenario))assert.equal(logs,0);
+    });
+  }
+});
+test('producer visibility waiting uses the original deadline and never downloads a running producer', async()=>{
+  const f=fixture({changedPaths:['packages/a.ts']});let waits=0,queries=0;
+  const deadline=Date.now()+40;
+  const api=async route=>{
+    queries++;
+    if(route.endsWith('/12345'))return {id:12345,run_attempt:2,head_sha:sha};
+    if(route.includes('/jobs?'))return {jobs:[{id:1,name:'Gate native-assets (linux-x64-glibc)',status:'in_progress',conclusion:null}]};
+    return {artifacts:[{id:100,name:`gate-native-load-linux-x64-glibc-${f.plan.run.id}-${f.plan.run.attempt}`} ]};
+  };
+  await assert.rejects(()=>collectGitHubProvenance(f.plan,{repository:'test/repo',output:'/unused',scope:'native-load',deadline,api,
+    wait:async ms=>{waits++;assert(ms<=40);await new Promise(resolve=>setTimeout(resolve,50));},
+    log:async()=>assert.fail('Running producer has no accepted log'),download:async()=>assert.fail('Running producer cannot be downloaded')}),
+    /original deadline exhausted; pending producers:.*id=1 status=in_progress/);
+  assert.equal(waits,1);assert.equal(queries,3,'No new request receives time after the original deadline');
+});
 test('GitHub HTTP provenance binds raw ANSI upload logs and original ZIP bytes without forwarding redirect credentials', async t => {
   const f=fixture({changedPaths:['packages/a.ts']});
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-http-provenance-'));
@@ -1318,6 +1401,39 @@ test('installed resize keeps the complete growth gesture inside the actual clipp
     'bottom-right':{x:967,y:826,width:6,height:6}
   }),/No public resize corner/u);
   assert.throws(()=>selectInstalledResizeGesture({...canvas,width:NaN},handles),/bounds are unavailable/u);
+});
+test('installed resize prepares public viewport space before geometry measurement without reducing the gesture', async()=>{
+  const calls=[], deadline=Date.now()+2000;
+  const narrow={x:308,y:80,width:460,height:605};
+  const box=(x,y)=>({x:x-3,y:y-3,width:6,height:6});
+  const narrowHandles={'top-left':box(350.3,230),'top-right':box(725.7,230),
+    'bottom-left':box(350.3,522),'bottom-right':box(725.7,522)};
+  assert.throws(()=>selectInstalledResizeGesture(narrow,narrowHandles),/No public resize corner/);
+  let canvas=narrow,handles=narrowHandles;
+  const frame={locator:()=>({boundingBox:async()=>canvas})};
+  const node={locator:selector=>selector==='.window-chrome'?{dblclick:async options=>{
+    calls.push('center');assert(options.timeout>0&&options.timeout<=2000);
+    canvas={x:50,y:80,width:970,height:605};
+    handles={'top-left':box(320,230),'top-right':box(750,230),'bottom-left':box(320,522),'bottom-right':box(750,522)};
+  }}:{boundingBox:async()=>handles[selector.match(/"([^"]+)"/)[1]]}};
+  const result=await prepareInstalledResizeViewport({frame,node,deadline,
+    command:async(name,args,limit)=>{calls.push(name);assert.deepEqual(args,[]);assert.equal(limit,deadline);},
+    wait:async(label,read,accept,limit)=>{assert.equal(limit,deadline);assert.equal(await read(),null);
+      const value=await read();assert(accept(value));return value;}});
+  assert.deepEqual(calls,['workbench.action.closeSidebar','workbench.action.closeAuxiliaryBar','center']);
+  assert.equal(result.navigationApplied,true);
+  const ready=await prepareInstalledResizeViewport({frame,node,deadline,
+    command:()=>assert.fail('Existing resize space must not change the fixture layout'),
+    wait:()=>assert.fail('Existing resize space requires no navigation wait')});
+  assert.equal(ready.navigationApplied,false);
+  assert.deepEqual(ready.gesture,result.gesture);
+  assert(Math.abs(result.gesture.end.x-result.gesture.start.x)>=40);
+  assert(Math.abs(result.gesture.end.y-result.gesture.start.y)>=30);
+  await assert.rejects(()=>prepareInstalledResizeViewport({frame,node,deadline:Date.now()-1,
+    command:()=>assert.fail('Expired preparation cannot navigate')}),/deadline exhausted/);
+  const source=await fs.readFile(new URL('../smoke/run-installed-pair.mjs',import.meta.url),'utf8');
+  assert(source.indexOf('facts.terminal.resizePreparation = await')<source.indexOf("const geometryFile ="),
+    'Viewport changes must precede the original PTY geometry baseline');
 });
 test('installed callback observation needs actual node centering rather than an unchanged attention flag',()=>{
   assert(!installedNodeIsCentered(null));

@@ -1182,8 +1182,16 @@ export class RuntimeSupervisorServer {
   }
 
   private readTerminalPage(socket: net.Socket, params: RuntimeSupervisorReadTerminalPageParams): Promise<TerminalStreamPage> {
+    const diagnosticStart = params.diagnostics === true ? performance.now() : undefined;
     const session = this.requireSession(params.sessionId, true);
     return this.enqueueTerminalOperation(session, async () => {
+      const diagnosticEntered = diagnosticStart !== undefined ? performance.now() : undefined;
+      let diagnosticReadMs = 0;
+      const finishTiming = (page: TerminalStreamPage): void => {
+        if (diagnosticStart !== undefined && diagnosticEntered !== undefined) page.diagnostics = {
+          queueMs: diagnosticEntered - diagnosticStart, readMs: diagnosticReadMs, totalMs: performance.now() - diagnosticStart
+        };
+      };
       const journal = this.requireReadableJournal(session, params.authorityId);
       const read = this.terminalReads.get(socket)?.get(params.readId);
       const owned = session.ownedReaders?.get(params.readId);
@@ -1214,7 +1222,8 @@ export class RuntimeSupervisorServer {
         const result: TerminalStreamPage = { readId: read.readId, sessionId: session.sessionId,
           authorityId: read.authorityId, afterRevision, revision: afterRevision, headRevision, events: [],
           stateChunk: { offset, data: state.data.slice(offset, offset + TERMINAL_CURRENT_STATE_CHUNK_MAX_CHARS) } };
-        if (owned) this.ownedTerminalReplies.set(result, owned);
+        finishTiming(result);
+      if (owned) this.ownedTerminalReplies.set(result, owned);
         return result;
       }
       if (read.currentState) {
@@ -1224,7 +1233,9 @@ export class RuntimeSupervisorServer {
         // Only a normal page request proves the consumer has imported the complete state.
         read.currentState = undefined;
       }
+      const readStarted = diagnosticStart !== undefined ? performance.now() : undefined;
       const events = await this.readJournalPage(read, journal, afterRevision, headRevision);
+      if (readStarted !== undefined) diagnosticReadMs = performance.now() - readStarted;
       const revision = events[events.length - 1]?.revision ?? afterRevision;
       if (owned) this.assertOwnedTerminalReader(owned);
       if (socket.destroyed || this.terminalReads.get(socket)?.get(params.readId) !== read) {
@@ -1240,6 +1251,7 @@ export class RuntimeSupervisorServer {
       }
       const result = { readId: read.readId, sessionId: session.sessionId, authorityId: read.authorityId,
         afterRevision, revision, headRevision, events };
+      finishTiming(result);
       if (owned) this.ownedTerminalReplies.set(result, owned);
       return result;
     });

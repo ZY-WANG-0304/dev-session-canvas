@@ -314,9 +314,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install locked Chromium
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
@@ -387,9 +385,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install locked Chromium
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
@@ -460,9 +456,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install locked Chromium
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
@@ -686,9 +680,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install declared Remote SSH fixture dependency
       if: ${{ startsWith(matrix.variant, 'remote-ssh-real-reopen-') }}
@@ -772,9 +764,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install locked Chromium
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
@@ -919,9 +909,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install locked Chromium
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
@@ -1002,9 +990,7 @@ jobs:
     - name: Install fixed browser dependencies
       if: ${{ runner.os == 'Linux' }}
       shell: bash
-      run: |-
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2
+      run: node scripts/gates/browser-system-dependencies.mjs
       timeout-minutes: 5
     - name: Install locked Chromium
       run: node scripts/gates/run-infrastructure.mjs --kind download --output gate-results -- node node_modules/playwright/cli.js install chromium
