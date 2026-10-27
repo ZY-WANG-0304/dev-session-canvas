@@ -999,3 +999,5 @@ review comment 6440232755 指出的遗漏已修复：recorder 在开始时登记
 ## PR337 正式门禁回归接续（2026-10-27）
 
 run 40516969808 的 regression shard-1 中生命周期原型夹具缺少 executionFlow/publisher，已本地先红后绿修复；同时补齐实际隔离诊断 manager 的独立依赖。source-build/package-clean 来源核验读到未完成状态的问题，已加入原 300 秒期限内的 producer 终态观察。最终 job 记录显示 producer 先于消费者失败完成，但缺少当时的 job ID，具体缓存原因仍未知；新日志记录 ID 与等待次数，不跳过来源核验。lifecycle 10 项、provenance 14 项定向回归和完整 gate contracts 101/101 通过，类型检查与构建通过；完整新 head 正式门禁仍待取得。旧失败与本地通过均不构成可合并的 CI 验收。证据与方案见 docs/design-docs/release-gate-redesign.md 和 docs/design-docs/runtime-journal-input-priority.md。
+
+PR337 后续完整 gate（40528627405，ddf22a99）：原 review 的 regression shard-1、source-build、package-clean 已通过，但 runtime 配置/scrollback/预设创建等 smoke 只等待旧全量消息，导致实际正确的 stateDelta 被忽略；已统一迁移观察器并补齐独立 driver 输入。Windows installed-pair 在输入输出成功后因两侧栏挤压视口、没有40px增长空间而在拖动前失败；已添加公开导航准备，保持原实际几何断言。完整本地 contracts 102/102、Agent45/45、容量6/6通过；Windows实机和最新head完整门禁仍待验，旧失败不删除。

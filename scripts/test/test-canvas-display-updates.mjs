@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import esbuild from 'esbuild';
 import path from 'node:path';
@@ -15,6 +15,36 @@ const initial = () => ({state:{version:1,updatedAt:'initial',nodes:[node('a'),no
   workspaceFolders:[],noteMarkdownImageWorkspaceRoots:[{name:'workspace',webviewResourceBaseUri:'base'}]}});
 const canonical = s => { const v=structuredClone(projectCanvasDisplayState(s));delete v.updatedAt;return JSON.parse(JSON.stringify(v)); };
 const wire = s => JSON.parse(JSON.stringify(s));
+const { readCanvasRuntimeUpdate } = createRequire(import.meta.url)('../../tests/vscode-smoke/canvas-runtime-update.cjs');
+const smokeSource = await readFile('tests/vscode-smoke/extension-tests.cjs', 'utf8');
+for (const [name, setter, key, original] of [
+  ['verifyRuntimeContextRefreshesTerminalScrollback', 'setTerminalIntegratedScrollback', 'terminalScrollback', 1000],
+  ['verifyRuntimeContextRefreshesDefaultAgentProvider', 'setDefaultAgentProvider', 'defaultAgentProvider', 'codex']
+]) {
+  const start = smokeSource.indexOf(`async function ${name}(`);
+  const end = smokeSource.indexOf('\nasync function ', start + 1);
+  const configuration = { get: () => original };
+  const state = initial();state.runtime[key] = original;
+  const runtimePublisher = new CanvasDisplayPublisher();
+  const full = runtimePublisher.publish(state, 'smoke-frame');
+  assert.equal(readCanvasRuntimeUpdate(full)[key], original);
+  let messages = [], observations = 0;
+  const set = async value => {
+    state.runtime[key] = value;
+    const update = wire(runtimePublisher.publish(state, 'smoke-frame'));
+    assert.equal(update.type, 'host/stateDelta');messages.push(update);
+  };
+  const run = new Function('vscode', 'assert', 'readCanvasRuntimeUpdate', 'clearHostMessages', setter, 'waitForHostMessages',
+    `${smokeSource.slice(start, end)}; return ${name};`)(
+    { workspace: { getConfiguration: () => configuration } }, assert, readCanvasRuntimeUpdate,
+    async () => { messages = []; }, set,
+    async predicate => { observations++;assert(predicate(messages), 'Actual smoke must accept the emitted runtime delta');return messages; });
+  await run();assert.equal(observations, 2);assert.equal(state.runtime[key], original);
+}
+assert.equal(readCanvasRuntimeUpdate({ type: 'host/stateDelta', payload: { nodes: {} } }), undefined);
+assert.equal(readCanvasRuntimeUpdate({ type: 'host/stateDelta', payload: { runtime: { launch: { defaultAgentProvider: 'codex' } } } }).terminalScrollback, undefined);
+assert.equal(readCanvasRuntimeUpdate({ type: 'unrelated', payload: { runtime: { terminalScrollback: 42 } } }), undefined);
+console.log('PASS actual smoke runtime observers: full/delta, configuration update/restoration, unrelated changes rejected');
 const publisher = new CanvasDisplayPublisher();let value = initial();
 let message = publisher.publish(value,'frame-1',false);assert.equal(message.type,'host/stateUpdated');
 let displayed = wire(message.payload);const revision=displayed.revision;

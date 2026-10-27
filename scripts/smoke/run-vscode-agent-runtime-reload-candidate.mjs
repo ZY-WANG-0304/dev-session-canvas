@@ -72,7 +72,7 @@ try {
     name: 'agent-runtime-reload-driver', publisher: 'devsessioncanvas-tests', version: '0.0.0',
     engines: { vscode: '^1.117.0' }, main: './agent-runtime-reload-driver.cjs',
     activationEvents: ['onStartupFinished'], extensionKind: ['workspace'] }, null, 2)}\n`);
-  const staged = ['agent-runtime-reload-driver.cjs', 'test-helpers.cjs', 'installed-execution-candidate.cjs',
+  const staged = ['agent-runtime-reload-driver.cjs', 'canvas-runtime-update.cjs', 'test-helpers.cjs', 'installed-execution-candidate.cjs',
     'agent-candidate-process-observer.cjs', 'agent-candidate-windows-observer.cjs',
     'agent-candidate-process-observer.py', 'agent-candidate-process-observer.ps1', 'runtime-reload-contract.cjs',
     'runtime-storage-containment.cjs'];

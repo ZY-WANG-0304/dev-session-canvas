@@ -164,3 +164,12 @@ Remote SSH 补验中，首次等待命令面板在远程下载/初始化期间�
 - [ ] 新 head 完整 PR gate 与 Verify release contract 待运行并记录。
 
 决策：两项均为本 PR 正式门禁 review 的接续，不另建 PR。PR 现已被用户改为非草稿，保留现状且不合并。不得以 skipped、本地测试或旧 run 的后续 producer 完成代替新 head 的 Verify release contract。
+
+
+门禁运行 40528627405（ddf22a99）补充：原 review 三项已通过，完整场景继续发现旧 smoke 只接收 stateUpdated 而忽略正确 stateDelta 的确定性失败；统一更新 runtime 消息观察，仍要求观察到实际字段变化，不用 Host 当前值替代通知。Windows installed-pair 在公开拖动前失败，截图画布被 Explorer/Chat 两侧栏压窄，节点左/右空间均小于既有 40px 增长阈值。先通过公共 VS Code 命令关闭两侧栏并双击原节点标题定位，确认有效拖动空间后再启动 PTY 几何基线；保留原拖动阈值、原进程/nonce 和实际内核尺寸断言，不把导航导致的尺寸变化算作 resize 结果。新失败证据保留在 .debug/review337-*-failed.log 和 windows-artifact.zip。
+
+- [x] 全部旧全量 runtime 消息观察迁移到全量/分组增量，补齐 driver staging 与输入指纹；实际配置回调、Agent 45 项、容量6项通过。
+- [x] Windows 视口准备保持公开操作、原期限和先准备后捕获几何基线；增长路径及失败几何回归通过，完整 gate contracts 102/102。
+- [ ] 后续修复提交的完整 PR gate，尤其 Windows installed-pair 与所有 runtime 配置场景，仍待 Actions 验收。
+
+修订说明：ddf22a99 的完整门禁继续暴露之前的 smoke 假设未随增量协议迁移，以及默认视口空间不足。已按实际日志修复观察与准备边界；旧 run 已出现确定性失败，不以已通过的三个原 review job 推导整体通过，后续新 head 重新验证。

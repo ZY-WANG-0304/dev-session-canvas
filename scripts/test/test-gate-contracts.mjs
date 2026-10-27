@@ -26,7 +26,7 @@ import { openInstalledNotificationCallback } from '../smoke/installed-notificati
 import { observeInstalledPublicExit, installedPublicExitCommand } from '../smoke/installed-public-exit.mjs';
 import { readWindowsProcessIdentity } from '../smoke/windows-process-identity.mjs';
 import { chromium } from 'playwright';
-import { selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
+import { prepareInstalledResizeViewport, selectInstalledResizeGesture, installedNodeIsCentered, installedGeometryMatchesResize,
   prepareInstalledLocalizedStop, findUniqueInstalledTerminalCreation } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { regressionScripts } from '../gates/catalog.mjs';
@@ -1377,6 +1377,33 @@ test('installed resize keeps the complete growth gesture inside the actual clipp
     'bottom-right':{x:967,y:826,width:6,height:6}
   }),/No public resize corner/u);
   assert.throws(()=>selectInstalledResizeGesture({...canvas,width:NaN},handles),/bounds are unavailable/u);
+});
+test('installed resize prepares public viewport space before geometry measurement without reducing the gesture', async()=>{
+  const calls=[], deadline=Date.now()+2000;
+  const narrow={x:308,y:80,width:460,height:605};
+  const box=(x,y)=>({x:x-3,y:y-3,width:6,height:6});
+  const narrowHandles={'top-left':box(350.3,230),'top-right':box(725.7,230),
+    'bottom-left':box(350.3,522),'bottom-right':box(725.7,522)};
+  assert.throws(()=>selectInstalledResizeGesture(narrow,narrowHandles),/No public resize corner/);
+  let canvas=narrow,handles=narrowHandles;
+  const frame={locator:()=>({boundingBox:async()=>canvas})};
+  const node={locator:selector=>selector==='.window-chrome'?{dblclick:async options=>{
+    calls.push('center');assert(options.timeout>0&&options.timeout<=2000);
+    canvas={x:50,y:80,width:970,height:605};
+    handles={'top-left':box(320,230),'top-right':box(750,230),'bottom-left':box(320,522),'bottom-right':box(750,522)};
+  }}:{boundingBox:async()=>handles[selector.match(/"([^"]+)"/)[1]]}};
+  const result=await prepareInstalledResizeViewport({frame,node,deadline,
+    command:async(name,args,limit)=>{calls.push(name);assert.deepEqual(args,[]);assert.equal(limit,deadline);},
+    wait:async(label,read,accept,limit)=>{assert.equal(limit,deadline);assert.equal(await read(),null);
+      const value=await read();assert(accept(value));return value;}});
+  assert.deepEqual(calls,['workbench.action.closeSidebar','workbench.action.closeAuxiliaryBar','center']);
+  assert(Math.abs(result.gesture.end.x-result.gesture.start.x)>=40);
+  assert(Math.abs(result.gesture.end.y-result.gesture.start.y)>=30);
+  await assert.rejects(()=>prepareInstalledResizeViewport({frame,node,deadline:Date.now()-1,
+    command:()=>assert.fail('Expired preparation cannot navigate')}),/deadline exhausted/);
+  const source=await fs.readFile(new URL('../smoke/run-installed-pair.mjs',import.meta.url),'utf8');
+  assert(source.indexOf('facts.terminal.resizePreparation = await')<source.indexOf("const geometryFile ="),
+    'Viewport changes must precede the original PTY geometry baseline');
 });
 test('installed callback observation needs actual node centering rather than an unchanged attention flag',()=>{
   assert(!installedNodeIsCentered(null));

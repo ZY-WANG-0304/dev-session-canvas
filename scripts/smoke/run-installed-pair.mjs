@@ -22,7 +22,7 @@ import { installCandidateVsix } from './installed-execution-candidate.mjs';
 import { processIdentity, waitForHostAbsence } from './host-evidence.mjs';
 import { openInstalledNotificationCallback } from './installed-notification-callback.mjs';
 import { observeInstalledPublicExit } from './installed-public-exit.mjs';
-import { resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered,
+import { prepareInstalledResizeViewport, resizeInstalledNode, observeInstalledCanvas, installedNodeIsCentered,
   installedGeometryMatchesResize, prepareInstalledLocalizedStop,
   findUniqueInstalledTerminalCreation } from './installed-ui-observation.mjs';
 
@@ -169,6 +169,8 @@ driverCommand = async (command, args, requestedDeadline = Date.now() + 20000) =>
   await wait('Real installed Terminal output', () => node.locator('.xterm-rows').innerText(), value =>
     value.split('\n').filter(line => line.trim() === marker).length > 0);
   facts.terminal={nodeID,marker,outputObserved:true};
+  facts.terminal.resizePreparation = await prepareInstalledResizeViewport({ frame, node,
+    command: driverCommand, wait, deadline: Math.min(deadline, Date.now() + 20000) });
   const geometryFile = path.join(output, 'child-geometry.json');
   const subject = path.join(output, 'geometry-subject.cjs');
   await fs.copyFile(fileURLToPath(new URL('./installed-geometry-subject.cjs', import.meta.url)), subject);

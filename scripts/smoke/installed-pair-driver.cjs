@@ -47,7 +47,7 @@ exports.activate=async function(context) {
         return;
       }
       const allowed=['devSessionCanvasNotifier.postSystemNotification','workbench.action.closeWindow','workbench.action.quit',
-        'workbench.action.closeAllEditors',
+        'workbench.action.closeAllEditors', 'workbench.action.closeSidebar', 'workbench.action.closeAuxiliaryBar',
         'workbench.view.extension.devSessionCanvasNotifier','devSessionCanvasNotifier.status.focus',
         'devSessionCanvasNotifier.notes.focus','devSessionCanvasNotifier.codex.focus',
         'devSessionCanvas.openCanvasInEditor','devSessionCanvas.createTerminalFromExplorerResource','vscode.open'];

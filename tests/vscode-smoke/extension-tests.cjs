@@ -1,3 +1,4 @@
+const { readCanvasRuntimeUpdate } = require('./canvas-runtime-update.cjs');
 const assert = require('assert');
 const fs = require('fs/promises');
 const fsSync = require('fs');
@@ -3808,8 +3809,7 @@ async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.agentLaunchDefaults?.codex?.defaultArgs === conflictingCodexDefaultArgs
+            readCanvasRuntimeUpdate(message)?.agentLaunchDefaults?.codex?.defaultArgs === conflictingCodexDefaultArgs
         ),
       20000
     );
@@ -3858,8 +3858,7 @@ async function verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent() {
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.agentLaunchDefaults?.codex?.defaultArgs === originalCodexDefaultArgs
+            readCanvasRuntimeUpdate(message)?.agentLaunchDefaults?.codex?.defaultArgs === originalCodexDefaultArgs
         ),
       20000
     );
@@ -3886,16 +3885,14 @@ async function verifyRuntimeContextRefreshesDefaultAgentProvider() {
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.defaultAgentProvider === updatedProvider
+            readCanvasRuntimeUpdate(message)?.defaultAgentProvider === updatedProvider
         ),
       20000
     );
     assert.ok(
       hostMessages.some(
         (message) =>
-          message.type === 'host/stateUpdated' &&
-          message.payload.runtime?.defaultAgentProvider === updatedProvider
+          readCanvasRuntimeUpdate(message)?.defaultAgentProvider === updatedProvider
       ),
       'Expected host to push an updated runtime context after changing the default Agent provider.'
     );
@@ -3906,8 +3903,7 @@ async function verifyRuntimeContextRefreshesDefaultAgentProvider() {
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.defaultAgentProvider === originalProvider
+            readCanvasRuntimeUpdate(message)?.defaultAgentProvider === originalProvider
         ),
       20000
     );
@@ -3927,16 +3923,14 @@ async function verifyRuntimeContextRefreshesTerminalScrollback() {
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === updatedScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === updatedScrollback
         ),
       20000
     );
     assert.ok(
       hostMessages.some(
         (message) =>
-          message.type === 'host/stateUpdated' &&
-          message.payload.runtime?.terminalScrollback === updatedScrollback
+          readCanvasRuntimeUpdate(message)?.terminalScrollback === updatedScrollback
       ),
       'Expected host to push an updated runtime context after changing terminal.integrated.scrollback.'
     );
@@ -3947,8 +3941,7 @@ async function verifyRuntimeContextRefreshesTerminalScrollback() {
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === originalScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === originalScrollback
         ),
       20000
     );
@@ -9209,8 +9202,7 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === initialScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === initialScrollback
         ),
       20000
     );
@@ -9240,8 +9232,7 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === configuredScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === configuredScrollback
         ),
       20000
     );
@@ -9313,8 +9304,7 @@ async function verifyRuntimeReloadPreservesConfiguredTerminalScrollbackHistory(t
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === originalScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === originalScrollback
         ),
       20000
     );
@@ -10920,8 +10910,7 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === initialScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === initialScrollback
         ),
       20000
     );
@@ -10963,8 +10952,7 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === configuredScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === configuredScrollback
         ),
       20000
     );
@@ -11132,8 +11120,7 @@ async function verifyLiveRuntimeReloadPreservesUpdatedTerminalScrollbackHistory(
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === originalScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === originalScrollback
         ),
       20000
     );
@@ -11158,8 +11145,7 @@ async function verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNodeI
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === configuredScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === configuredScrollback
         ),
       20000
     );
@@ -11290,8 +11276,7 @@ async function verifyCompletedLiveRuntimeDiscardsHistoryAfterDrain(terminalNodeI
       (messages) =>
         messages.some(
           (message) =>
-            message.type === 'host/stateUpdated' &&
-            message.payload.runtime?.terminalScrollback === originalScrollback
+            readCanvasRuntimeUpdate(message)?.terminalScrollback === originalScrollback
       ),
       20000
     );

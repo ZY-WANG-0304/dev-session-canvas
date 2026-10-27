@@ -131,6 +131,30 @@ export function selectInstalledResizeGesture(canvas, handles) {
   return gesture;
 }
 
+export async function prepareInstalledResizeViewport({ frame, node, command, wait, deadline }) {
+  const remaining = () => {
+    assert(Date.now() < deadline, 'Installed resize preparation deadline exhausted');
+    return deadline - Date.now();
+  };
+  // Public workbench navigation only, before the PTY geometry baseline is captured.
+  for (const name of ['workbench.action.closeSidebar', 'workbench.action.closeAuxiliaryBar']) {
+    remaining(); await command(name, [], deadline);
+  }
+  remaining();
+  await node.locator('.window-chrome').dblclick({ position: { x: 4, y: 4 }, timeout: remaining() });
+  let previous;
+  return wait('Original installed node has stable resize space', async () => {
+    remaining();
+    const canvas = await frame.locator('.canvas-shell').boundingBox();
+    const handles = Object.fromEntries(await Promise.all(corners.map(async direction => [direction,
+      await node.locator(`[data-node-resize-direction="${direction}"]`).boundingBox()])));
+    const identity = JSON.stringify({ canvas, handles });
+    const stable = identity === previous; previous = identity;
+    if (!stable) return null;
+    return { canvas, handles, gesture: selectInstalledResizeGesture(canvas, handles) };
+  }, value => value !== null, deadline);
+}
+
 export async function resizeInstalledNode(frame, node) {
   const canvas = await frame.locator('.canvas-shell').boundingBox();
   const handles = Object.fromEntries(await Promise.all(corners.map(async direction => [direction,

@@ -1,3 +1,4 @@
+const { readCanvasRuntimeUpdate } = require('./canvas-runtime-update.cjs');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs/promises');
@@ -656,7 +657,7 @@ async function pairSwitchGallery(subject) {
     await vscode.workspace.getConfiguration('devSessionCanvas').update('canvas.multiRootPresentationMode', mode,
       vscode.ConfigurationTarget.Workspace);
     await poll(`pair ${mode} context`, () => command('getHostMessages'), messages => messages.some(message =>
-      message.type === 'host/stateUpdated' && message.payload.runtime.multiRootPresentationMode === mode));
+      readCanvasRuntimeUpdate(message)?.multiRootPresentationMode === mode));
     // PaneGallery renders each root's contents without the composed root group frames.
     const rendered = await poll(`pair ${mode} rendered`, probe, value => roots.every(id =>
       value.groups.some(group => group.groupId === id) === (mode === 'rootGroups')));

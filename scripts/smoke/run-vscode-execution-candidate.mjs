@@ -206,6 +206,7 @@ async function runCapacityCalibration() {
   const helperSources = ['src/common/runtimeSupervisorPaths.ts', 'src/common/serializedTerminalState.ts',
     'src/supervisor/terminalSessionJournal.ts'];
   for (const file of ['tests/vscode-smoke/execution-capacity-tests.cjs',
+    'tests/vscode-smoke/canvas-runtime-update.cjs',
     'tests/vscode-smoke/fixtures/execution-capacity-subject.cjs',
     'tests/vscode-smoke/test-helpers.cjs',
     ...helperSources.map(file => `extensions/vscode/dev-session-canvas/${file}`)]) {
