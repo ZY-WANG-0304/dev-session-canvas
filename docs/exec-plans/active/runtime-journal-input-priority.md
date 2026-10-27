@@ -153,3 +153,14 @@ Remote SSH 补验中，首次等待命令面板在远程下载/初始化期间�
 - [x] 同步验证结果和历史证据限制，修复纳入 PR337 原分支；提交后推送供复审，保持 draft。
 
 结果与复盘：旧基线停止 75 ms 的未完成分页断言先红，当前 recorder/真实 Host 回归及 Webview 54/54、Host batch 10/10 通过；历史样本不能排除在途长请求。原始日志保留在 .debug/review337-pending-*.log，正式设计已记录完整验证和范围。修订理由：review 明确复现观察盲区，先补诊断完整性，不变更既有性能方案或声称旧异常已归因。
+
+
+## PR337 正式门禁 review 接续（2026-10-27）
+
+- [x] 读取新 review；本地复现 smoke-lifecycle-isolation 的 executionFlow undefined。查明实际诊断 manager 工厂也需补齐独立依赖。
+- [x] 修复两处原型构造，10 项 lifecycle 检查通过，live trace、publisher、catchup 不受 fake lifecycle 影响。
+- [x] 核对 run 40516969808 时间线；为 provenance 增加原期限内 producer 终态观察，14 项定向测试通过，身份、超时和来源约束保持。
+- [x] lifecycle 10 项、gate contracts 101/101、execution-flow-diagnostics、typecheck/build 与 F5 目录准备通过；文档同步，修复提交到原 PR 分支。
+- [ ] 新 head 完整 PR gate 与 Verify release contract 待运行并记录。
+
+决策：两项均为本 PR 正式门禁 review 的接续，不另建 PR。PR 现已被用户改为非草稿，保留现状且不合并。不得以 skipped、本地测试或旧 run 的后续 producer 完成代替新 head 的 Verify release contract。

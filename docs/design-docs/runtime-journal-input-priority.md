@@ -306,3 +306,8 @@ Host 的异步输入写入、分页读取、抽样消息回执，以及 Webview 
 验证口径：受控时钟核验手动停止/自然到期、迟到完成/重启、容量释放、隐私和旧格式；真实 Host 方法挂起 read 后导出再完成；真实 Webview controller 分别挂起响应、写队列和 xterm 回调。保持请求、广播时机与频率不变。本轮定向回归已通过，详见下述验证记录。历史导出缺少此信息，已有延迟统计只覆盖完成样本，不能证明不存在在途长请求；本修复不能追溯补全旧证据。
 
 验证记录（2026-10-27）：对旧 bfb166bb recorder 运行未完成分页的受控反例，停止 75 ms 后 pending 断言失败（actual=undefined），迟到 finish 仍不产生完成样本。当前测试通过手动停止、deadline、迟到完成/重启、256 项容量和释放、旧格式与隐私清洗；提取真实 Host 方法验证未完成 read/input 先导出后完成，真实 Webview controller 新增三个阶段用例，54/54 通过，Host batch 10/10 通过。`npm run test:terminal-paged-projection`（含 execution-flow-diagnostics）、`npm run typecheck`、`npm run build` 和 `npm run prepare:debug-main-only-extension` 均成功。原始日志 `.debug/review337-pending-{baseline,tests,typecheck,build,prepare}.log`；旧基线日志为预期红灯，其余通过。此次为诊断边界修复，未重复性能 A/B 对照或真实 GUI 复测，不代替正式 CI。
+
+
+## 正式方案：生命周期诊断依赖隔离（PR337 门禁 review）
+
+正式门禁发现 Object.create(CanvasPanelManager.prototype) 绕过字段初始化，使 postState 读取 executionFlow 时失败。本地已复现，生产类内部 createWebviewLifecycleRaceDiagnosticManager 也使用相同构造方式。两处均显式初始化独立 recorder、trace 辅助表、画布 publisher 表和 catchup 集合；保留真实 postState/bootstrap/协议方法，不能以 stub 掩盖路径缺失，不能从 live manager 浅拷贝这些状态。测试同时证明正常 lifecycle 继续工作、诊断成功/失败不会修改 live trace/publisher/catchup。本地旧输入复现 executionFlow undefined，修复后 10 项 lifecycle 检查全部通过；execution-flow-diagnostics、typecheck、build 和 F5 目录准备通过。完整门禁结果另记，不将定向测试外推为正式验收。

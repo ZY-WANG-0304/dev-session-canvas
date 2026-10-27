@@ -1156,6 +1156,65 @@ test('native input provenance ignores unrelated running jobs and binds actual ZI
     await assert.rejects(()=>inspectArtifactArchive(traversal.generateAsync({type:'nodebuffer'}),path.join(temp,'unsafe')));
   }finally{await fs.rm(temp,{recursive:true,force:true});}
 });
+test('provenance waits for selected producer visibility without weakening identity or archive checks', async t => {
+  const f=fixture({changedPaths:['packages/a.ts']});
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-producer-wait-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const zip=new JSZip();zip.file('native-load.task.json',JSON.stringify(f.receipts.find(r=>r.taskID==='native-load')));
+  const bytes=await zip.generateAsync({type:'nodebuffer'});
+  const artifact={id:100,name:`gate-native-load-linux-x64-glibc-${f.plan.run.id}-${f.plan.run.attempt}`,
+    expired:false,digest:`sha256:${digest(bytes)}`,workflow_run:{id:12345,head_sha:sha}};
+  for(const [scenario,pattern]of [['completed',null],['attempt',/Run attempt changed/],['head',/strictly equal/],
+    ['job-id',/job identity changed/],['missing',/Cannot bind/],['duplicate',/Cannot bind/],
+    ['unknown',/Unknown artifact producer status/],['upload',/bind artifact ID/],['digest',/archive differs/]]) {
+    await t.test(scenario,async()=>{
+      let waits=0,downloads=0,logs=0,runQueries=0;
+      const api=async route=>{
+        if(route.endsWith('/12345')) {runQueries++;return {id:12345,run_attempt:scenario==='attempt'&&waits?3:2,
+          head_sha:scenario==='head'&&waits?base:sha};}
+        if(route.includes('/jobs?')) {
+          const producer={id:scenario==='job-id'&&waits?3:1,name:'Validation / Gate native-assets (linux-x64-glibc)',
+            status:waits<2?'in_progress':'completed',conclusion:waits<2?null:'failure',
+            steps:[{name:'native load',status:'completed',conclusion:'success'}]};
+          if(scenario==='unknown')producer.status='unexpected';
+          return {jobs:[...(scenario==='missing'&&waits?[]:[producer]),
+            ...(scenario==='duplicate'&&waits?[{...producer,id:4}]:[]),
+            {id:2,name:'Validation / Gate regression (shard-1)',status:'in_progress',conclusion:null}]};
+        }
+        return {artifacts:[scenario==='digest'?{...artifact,digest:`sha256:${hash}`}:artifact]};
+      };
+      const collect=()=>collectGitHubProvenance(f.plan,{repository:'test/repo',output:path.join(root,scenario),scope:'native-load',api,
+        wait:async ms=>{assert(ms>0&&ms<=1000);assert.equal(logs,0);assert.equal(downloads,0);waits++;},
+        log:async()=>{assert.equal(waits,2);logs++;return `Artifact ID is ${scenario==='upload'?101:100}`;},
+        download:async()=>{assert.equal(waits,2);downloads++;return bytes;}});
+      if(pattern)await assert.rejects(collect,pattern);
+      else {
+        const result=await collect();
+        assert.equal(waits,2);assert.equal(runQueries,3);assert.equal(downloads,1);
+        assert.equal(result.jobs[0].status,'completed');
+        assert.equal(result.jobs[0].conclusion,'failure','Observation must preserve actual failure for downstream acceptance');
+        assert.equal(result.jobs[1].status,'in_progress','Unrelated jobs must not block scoped provenance');
+        assert.equal(result.artifacts[0].jobID,1);assert.equal(result.artifacts[0].archiveHash,digest(bytes));
+      }
+      if(['attempt','head','job-id','missing','duplicate','unknown'].includes(scenario))assert.equal(logs,0);
+    });
+  }
+});
+test('producer visibility waiting uses the original deadline and never downloads a running producer', async()=>{
+  const f=fixture({changedPaths:['packages/a.ts']});let waits=0,queries=0;
+  const deadline=Date.now()+40;
+  const api=async route=>{
+    queries++;
+    if(route.endsWith('/12345'))return {id:12345,run_attempt:2,head_sha:sha};
+    if(route.includes('/jobs?'))return {jobs:[{id:1,name:'Gate native-assets (linux-x64-glibc)',status:'in_progress',conclusion:null}]};
+    return {artifacts:[{id:100,name:`gate-native-load-linux-x64-glibc-${f.plan.run.id}-${f.plan.run.attempt}`} ]};
+  };
+  await assert.rejects(()=>collectGitHubProvenance(f.plan,{repository:'test/repo',output:'/unused',scope:'native-load',deadline,api,
+    wait:async ms=>{waits++;assert(ms<=40);await new Promise(resolve=>setTimeout(resolve,50));},
+    log:async()=>assert.fail('Running producer has no accepted log'),download:async()=>assert.fail('Running producer cannot be downloaded')}),
+    /original deadline exhausted; pending producers:.*id=1 status=in_progress/);
+  assert.equal(waits,1);assert.equal(queries,3,'No new request receives time after the original deadline');
+});
 test('GitHub HTTP provenance binds raw ANSI upload logs and original ZIP bytes without forwarding redirect credentials', async t => {
   const f=fixture({changedPaths:['packages/a.ts']});
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'dsc-http-provenance-'));

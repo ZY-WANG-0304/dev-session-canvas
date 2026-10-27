@@ -994,3 +994,8 @@ PR337 侧栏 A/B/C/A 四轮各 120 次回显及重开 DOM 验证均完成，最�
 review comment 6440232755 指出的遗漏已修复：recorder 在开始时登记身份，停止/deadline 以 pendingSpans 保存已等待时间，独立于完成分布；Host read/input、消息回执和 Webview 分页往返/队列/xterm 应用已接入。旧 bfb166bb 反例预期失败，当前受控回归及 Webview 54/54、Host batch 10/10、类型检查和构建通过。修复没有遗留实现待办；新 head 仍需复审及正式 CI，draft skipped 不算验收。
 
 历史日志无法追溯补全未完成跨度，旧完成样本的最大值不能排除更慢的在途请求。现场 17 秒停顿及侧栏 B 尖峰继续未归因，后续使用新采集时应同时检查 pendingSpans、droppedPendingSpans 和完成分布；旧文件缺少 pending 字段表示未知，而非零。设计和验证记录见 docs/design-docs/runtime-journal-input-priority.md「停止时保留未完成跨度」。
+
+
+## PR337 正式门禁回归接续（2026-10-27）
+
+run 40516969808 的 regression shard-1 中生命周期原型夹具缺少 executionFlow/publisher，已本地先红后绿修复；同时补齐实际隔离诊断 manager 的独立依赖。source-build/package-clean 来源核验读到未完成状态的问题，已加入原 300 秒期限内的 producer 终态观察。最终 job 记录显示 producer 先于消费者失败完成，但缺少当时的 job ID，具体缓存原因仍未知；新日志记录 ID 与等待次数，不跳过来源核验。lifecycle 10 项、provenance 14 项定向回归和完整 gate contracts 101/101 通过，类型检查与构建通过；完整新 head 正式门禁仍待取得。旧失败与本地通过均不构成可合并的 CI 验收。证据与方案见 docs/design-docs/release-gate-redesign.md 和 docs/design-docs/runtime-journal-input-priority.md。

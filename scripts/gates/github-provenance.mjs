@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
+import { setTimeout as delay } from 'node:timers/promises';
 import { digest, objectDigest, readJSON, writeJSON } from './receipts.mjs';
 import { verifyEvidenceManifest } from './evidence.mjs';
 import { requestBytes } from '../release/channel-client.mjs';
@@ -44,7 +45,7 @@ export async function collectGitHubProvenance(plan,{repository=process.env.GITHU
   allowHistoricalRun=false,
   deadline=Date.now()+300000, token=process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN,
   apiURL=process.env.GITHUB_API_URL ?? 'https://api.github.com', request=requestBytes,
-  api, log, download}={}) {
+  api, log, download, wait=delay}={}) {
   assert(repository&&!String(plan.run.id).startsWith('local-'),'GitHub run identity required');assert(output);
   assert.match(repository,/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u);
   assert(['all','native-load','acceptance','candidate'].includes(scope),'Unknown provenance collection scope');
@@ -57,19 +58,51 @@ export async function collectGitHubProvenance(plan,{repository=process.env.GITHU
   api??=async route=>JSON.parse((await bytes(route,32*1024**2)).toString('utf8'));
   log??=async id=>(await bytes(`repos/${repository}/actions/jobs/${id}/logs`,64*1024**2)).toString('utf8');
   download??=id=>bytes(`repos/${repository}/actions/artifacts/${id}/zip`,512*1024**2);
-  const run=await api(`repos/${repository}/actions/runs/${plan.run.id}`);
-  assert.equal(run.id,Number(plan.run.id));assert.equal(run.head_sha,plan.run.headSHA);
-  if(allowHistoricalRun) assert(run.run_attempt>=plan.run.attempt,'Original run attempt is unavailable');
-  else assert.equal(run.run_attempt,plan.run.attempt,'Run attempt changed while collecting results');
-  const jobs=[];for(let page=1;;page++){const response=await api(`repos/${repository}/actions/runs/${plan.run.id}/attempts/${plan.run.attempt}/jobs?per_page=100&page=${page}`);
-    jobs.push(...response.jobs);if(response.jobs.length<100)break;}
+  const readRun=async()=>{
+    const run=await api(`repos/${repository}/actions/runs/${plan.run.id}`);
+    assert.equal(run.id,Number(plan.run.id));assert.equal(run.head_sha,plan.run.headSHA);
+    if(allowHistoricalRun) assert(run.run_attempt>=plan.run.attempt,'Original run attempt is unavailable');
+    else assert.equal(run.run_attempt,plan.run.attempt,'Run attempt changed while collecting results');
+    return run;
+  };
+  const readJobs=async()=>{
+    const jobs=[];for(let page=1;;page++){const response=await api(`repos/${repository}/actions/runs/${plan.run.id}/attempts/${plan.run.attempt}/jobs?per_page=100&page=${page}`);
+      jobs.push(...response.jobs);if(response.jobs.length<100)break;}
+    return jobs.map(job=>({id:job.id,name:job.name.split(' / ').at(-1),status:job.status,conclusion:job.conclusion,
+      steps:(job.steps??[]).map(step=>({name:step.name,conclusion:step.conclusion,status:step.status}))}));
+  };
+  const run=await readRun();
+  let normalizedJobs=await readJobs();
   const artifacts=[];for(let page=1;;page++){const response=await api(`repos/${repository}/actions/runs/${plan.run.id}/artifacts?per_page=100&page=${page}`);
     artifacts.push(...response.artifacts);if(response.artifacts.length<100)break;}
-  const normalizedJobs=jobs.map(job=>({id:job.id,name:job.name.split(' / ').at(-1),status:job.status,conclusion:job.conclusion,
-    steps:(job.steps??[]).map(step=>({name:step.name,conclusion:step.conclusion,status:step.status}))}));
   const selected=artifacts.filter(item=>item.name.startsWith('gate-')&&item.name.endsWith(`-${plan.run.id}-${plan.run.attempt}`)
     &&(scope==='acceptance'?item.name.startsWith('gate-acceptance-'):scope==='candidate'?item.name.startsWith('gate-transfer-candidate-'):
       !item.name.startsWith('gate-acceptance-')&&(scope==='all'||item.name.startsWith('gate-native-load-'))));
+  // Workflow dependency completion can precede its visibility in the jobs API.
+  // Observe only selected producers, keeping the original deadline and job identities.
+  const producerIDs=new Map();let observations=0;
+  for(;;) {
+    const pending=[];
+    for(const name of new Set(selected.map(artifact=>expectedArtifactProducer(artifact.name,plan)))) {
+      const matches=normalizedJobs.filter(job=>job.name===name);
+      assert.equal(matches.length,1,`Cannot bind ${name} to an actual job`);
+      const producer=matches[0];
+      if(producerIDs.has(name))assert.equal(producer.id,producerIDs.get(name),'Artifact producer job identity changed');
+      else producerIDs.set(name,producer.id);
+      if(producer.status==='completed')continue;
+      assert(['queued','in_progress','waiting','pending','requested'].includes(producer.status),'Unknown artifact producer status');
+      pending.push(`${name} id=${producer.id} status=${producer.status}`);
+    }
+    if(!pending.length)break;
+    if(observations++===0)console.info(`Waiting for artifact producer completion: ${pending.join('; ')}`);
+    const remaining=deadline-Date.now();
+    assert(remaining>0,`GitHub provenance original deadline exhausted; pending producers: ${pending.join('; ')}`);
+    await wait(Math.min(1000,remaining));
+    assert(Date.now()<deadline,`GitHub provenance original deadline exhausted; pending producers: ${pending.join('; ')}`);
+    await readRun();
+    normalizedJobs=await readJobs();
+  }
+  if(observations)console.info(`Artifact producers completed after ${observations} observation waits`);
   const normalizedArtifacts=[];const logs=new Map();
   for(const artifact of selected) {
     const jobName=expectedArtifactProducer(artifact.name,plan);const producers=normalizedJobs.filter(job=>job.name===jobName);
