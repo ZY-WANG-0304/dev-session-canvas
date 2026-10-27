@@ -1001,3 +1001,7 @@ review comment 6440232755 指出的遗漏已修复：recorder 在开始时登记
 run 40516969808 的 regression shard-1 中生命周期原型夹具缺少 executionFlow/publisher，已本地先红后绿修复；同时补齐实际隔离诊断 manager 的独立依赖。source-build/package-clean 来源核验读到未完成状态的问题，已加入原 300 秒期限内的 producer 终态观察。最终 job 记录显示 producer 先于消费者失败完成，但缺少当时的 job ID，具体缓存原因仍未知；新日志记录 ID 与等待次数，不跳过来源核验。lifecycle 10 项、provenance 14 项定向回归和完整 gate contracts 101/101 通过，类型检查与构建通过；完整新 head 正式门禁仍待取得。旧失败与本地通过均不构成可合并的 CI 验收。证据与方案见 docs/design-docs/release-gate-redesign.md 和 docs/design-docs/runtime-journal-input-priority.md。
 
 PR337 后续完整 gate（40528627405，ddf22a99）：原 review 的 regression shard-1、source-build、package-clean 已通过，但 runtime 配置/scrollback/预设创建等 smoke 只等待旧全量消息，导致实际正确的 stateDelta 被忽略；已统一迁移观察器并补齐独立 driver 输入。Windows installed-pair 在输入输出成功后因两侧栏挤压视口、没有40px增长空间而在拖动前失败；已添加公开导航准备，保持原实际几何断言。完整本地 contracts 102/102、Agent45/45、容量6/6通过；Windows实机和最新head完整门禁仍待验，旧失败不删除。
+
+PR337 c6e11535 完整门禁后续（2026-10-28）：Windows installed-pair 通过，macOS 在新增无条件扩宽视口后通知回跳 y=-38px，原 ddf22a99 默认布局该场景通过。准备逻辑已收窄为仅在无有效拖动路径时导航，保留原通知居中断言；宽视口居中差异仍未归因，增加 flow/wrapper/window 几何用于后续定位，不声明产品定位问题已修。source-host 的 auto-start、codex-queued-exit 在 apt-get update 访问 Ubuntu 镜像阶段达到原5分钟期限，尚未运行产品用例，首败日志保留于 .debug/review337-autostart-failed.log、review337-codex-exit-failed.log。
+
+条件式视口准备及按实际包状态避免无必要apt请求已完成，完整contracts 103/103与工作流契约通过；是否发生依赖安装会在步骤日志中记录。c6e11535 的所有上一轮13项失败已通过，当前264个业务job成功；新head需独立完整验收。macOS宽视口居中偏差的产品归因仍未完成，默认布局恢复或后续CI成功不关闭这一观察缺口。

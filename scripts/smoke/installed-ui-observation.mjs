@@ -136,6 +136,22 @@ export async function prepareInstalledResizeViewport({ frame, node, command, wai
     assert(Date.now() < deadline, 'Installed resize preparation deadline exhausted');
     return deadline - Date.now();
   };
+  const observe = async () => {
+    remaining();
+    const canvas = await frame.locator('.canvas-shell').boundingBox();
+    const handles = Object.fromEntries(await Promise.all(corners.map(async direction => [direction,
+      await node.locator(`[data-node-resize-direction="${direction}"]`).boundingBox()])));
+    remaining();
+    return { canvas, handles };
+  };
+  const before = await observe();
+  let initialGesture;
+  try { initialGesture = selectInstalledResizeGesture(before.canvas, before.handles); }
+  catch (error) {
+    if (error.message !== 'No public resize corner has a bounded growth path inside the installed canvas') throw error;
+  }
+  // Keep an already usable fixture unchanged; navigation is only needed for clipped corners.
+  if (initialGesture) return { ...before, gesture: initialGesture, navigationApplied: false };
   // Public workbench navigation only, before the PTY geometry baseline is captured.
   for (const name of ['workbench.action.closeSidebar', 'workbench.action.closeAuxiliaryBar']) {
     remaining(); await command(name, [], deadline);
@@ -144,14 +160,12 @@ export async function prepareInstalledResizeViewport({ frame, node, command, wai
   await node.locator('.window-chrome').dblclick({ position: { x: 4, y: 4 }, timeout: remaining() });
   let previous;
   return wait('Original installed node has stable resize space', async () => {
-    remaining();
-    const canvas = await frame.locator('.canvas-shell').boundingBox();
-    const handles = Object.fromEntries(await Promise.all(corners.map(async direction => [direction,
-      await node.locator(`[data-node-resize-direction="${direction}"]`).boundingBox()])));
-    const identity = JSON.stringify({ canvas, handles });
+    const observation = await observe();
+    const identity = JSON.stringify(observation);
     const stable = identity === previous; previous = identity;
     if (!stable) return null;
-    return { canvas, handles, gesture: selectInstalledResizeGesture(canvas, handles) };
+    return { ...observation, before, navigationApplied: true,
+      gesture: selectInstalledResizeGesture(observation.canvas, observation.handles) };
   }, value => value !== null, deadline);
 }
 
@@ -176,7 +190,11 @@ export async function observeInstalledCanvas(frame, nodeID) {
     const rect = element => { const box = element.getBoundingClientRect();
       return { x: box.x, y: box.y, width: box.width, height: box.height }; };
     const canvasBox = rect(canvas), nodeBox = rect(target);
+    const flow = canvas.querySelector('.react-flow');
+    const wrapper = target.closest('.react-flow__node');
     return { canvas: canvasBox, node: nodeBox,
+      flow: flow ? rect(flow) : null, wrapper: wrapper ? rect(wrapper) : null,
+      window: { width: window.innerWidth, height: window.innerHeight },
       centerDistance: { x: nodeBox.x + nodeBox.width / 2 - (canvasBox.x + canvasBox.width / 2),
         y: nodeBox.y + nodeBox.height / 2 - (canvasBox.y + canvasBox.height / 2) },
       selected: [...canvas.querySelectorAll('[data-node-kind][data-node-selected="true"]')]

@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-27
+updated_at: 2026-10-28
 ---
 
 # CI与发布门禁重设计
@@ -362,3 +362,9 @@ run 40516969808 的 source-build/package-clean 在核验 native-load artifact �
 PR337 完整门禁跟进：runtime 配置 smoke 应观察全量或节点增量中的实际配置分组通知，不固化 stateUpdated 消息形状；缺少目标字段的无关 delta 不算配置刷新。installed-pair 在狭窄默认窗口中先用公开 closeSidebar/closeAuxiliaryBar 和原标题双击定位，为严格有界增长手势准备空间；此准备必须在原 PTY 子进程尺寸基线前完成，仍由随后拖动和新 nonce 的内核查询证明 resize。业务协议、视图配置和尺寸断言不放宽，原全任务期限不增加。
 
 验证补充：新 helper `tests/vscode-smoke/canvas-runtime-update.cjs` 供普通 smoke、容量场景及 Agent 多根视图共享，只读取实际消息中的 runtime 字段，已补齐独立 driver 的 staging 和输入哈希。真实 CanvasDisplayPublisher 的消息驱动原配置更新/恢复函数通过；Agent driver 45/45、容量 6/6、完整 gate contracts 102/102（约216秒）通过。Windows 原截图节点 x=350.3..725.7、画布约 x=308..768，扣除12px边距后，两侧均不足40px增长要求；回归保留该失败几何，证明公共关闭侧栏/原标题定位在原期限内取得有效增长路径，且准备发生在子进程几何基线之前。尚需下一轮 Windows 实机 gate 验证；本轮未降低拖动阈值或内核几何断言。预算清单已重生成并比较，除新增 helper 哈希、已有源码哈希和行号外，所有预算/场景条目不变。
+
+2026-10-28 修订：c6e11535 的 Windows installed-pair 已通过，配置场景也已通过。新增视口准备在已有足够拖动空间的 macOS 上仍无条件改变布局，随后通知居中检查出现 -38px 垂直偏差；旧 ddf22a99 的同平台原布局场景通过，但不足以判定偏差根因。准备策略收窄为：先计算现有有效增长路径，仅无路径时关闭侧栏/定位；已有路径时保持原布局。保留严格居中4px断言，增加 flow/wrapper/window 几何观察，宽视口偏差作为未归因问题记录。另有两个 source-host 在产品场景前因 azure.archive.ubuntu.com apt update 超出原5分钟失败，不改等待预算；下一完整运行重验，不把网络失败解释为产品回归。
+
+浏览器系统依赖安装补充（2026-10-28）：失败镜像为 ubuntu-22.04/20261012.322.1，apt 在 azure.archive.ubuntu.com 更新索引时超时；其他 runner 的成功日志显示 xvfb/libgtk-3-0/libnss3/libasound2 已安装，0升级/0新装。不能假定失败 runner 的包状态，因此七个 Linux 浏览器依赖步骤统一先由 dpkg-query 检查四个实际安装状态，齐全时免除无必要的索引更新；缺少时保留原 apt update/install 并再次检查。dpkg异常、安装失败、仍缺包均失败，不增加重试或延长原5分钟期限。当前 Linux门禁仍消费这些依赖并执行原产品断言，不因预装检测跳过场景。
+
+本轮验证：条件式视口准备/原路径保留/原期限、依赖预装与各失败分支、严格几何判定共5项定向检查通过；完整 gate contracts 103/103（约249秒）与 Release preflight/workflow contracts 通过。日志 `.debug/review337-final-preparation-tests.log`、`review337-final-contracts.log`、`review337-final-workflow-tests.log`。c6e11535 正式运行的267项业务job中264项通过，剩余为两项apt基础设施超时与上述macOS宽视口问题；最终汇总另计。已确认上一轮13个失败场景全部通过，但新提交仍需独立正式验收。

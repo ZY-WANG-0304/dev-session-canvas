@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { ensureBrowserSystemDependencies, browserSystemPackages } from '../gates/browser-system-dependencies.mjs';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import fs from 'node:fs/promises';
@@ -615,6 +616,29 @@ test('fixed host download refuses semantic errors and cannot extend its deadline
       assert.fail('The pinned library must not continue its unconditional internal retry');
     } }), failure => failure === checksum);
   assert.equal(requests, 1);
+});
+test('browser dependencies inspect actual packages and preserve install failures without unconditional network access',()=>{
+  const calls=[];
+  const allReady=ensureBrowserSystemDependencies((cmd,args)=>{calls.push([cmd,...args]);assert.equal(cmd,'dpkg-query');return 'install ok installed';});
+  assert.equal(allReady.installed,false);assert.deepEqual(calls.map(call=>call.at(-1)),browserSystemPackages);
+  for(const fault of [undefined,'update','install','still-missing','query']) {
+    let installed=false;const commands=[];
+    const run=(cmd,args)=>{
+      commands.push([cmd,...args]);
+      if(cmd==='dpkg-query') {
+        if(fault==='query')throw Object.assign(new Error('dpkg command unavailable'),{code:'ENOENT'});
+        if(args.at(-1)==='libnss3'&&(!installed||fault==='still-missing'))throw Object.assign(new Error('missing package'),{status:1});
+        return 'install ok installed';
+      }
+      assert.equal(cmd,'sudo');
+      if(args[1]===fault)throw new Error(`${fault} failed`);
+      if(args[1]==='install') {assert.deepEqual(args,['apt-get','install','-y',...browserSystemPackages]);installed=true;}
+    };
+    if(fault)assert.throws(()=>ensureBrowserSystemDependencies(run),fault==='still-missing'?/remain unavailable/:fault==='query'?/dpkg command unavailable/:/failed/);
+    else assert.equal(ensureBrowserSystemDependencies(run).installed,true);
+    if(fault==='update')assert.equal(commands.some(call=>call[2]==='install'),false);
+    if(fault==='query')assert.equal(commands.some(call=>call[0]==='sudo'),false);
+  }
 });
 test('installed resize requires a fresh request from the original child and rejects cached or unrelated evidence', () => {
   const before = { pid: 40, ppid: 30, cols: 70, rows: 22 };
@@ -1397,6 +1421,12 @@ test('installed resize prepares public viewport space before geometry measuremen
     wait:async(label,read,accept,limit)=>{assert.equal(limit,deadline);assert.equal(await read(),null);
       const value=await read();assert(accept(value));return value;}});
   assert.deepEqual(calls,['workbench.action.closeSidebar','workbench.action.closeAuxiliaryBar','center']);
+  assert.equal(result.navigationApplied,true);
+  const ready=await prepareInstalledResizeViewport({frame,node,deadline,
+    command:()=>assert.fail('Existing resize space must not change the fixture layout'),
+    wait:()=>assert.fail('Existing resize space requires no navigation wait')});
+  assert.equal(ready.navigationApplied,false);
+  assert.deepEqual(ready.gesture,result.gesture);
   assert(Math.abs(result.gesture.end.x-result.gesture.start.x)>=40);
   assert(Math.abs(result.gesture.end.y-result.gesture.start.y)>=30);
   await assert.rejects(()=>prepareInstalledResizeViewport({frame,node,deadline:Date.now()-1,
