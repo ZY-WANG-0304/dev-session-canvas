@@ -49,7 +49,7 @@ try {
     const screen = text();
     for (const [id, pattern] of [['theme', /Choose.*(?:theme|text style)|Select.*theme/i],
       ['trust', /Yes, I trust|Do you trust|Trust this (?:folder|directory)/i],
-      ['key', /Detected a custom API key/], ['login', /Select login method:/]]) {
+      ['key', /Detected a custom API key/], ['login', /Select login method:/], ['security', /Press Enter to continue/]]) {
       if (pattern.test(screen) && !accepted.has(id)) {
         screens.push({ stage: id, text: screen }); accepted.add(id); child.write('\r'); return '';
       }

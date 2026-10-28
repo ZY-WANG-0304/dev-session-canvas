@@ -350,8 +350,8 @@ const causalSteps = {
   }
 };
 export const smokeCatalogVersion = 3;
-export const smokeGroups = Object.freeze(['local-products', 'runtime-products', 'host-topology', 'pressure']);
-export const packagedGroups = Object.freeze(['local-products', 'runtime-products', 'pressure']);
+export const smokeGroups = Object.freeze(['local-products', 'runtime-products', 'host-topology', 'pressure', 'real-tui']);
+export const packagedGroups = Object.freeze(['local-products', 'runtime-products', 'pressure', 'real-tui']);
 const legacySmokeCatalog = Object.freeze([
   ...local.map(id => ({ id, group: 'local-products' })),
   ...runtime.map(id => ({ id, group: 'runtime-products' })),
@@ -375,7 +375,17 @@ const legacySmokeCatalog = Object.freeze([
         ? 'two-window-shared-runtime-tests.cjs' : topology.includes(entry.id)
           ? 'real-reopen-tests.cjs' : 'extension-tests.cjs' })));
 
-export const smokeCatalog = Object.freeze([...independentSmokeCases, ...legacySmokeCatalog]);
+export const realTuiSmokeCases = Object.freeze([
+  ['input-during-work', '真实 TUI 处理中输入可用'],
+  ['answer-with-footer', '本回合实际回答在真实 footer 上方'],
+  ['tool-network-silence', '工具等待静默期间原回合仍处理中'],
+  ['turn-completion-redraw', '独立回合完成后的真实重绘']
+].map(([name, title]) => Object.freeze({ id: `agent-tui/${name}`, title,
+  variant: `agent-tui--${name}`, kind: 'real-tui', launcher: 'real-tui',
+  group: 'real-tui', packagedGroup: 'real-tui', source: true, packaged: true,
+  testFile: 'agent-tui-tests.cjs', providers: ['codex', 'claude'], platform: 'linux', mode: 'snapshot-only',
+  steps: ['codex-prepare', 'codex-action', 'codex-assert', 'claude-prepare', 'claude-action', 'claude-assert'] })));
+export const smokeCatalog = Object.freeze([...independentSmokeCases, ...legacySmokeCatalog, ...realTuiSmokeCases]);
 
 // These contracts describe actual Host invocations, including causal phases.
 // A receipt from another case/file/role cannot satisfy a planned invocation.

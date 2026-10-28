@@ -176,6 +176,17 @@ function inspectSuite(file, scenario, entry = 'run', times = 1, allowSynchronous
   return {timeoutMs,entry,file:m.file,times,method:'Conservative call-site sum; original product waits unchanged',evidence};
 }
 const suites={};
+// Two sequential real providers, each bounded by an actual absolute deadline.
+const tuiFile = 'tests/vscode-smoke/agent-tui-tests.cjs';
+const tuiSource = fs.readFileSync(tuiFile, 'utf8');
+sourceHashes[tuiFile] = hash(tuiSource);
+const tuiProviderBudget = Number(tuiSource.match(/const PROVIDER_BUDGET_MS = (\d+);/)[1]);
+for (const entry of smokeCatalog.filter(item => item.kind === 'real-tui')) {
+  suites[entry.id] = { timeoutMs: tuiProviderBudget * entry.providers.length + 40000,
+    method: 'Two fixed provider absolute deadlines plus activation/ready; inner waits cannot renew the deadline',
+    evidence: [{ file: tuiFile, kind: 'provider-absolute-deadline', timeoutMs: tuiProviderBudget,
+      count: entry.providers.length }, { kind: 'host-ready', timeoutMs: 40000 }] };
+}
 for (const entry of smokeCatalog.filter(item => item.testFile === 'extension-tests.cjs')) {
   if (entry.kind === 'product-case') {
     const parts = [entry.prepare, entry.entry, 'assertNoOwnedResizeFailures']

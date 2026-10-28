@@ -1,6 +1,9 @@
 name: CI Validation
 'on':
   workflow_call:
+    secrets:
+      DEEPSEEK_API_KEY:
+        required: false
     inputs:
       input_sha:
         required: true
@@ -697,8 +700,15 @@ jobs:
       with:
         name: gate-transfer-source-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-input/source
+    - name: Install fixed real TUI CLIs
+      if: ${{ startsWith(matrix.variant, 'agent-tui--') }}
+      run: npm install --prefix "$RUNNER_TEMP/tui-cli" --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
+      timeout-minutes: 5
     - name: Execute planned stage
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job source-host --variant "${{ matrix.variant }}" --output gate-results --source-input gate-input/source
+      env:
+        DEEPSEEK_API_KEY: ${{ startsWith(matrix.variant, 'agent-tui--') && secrets.DEEPSEEK_API_KEY || '' }}
+        DSC_TUI_CLI_ROOT: ${{ runner.temp }}/tui-cli
     - name: Collect bounded stage evidence
       if: ${{ always() }}
       run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job source-host --variant "${{ matrix.variant }}" --output gate-artifacts/source-host/${{ matrix.variant }}
@@ -919,8 +929,15 @@ jobs:
       with:
         name: gate-transfer-candidate-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-input/candidate
+    - name: Install fixed real TUI CLIs
+      if: ${{ startsWith(matrix.variant, 'agent-tui--') }}
+      run: npm install --prefix "$RUNNER_TEMP/tui-cli" --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
+      timeout-minutes: 5
     - name: Execute planned stage
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job packaged-host --variant "${{ matrix.variant }}" --output gate-results --candidate gate-input/candidate
+      env:
+        DEEPSEEK_API_KEY: ${{ startsWith(matrix.variant, 'agent-tui--') && secrets.DEEPSEEK_API_KEY || '' }}
+        DSC_TUI_CLI_ROOT: ${{ runner.temp }}/tui-cli
     - name: Collect bounded stage evidence
       if: ${{ always() }}
       run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job packaged-host --variant "${{ matrix.variant }}" --output gate-artifacts/packaged-host/${{ matrix.variant }}

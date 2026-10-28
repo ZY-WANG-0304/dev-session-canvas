@@ -11,7 +11,7 @@
     "tests/vscode-smoke/ui-copy-locale-tests.cjs": "2f2dd43c153d94195fcfcc9ec8d7d3b7741a6519c4c45fa9d6a77241ab06351d",
     "tests/vscode-smoke/template-marketplace-tests.cjs": "83f0737b37ca684a1cbc4d23a63ebe8ba7b164b3aa396ec2ee39d19fe4ff17d4",
     "tests/vscode-smoke/template-marketplace-preview-tests.cjs": "e94eea6c93dfbd3a583dad0701234f193c47eb612ef6c5b0ff065ada175c7919",
-    "scripts/smoke/smoke-catalog.mjs": "6436747a5a656844cf16d2990e7d02ddf9b009571cde7d7f2f53c52f83c4dd25",
+    "scripts/smoke/smoke-catalog.mjs": "633b013676cdde53feac41679db24122697f0356cb3e2db6ae68fa679f9d79d7",
     "tests/vscode-smoke/test-helpers.cjs": "9748043331b8480a8a003d9c3796d2b57a9a316f589147882fa6166e645a66b0",
     "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718",
     "tests/vscode-smoke/native-file-click.cjs": "8359f2e32a9922dc05310dfa7807ef3a53e019e4b7f512cb94661b215d0eb3c6",
@@ -22,7 +22,8 @@
     "tests/vscode-smoke/remote-host-control.cjs": "81e4b5f900b38faf56421774b188d35e02486e7a65d9778592064b82b9a26225",
     "tests/vscode-smoke/smoke-gap-observations.cjs": "b20c3892d0c114f2642da40f30a4973470e5537763dba7c41522283364c7c49c",
     "tests/vscode-smoke/fixtures/smoke-geometry-output-subject.cjs": "9ead2256b884decff92e11268ec965182c758202d9d66aab3551634e49ed00f4",
-    "scripts/smoke/snapshot-host-boundary.mjs": "89d0604bdefe298b48c25ef596af78a2e52ee855ff0b03782d6d6b12d3ae80ea"
+    "scripts/smoke/snapshot-host-boundary.mjs": "89d0604bdefe298b48c25ef596af78a2e52ee855ff0b03782d6d6b12d3ae80ea",
+    "tests/vscode-smoke/agent-tui-tests.cjs": "5bd622fe16ca83e8575225bc14f50dd5c08dd994e44591e3ef1b65015f6a78e5"
   },
   "loopBounds": {
     "runIndependentHostBoundary:expected.nodes": [
@@ -103,6 +104,70 @@
     ]
   },
   "suites": {
+    "agent-tui/input-during-work": {
+      "timeoutMs": 520000,
+      "method": "Two fixed provider absolute deadlines plus activation/ready; inner waits cannot renew the deadline",
+      "evidence": [
+        {
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "kind": "provider-absolute-deadline",
+          "timeoutMs": 240000,
+          "count": 2
+        },
+        {
+          "kind": "host-ready",
+          "timeoutMs": 40000
+        }
+      ]
+    },
+    "agent-tui/answer-with-footer": {
+      "timeoutMs": 520000,
+      "method": "Two fixed provider absolute deadlines plus activation/ready; inner waits cannot renew the deadline",
+      "evidence": [
+        {
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "kind": "provider-absolute-deadline",
+          "timeoutMs": 240000,
+          "count": 2
+        },
+        {
+          "kind": "host-ready",
+          "timeoutMs": 40000
+        }
+      ]
+    },
+    "agent-tui/tool-network-silence": {
+      "timeoutMs": 520000,
+      "method": "Two fixed provider absolute deadlines plus activation/ready; inner waits cannot renew the deadline",
+      "evidence": [
+        {
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "kind": "provider-absolute-deadline",
+          "timeoutMs": 240000,
+          "count": 2
+        },
+        {
+          "kind": "host-ready",
+          "timeoutMs": 40000
+        }
+      ]
+    },
+    "agent-tui/turn-completion-redraw": {
+      "timeoutMs": 520000,
+      "method": "Two fixed provider absolute deadlines plus activation/ready; inner waits cannot renew the deadline",
+      "evidence": [
+        {
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "kind": "provider-absolute-deadline",
+          "timeoutMs": 240000,
+          "count": 2
+        },
+        {
+          "kind": "host-ready",
+          "timeoutMs": 40000
+        }
+      ]
+    },
     "execution-start/auto-start": {
       "timeoutMs": 275000,
       "method": "Independent fixture and business call-site bounds; original product waits unchanged",

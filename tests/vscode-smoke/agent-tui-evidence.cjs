@@ -38,6 +38,7 @@ function observeTurn(events, { provider, prompt, workspace, submittedAt, toolSta
   assert(!prompt.includes(toolEnd.receipt), 'Tool receipt must not occur in submitted prompt');
   if (provider === 'codex') assert(typeof stop.turn_id === 'string' && stop.turn_id,
     'Codex completion requires its actual turn id');
+  if (provider === 'codex' && start.turn_id) assert.equal(stop.turn_id, start.turn_id, 'Cross-turn completion');
   return { sessionId: start.session_id, turnId: stop.turn_id ?? `prompt@${start.observedAt}`,
     completed: true, answer: stop.last_assistant_message, completedAt: stop.observedAt };
 }

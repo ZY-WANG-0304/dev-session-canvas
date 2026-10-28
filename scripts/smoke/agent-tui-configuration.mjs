@@ -13,7 +13,9 @@ export const shellQuote = value => `'${String(value).replaceAll("'", "'\\''")}'`
 export async function prepareAgentTui({ provider, directory, projectRoot, cliRoot, apiKey }) {
   assert.equal(process.platform, 'linux', 'Initial real TUI coverage is Linux only');
   assert(Object.hasOwn(tuiProviders, provider));
-  const cli = cliRoot ? path.join(cliRoot, 'node_modules', '.bin', provider) : provider;
+  const cli = cliRoot ? path.join(cliRoot, 'node_modules', '.bin', provider)
+    : spawnSync('which', [provider], { encoding: 'utf8', timeout: 5000 }).stdout.trim();
+  assert(path.isAbsolute(cli), 'Real CLI must resolve to an absolute path');
   const version = spawnSync(cli, ['--version'], { encoding: 'utf8', timeout: 10000 });
   assert.equal(version.status, 0, `Missing real ${provider} CLI`);
   assert.equal(version.stdout.trim(), provider === 'codex' ? `codex-cli ${tuiProviders.codex}`
@@ -40,6 +42,7 @@ export async function prepareAgentTui({ provider, directory, projectRoot, cliRoo
         '\n[features]', 'hooks = true', 'shell_tool = false', 'apps = false', 'multi_agent = false',
         '\n[mcp_servers.tui]', `command = ${JSON.stringify(server.command)}`,
         `args = ${JSON.stringify(server.args)}`, 'tool_timeout_sec = 65',
+        'default_tools_approval_mode = "approve"',
         '\n[tui]', 'status_line = ["model-name", "context-remaining"]',
         `\n[projects.${JSON.stringify(workspace)}]`, 'trust_level = "trusted"', ''
       ].join('\n'));
@@ -62,4 +65,32 @@ export async function prepareAgentTui({ provider, directory, projectRoot, cliRoo
         DISABLE_AUTOUPDATER: '1', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' },
       dispose: configuration.dispose };
   } catch (error) { await configuration.dispose(); throw error; }
+}
+
+export async function prepareAgentTuiSuite({ scenario, directory, projectRoot }) {
+  assert(tuiCases.includes(scenario.replace('agent-tui/', '')));
+  const configurations = [];
+  try {
+    for (const provider of Object.keys(tuiProviders)) configurations.push(await prepareAgentTui({ provider,
+      directory: path.join(directory, provider), projectRoot, cliRoot: process.env.DSC_TUI_CLI_ROOT,
+      apiKey: process.env.DEEPSEEK_API_KEY }));
+    const [codex, claude] = configurations;
+    const configPath = path.join(directory, 'suite.json');
+    await fs.writeFile(configPath, JSON.stringify({ scenario, configurations }), { mode: 0o600 });
+    return { workspacePath: directory,
+      environment: { CODEX_HOME: codex.environment.CODEX_HOME, CLAUDE_CONFIG_DIR: claude.environment.CLAUDE_CONFIG_DIR,
+        CODEX_UPDATE_ON_STARTUP: 'false', TERM: 'xterm-256color',
+        DEV_SESSION_CANVAS_AGENT_TUI_CONFIG: configPath,
+        DEV_SESSION_CANVAS_TEST_CODEX_COMMAND: codex.cli, DEV_SESSION_CANVAS_TEST_CLAUDE_COMMAND: claude.cli,
+        DEV_SESSION_CANVAS_TEST_NODE_PATH: process.execPath, PATH: process.env.PATH },
+      userSettings: { 'devSessionCanvas.runtimePersistence.enabled': false,
+        'devSessionCanvas.agent.codexCommand': codex.cli, 'devSessionCanvas.agent.claudeCommand': claude.cli,
+        'devSessionCanvas.agent.codexDefaultArgs': '', 'devSessionCanvas.agent.claudeDefaultArgs': '' },
+      dispose: async () => {
+        const results = await Promise.allSettled(configurations.map(config => config.dispose()));
+        assert(results.every(result => result.status === 'fulfilled'), 'Private CLI configuration cleanup failed');
+      } };
+  } catch (error) {
+    await Promise.allSettled(configurations.map(config => config.dispose())); throw error;
+  }
 }

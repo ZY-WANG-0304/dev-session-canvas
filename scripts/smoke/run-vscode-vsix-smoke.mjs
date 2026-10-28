@@ -1,4 +1,5 @@
 import { runSnapshotHostBoundary } from './snapshot-host-boundary.mjs';
+import { runAgentTuiSuite } from './agent-tui-suite.mjs';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
@@ -75,6 +76,11 @@ async function main() {
   const packagedExtensionTestsPath = resolveStagedSmokeTestPath(smokeHostRoot, 'extension-tests.cjs');
 
   for (const scenario of scenarios) {
+    if (suites.find(item => item.id === scenario).kind === 'real-tui') {
+      await runAgentTuiSuite({ projectRoot, debugRoot: path.join(debugRoot, scenario), scenario,
+        extensionDevelopmentPath: [smokeHostRoot, notifierRuntimeRoot] });
+      continue;
+    }
     let workspacePath = projectRoot;
     if (scenario === 'owned-canvas-reconciliation') {
       workspacePath = path.join(debugRoot, 'owned-canvas.code-workspace');

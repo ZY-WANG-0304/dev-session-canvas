@@ -15,6 +15,7 @@ async function handle(request) {
   if (request.method === 'ping') return reply({});
   if (request.method === 'tools/list') return reply({ tools: [{ name: 'wait_for_release',
     description: 'Wait for the test controller, then return a unique receipt. Call exactly once.',
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     inputSchema: { type: 'object', properties: {}, additionalProperties: false } }] });
   if (request.method !== 'tools/call' || request.params?.name !== 'wait_for_release') {
     return write({ jsonrpc: '2.0', id: request.id, error: { code: -32601, message: 'Unknown method/tool' } });

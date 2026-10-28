@@ -1,4 +1,5 @@
 import { runSnapshotHostBoundary } from './snapshot-host-boundary.mjs';
+import { runAgentTuiSuite } from './agent-tui-suite.mjs';
 import path from 'path';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -72,6 +73,13 @@ const scenarios = selectedSuites.filter(suite => suite.launcher === 'ordinary')
 async function main() {
   if (shouldReRunInsideXvfb()) {
     process.exit(runInsideXvfb(currentScriptPath, projectRoot));
+  }
+
+  for (const scenario of selectedSuites.filter(suite => suite.kind === 'real-tui')) {
+    if (!shouldRunScenario(scenario.id)) continue;
+    const debugRoot = path.join(smokeDebugRoot, scenario.id);
+    const host = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
+    await runAgentTuiSuite({ projectRoot, debugRoot, scenario: scenario.id, extensionDevelopmentPath: host });
   }
 
   for (const scenario of scenarios) {
