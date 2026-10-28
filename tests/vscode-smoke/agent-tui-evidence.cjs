@@ -38,6 +38,8 @@ function observeTurn(events, { provider, prompt, workspace, submittedAt, toolSta
   assert(/^receipt_[a-f0-9]{32}$/.test(toolEnd.receipt), 'Missing fresh tool receipt');
   assert(typeof stop.last_assistant_message === 'string'
     && stop.last_assistant_message.includes(toolEnd.receipt), 'Actual answer must contain tool result, not input echo');
+  assert(/[A-Za-z]{2}/u.test(stop.last_assistant_message.replaceAll(toolEnd.receipt, '')),
+    'Actual sentence must contain text beyond the bare tool receipt');
   assert(!prompt.includes(toolEnd.receipt), 'Tool receipt must not occur in submitted prompt');
   if (provider === 'codex') assert(typeof stop.turn_id === 'string' && stop.turn_id,
     'Codex completion requires its actual turn id');

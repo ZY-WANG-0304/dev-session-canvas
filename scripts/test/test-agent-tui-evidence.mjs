@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import evidence from '../../tests/vscode-smoke/agent-tui-evidence.cjs';
 import startup from '../../tests/vscode-smoke/agent-tui-startup.cjs';
-import { prepareAgentTui } from '../smoke/agent-tui-configuration.mjs';
+import { prepareAgentTuiSuite } from '../smoke/agent-tui-configuration.mjs';
 const { parseEvents, observeTurn, answerWithFooter, draftInComposer } = evidence;
 const receipt = 'receipt_' + 'a'.repeat(32);
 const input = { provider: 'codex', prompt: 'Call the tool', workspace: '/private', submittedAt: 1,
@@ -25,6 +25,8 @@ test('reject stale prompt, session, turn, failure, premature and duplicate compl
   for (const events of [[stop], [{ ...start, prompt: 'old' }, stop], [start, { ...stop, session_id: 'old' }],
     [{ ...start, turn_id: undefined }, stop], [start, { ...stop, turn_id: 'other' }],
     [start, { ...stop, turn_id: undefined }], [start, { ...stop, stop_hook_active: true }],
+    [start, { ...stop, last_assistant_message: receipt }],
+    [start, { ...stop, last_assistant_message: '`' + receipt + '`.' }],
     [start, { ...stop, observedAt: 3 }], [start, { ...stop, last_assistant_message: input.prompt }],
     [start, stop, stop], [start, start, stop], [start, { ...stop, hook_event_name: 'StopFailure' }]]) {
     assert.throws(() => observeTurn(events, input));
@@ -124,7 +126,7 @@ test('hook executable records only observed fields and returns no continuation',
 });
 
 
-test('private provider cwd cannot inherit checkout instructions and is retired with credentials', { skip: process.platform !== 'linux' }, async () => {
+test('private Host contains provider cwd values, excludes credentials and retires all owned paths', { skip: process.platform !== 'linux' }, async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-tui-config-test-'));
   const cliRoot = path.join(directory, 'cli');
   const bin = path.join(cliRoot, 'node_modules/.bin');
@@ -133,13 +135,30 @@ test('private provider cwd cannot inherit checkout instructions and is retired w
   try {
     for (const [provider, version] of [['codex', 'codex-cli 0.157.1'], ['claude', '2.1.280 (Claude Code)']]) {
       await fs.writeFile(path.join(bin, provider), `#!/bin/sh\nprintf '%s\\n' '${version}'\n`, { mode: 0o700 });
-      const config = await prepareAgentTui({ provider, directory: path.join(directory, provider),
-        projectRoot: directory, cliRoot, apiKey: 'configuration-unit-test-only' });
-      try {
-        assert(path.relative(directory, config.workspace).startsWith(`..${path.sep}`));
-        assert.deepEqual(await fs.readdir(config.workspace), []);
-      } finally { await config.dispose(); }
-      await assert.rejects(fs.stat(config.workspace), { code: 'ENOENT' });
+    }
+    const suite = await prepareAgentTuiSuite({ scenario: 'agent-tui/input-during-work',
+      directory, projectRoot: directory, cliRoot, apiKey: 'configuration-unit-test-only' });
+    const config = JSON.parse(await fs.readFile(suite.environment.DEV_SESSION_CANVAS_AGENT_TUI_CONFIG, 'utf8'));
+    try {
+      assert(path.relative(directory, suite.workspacePath).startsWith(`..${path.sep}`));
+      for (const provider of config.configurations) {
+        assert.equal(path.dirname(provider.workspace), suite.workspacePath);
+        assert.deepEqual(provider.launch, provider.provider === 'codex'
+          ? [process.execPath, provider.cli, ...provider.args] : [provider.cli, ...provider.args]);
+        assert.deepEqual(await fs.readdir(provider.workspace), []);
+        for (const key of ['CODEX_HOME', 'CLAUDE_CONFIG_DIR']) {
+          assert(path.relative(suite.workspacePath, provider.environment[key]).startsWith(`..${path.sep}`));
+        }
+      }
+      assert.equal(suite.userSettings['devSessionCanvas.agent.codexCommand'], process.execPath);
+      assert.equal(suite.environment.DEV_SESSION_CANVAS_TEST_CODEX_COMMAND, process.execPath);
+      assert.deepEqual((await fs.readdir(suite.workspacePath)).sort(), ['claude', 'codex']);
+    } finally { await suite.dispose(); }
+    await assert.rejects(fs.stat(suite.workspacePath), { code: 'ENOENT' });
+    for (const provider of config.configurations) {
+      for (const key of ['CODEX_HOME', 'CLAUDE_CONFIG_DIR']) {
+        await assert.rejects(fs.stat(provider.environment[key]), { code: 'ENOENT' });
+      }
     }
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 });

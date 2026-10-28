@@ -84,3 +84,7 @@
 修订：2026-10-28 Actions 40683639714 的 Codex 和 Claude 信号探索全部通过。移除临时探索 workflow/脚本，正式测试保留同一私有初始化与观察器。PR341 旧输入 run40682891236 的 regression 失败保留，取消旧轮以解除排队；新输入 e4f865da 的 run40683646799 正式产品验收继续。
 
 修订：2026-10-28 首轮产品四项 Codex source 全通过，Claude 全因 cwd 在 checkout 内向上读取 CLAUDE.md 而停在外部导入菜单。将 cwd 迁到私有凭据根下、明确断言在 checkout 外并随 dispose 删除；8/8 回归通过。首轮 systemd-user-real-reopen 第二 Host ready 超时单独保留，不归因 TUI；后续输入完整验收待执行。
+
+修订：2026-10-28 run40686985978 attempt1 为供应商旧 Node 下载超时，整轮 attempt2 重跑。attempt2 四项 source 未创建 Agent：迁出的 CLI cwd 不属于原 Host workspace，产品正常拒绝。现将 Host workspace 和两个 provider cwd 一并隔离在 checkout 外，凭据 home 独立；本地真实 Host 已确认节点创建，另修正 Codex npm 入口受 shell 旧 Node 影响的问题，显式使用控制器 Node。纯 receipt 回答反例及 8/8 回归通过，完整业务继续待验。
+
+修订：2026-10-28 本地实际产品 Host 的 Codex / Claude 创建及真实 composer 均通过（Node25.6.0、VS Code1.140.0、零模型 prompt），同时同步私有 Codex 已配置入口以满足产品命令一致性规则。原 attempt2 剩余任务取消；新输入继续四项完整 source / packaged 业务验收。

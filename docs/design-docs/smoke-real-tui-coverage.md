@@ -32,7 +32,7 @@ updated_at: 2026-10-28
 
 首批默认矩阵为 Linux、snapshot-only、Codex 0.157.1 与 Claude 2.1.280。四项分别注册到 `scripts/smoke/smoke-catalog.mjs`，每项在单 Host 中顺序运行两份互不共享业务状态的私有 provider fixture；source 和 packaged 均通过 `scripts/smoke/agent-tui-suite.mjs` 执行 `tests/vscode-smoke/agent-tui-tests.cjs`。一份 provider 有独立的 240 秒绝对上限，各内部等待仍有自己的较短期限；此上限不是产品 SLA，实际成本仍待测。
 
-`agent-tui-configuration.mjs` 只在私有配置中注册唯一等待工具和只观察的 hook。工具开始与外部释放绑定 callId，返回随机 receipt，不伪造模型输出。`agent-tui-evidence.cjs` 要求一次精确 UserPromptSubmit、同 workspace/session、未继续的 Stop、先工具结果后完成以及包含新 receipt 的实际回答；Codex 还核对真实 turn_id。Claude 通过私有指定 session 和单次用户提交区分回合。Stop hook 返回空 JSON，不阻断或继续回合；凭据仍在临时私有 home；CLI cwd 必须位于 checkout 外，避免继承祖先 CLAUDE.md / AGENTS.md，结束后随配置删除。工具等待期间不产生新正文，TUI 可继续绘制 spinner；此受控条件不宣称验证供应商断网重连。
+`agent-tui-configuration.mjs` 只在私有配置中注册唯一等待工具和只观察的 hook。工具开始与外部释放绑定 callId，返回随机 receipt，不伪造模型输出。`agent-tui-evidence.cjs` 要求一次精确 UserPromptSubmit、同 workspace/session、未继续的 Stop、先工具结果后完成以及包含新 receipt 和额外正文的实际回答（纯 receipt 无法与工具回显区分，因此拒绝）；Codex 还核对真实 turn_id。Claude 通过私有指定 session 和单次用户提交区分回合。Stop hook 返回空 JSON，不阻断或继续回合；凭据仍在临时私有 home；Host workspace 与两个 CLI cwd 均位于 checkout 外，两个 cwd 是 Host workspace 的子目录，满足产品执行目录约束；凭据 home 不在该 workspace 内。避免继承祖先 CLAUDE.md / AGENTS.md，结束后删除工作目录与配置。Codex JavaScript 入口显式使用控制器 Node，防止交互 shell 的 PATH 切换到旧 Node；Claude 原生入口直接执行。工具等待期间不产生新正文，TUI 可继续绘制 spinner；此受控条件不宣称验证供应商断网重连。
 
 正文比较只归一化空白与终端零宽字符；要求整个本次回答位于真实输入区上方。输入用例检查随机草稿在 composer 行，且没有第二次 UserPromptSubmit。完成后改变节点尺寸，检查 xterm 列数确实变化，再连续采样状态、回答和通知。原 executionId/generation 全程不变；产品 Stop、原持久化/reader 退役与 Host 清理另行记录。清理错误不覆盖先前业务首败。
 

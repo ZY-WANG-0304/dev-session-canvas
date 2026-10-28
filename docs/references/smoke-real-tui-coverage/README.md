@@ -36,3 +36,15 @@ PR341 的旧输入 run40682891236 在 regression shard-2 暴露 runner VM 仍仅
 同轮既有 `source-host/systemd-user-real-reopen` 在第二 Host 的 editor ready 45000ms 超时。原执行 identity/barrier 已建立，失败快照为 editor generation=5、ready=false，最后记录 surface/rendered；此项未归因为本次 TUI，原工件 12815266032 保留，后续结果独立记录。
 
 修复后的完整 source / packaged 结果仍待实际 Host 工件确认。所有清理及 Host 退出结果也需通过，不能由上述探索或静态检查代证。
+
+## 第二轮隔离校验与基础设施失败
+
+当前提交 96b95542 的 run40686985978 attempt1 在 Windows x64 / macOS ARM64 编译之后下载旧 Node 运行时超时（120 秒）。尚未执行 TUI；保留原 native-load 失败回执，Windows 工件为 12815512429。整轮 attempt2 对同一提交重新冻结/构建，两个原失败目标均通过，不混用旧轮产物。
+
+attempt2 的四项 source 在创建第一个 Codex 节点时失败；input 工件 12816193916 的 codex-prepare 为 `Timed out: current Agent created`、其余五个 provider step 为 not-run，未发生模型请求。产品 `validateExecutionCwd` 要求 cwd 位于 Host workspace 内，单独移动 CLI cwd 不能成立。修复同时创建仓库外的私有 Host workspace，两个 provider cwd 位于其内；凭据 home 位于 workspace 外，分别清理。增加实际 Host/cwd 包含关系、凭据分离及清理反例。
+
+本地真实 Host 启动校验确认节点已创建；首次 Codex 因交互 shell 选到旧系统 Node 而在 npm JavaScript 入口报 `SyntaxError: Unexpected reserved word`。显式以测试控制器 Node 执行 Codex npm 入口，Claude 固定包是原生可执行文件，继续直接启动。本地校验没有提交模型 prompt，不能作为四项业务通过。
+
+判定另拒绝纯 receipt 或仅添加标点的回答，防止用工具回显代证实际回答呈现。新增反例与既有四份 Codex source 工件复核通过；当前 test:agent-tui 8/8。
+
+本地第三次真实 Host 启动校验两 provider 均通过，版本 Node25.6.0 / VS Code1.140.0；模型 prompt 为零，两个实际节点与 cwd 见 [启动结果](local-host-startup.json)。显式 Node 入口同步到私有 Codex 配置，满足产品自定义命令须匹配已配置入口的约束。原失败不改写为通过，后续完整业务仍由 CI 验收。

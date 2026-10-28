@@ -98,7 +98,7 @@ async function runProvider(config, scenario, step) {
     await step('prepare', async () => {
       const before = (await state()).state.nodes.map(item => item.id);
       await command('createNode', 'agent', config.provider, { agentLaunchPreset: 'custom',
-        agentCustomLaunchCommand: [config.cli, ...config.args].map(quote).join(' '), cwdOverride: config.workspace });
+        agentCustomLaunchCommand: config.launch.map(quote).join(' '), cwdOverride: config.workspace });
       const created = await poll('current Agent created', state,
         value => value.state.nodes.filter(item => !before.includes(item.id)).length === 1, 15000);
       nodeId = created.state.nodes.find(item => !before.includes(item.id)).id;
@@ -165,7 +165,9 @@ async function runProvider(config, scenario, step) {
   } catch (error) {
     report.status = 'failed'; report.error = error.message; businessError = error;
     report.failurePage = await probe().catch(() => null);
-    report.failureNode = await state().then(node).catch(() => null);
+    report.failureSnapshot = await state().catch(() => null);
+    report.failureNode = report.failureSnapshot ? node(report.failureSnapshot) : null;
+    report.failureDiagnostics = await command('getDiagnosticEvents').catch(() => null);
   } finally {
     report.events = await events();
     await fs.writeFile(path.join(config.directory, 'result.json'), JSON.stringify(report, null, 2));
