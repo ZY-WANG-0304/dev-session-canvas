@@ -1,5 +1,7 @@
 name: TUI completion state probe
 on:
+  push:
+    branches: [diagnose/tui-completion-state]
   workflow_dispatch:
 permissions:
   contents: read
