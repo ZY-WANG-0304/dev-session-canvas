@@ -222,17 +222,26 @@ const supplier = http.createServer((request, response) => {
   if (request.url === '/hung' || request.url === '/hung-once' && count === 1) {
     response.writeHead(200); response.write('partial body'); return;
   }
+  if (request.url === '/steady-body') {
+    response.writeHead(200); const parts = ['actual ', 'downloaded ', 'bytes'];
+    const timer = setInterval(() => { response.write(parts.shift()); if (!parts.length) { clearInterval(timer); response.end(); } }, 250);
+    response.on('close', () => clearInterval(timer)); return;
+  }
   if (request.url === '/reset-body' && count === 1) {
     response.writeHead(200); response.write('partial'); setImmediate(() => response.destroy()); return;
   }
   if (request.url === '/missing') { response.writeHead(404); response.end(); return; }
-  if (request.url === '/SHASUMS256.txt') { response.end('a'.repeat(64) + '  payload\n'); return; }
+  if (request.url === '/SHASUMS256.txt') { response.end('a'.repeat(64) + '  payload\n'
+    + createHash('sha256').update('actual downloaded bytes').digest('hex') + '  cached-payload\n'); return; }
   response.end('actual downloaded bytes');
 });
 supplier.listen(0, '127.0.0.1'); await once(supplier, 'listening');
 const supplierBase = `http://127.0.0.1:${supplier.address().port}`;
 const downloadDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-supplier-'));
 try {
+  const steady = await fetchSupplierBytes(supplierBase + '/steady-body', { timeoutMs: 1500, log() {} });
+  assert.equal(steady.toString(), 'actual downloaded bytes');
+  assert.equal(requestCounts.get('/steady-body'), 1, 'Continuous progress must not be cut at a per-attempt slice');
   for (const route of ['/temporary', '/hung-once', '/reset-body']) {
     const logs = [];
     const bytes = await fetchSupplierBytes(supplierBase + route, { timeoutMs: 1500, log: value => logs.push(JSON.parse(value)) });
@@ -252,6 +261,18 @@ try {
   assert.equal(requestCounts.get('/payload'), 1, 'Hash mismatch must not be retried');
   assert(!fs.existsSync(destination), 'Unverified bytes must not become a build input');
   assert.deepEqual(inputs, []);
+  const cacheDirectory = path.join(downloadDirectory, 'cache');
+  const cacheInputs = [];
+  for (const name of ['first', 'hit']) await checkedDownload(supplierBase, 'cached-payload',
+    path.join(downloadDirectory, name), cacheInputs, { cacheDirectory });
+  assert.equal(requestCounts.get('/cached-payload'), 1, 'Verified cache avoids a repeated payload GET');
+  assert.equal(cacheInputs.length, 2);
+  const [cacheName] = fs.readdirSync(cacheDirectory);
+  fs.writeFileSync(path.join(cacheDirectory, cacheName), 'corrupt cached bytes');
+  await checkedDownload(supplierBase, 'cached-payload', path.join(downloadDirectory, 'repaired'), cacheInputs, { cacheDirectory });
+  assert.equal(requestCounts.get('/cached-payload'), 2, 'Unverified cache bytes are replaced from the supplier');
+  assert.equal(fs.readFileSync(path.join(downloadDirectory, 'repaired'), 'utf8'), 'actual downloaded bytes');
+  assert.equal(requestCounts.get('/SHASUMS256.txt'), 4, 'Every cache use fetches the official checksum again');
 } finally {
   supplier.closeAllConnections(); await new Promise(resolve => supplier.close(resolve));
   fs.rmSync(downloadDirectory, { recursive: true, force: true });

@@ -374,6 +374,8 @@ PR337 完整门禁跟进：runtime 配置 smoke 应观察全量或节点增量�
 
 PR341 在 run40686985978 attempt1（Windows x64 / macOS ARM64）及 run40691355132（macOS ARM64）重复遇到编译后旧 Node16.17.1 运行时下载 120 秒超时；没有进入 TUI 业务。原错误日志没有具体 URL 与下载阶段，不能断言是 checksum 文本还是 archive body 卡住。
 
-`build-execution-distribution-assets.mjs` 的 `fetchSupplierBytes` 保持每个原请求 120 秒绝对总期限，最多三次、每次最多 40 秒，间隔最多 100ms；计时覆盖 response body，失败尝试与 URL/阶段进入原 build log。仅超时、已识别连接/传输失败及 HTTP408/500/502/503/504 可以重试，404、认证错误、校验和缺失/歧义、字节 hash 不符立即失败。大文件持续超过单次 40 秒仍可能失败，此限制没有通过延长原总预算消除。只有供应商 hash 一致后才以 wx 写入原目标文件并登记输入 URL/hash；不拼接部分数据、不复用其他 attempt 的产物，不改变 native load 与完整来源验收。
+`build-execution-distribution-assets.mjs` 的 `fetchSupplierBytes` 保持每个原请求 120 秒绝对总期限，最多三次，响应头或正文连续无进展最多 40 秒，间隔最多 100ms；持续接收正文时保留原总期限，计时覆盖 response body，失败尝试与 URL/阶段进入原 build log。仅超时、已识别连接/传输失败及 HTTP408/500/502/503/504 可以重试，404、认证错误、校验和缺失/歧义、字节 hash 不符立即失败。持续传输不受40秒硬切片中断；每次收到实际字节才刷新停滞观察，总期限不刷新。首版硬切片被 localhost 持续传输反例证明确实会误伤正常慢传输，原失败与修正分别保留。只有供应商 hash 一致后才以 wx 写入原目标文件并登记输入 URL/hash；不拼接部分数据、不复用其他 attempt 的产物，不改变 native load 与完整来源验收。
 
 该策略只作用于幂等的供应商 GET。真实模型回合、产品断言和清理失败不采用此机制。真实 localhost HTTP 回归覆盖临时服务错误、body 挂起/断开后的新请求、总期限、永久 HTTP 与 hash 不符；正式跨平台输入继续由新一轮 CI 验证。原失败保留。
+
+对照 run40694396583 在独立 runner 上出现同文件不足一秒完整下载与120秒只收到少量数据两类结果，Node与curl均出现差异，未确认读取API因果。`checkedDownload` 可使用独立的供应商文件缓存；每次仍从官方HTTPS重新获取checksum，以其SHA256作为缓存文件名，核验实际字节后才写本轮构建输入。缓存不存checksum权威、不包含编译产物或native-load回执；缓存不符视为未命中，重新下载后仍必须通过官方hash。CI仅在本目标native-load成功后保存完整供应商缓存，后续构建/加载与产物来源仍按新输入执行。

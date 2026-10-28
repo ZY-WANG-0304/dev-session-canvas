@@ -23,7 +23,7 @@
 ## 本地回归
 
 - 完整 test:ci-gates 139/139。此前修改目录与测试并行引起 digest 不一致的失败保留，不追认为通过；冻结输入后完整重跑通过。
-- test:agent-tui 7/7，覆盖错误/陈旧回合、tool receipt 因果、页面位置、初始化，以及真实 MCP 子进程的精确释放/重复调用拒绝和 hook 白名单事件。
+- test:agent-tui 8/8，覆盖错误/陈旧回合、tool receipt 因果、页面位置、初始化，以及真实 MCP 子进程的精确释放/重复调用拒绝和 hook 白名单事件。
 - 原 smoke-runtime-retirement 18/18、typecheck、DeepSeek 私有配置、release-preflight / publish-tag-release 接线、runner 环境过滤通过。
 - 本机无 DEEPSEEK_API_KEY，未进行本地模型请求。固定 Claude 在本地不可连通地址、零请求条件下通过初始化检查；该证据仅限启动。
 
@@ -50,3 +50,9 @@ attempt2 的四项 source 在创建第一个 Codex 节点时失败；input 工�
 本地第三次真实 Host 启动校验两 provider 均通过，版本 Node25.6.0 / VS Code1.140.0；模型 prompt 为零，两个实际节点与 cwd 见 [启动结果](local-host-startup.json)。显式 Node 入口同步到私有 Codex 配置，满足产品自定义命令须匹配已配置入口的约束。原失败不改写为通过，后续完整业务仍由 CI 验收。
 
 run40691355132（d1c54b0c）再次在 macOS ARM64 编译后旧 Node16.17.1 下载处超时，工件 12817746527；TUI 未运行。已为供应商 GET 增加原每请求120秒总期限内最多三次传输恢复，每次最多40秒，记录具体URL与阶段；HTTP永久错误及hash不符不重试。localhost真实HTTP反例通过并纳入既有 native-assets 回归。设计与适用边界见 release-gate-redesign 的供应商下载规则，真实业务仍不自动重试。
+
+## 供应商下载对照与恢复
+
+run40692812033（d41e2b20）在 Windows 旧 Node 下载处失败，未执行 TUI。独立 run40694396583 的 [六份公开下载对照](supplier-download-probe.json) 记录 Node buffer、stream 与 curl：有的独立 runner 亚秒完成，有的120秒仅收到部分字节，curl 也失败。不同 VM 的结果不能证明读取方法的因果差异，acceptance=false。
+
+当前传输仍限制每请求120秒、最多三次，将40秒硬切片改为40秒无字节进展窗口。非Linux CI 缓存经官方 hash 核验的供应商原文件，缓存键包含目标和版本；每次使用重新 GET 官方 SHASUMS256.txt 并验证缓存内容。损坏视为miss，重新下载hash不符仍失败；仅成功 native load 后保存缓存，不缓存编译产物或验收回执。持续传输反例先红后绿，缓存首次写入、命中、损坏恢复和每次获取checksum的本地真实HTTP回归通过。

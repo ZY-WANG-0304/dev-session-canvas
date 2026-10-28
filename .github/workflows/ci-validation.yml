@@ -531,9 +531,26 @@ jobs:
     - name: Install locked dependencies
       run: node scripts/gates/run-infrastructure.mjs --kind install --profile ${{ matrix.dependencyProfile }} --output gate-results -- npm ci --no-audit --no-fund
       timeout-minutes: 10
+    - name: Restore checked supplier files
+      id: supplier-cache
+      if: ${{ runner.os != 'Linux' }}
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/dsc-supplier-downloads/*.bin
+        key: dsc-supplier-v1-${{ matrix.variant }}-25.6.0-16.17.1-22.3.14
+      timeout-minutes: 2
     - name: Build and load native input
+      env:
+        DSC_SUPPLIER_DOWNLOAD_CACHE: ${{ runner.temp }}/dsc-supplier-downloads
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job native-assets --variant "${{ matrix.variant }}" --output gate-results --assets "${{ runner.temp }}/native-assets/${{
         matrix.variant }}" --part load
+    - name: Cache supplier files after successful native load
+      if: ${{ runner.os != 'Linux' && steps.supplier-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/dsc-supplier-downloads/*.bin
+        key: dsc-supplier-v1-${{ matrix.variant }}-25.6.0-16.17.1-22.3.14
+      timeout-minutes: 2
     - name: Stage immutable load transfer
       shell: bash
       run: |-

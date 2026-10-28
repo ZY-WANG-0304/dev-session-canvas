@@ -17,11 +17,15 @@
 
 ## 意外与发现
 
+run40692812033（d41e2b20）因 Windows 旧 Node 下载失败而未进入 TUI。独立对照 run40694396583 同一公开文件出现亚秒成功和120秒不完整传输，curl 也失败；证据见 supplier-download-probe.json。持续传输被40秒硬切断的回归先红后绿，缓存命中/损坏/每次重新获取官方checksum的 localhost 测试通过。
+
 现有 `agent-candidate-tests.cjs` 的 natural 分支使用 Codex exec / Claude -p，不能代证交互 TUI。普通 `ci-validation.yml` 尚未注册真实 agent-tui；现有真实 CLI workflow 使用独立 DeepSeek secret。当前本机 Node 为 v25.6.0，与既有真实 CLI runner 一致。
 
 首轮信号探索 Actions 40681385645 在请求之前失败：探针错误使用 CommonJS `@xterm/headless` 的命名导入。修正为默认导入；原轮无 CLI 业务证据，不能计为产品失败或通过。本机无 DeepSeek 环境变量，但已核 repository secret 存在；私有目录安装固定 CLI，不改用户现有版本。
 
 ## 决策记录
+
+2026-10-28 / Codex：供应商传输改为每请求120秒总期限、最多三次、40秒无字节进展才恢复，避免截断持续传输。非Linux CI 可缓存已验真的供应商原文件，每次使用仍重新下载官方校验和并复算文件 hash；不复用编译产物或业务回执。独立VM下载对照无法证明 Node 读取方式的因果差异，故不据此切换下载客户端。
 
 2026-10-28 / Codex：沿用已有固定 CLI 与 DeepSeek 配置，先验证独立信号再确定最终接口。理由是四项验收涉及外部 CLI 行为，单纯 fake 输出和目录登记无法证明目标。固定版本当前为 Codex 0.157.1、Claude 2.1.280。
 
@@ -31,7 +35,7 @@
 
 ## 结果与复盘
 
-四项真实 TUI 已接入默认 source / packaged 门禁并创建 PR341；独立 CLI 信号探索两 provider 通过，完整合同回归 139/139、证据及真实工具/hook 7/7 通过。产品 Host 验收继续执行，尚不能宣布四项通过。探索失败、修复和后续正式输入分别记录于 docs/references/smoke-real-tui-coverage/README.md。
+四项真实 TUI 已接入默认 source / packaged 门禁并创建 PR341；独立 CLI 信号探索两 provider 通过，完整合同回归 139/139、证据及真实工具/hook 8/8 通过。产品 Host 验收继续执行，尚不能宣布四项通过。探索失败、修复和后续正式输入分别记录于 docs/references/smoke-real-tui-coverage/README.md。
 
 ## 上下文与定向
 
@@ -90,3 +94,5 @@
 修订：2026-10-28 本地实际产品 Host 的 Codex / Claude 创建及真实 composer 均通过（Node25.6.0、VS Code1.140.0、零模型 prompt），同时同步私有 Codex 已配置入口以满足产品命令一致性规则。原 attempt2 剩余任务取消；新输入继续四项完整 source / packaged 业务验收。
 
 修订：2026-10-28 d1c54b0c 的 run40691355132 再次因 macOS ARM64 编译后旧 Node 下载 120 秒超时而无法进入 TUI。为解除重复的前置阻塞，在原每请求 120 秒总期限内增加最多三次传输恢复（单次最多40秒），HTTP永久错误/hash不符不重试，记录URL和尝试阶段；设计同步 release-gate-redesign，真实localhost传输/期限/hash反例纳入既有 native-assets 回归。模型业务仍不自动重试。
+
+修订：2026-10-28 根据公开下载对照收敛为无进展恢复及校验后缓存，保留120秒总期限；工作流和本地回归已更新，完整TUI业务仍待新输入实跑。
