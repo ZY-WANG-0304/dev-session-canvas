@@ -66,3 +66,16 @@ run40696561957 / 5252b296 的六个native目标通过，八个TUI job实际结�
 最初诊断40700262735因手动重建漏编译profile/admission define进入stock路径，零模型prompt，未产生业务证据。修正后才得到上述时间线；诊断始终acceptance=false。修复后的正式source/packaged输入仍需重跑。
 
 2026-10-28 修复后的只读诊断run40701447849（21b7554c）三份独立footer样本全部通过，两provider各三次；原五秒状态及完整正文断言不变。此为复用原native、重建观测入口的acceptance=false诊断，最终正式输入仍需完整门禁。
+
+## 最终四项覆盖结果
+
+run40701818847，head97fa646f，预合并输入7c3c412dbe1cde4798112100d17f0443ec51b7c6。八个job、两provider共16次全部通过，详见 [逐项原回执与页面摘要](product-run-40701818847.json)。同一payload的构建输入hash一致，四份packaged回执消费同批原VSIX；所有prepare/action/assert、保存、reader、退役、cleanup及原Host absence均复核通过。模型回合1977–5995ms，不含准备与清理，不作为SLA。
+
+| 场景 | source Codex / Claude | packaged Codex / Claude |
+| --- | --- | --- |
+| input-during-work | 通过 / 通过 | 通过 / 通过 |
+| answer-with-footer | 通过 / 通过 | 通过 / 通过 |
+| tool-network-silence | 通过 / 通过 | 通过 / 通过 |
+| turn-completion-redraw | 通过 / 通过 | 通过 / 通过 |
+
+整轮存在其他失败：packaged surface-continuity--live-page-remount在Terminal准备阶段等待Host消息超时，尚未进入重挂载动作，工件12822619264；同场景source通过。不声明完整acceptance或可合并，根因未确认，已登记tech-debt-tracker。最终文档提交的CI需按自身输入核验，不复用上述运行签发回执。

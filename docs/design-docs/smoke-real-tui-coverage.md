@@ -1,11 +1,11 @@
 ---
 title: 真实 Agent TUI 的独立回合判定与 CI 覆盖
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/active/smoke-real-tui-coverage.md]
+related_plans: [docs/exec-plans/completed/smoke-real-tui-coverage.md]
 updated_at: 2026-10-28
 ---
 
@@ -30,19 +30,19 @@ updated_at: 2026-10-28
 复用 `agent-candidate-deepseek.mjs` 的私有凭据配置；新增真实交互式 Host 用例。既有 natural 用例走 exec / -p，不能替代本次 TUI。模型未建立目标条件、认证失败或业务断言失败均保留失败，不自动重试。
 
 
-首批默认矩阵为 Linux、snapshot-only、Codex 0.157.1 与 Claude 2.1.280。四项分别注册到 `scripts/smoke/smoke-catalog.mjs`，每项在单 Host 中顺序运行两份互不共享业务状态的私有 provider fixture；source 和 packaged 均通过 `scripts/smoke/agent-tui-suite.mjs` 执行 `tests/vscode-smoke/agent-tui-tests.cjs`。一份 provider 有独立的 240 秒绝对上限，各内部等待仍有自己的较短期限；此上限不是产品 SLA，实际成本仍待测。
+首批默认矩阵为 Linux、snapshot-only、Codex 0.157.1 与 Claude 2.1.280。四项分别注册到 `scripts/smoke/smoke-catalog.mjs`，每项在单 Host 中顺序运行两份互不共享业务状态的私有 provider fixture；source 和 packaged 均通过 `scripts/smoke/agent-tui-suite.mjs` 执行 `tests/vscode-smoke/agent-tui-tests.cjs`。一份 provider 有独立的 240 秒绝对上限，各内部等待仍有自己的较短期限；此上限不是产品 SLA；run40701818847 的模型回合耗时为1977–5995ms，不含Host准备及清理。
 
 `agent-tui-configuration.mjs` 只在私有配置中注册唯一等待工具和只观察的 hook。工具开始与外部释放绑定 callId，返回随机 receipt，不伪造模型输出。`agent-tui-evidence.cjs` 要求一次精确 UserPromptSubmit、同 workspace/session、未继续的 Stop、先工具结果后完成以及包含新 receipt 和额外正文的实际回答（纯 receipt 无法与工具回显区分，因此拒绝）；Codex 还核对真实 turn_id。Claude 通过私有指定 session 和单次用户提交区分回合。Stop hook 返回空 JSON，不阻断或继续回合；凭据仍在临时私有 home；Host workspace 与两个 CLI cwd 均位于 checkout 外，两个 cwd 是 Host workspace 的子目录，满足产品执行目录约束；凭据 home 不在该 workspace 内。避免继承祖先 CLAUDE.md / AGENTS.md，结束后删除工作目录与配置。Codex JavaScript 入口显式使用控制器 Node，防止交互 shell 的 PATH 切换到旧 Node；Claude 原生入口直接执行。工具等待期间不产生新正文，TUI 可继续绘制 spinner；此受控条件不宣称验证供应商断网重连。
 
-正文比较只归一化空白与终端零宽字符；要求整个本次回答位于真实输入区上方。输入用例检查随机草稿在 composer 行，且没有第二次 UserPromptSubmit。完成后改变节点尺寸，检查 xterm 列数确实变化，再连续采样状态、回答和通知。原 executionId/generation 全程不变；产品 Stop、原持久化/reader 退役与 Host 清理另行记录。清理错误不覆盖先前业务首败。
+正文先解析文本、行内代码、强调及换行的已知Markdown显示语义，再只归一化空白与终端零宽字符；要求整个本次回答位于真实输入区上方。输入用例检查随机草稿在 composer 行，且没有第二次 UserPromptSubmit。完成后改变节点尺寸，检查 xterm 列数确实变化，再连续采样状态、回答和通知。原 executionId/generation 全程不变；产品 Stop、原持久化/reader 退役与 Host 清理另行记录。清理错误不覆盖先前业务首败。
 
 CI 在 `ci-validation.yml` 的四项 source/packaged job 安装固定 CLI，只有这些 job 的执行步骤获得 `DEEPSEEK_API_KEY`。调用链从 release-preflight / publish release-validation 显式传递该 secret；缺失、认证失败、目标前提未发生都不能被当作通过。初步回合接口探索仅提供 acceptance=false 的 CLI 证据，不能替代产品 Host 验收；完成探索后移除临时 workflow 和脚本。
 
 ## 当前验证证据
 
-Actions 40683639714 的 Codex / Claude 私有 PTY 探索均通过，观察到工具等待、未提交草稿、当前 Stop 回答和 resize 后呈现。Claude trust 初始化复用仓库已验证的 End / 两次稳定 Yes / 唯一 Enter 规则。完整合同回归 139/139、独立证据与真实工具/hook 测试 7/7 通过。四项产品 source / packaged CI 仍待验，证据见 [验证记录](../references/smoke-real-tui-coverage/README.md)。
+run40701818847 的 head97fa646f、预合并输入7c3c412dbe1cde4798112100d17f0443ec51b7c6：四项source/packaged两provider共16次全部通过，正常Stop、完整正文、状态/草稿/重绘、原执行保存/reader/退役和Host退出均已复核；packaged四项消费同批原VSIX。完整合同139/139、Host接线648/648、证据9/9及typecheck通过。验证结论只覆盖固定Linux/snapshot-only/CLI版本和DeepSeek配置。
 
-首轮产品 run40683646799 四项 Codex source 已通过，Claude 均在启动时继承仓库 CLAUDE.md 导入菜单而失败，修复 cwd 隔离后完整新输入待验。配置隔离/清理新增回归通过（test:agent-tui 共 8/8）；原始失败及另一个既有 systemd ready 失败分别保留在验证记录。
+该轮另有packaged surface-continuity--live-page-remount在Terminal准备阶段等待Host消息超时，故整轮不能签发完整acceptance，PR未获得可合并结论。历史探索、失败、根因与实际回执见 [验证记录](../references/smoke-real-tui-coverage/README.md)；其他平台、真实供应商断网及旧Host间歇问题仍分别保留。
 
 ## 完成状态与正文渲染的实跑修正
 

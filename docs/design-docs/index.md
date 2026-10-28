@@ -23,7 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/design-docs/smoke-real-tui-coverage.md` | 四项真实 TUI 独立回合证据、非确定性回答与 CI 覆盖 | 执行编排域、VSCode 集成域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/smoke-real-tui-coverage.md` | 2026-10-28 |
+| `docs/design-docs/smoke-real-tui-coverage.md` | 四项真实 TUI 独立回合证据、非确定性回答与 CI 覆盖 | 执行编排域、VSCode 集成域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/smoke-real-tui-coverage.md` | 2026-10-28 |
 | `docs/design-docs/runtime-journal-input-priority.md` | 执行节点通信与分页诊断；120 秒有界采集、状态构造五段计时、状态广播统计及消息/分页阶段关联，两次现场采集定位重复配置获取，构造内复用与独立 A/B/C/A 验证局部降耗；新版现场反馈改善，侧栏消费端复用/展示去重完成独立验证，回显收益未稳定；主画布增量另案记录；停止时在途跨度保留 pending，生命周期诊断依赖隔离回归通过；旧长停顿仍未归因 | 执行编排域、画布交互域 / 宿主集成层、画布呈现层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-27 |
 | `docs/design-docs/runtime-mode-switch-settlement.md` | 模式切换逐原会话结算、迟到保存隔离及失败后继续；重试重验 root 责任，终态回调按接纳身份保留 | 执行编排域、VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/active/runtime-mode-switch-settlement.md` | 2026-10-24 |
 | `docs/design-docs/file-entry-native-smoke.md` | 文件条目原生点击与编辑器持焦回归 | VSCode 集成域 / 宿主集成层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/file-entry-native-smoke.md` | 2026-10-24 |

@@ -12,8 +12,8 @@
 - [x] (2026-10-28) 核对现有真实 CLI / DeepSeek 隔离配置和手动 Actions 入口；四项目标仍 not-implemented。
 - [x] (2026-10-28) 里程碑一：验证固定 CLI 的独立会话/回合完成信号及受控等待方法，记录实际样本。
 - [x] (2026-10-28) 里程碑二：实现四项独立交互式用例、证据判定和有意义的反例。
-- [ ] 里程碑三：接入 CI、共享目录和 source/packaged 路径，完成真实运行及相关回归。
-- [ ] 同步设计、映射、技术债和结果，提交并创建 PR。
+- [x] (2026-10-28) 里程碑三：接入 CI、共享目录和 source/packaged 路径，完成真实运行及相关回归。
+- [x] (2026-10-28) 同步设计、映射、技术债和结果；已创建PR341，16次TUI通过，整轮其他失败独立登记。
 
 ## 意外与发现
 
@@ -35,7 +35,11 @@ run40692812033（d41e2b20）因 Windows 旧 Node 下载失败而未进入 TUI。
 
 ## 结果与复盘
 
-四项真实 TUI 已接入默认 source / packaged 门禁并创建 PR341；独立 CLI 信号探索两 provider 通过，完整合同回归 139/139、证据及真实工具/hook 8/8 通过。产品 Host 验收继续执行，尚不能宣布四项通过。探索失败、修复和后续正式输入分别记录于 docs/references/smoke-real-tui-coverage/README.md。
+四项默认真实TUI覆盖已完成。run40701818847 在head97fa646f的同一预合并输入上完成四项source/packaged、两provider共16次通过；保存、reader、原执行退役与Host退出通过，packaged消费同批原VSIX。模型回合耗时1977–5995ms。自动化合同139/139、Host接线648/648、证据9/9与typecheck通过。
+
+真实运行发现并修复了空的标题输出不断取消状态轮询的产品缺陷；受控owner反例在原实现失败、修复后通过，真实诊断再确认。还补齐了Markdown行内代码与终端显示的比较边界，保留完整正文及缺失字符反例。输入隔离、供应商下载故障和所有原失败均可追溯。
+
+四项覆盖完成不代表整轮CI通过：本轮packaged surface-continuity--live-page-remount在Terminal准备阶段等待Host消息超时，独立根因未确认，已登记技术债；完整acceptance与可合并结论尚未获得。最终文档提交的CI独立运行，不套用代码输入的回执。证据见docs/references/smoke-real-tui-coverage/README.md。
 
 ## 上下文与定向
 
@@ -102,3 +106,5 @@ run40692812033（d41e2b20）因 Windows 旧 Node 下载失败而未进入 TUI。
 修订：2026-10-28 定向40700749341已复现：标题过滤后空输出约100ms刷新活动并取消120ms轮询；修正owned路径忽略空活动、保持标题投影。另发现Claude行内代码Markdown应与渲染文本比较，加入保留完整正文的受限inline解析及反例。首轮诊断因漏编译define进入stock路径，零模型prompt，独立保留。
 
 2026-10-28 修复后的只读诊断run40701447849（21b7554c）三份独立footer样本全部通过，两provider各三次；原五秒状态及完整正文断言不变。此为复用原native、重建观测入口的acceptance=false诊断，最终正式输入仍需完整门禁。
+
+修订：2026-10-28 收齐run40701818847八份TUI原工件，核16次provider结果与同批输入/VSIX，完成本计划并移至completed；其他Terminal Host准备失败登记技术债，不声明完整CI通过或可合并。
