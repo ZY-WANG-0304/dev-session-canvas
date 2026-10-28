@@ -1,0 +1,170 @@
+{
+  "capturedOn": "2026-10-28",
+  "reviewedHead": "ceae895bee15ebb6de334fe036759a0e77ec9b3e",
+  "baseCommit": "e25ede616c450053c4da50fcadcc9d509db22832",
+  "scope": "Review repair local Linux validation, not an Actions release receipt",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSocketListener.ts": "524b7746f841312fd72b273299ebdd944d6078094550a0c15312a9380beedce4",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "7ce26e6a825b7a6f0fa8ecbf946bfc93ac9bd771e23f4e62567d7ce6db6e869c",
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "4f8436e59bacd865a56bded3c639325d44179de3fd5fd0aeb83e05051f7bde3e",
+    "extensions/vscode/dev-session-canvas/src/panel/disconnectedRuntimeDeletion.ts": "699c94d1bdec27f88148be5a0f8652cff877bf416883aafe38022a6ad47d9d81",
+    "scripts/test/test-runtime-socket-listener.mjs": "508a691889071eeb3d6194681cd664a5ee442758cdb5f1d2da456392a586b499",
+    "scripts/test/test-supervisor-execution-owner-wiring.mjs": "16283369218e85d95d7f5a28dc5959b670bbbc4b65b61b967da018e94226f804",
+    "scripts/test/test-runtime-socket-recovery-native.mjs": "5da7ca8baf83008fd208c0426af1ca54a6f44f5741b7e752519e0b737a066554",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "df231587ed5693c5280597c90a68a610448fc8acb75414cc983d8c1f1ba9f02e",
+    "scripts/test/fixtures/disconnected-runtime-host.mjs": "15fb6f3067c94d59522610de1cb990e7b72a67c16f879e3513fdc391ad38c6e4"
+  },
+  "regressionBeforeRepair": {
+    "result": "failed as expected",
+    "assertion": "recoverable obstruction must not poison close",
+    "actual": "Runtime Supervisor socket path was replaced; refusing to remove another object.",
+    "logSha256": "ba8970b77511608fcd4e091980e845c0e31b57cec388191dcfa6e890b459c8ad"
+  },
+  "nativeAcceptance": {
+    "beforeDeadline": {
+      "platform": "linux",
+      "node": "v25.6.0",
+      "agent": "real-cli",
+      "cases": [
+        {
+          "removal": "file",
+          "sameSupervisor": true,
+          "sameProvidersAndSubjects": true,
+          "sameSessionsAndAuthorities": true,
+          "existingConnectionWorks": true,
+          "reattachedAgent": true,
+          "terminalInputOutput": true
+        },
+        {
+          "removal": "directory",
+          "sameSupervisor": true,
+          "sameProvidersAndSubjects": true,
+          "sameSessionsAndAuthorities": true,
+          "existingConnectionWorks": true,
+          "reattachedAgent": true,
+          "terminalInputOutput": true
+        }
+      ],
+      "shutdownObstruction": {
+        "removed": "before-deadline",
+        "budgetMs": 20000,
+        "first": "settled",
+        "actualDomains": {
+          "execution": "settled",
+          "readers": "settled",
+          "registry": "settled",
+          "server": "settled",
+          "sockets": "settled"
+        },
+        "keepAliveReleased": true,
+        "originalRegistryPersisted": true,
+        "namespaceHeldUntilExit": true,
+        "namespaceReacquiredByIndependentProcess": true
+      },
+      "deletedAndExited": true
+    },
+    "afterDeadline": {
+      "platform": "linux",
+      "node": "v25.6.0",
+      "agent": "real-cli",
+      "cases": [
+        {
+          "removal": "file",
+          "sameSupervisor": true,
+          "sameProvidersAndSubjects": true,
+          "sameSessionsAndAuthorities": true,
+          "existingConnectionWorks": true,
+          "reattachedAgent": true,
+          "terminalInputOutput": true
+        },
+        {
+          "removal": "directory",
+          "sameSupervisor": true,
+          "sameProvidersAndSubjects": true,
+          "sameSessionsAndAuthorities": true,
+          "existingConnectionWorks": true,
+          "reattachedAgent": true,
+          "terminalInputOutput": true
+        }
+      ],
+      "shutdownObstruction": {
+        "removed": "after-deadline",
+        "budgetMs": 20000,
+        "first": "unconfirmed",
+        "actualDomains": {
+          "execution": "settled",
+          "readers": "settled",
+          "registry": "settled",
+          "server": "settled",
+          "sockets": "settled"
+        },
+        "keepAliveReleased": true,
+        "originalRegistryPersisted": true,
+        "namespaceHeldUntilExit": true,
+        "namespaceReacquiredByIndependentProcess": true
+      },
+      "deletedAndExited": true
+    },
+    "originalRecoveryAndDeletion": {
+      "platform": "linux",
+      "node": "v25.6.0",
+      "agent": "real-cli",
+      "cases": [
+        {
+          "removal": "file",
+          "sameSupervisor": true,
+          "sameProvidersAndSubjects": true,
+          "sameSessionsAndAuthorities": true,
+          "existingConnectionWorks": true,
+          "reattachedAgent": true,
+          "terminalInputOutput": true
+        },
+        {
+          "removal": "directory",
+          "sameSupervisor": true,
+          "sameProvidersAndSubjects": true,
+          "sameSessionsAndAuthorities": true,
+          "existingConnectionWorks": true,
+          "reattachedAgent": true,
+          "terminalInputOutput": true
+        }
+      ],
+      "disconnectedDeletion": {
+        "actualHostDelete": true,
+        "strictClientConnectionFailure": true,
+        "durableStopUnconfirmedReceipt": true,
+        "sharedStaleEditCannotResurrect": true,
+        "reopenedCanvasHasNoNode": true,
+        "backgroundStillLive": true
+      },
+      "deletedAndExited": true
+    }
+  },
+  "checks": {
+    "unixSocketListener": "10/10 passed",
+    "supervisor": "136/136 passed",
+    "host": "644/644 passed",
+    "namespace": "11/11 passed",
+    "rootOwnershipStartupHandshake": "passed, including 47 handshake cases",
+    "rpcTimeout": "37/37 passed",
+    "completedHistory": "passed",
+    "typecheck": "passed",
+    "localization": "passed",
+    "build": "passed using existing platform execution asset set",
+    "sharedRootStore": "20/20 passed unchanged in isolated user/network namespace with loopback enabled"
+  },
+  "failuresAndResolution": [
+    {
+      "failure": "Two shared-root runs hit existing TCP 127.0.0.1:18081 listener with EADDRINUSE. Independent ss confirmed LISTEN after fixture exit.",
+      "resolution": "No other process terminated. Unchanged 20-case suite passed under unshare --user --map-root-user --net with loopback enabled; host-network failures preserved separately."
+    }
+  ],
+  "limitations": [
+    "Foreign pathname must be removed externally; shutdown polls serially without resetting the original budget or reopening admission.",
+    "First unconfirmed report remains immutable after actual completion; no new registry flush, socket.end or process stop starts after the deadline.",
+    "Late cleanup releases keepalive only when all original shutdown domains are actually settled; unfinished original obligations retain responsibility.",
+    "Path lstat and Node close are not atomic against a same-UID concurrent pathname replacement.",
+    "Real CLI 0.164.0 exercised without inference; actual Host with controlled VS Code services; no VS Code UI launched.",
+    "Local Linux results do not replace macOS/Windows or exact-head Actions checks."
+  ]
+}

@@ -456,11 +456,19 @@ export class RuntimeSupervisorServer {
         .filter(domain => domains[domain] !== 'settled')), errors: Object.freeze({ ...boundary.errors })
     });
     boundary.cancelDeadline?.();
-    if (kind === 'settled' && boundary.keepAlive) {
+    if (kind === 'settled') this.releaseSettledShutdownKeepAlive(boundary);
+    boundary.resolve(boundary.first);
+  }
+
+  private releaseSettledShutdownKeepAlive(boundary: SupervisorShutdownBoundary): void {
+    // Late callbacks may finish original obligations without changing the first report
+    // or authorizing any new shutdown work after its deadline.
+    if (this.executionOwner!.snapshot().pending > 0
+      || !Object.values(this.shutdownDomains(boundary)).every(status => status === 'settled')) return;
+    if (boundary.keepAlive) {
       clearInterval(boundary.keepAlive);
       boundary.keepAlive = undefined;
     }
-    boundary.resolve(boundary.first);
   }
 
   private observeShutdownDeadline(boundary: SupervisorShutdownBoundary): void {
@@ -473,7 +481,10 @@ export class RuntimeSupervisorServer {
     const boundary = this.shutdownBoundary;
     if (!boundary) return;
     this.observeShutdownDeadline(boundary);
-    if (boundary.first) return;
+    if (boundary.first) {
+      this.releaseSettledShutdownKeepAlive(boundary);
+      return;
+    }
     const domains = this.shutdownDomains(boundary);
     if (Object.values(domains).includes('failed')) {
       this.finishOwnedShutdown(boundary, 'failed');

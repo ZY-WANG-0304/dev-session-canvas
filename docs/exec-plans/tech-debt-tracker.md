@@ -7,6 +7,10 @@
 
 本地 Linux 的真实 Codex/原生 Provider/PTY、Host 删除和共享持久化组合验收通过；macOS 实机、Windows 安装、VS Code UI 与完整 Actions 尚不能由这些本地结果代证。旧 Supervisor 无法热更新，节点移除后原进程可能继续运行；`unconfirmed-runtime-deletions-v1` 保留原身份与停止未确认记录，本轮没有自动 orphan kill、无限重试或凭据自动回收。批量清空与模式切换继续严格结算，单节点删除是本次明确例外。一次全套 Host 模式切换测试超出原 3 秒预算，隔离主线/本分支及完整重跑通过，未确认间歇成因。见 [runtime-socket-recovery.md](../design-docs/runtime-socket-recovery.md)。
 
+Review 的永久 close 拒绝已修复：路径占位期间保持原操作 pending，移除后结算；真实 CLI 验证生产 20 秒截止前后恢复、自然退出及独立进程重新取得 namespace。首份报告不变且超时后不新增保存/断开阶段。永久占位仍需外部纠正；同 UID 在 lstat 与 Node close 之间并发替换路径的 TOCTOU 不由本修复消除。旧 head ceae895b 的 Actions 269/269 已通过，新修复必须独立检查其最新 head，不复用旧绿灯。
+
+本轮共享 store 两次回归在碰撞端口测试遇到 127.0.0.1:18081 已占用（只读取证，未终止其他进程）；失败日志保留；原套件在独立 user/network namespace 开启 loopback 后 20/20 通过，不宣称此宿主端口冲突被代码修复。
+
 
 ## 2026-10-27：画布展示增量的现场与启动验证边界
 

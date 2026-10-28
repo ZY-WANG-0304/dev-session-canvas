@@ -30,9 +30,7 @@ export class RuntimeSocketListener {
     this.timer = setInterval(() => {
       if (this.stopped || this.checking) return;
       const check = this.repair().catch(error => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message !== this.lastError) this.report(error);
-        this.lastError = message;
+        this.reportOnce(error);
       });
       this.checking = check;
       void check.finally(() => { if (this.checking === check) this.checking = undefined; });
@@ -46,12 +44,31 @@ export class RuntimeSocketListener {
     this.closing ??= (async () => {
       await this.opening;
       await this.checking;
-      if (this.current) await this.assertPathNotReplaced();
+      // A foreign pathname blocks unlinking, not the lifetime of the original close.
+      // Keep one pending operation; shutdown never repairs or admits new connections.
+      while (this.current) {
+        try {
+          await this.assertPathNotReplaced();
+          break;
+        } catch (error) {
+          this.reportOnce(error);
+          await new Promise<void>(resolve => {
+            const retry = setTimeout(resolve, this.intervalMs);
+            retry.unref();
+          });
+        }
+      }
       const entries = [...this.servers];
       for (const [server] of entries) this.stopAccepting(server);
       await Promise.all(entries.map(([, closed]) => closed));
     })();
     void this.closing.then(() => callback(), error => callback(error instanceof Error ? error : new Error(String(error))));
+  }
+
+  private reportOnce(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message !== this.lastError) this.report(error);
+    this.lastError = message;
   }
 
   private stopAccepting(server: net.Server): void {

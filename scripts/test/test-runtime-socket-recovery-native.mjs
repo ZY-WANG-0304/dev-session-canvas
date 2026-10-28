@@ -44,7 +44,16 @@ async function children(pid) {
   return (await readFile(`/proc/${pid}/task/${pid}/children`, 'utf8')).trim().split(/\s+/).filter(Boolean).map(Number);
 }
 
-if (process.argv.includes('--worker')) {
+if (process.argv.includes('--claim')) {
+  const api = load(arg('--bundle'), path.join(arg('--directory'), 'socket'));
+  try {
+    const claim = await api.acquireRuntimeSupervisorNamespace(arg('--storage'));
+    await new Promise((resolve, reject) => claim.close(error => error ? reject(error) : resolve()));
+    process.send({ acquired: true }, () => process.disconnect());
+  } catch (error) {
+    process.send({ acquired: false, code: error.code }, () => process.disconnect());
+  }
+} else if (process.argv.includes('--worker')) {
   const directory = arg('--directory'), bundle = arg('--bundle');
   const api = load(bundle, path.join(directory, 'socket'));
   const environment = await api.readRuntimeExecutionEnvironment();
@@ -64,6 +73,7 @@ if (process.argv.includes('--worker')) {
   const paths = api.resolveLegacyRuntimeSupervisorPathsFromStorageDir(storageDir);
   const server = new api.RuntimeSupervisorServer(paths, 'legacy-detached', 'best-effort', options, profile, intent.token);
   await server.start();
+  let closing;
   process.on('message', async message => {
     try {
       if (message.command === 'inspect') {
@@ -75,6 +85,25 @@ if (process.argv.includes('--worker')) {
       if (message.command === 'disable-repair') {
         clearInterval(server.server.timer);
         process.send({ id: message.id, repairDisabled: true });
+      }
+      if (message.command === 'shutdown-begin') {
+        closing = server.prepareForShutdown('obstructed socket acceptance');
+        assert.strictEqual(server.prepareForShutdown('repeat original close'), closing);
+        process.send({ id: message.id, started: true });
+      }
+      if (message.command === 'shutdown-state') {
+        const boundary = server.shutdownBoundary;
+        process.send({ id: message.id, first: boundary.first, domains: server.shutdownDomains(boundary),
+          socketsEnded: boundary.socketsEnded, keepAlive: !!boundary.keepAlive,
+          retainedListeners: server.server.servers.size });
+      }
+      if (message.command === 'shutdown-observe' || message.command === 'shutdown-finish') {
+        closing ??= server.prepareForShutdown('acceptance fixture cleanup');
+        const report = await closing;
+        assert.strictEqual(await server.prepareForShutdown('repeat after observation'), report);
+        process.send({ id: message.id, report }, () => {
+          if (message.command === 'shutdown-finish') process.disconnect();
+        });
       }
       if (message.command === 'shutdown') {
         const report = await server.prepareForShutdown('socket recovery acceptance complete');
@@ -89,14 +118,17 @@ if (process.argv.includes('--worker')) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'dsc-recovery-')));
   const assets = process.argv.includes('--assets') ? path.resolve(arg('--assets')) : path.resolve('extensions/vscode/dev-session-canvas');
   const agentCommand = process.argv.includes('--agent-command') ? arg('--agent-command') : undefined;
+  const obstruction = process.argv.includes('--shutdown-obstruction') ? arg('--shutdown-obstruction') : undefined;
+  if (obstruction) assert(['before', 'after'].includes(obstruction));
   const clients = [], pending = new Map();
-  let worker, exit, id = 0, stderr = '', shutdownDone = false;
+  let worker, exit, socketPath, id = 0, stderr = '', shutdownDone = false;
   const report = { platform: process.platform, node: process.version, agent: agentCommand ? 'real-cli' : 'controlled-node-PTY', cases: [] };
   try {
     const bundle = path.join(directory, 'api.cjs');
     await esbuild.build({ stdin: { contents: `
       export * from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain';
       export * from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootOwner';
+      export * from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorNamespace';
       export * from './extensions/vscode/dev-session-canvas/src/supervisor/runtimeRootStartup';
       export * from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
       export * from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths';
@@ -120,11 +152,12 @@ if (process.argv.includes('--worker')) {
       worker.on('message', message => message.ready ? resolve(message) : pending.get(message.id)?.(message));
       worker.once('error', reject); worker.once('exit', () => reject(new Error(`Worker exited: ${stderr}`)));
     }), 'worker startup');
+    socketPath = ready.paths.socketPath;
     const api = load(bundle, path.join(directory, 'socket'));
     async function control(command) {
       const requestId = ++id;
       const response = new Promise(resolve => pending.set(requestId, resolve)); worker.send({ id: requestId, command });
-      try { const result = await bounded(response, command); if (result.error) throw new Error(result.error); return result; }
+      try { const result = await bounded(response, command, 30000); if (result.error) throw new Error(result.error); return result; }
       finally { pending.delete(requestId); }
     }
     function client() {
@@ -165,31 +198,92 @@ if (process.argv.includes('--worker')) {
         existingConnectionWorks: true, reattachedAgent: true, terminalInputOutput: true });
       restored.dispose();
     }
-    // Simulate the old Supervisor's missing repair capability while its real CLI stays alive.
-    await control('disable-repair');
-    await rm(path.dirname(ready.paths.socketPath), { recursive: true });
-    report.disconnectedDeletion = await deleteDisconnectedRuntimeNode({ directory,
-      backend: { kind: 'legacy-detached', guarantee: 'best-effort', paths: ready.paths },
-      owner: ready.owner, sessionId: 'recovery-agent', kind: 'agent', client: client() });
-    assert.equal((await original.getSessionSnapshot({ sessionId: 'recovery-agent' })).live, true,
-      'Node deletion must not invent a background exit');
-    report.disconnectedDeletion.backgroundStillLive = true;
-    // Explicit fixture cleanup over the original pre-existing connection, not a deletion success claim.
-    await original.deleteSession({ sessionId: 'recovery-agent' });
-    await original.deleteSession({ sessionId: 'recovery-terminal' });
-    const afterDelete = await control('inspect'); assert.equal(afterDelete.sessions.length, 0);
-    for (const value of clients) value.dispose();
-    const shutdown = await control('shutdown'); assert.equal(shutdown.shutdown, 'settled'); shutdownDone = true;
+    async function claimInIndependentProcess(expected) {
+      const probe = fork(self, ['--claim', '--directory', directory, '--bundle', bundle,
+        '--storage', ready.paths.storageDir], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'] });
+      const exited = once(probe, 'exit');
+      const [result] = await bounded(once(probe, 'message'), 'namespace probe');
+      assert.equal(result.acquired, expected, JSON.stringify(result));
+      if (!expected) assert.equal(result.code, 'EADDRINUSE');
+      assert.deepEqual(await bounded(exited, 'namespace probe exit'), [0, null]);
+    }
+    if (obstruction) {
+      // All paths and processes belong to this mkdtemp fixture. Use the production
+      // 20-second shutdown budget, real live CLI and native providers.
+      await rm(ready.paths.socketPath);
+      await writeFile(ready.paths.socketPath, 'foreign-shutdown-object', { flag: 'wx' });
+      await control('shutdown-begin');
+      const pendingState = await until(async () => {
+        const state = await control('shutdown-state');
+        return state.socketsEnded && state.domains.sockets === 'settled' ? state : false;
+      }, 'sessions, readers, registry and original sockets settle before deadline');
+      assert.equal(pendingState.first, undefined);
+      assert.equal(pendingState.domains.server, 'pending');
+      for (const domain of ['execution', 'readers', 'registry', 'sockets']) assert.equal(pendingState.domains[domain], 'settled');
+      assert.equal(pendingState.keepAlive, true);
+      assert.equal(await readFile(ready.paths.socketPath, 'utf8'), 'foreign-shutdown-object');
+      const registry = JSON.parse(await readFile(path.join(ready.paths.storageDir, 'registry.json'), 'utf8'));
+      assert.equal(registry.sessions.length, 2);
+      assert(registry.sessions.every(session => !session.live));
+      await claimInIndependentProcess(false);
+      let first;
+      if (obstruction === 'after') {
+        first = (await control('shutdown-observe')).report;
+        assert.equal(first.kind, 'unconfirmed');
+        assert.deepEqual(first.pending, ['server']);
+        const waiting = await control('shutdown-state');
+        assert.equal(waiting.keepAlive, true);
+        assert.equal(await readFile(ready.paths.socketPath, 'utf8'), 'foreign-shutdown-object');
+      }
+      await rm(ready.paths.socketPath);
+      const settled = await until(async () => {
+        const state = await control('shutdown-state');
+        return !state.keepAlive ? state : false;
+      }, 'original close releases all listeners and keepalive');
+      assert.equal(settled.retainedListeners, 0);
+      assert(Object.values(settled.domains).every(status => status === 'settled'));
+      const final = (await control('shutdown-finish')).report;
+      if (first) assert.deepEqual(final, first, 'first timeout observation stays immutable');
+      else assert.equal(final.kind, 'settled');
+      shutdownDone = true;
+      report.shutdownObstruction = { removed: obstruction + '-deadline', budgetMs: final.deadline - final.startedAt,
+        first: final.kind, actualDomains: settled.domains, keepAliveReleased: true,
+        originalRegistryPersisted: true, namespaceHeldUntilExit: true };
+    } else {
+      // Simulate the old Supervisor's missing repair capability while its real CLI stays alive.
+      await control('disable-repair');
+      await rm(path.dirname(ready.paths.socketPath), { recursive: true });
+      report.disconnectedDeletion = await deleteDisconnectedRuntimeNode({ directory,
+        backend: { kind: 'legacy-detached', guarantee: 'best-effort', paths: ready.paths },
+        owner: ready.owner, sessionId: 'recovery-agent', kind: 'agent', client: client() });
+      assert.equal((await original.getSessionSnapshot({ sessionId: 'recovery-agent' })).live, true,
+        'Node deletion must not invent a background exit');
+      report.disconnectedDeletion.backgroundStillLive = true;
+      // Explicit fixture cleanup over the original pre-existing connection, not a deletion success claim.
+      await original.deleteSession({ sessionId: 'recovery-agent' });
+      await original.deleteSession({ sessionId: 'recovery-terminal' });
+      const afterDelete = await control('inspect'); assert.equal(afterDelete.sessions.length, 0);
+      for (const value of clients) value.dispose();
+      const shutdown = await control('shutdown'); assert.equal(shutdown.shutdown, 'settled'); shutdownDone = true;
+    }
     const [code, signal] = await bounded(exit, 'Supervisor exit'); assert.equal(code, 0); assert.equal(signal, null);
     for (const pid of before.providers) assert.equal(await lstat(`/proc/${pid}`).catch(() => null), null);
-    assert.equal(stderr, '', 'Supervisor must not emit repair or cleanup errors');
+    if (obstruction) {
+      assert.match(stderr, /socket path was replaced/u);
+      const lines = stderr.trim().split('\n');
+      assert.equal(lines.filter(line => line.includes('socket path was replaced')).length, 1, 'obstruction report deduplicated');
+      await claimInIndependentProcess(true);
+      report.shutdownObstruction.namespaceReacquiredByIndependentProcess = true;
+    } else assert.equal(stderr, '', 'Supervisor must not emit repair or cleanup errors');
+    assert.equal(await lstat(ready.paths.socketPath).catch(() => null), null, 'no listener reopened');
     report.deletedAndExited = true;
     console.log(JSON.stringify(report, null, 2));
   } finally {
     for (const value of clients) value.dispose();
+    if (obstruction && socketPath) await rm(socketPath, { force: true });
     if (worker && worker.exitCode === null && worker.signalCode === null) {
       // Ask only our directly created Supervisor to settle its owned executions.
-      if (!shutdownDone && worker.connected) worker.send({ id: ++id, command: 'shutdown' });
+      if (!shutdownDone && worker.connected) worker.send({ id: ++id, command: obstruction ? 'shutdown-finish' : 'shutdown' });
       await bounded(exit, `fixture cleanup: ${stderr}`, 30000);
     }
     await rm(directory, { recursive: true, force: true });

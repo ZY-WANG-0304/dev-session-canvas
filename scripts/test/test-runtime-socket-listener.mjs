@@ -58,7 +58,10 @@ if (process.platform === 'win32') {
     } finally {
       hook = async () => {};
       for (const socket of [...clients, ...accepted]) socket.destroy();
-      await close();
+      // Remove only this fixture's obstruction, including on a failing regression.
+      await rm(socketPath, { force: true });
+      for (const server of listener.servers.keys()) if (server.listening) server.close();
+      await close().catch(() => {});
     }
   }
   try {
@@ -89,6 +92,38 @@ if (process.platform === 'win32') {
       await rm(f.socketPath);
       await until(async () => (await lstat(f.socketPath).catch(() => null))?.isSocket(), 'repaired after obstruction');
       await f.echo(await f.connect(), 'restored');
+    });
+    for (const generations of [0, 1, 3]) await run(`blocked shutdown resumes original close with ${generations} connection generations`, async f => {
+      const connections = [];
+      for (let i = 0; i < generations; i++) {
+        connections.push(await f.connect());
+        await f.echo(connections.at(-1), 'retained');
+        if (i + 1 < generations) {
+          await rm(f.socketPath);
+          await until(async () => (await lstat(f.socketPath).catch(() => null))?.isSocket(), 'next generation');
+        }
+      }
+      await rm(f.socketPath); await writeFile(f.socketPath, 'foreign-object', { flag: 'wx' });
+      let outcome = 'pending', callbacks = 0;
+      const closing = f.close().then(() => { outcome = 'closed'; callbacks++; }, error => { outcome = error.message; });
+      const repeated = f.close().then(() => { callbacks++; }, () => {});
+      await new Promise(resolve => setTimeout(resolve, 80));
+      assert.equal(outcome, 'pending', 'recoverable obstruction must not poison close');
+      assert.equal(await readFile(f.socketPath, 'utf8'), 'foreign-object');
+      assert.equal(f.errors.length, 1, 'repeated obstruction reports are deduplicated');
+      await rm(f.socketPath);
+      await until(() => !f.listener.current.listening, 'original listener stops after obstruction removal');
+      if (generations) {
+        assert.equal(outcome, 'pending', 'accepted sockets remain owned');
+        for (const socket of connections) await f.echo(socket, 'closing-tail');
+        for (const socket of connections) socket.destroy();
+      }
+      await closing; await repeated;
+      assert.equal(callbacks, 2);
+      assert.equal(f.listener.servers.size, 0);
+      await new Promise(resolve => setTimeout(resolve, 60));
+      assert.equal(await lstat(f.socketPath).catch(() => null), null, 'shutdown never rebinds');
+      await assert.rejects(f.listener.start(), /already started or closed/u);
     });
     await run('unsafe recreated directory is not chmodded and can recover after external correction', async f => {
       await rm(f.socketDirectory, { recursive: true }); await mkdir(f.socketDirectory, { mode: 0o755 });
