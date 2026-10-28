@@ -2427,6 +2427,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       localExecutions: [...this.nonNativeHostExecutions.values()].map(record => ({
         kind: record.kind, nodeId: record.nodeId, identity: record.execution.identity,
         retired: record.execution.snapshot().retired,
+        activity: { now: this.nonNativeExecutionOwner?.options.scheduler.now(), state: record.business?.agentActivity, polling: Boolean(record.business?.cancelActivityPoll), trace: (record.business as any)?.tuiTrace, mutationError: record.mutationError, lifecycle: record.business?.lifecycleStatus },
         persistence: record.persistence && { submitted: record.persistence.submitted, result: record.persistence.result }
       })),
       activeSurface: this.activeSurface,
@@ -19031,6 +19032,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) {
         recordAgentOutputHeuristics(business.agentActivity!, observable, business.buffer, business.agentProvider,
           this.nonNativeExecutionOwner!.options.scheduler.now());
+        this.traceTuiActivity(record, 'output', {length: observable.length, tail: observable.replace(/\u0000/g, '').slice(-4096)});
         this.scheduleNonNativeAgentActivity(record);
       }
     } else if (business.lifecycleStatus === 'launching') business.lifecycleStatus = 'live';
@@ -19039,6 +19041,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       void this.bridgeExecutionAttentionSignals(record.kind, record.nodeId, business, observable);
     }
     return title.terminalOutput;
+  }
+
+  private traceTuiActivity(record: NonNativeHostExecution, phase: string, detail: unknown): void {
+    if (!isTestHarnessMode(this.context.extensionMode)) return;
+    const business = record.business as any;
+    business.tuiTrace ??= [];
+    business.tuiTrace.push({phase, at: this.nonNativeExecutionOwner!.options.scheduler.now(), detail,
+      activity: {...business.agentActivity}});
+    if (business.tuiTrace.length > 150) business.tuiTrace.shift();
   }
 
   private scheduleNonNativeAgentActivity(record: NonNativeHostExecution): void {
@@ -19050,6 +19061,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (!this.isNonNativeHostRecordCurrent(record) || record.finalRevision !== undefined ||
         record.execution.snapshot().stopRequested || !shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) return;
       const result = evaluateAgentWaitingInputTransition(business.agentActivity!, scheduler.now());
+      this.traceTuiActivity(record, 'poll', result);
       if (result.shouldTransition) {
         business.lifecycleStatus = 'waiting-input';
         business.resumePhaseActive = false;
@@ -19137,6 +19149,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (!queryReply) {
         if (record.kind === 'agent' && isAgentInstructionSubmission(data)) {
           business.cancelActivityPoll?.(); business.cancelActivityPoll = undefined;
+          this.traceTuiActivity(record, 'input-ack-reset', {data});
           resetAgentActivityHeuristics(business.agentActivity!, business.buffer);
           business.lifecycleStatus = 'running'; business.resumePhaseActive = false;
         } else if (record.kind === 'terminal') {

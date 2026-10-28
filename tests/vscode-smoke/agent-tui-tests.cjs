@@ -80,6 +80,7 @@ async function runProvider(config, scenario, step) {
     const page = await probe();
     const observation = { at: Date.now(), status: node(snapshot).status,
       lines: page?.terminalVisibleLines, cols: page?.terminalCols, rows: page?.terminalRows };
+    observation.activity = snapshot.localExecutions.find(item => item.nodeId === nodeId)?.activity;
     report.samples.push(observation);
     assert.equal(observation.status, expectedStatus, `Product state differs from independent ${expectedStatus} evidence`);
     return page;

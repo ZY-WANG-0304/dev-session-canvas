@@ -1,0 +1,59 @@
+name: TUI completion state probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: gate-transfer-source-40696561957-1
+          run-id: 40696561957
+          github-token: ${{ github.token }}
+          path: source-input
+      - name: Rebuild observation-only extension with original native input
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs/promises';
+          import assert from 'node:assert/strict';
+          import esbuild from 'esbuild';
+          import { treeHashes } from './scripts/release/build-release-candidate.mjs';
+          const receipt=JSON.parse(await fs.readFile('source-input/source-build-receipt.json','utf8'));
+          assert.deepEqual(await treeHashes('source-input/main-dist'),receipt.trees['main-dist']);
+          await fs.cp('source-input/main-dist','extensions/vscode/dev-session-canvas/dist',{recursive:true});
+          await esbuild.build({entryPoints:['extensions/vscode/dev-session-canvas/src/extension.ts'],bundle:true,external:['vscode','node-pty'],format:'cjs',outfile:'extensions/vscode/dev-session-canvas/dist/extension.js',platform:'node',target:'node18',define:{'process.env.NODE_ENV':'"development"'}});
+          JS
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb libasound2 libgbm1 libnss3 libgtk-3-0
+          npm install --prefix "$RUNNER_TEMP/tui-cli" --no-audit --no-fund @openai/codex@0.157.1 @anthropic-ai/claude-code@2.1.280
+      - name: Observe exact footer case without changing its assertion
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DSC_TUI_CLI_ROOT: ${{ runner.temp }}/tui-cli
+          DEV_SESSION_CANVAS_VSCODE_VERSION: 1.142.0
+          DEV_SESSION_CANVAS_SMOKE_DEBUG_ROOT: ${{ runner.temp }}/probe-evidence
+        run: node scripts/smoke/run-vscode-smoke.mjs --scenario agent-tui/answer-with-footer --diagnostic
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tui-completion-${{ matrix.sample }}
+          path: |
+            ${{ runner.temp }}/probe-evidence/**/result.json
+            ${{ runner.temp }}/probe-evidence/**/events.jsonl
+          if-no-files-found: warn
