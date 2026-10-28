@@ -1019,3 +1019,13 @@ PR337 后续完整 gate（40528627405，ddf22a99）：原 review 的 regression 
 PR337 c6e11535 完整门禁后续（2026-10-28）：Windows installed-pair 通过，macOS 在新增无条件扩宽视口后通知回跳 y=-38px，原 ddf22a99 默认布局该场景通过。准备逻辑已收窄为仅在无有效拖动路径时导航，保留原通知居中断言；宽视口居中差异仍未归因，增加 flow/wrapper/window 几何用于后续定位，不声明产品定位问题已修。source-host 的 auto-start、codex-queued-exit 在 apt-get update 访问 Ubuntu 镜像阶段达到原5分钟期限，尚未运行产品用例，首败日志保留于 .debug/review337-autostart-failed.log、review337-codex-exit-failed.log。
 
 条件式视口准备及按实际包状态避免无必要apt请求已完成，完整contracts 103/103与工作流契约通过；是否发生依赖安装会在步骤日志中记录。c6e11535 的所有上一轮13项失败已通过，当前264个业务job成功；新head需独立完整验收。macOS宽视口居中偏差的产品归因仍未完成，默认布局恢复或后续CI成功不关闭这一观察缺口。
+
+## 2026-10-28：四项固定范围真实 TUI 覆盖已验证
+
+PR341 接入四项 Linux / snapshot-only、Codex 0.157.1 / Claude 2.1.280 的默认 source / packaged 场景，独立完成接口选定私有 UserPromptSubmit / Stop hook，工具 receipt 关联本回合实际回答。映射为 152 implemented-unverified / 0 not-implemented。run40701818847 同一预合并输入的source/packaged两provider共16次通过，保存/reader/退役/Host退出已复核；关闭这四项固定范围覆盖缺口。实跑发现空标题活动阻塞轮询并修复，648项Host回归与真实场景通过。仍不外推网络断连/重连、其他平台/模式或产品原生状态权威性。见 [设计](../design-docs/smoke-real-tui-coverage.md) 与 [证据](../references/smoke-real-tui-coverage/README.md)。历史段落的未选定/未实施按当时输入保留。
+
+## 2026-10-28：既有 Terminal Host 准备间歇超时（未定位）
+
+PR341的run40701818847中，packaged `surface-continuity--live-page-remount` 在 `runIndependentLivePageRemount` 的 `verifyTerminalLineAndSnapshot` 准备步骤等待Host消息超时（Last messages=[]），尚未进入页面重挂载动作；原job122868168889、工件12822619264。source同场景本轮通过；本次产品改动只限制Agent空活动轮询，未确认该Terminal故障根因或与TUI任务的因果关系，不能标为已修。该失败阻塞本轮完整acceptance及可合并结论。
+
+此前run40696561957的multi-root-real-reopen第二Host editor ready超时（工件12821370557），以及run40683646799的systemd-user-real-reopen第二Host ready超时（12815266032）均保留；后续通过不证明其间歇机制已消除。后续应以原Host身份、准备消息及ready代际定位，保留原期限和失败，不能自动重试刷绿。证据归档见 [TUI运行记录](../references/smoke-real-tui-coverage/README.md)，本任务仅完成四项真实TUI覆盖，不顺手扩大成这些既有Host问题的修复。

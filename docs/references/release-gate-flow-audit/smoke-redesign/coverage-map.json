@@ -534,44 +534,48 @@
       "scenario": "agent-tui",
       "case": "input-during-work",
       "title": "真实TUI处理中输入可用",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-28 用户授权四项真实 TUI 的 CI 实施；Linux snapshot-only 两 provider，实际结果独立验收"
     },
     {
       "id": "agent-tui/answer-with-footer",
       "scenario": "agent-tui",
       "case": "answer-with-footer",
       "title": "真实回答在footer上方正确呈现",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-28 用户授权四项真实 TUI 的 CI 实施；Linux snapshot-only 两 provider，实际结果独立验收"
     },
     {
       "id": "agent-tui/tool-network-silence",
       "scenario": "agent-tui",
       "case": "tool-network-silence",
       "title": "工具网络静默期间原回合仍处理中",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-28 用户授权四项真实 TUI 的 CI 实施；Linux snapshot-only 两 provider，实际结果独立验收"
     },
     {
       "id": "agent-tui/turn-completion-redraw",
       "scenario": "agent-tui",
       "case": "turn-completion-redraw",
       "title": "独立provider完成证据与完成后重绘",
-      "status": "proposed-gap",
+      "status": "implementation-target",
       "currentRoutes": [],
-      "proposedSourceDefault": false,
-      "proposedPackagedDefault": false,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "scopeChange": "2026-10-28 用户授权四项真实 TUI 的 CI 实施；Linux snapshot-only 两 provider，实际结果独立验收"
     },
     {
       "id": "execution-exit/native-crash",

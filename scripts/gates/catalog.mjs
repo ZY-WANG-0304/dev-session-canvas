@@ -21,7 +21,7 @@ export const nativeTargets = Object.freeze([
 export const installedTargets = Object.freeze(nativeTargets.filter(item => item.arch === 'x64')
   .map(item => ({ ...item, runner: item.platform === 'linux' ? 'ubuntu-22.04' : item.runner })));
 export const regressionScripts = Object.freeze([
-  'typecheck', 'test:common-dependencies',
+  'typecheck', 'test:common-dependencies', 'test:agent-tui',
   'typecheck:marketplace', 'test:marketplace-shared', 'test:marketplace-api', 'test:marketplace-web',
   'test:marketplace-production-config', 'test:marketplace-vscode-preview-preflight',
   'test:smoke-marketplace-publish', 'test:workspace-relative-paths', 'test:canvas-execution-context',

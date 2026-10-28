@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,14 +58,78 @@ function run(file, args, options = {}) {
   assert.equal(result.status, 0, `Build/load command failed: ${path.basename(file)}`);
 }
 
-async function checkedDownload(base, filename, destination, inputs) {
-  const sums = await fetch(`${base}/SHASUMS256.txt`, { signal: AbortSignal.timeout(120000) });
-  assert(sums.ok, `Supplier checksum download failed: ${sums.status}`);
-  const expected = checksumFor(await sums.text(), filename);
-  const response = await fetch(`${base}/${filename}`, { signal: AbortSignal.timeout(120000) });
-  assert(response.ok, `Supplier input download failed: ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
+export async function fetchSupplierBytes(url, { timeoutMs = 120000, log = console.log } = {}) {
+  const started = performance.now(), deadline = started + timeoutMs;
+  let failure;
+  for (let attempt = 1; attempt <= 3 && performance.now() < deadline; attempt++) {
+    const remaining = Math.floor(deadline - performance.now());
+    if (remaining <= 0) break;
+    const stalled = new AbortController();
+    const signal = AbortSignal.any([AbortSignal.timeout(remaining), stalled.signal]);
+    let idleTimer, receivedBytes = 0, lastProgressMs;
+    const observeProgress = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => stalled.abort(new DOMException('Supplier transfer stalled', 'TimeoutError')),
+        Math.min(Math.ceil(timeoutMs / 3), Math.max(1, Math.floor(deadline - performance.now()))));
+    };
+    observeProgress();
+    let retryable = false, responseStatus;
+    log(JSON.stringify({ supplierDownload: url, attempt, phase: 'start' }));
+    try {
+      const response = await fetch(url, { signal });
+      responseStatus = response.status;
+      if (!response.ok) {
+        retryable = [408, 500, 502, 503, 504].includes(response.status);
+        await response.body?.cancel();
+        throw new Error(`Supplier HTTP ${response.status}: ${url}`);
+      }
+      observeProgress();
+      const chunks = [];
+      for await (const chunk of response.body) {
+        chunks.push(chunk); receivedBytes += chunk.length;
+        if (chunk.length) { lastProgressMs = Math.round(performance.now() - started); observeProgress(); }
+      }
+      const bytes = Buffer.concat(chunks, receivedBytes);
+      assert(performance.now() < deadline, `Supplier download exceeded original deadline: ${url}`);
+      log(JSON.stringify({ supplierDownload: url, attempt, phase: 'complete', bytes: bytes.length }));
+      return bytes;
+    } catch (error) {
+      failure = error;
+      retryable ||= signal.aborted || (error instanceof TypeError && error.message === 'fetch failed')
+        || ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT']
+          .includes(error.cause?.code ?? error.code);
+      log(JSON.stringify({ supplierDownload: url, attempt, phase: 'failed',
+        reason: error.name, status: responseStatus, code: error.cause?.code ?? error.code,
+        receivedBytes, lastProgressMs, elapsedMs: Math.round(performance.now() - started) }));
+      if (!retryable || attempt === 3 || performance.now() >= deadline) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(0, deadline - performance.now()))));
+    } finally { clearTimeout(idleTimer); stalled.abort(); }
+  }
+  throw failure ?? new Error(`Supplier download deadline exhausted: ${url}`);
+}
+
+export async function checkedDownload(base, filename, destination, inputs, {
+  cacheDirectory = process.env.DSC_SUPPLIER_DOWNLOAD_CACHE
+} = {}) {
+  const sums = await fetchSupplierBytes(`${base}/SHASUMS256.txt`);
+  const expected = checksumFor(sums.toString('utf8'), filename);
+  const cacheFile = cacheDirectory ? path.join(cacheDirectory, `${expected}.bin`) : undefined;
+  let bytes;
+  if (cacheFile && fs.existsSync(cacheFile)) {
+    const cached = fs.readFileSync(cacheFile);
+    const verified = createHash('sha256').update(cached).digest('hex') === expected;
+    console.log(JSON.stringify({ supplierDownload: `${base}/${filename}`, phase: verified ? 'cache-verified' : 'cache-rejected' }));
+    if (verified) bytes = cached;
+  }
+  const cacheMiss = !bytes;
+  bytes ??= await fetchSupplierBytes(`${base}/${filename}`);
   assert.equal(createHash('sha256').update(bytes).digest('hex'), expected, `Supplier input hash mismatch: ${filename}`);
+  if (cacheFile && cacheMiss) {
+    fs.mkdirSync(cacheDirectory, { recursive: true });
+    const pending = `${cacheFile}.${randomUUID()}.pending`;
+    try { fs.writeFileSync(pending, bytes, { flag: 'wx' }); fs.renameSync(pending, cacheFile); }
+    finally { fs.rmSync(pending, { force: true }); }
+  }
   fs.writeFileSync(destination, bytes, { flag: 'wx' });
   inputs.push({ url: `${base}/${filename}`, sha256: expected });
 }

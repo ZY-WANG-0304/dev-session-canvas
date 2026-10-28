@@ -60,6 +60,8 @@ jobs:
     name: Validate immutable input
     needs: resolve-input
     uses: ./.github/workflows/ci-validation.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     with:
       input_sha: ${{ needs.resolve-input.outputs.input_sha }}
       base_sha: ${{ needs.resolve-input.outputs.base_sha }}

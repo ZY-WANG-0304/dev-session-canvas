@@ -4918,6 +4918,34 @@ async function interactiveHostFixture(kind = 'terminal', providerKind = 'codex',
   return { ...f, record, provider, requests, reply, cleanup };
 }
 
+for (const pending of [false, true]) {
+  test(`owned Agent title-only updates preserve activity polling while pending=${pending}`, async () => {
+    const f = await interactiveHostFixture('agent', 'codex');
+    let sequence = 0;
+    const output = async text => {
+      f.provider.output(++sequence, text);
+      await until(f.clock, () => f.record.execution.snapshot().adapter.consumedThrough === sequence,
+        'original activity output consumed');
+    };
+    try {
+      const writing = f.host.writeExecutionInput('agent', 'agent-1', 'do work\r');
+      await until(f.clock, () => f.requests.some(message => message.type === 'input'), 'turn input sent');
+      f.reply(f.requests.find(message => message.type === 'input'), {kind: 'written', writtenBytes: 8});
+      assert.equal(await completed(f.clock, writing, 'turn input acknowledged'), true);
+      await output(pending ? '\r⠋ Working' : 'Actual answer.\r\n\x07');
+      for (let index = 0; index < 30; index++) {
+        f.clock.advance(f.clock.now() + 100);
+        await output(`\x1b]0;title-${index}\x07`);
+        if (pending) await output('\r⠋ Working');
+      }
+      assert.equal(f.record.business.terminalTitle, 'title-29');
+      assert.equal(f.record.business.lifecycleStatus, pending ? 'running' : 'waiting-input');
+      assert.equal(f.host.state.nodes.find(node => node.id === 'agent-1').status,
+        pending ? 'running' : 'waiting-input');
+    } finally { await f.cleanup(); }
+  });
+}
+
 for (const kind of ['agent', 'terminal']) {
   test(`${kind} owned started diagnostic uses the confirmed execution identity and launch spec`, async () => {
     const f = await interactiveHostFixture(kind);

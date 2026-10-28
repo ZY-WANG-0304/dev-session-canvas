@@ -75,6 +75,8 @@ jobs:
     name: Verify release
     needs: resolve-release
     uses: ./.github/workflows/release-validation.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     with:
       input_sha: ${{ needs.resolve-release.outputs.input_sha }}
       base_sha: ${{ needs.resolve-release.outputs.base_sha }}

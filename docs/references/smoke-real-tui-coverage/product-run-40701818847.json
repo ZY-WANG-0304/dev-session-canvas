@@ -1,0 +1,4430 @@
+{
+  "runId": 40701818847,
+  "head": "97fa646f480037d046be7f8eece19ee0a216b5f5",
+  "acceptance": false,
+  "tuiCoveragePassed": true,
+  "scope": "四项source/packaged两provider共16次通过；整轮有其他场景失败，不签发完整acceptance",
+  "cases": [
+    {
+      "artifactId": 12824435171,
+      "zipSha256": "66096665a2f26c7dc09d17bb3016a884dec1eecc42d3e363d938342d078d463c",
+      "payload": "packaged-host",
+      "scenario": "agent-tui/input-during-work",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "f6210314c2785a1df7fb7b910cd9f2881749f4e04e940c596a46af897e85073f",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "ca5fb28eafacb4d9f66755387fbc48d91b51a194982deca939ac91975eb15d7a"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "cf6ebf2876206d24603af46f3602ddbcbfdcbaaa769e34230044d90969f68ac5",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "d75ad3a7-493c-4eef-9123-68d4c0920024",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2508,
+                "startTicks": "4903",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-940f9a210ffe2791",
+            "/tmp/dsc-ud-6963b796664d"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:23:43.121Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-c4b88570-ab9c-4426-b8b3-8f57d16cf2e6",
+            "execution": {
+              "executionId": "7ce071d5-05fc-4566-af20-235306a440e6",
+              "generation": "abd31370-ffa3-43c3-80f6-80cd6d3c2fac"
+            },
+            "sessionId": "01a182e4-f112-73d1-80dc-1aa37a40e59c",
+            "toolStart": {
+              "callId": "468f427f-05c3-4a25-9093-2441e4596994",
+              "pid": 2707,
+              "startedAt": 1793197406395
+            }
+          },
+          "turn": {
+            "sessionId": "01a182e4-f112-73d1-80dc-1aa37a40e59c",
+            "turnId": "01a182e4-f2b1-7392-8f22-a1d374fa7cd9",
+            "completed": true,
+            "answer": "The tool returned receipt_a936b3882aa44d96b58cf650b4a72d6f.",
+            "completedAt": 1793197410866
+          },
+          "toolEnd": {
+            "callId": "468f427f-05c3-4a25-9093-2441e4596994",
+            "receipt": "receipt_a936b3882aa44d96b58cf650b4a72d6f",
+            "completedAt": 1793197409676
+          },
+          "status": "passed",
+          "originalResultSha256": "d4d43395bbdcd0a8ebee00d7d118c1ad3ec89b55ea2d4b0a39cb280bc575f4f6",
+          "submittedAt": 1793197404910,
+          "turnElapsedMs": 5956,
+          "sampleCount": 31,
+          "observations": [
+            {
+              "at": 1793197406463,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197406567,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197406671,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197406773,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197406875,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197406979,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407082,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407185,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407288,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407391,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407494,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407596,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407699,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407802,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197407905,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408013,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408116,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408219,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408322,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408429,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408531,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408634,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408736,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408838,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197408941,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197409044,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197409147,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197409251,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197409355,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197409458,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197411994,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-eKIFyl/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test e212c7e0-d3ba-45dc-8dfa-d7e2ceb4c4bc. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_a936b3882aa44d96b58cf650b4a72d6f",
+            "",
+            "• The tool returned receipt_a936b3882aa44d96b58cf650b4a72d6f.",
+            "",
+            "  14:23",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "7ce071d5-05fc-4566-af20-235306a440e6",
+                "generation": "abd31370-ffa3-43c3-80f6-80cd6d3c2fac"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 221
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-53ca58c2-0152-458d-a5a0-c0c26b38f759",
+            "execution": {
+              "executionId": "3e4b2d5d-712d-421d-9fd0-754c9ebde581",
+              "generation": "f0e627ae-1927-448d-847f-e428944525be"
+            },
+            "sessionId": "93826442-76d4-4673-a080-1ab0c5b8e0f7",
+            "toolStart": {
+              "callId": "3b79972f-b922-4ea3-8ca4-778a5bcfb0e3",
+              "pid": 2845,
+              "startedAt": 1793197416096
+            }
+          },
+          "turn": {
+            "sessionId": "93826442-76d4-4673-a080-1ab0c5b8e0f7",
+            "turnId": "prompt@1793197414895",
+            "completed": true,
+            "answer": "The test completed successfully with receipt receipt_41efdf7f7b0640719d5c9e583a4916d1.",
+            "completedAt": 1793197420780
+          },
+          "toolEnd": {
+            "callId": "3b79972f-b922-4ea3-8ca4-778a5bcfb0e3",
+            "receipt": "receipt_41efdf7f7b0640719d5c9e583a4916d1",
+            "completedAt": 1793197419523
+          },
+          "status": "passed",
+          "originalResultSha256": "9c006289ddec09339b216515dcbaac488a5415e338b92d5fc8e93727daa1ca23",
+          "submittedAt": 1793197414895,
+          "turnElapsedMs": 5885,
+          "sampleCount": 31,
+          "observations": [
+            {
+              "at": 1793197416348,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197416451,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197416554,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197416657,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197416761,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197416864,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197416967,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417070,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417173,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417276,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417379,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417482,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417587,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417690,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417795,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197417898,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418001,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418104,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418207,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418311,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418414,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418516,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418619,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418722,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418824,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197418929,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197419032,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197419135,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197419238,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197419341,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197422535,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-eKIFyl/claude",
+            "",
+            "",
+            "❯ Test 13f57542-ef59-46fc-a7f7-6f5e2bcc91de. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+            "  write files. Do not respond before the tool returns.                                                                       ",
+            "",
+            "  Called tui ",
+            "",
+            "● The test completed successfully with receipt receipt_41efdf7f7b0640719d5c9e583a4916d1.",
+            "",
+            "✻ Worked for 5s · done 2:23 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                               Ctrl+Y to paste deleted text",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯  ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "3e4b2d5d-712d-421d-9fd0-754c9ebde581",
+                "generation": "f0e627ae-1927-448d-847f-e428944525be"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 106
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12824070688,
+      "zipSha256": "801e348721c60131431b06b8d8e0b751caec1b48ef6863fa9b77ea33764025ed",
+      "payload": "packaged-host",
+      "scenario": "agent-tui/answer-with-footer",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "d9a3d8fd6de4153754cbf4ba41a038791298bda9a382ba15c541c87f188e0481",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "ca5fb28eafacb4d9f66755387fbc48d91b51a194982deca939ac91975eb15d7a"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "8d05dd3ad384f1b5892b6fbb2ecb344db908232b98d9ca803cc4ba8b7b6aab2a",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "fea237c0-fc6c-432a-b3e3-b63ce1874c49",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2517,
+                "startTicks": "18073",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-ed25066fcd5b3675",
+            "/tmp/dsc-ud-416984f1d270"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:23:49.107Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-0953d4c1-d267-4952-9db8-b031c8b497f4",
+            "execution": {
+              "executionId": "d60f761b-26cd-4b01-b4cf-e05527f39e42",
+              "generation": "10d5b214-02c0-4915-a7fd-99e67951ed79"
+            },
+            "sessionId": "01a182e5-2793-7221-b4eb-3824dd9f2085",
+            "toolStart": {
+              "callId": "c512d991-32dc-477e-a6b2-38367257fc29",
+              "pid": 2685,
+              "startedAt": 1793197420814
+            }
+          },
+          "turn": {
+            "sessionId": "01a182e5-2793-7221-b4eb-3824dd9f2085",
+            "turnId": "01a182e5-292a-7220-9b86-91e520a83471",
+            "completed": true,
+            "answer": "The receipt returned by the tool was receipt_bd9b656ad62c48cb9ee1509ba39bf0e5.",
+            "completedAt": 1793197421860
+          },
+          "toolEnd": {
+            "callId": "c512d991-32dc-477e-a6b2-38367257fc29",
+            "receipt": "receipt_bd9b656ad62c48cb9ee1509ba39bf0e5",
+            "completedAt": 1793197420866
+          },
+          "status": "passed",
+          "originalResultSha256": "96704da472efc0a10621a0274c7780d8fa7f625023c94640d8dc3a03f95f7590",
+          "submittedAt": 1793197418834,
+          "turnElapsedMs": 3026,
+          "sampleCount": 1,
+          "observations": [
+            {
+              "at": 1793197422871,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-jnaywr/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test 5298410e-8958-47c0-b7ed-ad6e8b807e89. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_bd9b656ad62c48cb9ee1509ba39bf0e5",
+            "",
+            "• The receipt returned by the tool was receipt_bd9b656ad62c48cb9ee1509ba39bf0e5.",
+            "",
+            "  14:23",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "d60f761b-26cd-4b01-b4cf-e05527f39e42",
+                "generation": "10d5b214-02c0-4915-a7fd-99e67951ed79"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 133
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-d7b37d4b-5928-4922-aaa5-091ad7528e4a",
+            "execution": {
+              "executionId": "cd454543-c538-4057-99e0-3ccce1ce70e1",
+              "generation": "67013e1e-d0e5-41c2-b08e-0bf9e0a427f8"
+            },
+            "sessionId": "eecaadf3-863a-4444-bd14-d0ce26f4d47a",
+            "toolStart": {
+              "callId": "4e6d101d-063a-4e1c-a682-d74d4935c66f",
+              "pid": 2817,
+              "startedAt": 1793197425782
+            }
+          },
+          "turn": {
+            "sessionId": "eecaadf3-863a-4444-bd14-d0ce26f4d47a",
+            "turnId": "prompt@1793197424602",
+            "completed": true,
+            "answer": "The test returned receipt receipt_b8410d6d6b8b4cb5a1b6c1b166f885e7.",
+            "completedAt": 1793197426869
+          },
+          "toolEnd": {
+            "callId": "4e6d101d-063a-4e1c-a682-d74d4935c66f",
+            "receipt": "receipt_b8410d6d6b8b4cb5a1b6c1b166f885e7",
+            "completedAt": 1793197425884
+          },
+          "status": "passed",
+          "originalResultSha256": "89257ce685a7f67a9ca1f2afa60634ddb0e3b0c5f21d38b83bb778382ba80a48",
+          "submittedAt": 1793197424602,
+          "turnElapsedMs": 2267,
+          "sampleCount": 1,
+          "observations": [
+            {
+              "at": 1793197428669,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-jnaywr/claude",
+            "",
+            "",
+            "❯ Test a0ad2693-5d09-461b-8250-ef2bb3d07447. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+            "  write files. Do not respond before the tool returns.                                                                       ",
+            "",
+            "  Thought for 1s, called tui ",
+            "",
+            "● The test returned receipt receipt_b8410d6d6b8b4cb5a1b6c1b166f885e7.",
+            "",
+            "✻ Worked for 2s · done 2:23 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                                           ● high · /effort",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯  ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "cd454543-c538-4057-99e0-3ccce1ce70e1",
+                "generation": "67013e1e-d0e5-41c2-b08e-0bf9e0a427f8"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 54
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12823976832,
+      "zipSha256": "6d1b07754ae8035366b2904c8d250d64ea5b6ed281adf1a34e1ca64566600208",
+      "payload": "packaged-host",
+      "scenario": "agent-tui/turn-completion-redraw",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "484d2bd8f65f0c594f3a7d66164735d0d01430637b18c643b475e10542d519a7",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "ca5fb28eafacb4d9f66755387fbc48d91b51a194982deca939ac91975eb15d7a"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "3cf4b39a48c0bc00a74cce26e53f5b701165fcc0338c4c57b80896000b12e96e",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "c0615c3f-f98d-4e51-b7b9-70c3a80f52b1",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2696,
+                "startTicks": "24273",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-1cc178f275793679",
+            "/tmp/dsc-ud-800ae778aefd"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:23:35.501Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-29ef05d8-5c14-4503-9a15-c84e2fc78e2d",
+            "execution": {
+              "executionId": "c940ea76-5415-4e7f-a160-f5d1217198ab",
+              "generation": "b363db1b-ad9e-4cb0-a4bd-79e29357f77d"
+            },
+            "sessionId": "01a182e4-d944-7853-b6e4-6e81ac6a20e7",
+            "toolStart": {
+              "callId": "c217b53d-5149-431e-b89e-2a42acca1cc5",
+              "pid": 2883,
+              "startedAt": 1793197400100
+            }
+          },
+          "turn": {
+            "sessionId": "01a182e4-d944-7853-b6e4-6e81ac6a20e7",
+            "turnId": "01a182e4-db1e-7512-9315-f32fc5c50567",
+            "completed": true,
+            "answer": "The receipt returned by the tool was receipt_14f3077281c94df6af9088dca6e0ba42.",
+            "completedAt": 1793197401532
+          },
+          "toolEnd": {
+            "callId": "c217b53d-5149-431e-b89e-2a42acca1cc5",
+            "receipt": "receipt_14f3077281c94df6af9088dca6e0ba42",
+            "completedAt": 1793197400202
+          },
+          "status": "passed",
+          "originalResultSha256": "8c37d725feb5d2429d17ae26f7fde7f4ebee5357b3d878af9fb2aa75d6404c73",
+          "submittedAt": 1793197398917,
+          "turnElapsedMs": 2615,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197402739,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197402844,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197402948,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403052,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403156,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403260,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403363,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403467,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403570,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403673,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403776,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403880,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197403982,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404086,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404191,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404295,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404399,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404503,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404607,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404712,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404815,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197404919,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405022,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405131,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405235,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405339,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405443,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405547,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405651,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197405756,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-a1eIFx/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test cce9982a-97a3-46f7-8793-de51eb8f630c. Call the tui wait_for_release tool exactly once and wait for",
+            "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the",
+            "  tool. Do not use other tools or write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_14f3077281c94df6af9088dca6e0ba42",
+            "",
+            "• The receipt returned by the tool was receipt_14f3077281c94df6af9088dca6e0ba42.",
+            "",
+            "  14:23",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "c940ea76-5415-4e7f-a160-f5d1217198ab",
+                "generation": "b363db1b-ad9e-4cb0-a4bd-79e29357f77d"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 165
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-37e8f2e5-1d89-4994-b34a-b6c5cb289a06",
+            "execution": {
+              "executionId": "ddf5ef4d-df85-4683-8d59-2234f12967e3",
+              "generation": "ee276f6a-b37f-4c34-b33e-aa3a430aeb78"
+            },
+            "sessionId": "e7070b93-17f4-46bd-8af5-02b419af33f5",
+            "toolStart": {
+              "callId": "24af473b-13b5-4595-8f28-e5d626e0b475",
+              "pid": 3000,
+              "startedAt": 1793197408791
+            }
+          },
+          "turn": {
+            "sessionId": "e7070b93-17f4-46bd-8af5-02b419af33f5",
+            "turnId": "prompt@1793197407821",
+            "completed": true,
+            "answer": "The test receipt is receipt_ad0d51cc2375453fa0bfa7a61a4bb478.",
+            "completedAt": 1793197410016
+          },
+          "toolEnd": {
+            "callId": "24af473b-13b5-4595-8f28-e5d626e0b475",
+            "receipt": "receipt_ad0d51cc2375453fa0bfa7a61a4bb478",
+            "completedAt": 1793197408896
+          },
+          "status": "passed",
+          "originalResultSha256": "da725b4bce4b9d7db2745049f85166261f9c40898594a9f953eb8041187d58e8",
+          "submittedAt": 1793197407821,
+          "turnElapsedMs": 2195,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197411903,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412006,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412109,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412214,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412319,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412422,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412527,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412631,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412735,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412838,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197412942,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413046,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413149,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413253,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413357,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413460,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413564,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413669,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413773,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413878,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197413981,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414086,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414189,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414294,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414398,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414502,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414607,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414712,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414816,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197414920,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-a1eIFx/claude",
+            "",
+            "",
+            "❯ Test abed8f90-97eb-4192-8399-dbc51ac46ce7. Call the tui wait_for_release tool exactly once and wait for    ",
+            "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the   ",
+            "  tool. Do not use other tools or write files. Do not respond before the tool returns.                       ",
+            "",
+            "  Called tui ",
+            "",
+            "● The test receipt is receipt_ad0d51cc2375453fa0bfa7a61a4bb478.",
+            "",
+            "✻ Brewed for 2s · done 2:23 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                           ● high · /effort",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯ ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "ddf5ef4d-df85-4683-8d59-2234f12967e3",
+                "generation": "ee276f6a-b37f-4c34-b33e-aa3a430aeb78"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 58
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12823910475,
+      "zipSha256": "b15f11ebef5338cb243f4c60222753b55bf8abfdc955cab3753db026f94d1ce3",
+      "payload": "source-host",
+      "scenario": "agent-tui/tool-network-silence",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "b7c9c063f669f10ccd692c868e4b1c6c60b2fc784c44bd512abb655ff387d180",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "c22bb5348719612aaf6b275d703d63aca15d876fc43349d7ccaf8cc68f38bc51"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "3b4dea0281f7a6a3fed4ddafa51253d7a422347250c951f6d684851d1920ef7e",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "4c74dbef-032c-46dc-b861-57adb9077fae",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2682,
+                "startTicks": "60445",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-770235edf3102885",
+            "/tmp/dsc-ud-8f84533753ba"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:17:51.048Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-4e0c9516-f918-4c13-bb3f-cbaffb1b944b",
+            "execution": {
+              "executionId": "1de7ae9a-6f35-4223-8e02-df8012b25a6d",
+              "generation": "96cf6bcd-a2f0-46bf-8098-21af020611a1"
+            },
+            "sessionId": "01a182df-961a-7aa3-a198-70f7ca67d768",
+            "toolStart": {
+              "callId": "e3618d7e-b2dc-40cc-94da-2c42f3d93ae8",
+              "pid": 2877,
+              "startedAt": 1793197055494
+            }
+          },
+          "turn": {
+            "sessionId": "01a182df-961a-7aa3-a198-70f7ca67d768",
+            "turnId": "01a182df-97da-77c3-a852-9c4429a20801",
+            "completed": true,
+            "answer": "The tool returned receipt_36ec3ed31c2d4540862848ba4a573f78.",
+            "completedAt": 1793197059980
+          },
+          "toolEnd": {
+            "callId": "e3618d7e-b2dc-40cc-94da-2c42f3d93ae8",
+            "receipt": "receipt_36ec3ed31c2d4540862848ba4a573f78",
+            "completedAt": 1793197058674
+          },
+          "status": "passed",
+          "originalResultSha256": "d58ce049766dd24eb258043cd97b9be70961b89b3fcf10ef6380a806de9d7573",
+          "submittedAt": 1793197053985,
+          "turnElapsedMs": 5995,
+          "sampleCount": 31,
+          "observations": [
+            {
+              "at": 1793197055568,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197055671,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197055774,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197055878,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197055981,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056085,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056187,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056290,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056393,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056496,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056600,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056705,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056807,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197056909,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057012,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057116,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057219,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057322,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057425,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057529,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057632,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057736,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057839,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197057941,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197058044,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197058148,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197058250,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197058352,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197058455,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197058560,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197060983,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-AEcpKi/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test 1f7acad4-30bf-4bb6-b8cb-c9f05f9a22fc. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• I'll call the tool and wait for the result.",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_36ec3ed31c2d4540862848ba4a573f78",
+            "",
+            "• The tool returned receipt_36ec3ed31c2d4540862848ba4a573f78.",
+            "",
+            "  14:17",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "1de7ae9a-6f35-4223-8e02-df8012b25a6d",
+                "generation": "96cf6bcd-a2f0-46bf-8098-21af020611a1"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 220
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-1e0e5fa6-52ee-4668-a6ce-7a1dc76894cd",
+            "execution": {
+              "executionId": "312c5604-175d-4646-9bc3-73766c58f314",
+              "generation": "79a8baa0-0784-4d48-b271-c6b6e9a2c29c"
+            },
+            "sessionId": "e591e26d-6326-4820-87fa-cd95955bcf8e",
+            "toolStart": {
+              "callId": "f80d4d9d-4b71-4f48-944b-5bb275077737",
+              "pid": 3013,
+              "startedAt": 1793197064476
+            }
+          },
+          "turn": {
+            "sessionId": "e591e26d-6326-4820-87fa-cd95955bcf8e",
+            "turnId": "prompt@1793197063319",
+            "completed": true,
+            "answer": "The tool returned receipt_c2858a94f13741b2a6d68e6d012579ec.",
+            "completedAt": 1793197068761
+          },
+          "toolEnd": {
+            "callId": "f80d4d9d-4b71-4f48-944b-5bb275077737",
+            "receipt": "receipt_c2858a94f13741b2a6d68e6d012579ec",
+            "completedAt": 1793197067606
+          },
+          "status": "passed",
+          "originalResultSha256": "fe4dc3857ef845c48dde448fab807ddec5beafd21884e8c5e093024c4641a2e3",
+          "submittedAt": 1793197063319,
+          "turnElapsedMs": 5442,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197064561,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197064664,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197064767,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197064870,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197064973,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065077,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065179,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065282,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065387,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065491,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065594,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065697,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065801,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197065905,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066009,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066112,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066215,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066319,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066423,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066525,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066629,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066733,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066838,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197066941,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197067045,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197067149,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197067253,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197067357,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197067460,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197070587,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-AEcpKi/claude",
+            "",
+            "",
+            "❯ Test b78c6f0d-596d-48aa-bafa-a3f537391e26. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+            "  write files. Do not respond before the tool returns.                                                                       ",
+            "",
+            "  Thought for 1s, called tui ",
+            "",
+            "● The tool returned receipt_c2858a94f13741b2a6d68e6d012579ec.",
+            "",
+            "✻ Crunched for 5s · done 2:17 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                                           ● high · /effort",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯  ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "312c5604-175d-4646-9bc3-73766c58f314",
+                "generation": "79a8baa0-0784-4d48-b271-c6b6e9a2c29c"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 94
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12823712383,
+      "zipSha256": "490dfd840b8c648fd2e1accebc725c00645a98f5abea82dcfdb4af393e1d1013",
+      "payload": "packaged-host",
+      "scenario": "agent-tui/tool-network-silence",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "abc2ed6861e22fe5e05a3c338151ee2847afb6a9d732ad7b060280a0aad1127d",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "ca5fb28eafacb4d9f66755387fbc48d91b51a194982deca939ac91975eb15d7a"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "3f7ffeb441b0da83f37c413fbe643260cf3b8eb8ca097fc4a4ab38e502af0b08",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "5ae479cd-6977-495e-b9d1-88a1fa4a665c",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2932,
+                "startTicks": "26349",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-aab9cc0b476eea85",
+            "/tmp/dsc-ud-1c2d9a027830"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:23:06.440Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-067ac410-d8cb-4713-b32e-679b2cdb440a",
+            "execution": {
+              "executionId": "ef99d789-d8a2-4dae-9ba8-07dc11d00341",
+              "generation": "1e46da50-9e85-4e98-a538-aea1f49c57df"
+            },
+            "sessionId": "01a182e4-680c-7a13-877e-042971bc6f3c",
+            "toolStart": {
+              "callId": "d604b178-60e9-4445-9ce1-a817c104f652",
+              "pid": 3116,
+              "startedAt": 1793197371253
+            }
+          },
+          "turn": {
+            "sessionId": "01a182e4-680c-7a13-877e-042971bc6f3c",
+            "turnId": "01a182e4-69d1-75b3-82ea-27b076ed5ccf",
+            "completed": true,
+            "answer": "The receipt returned was receipt_0fdb23ca3fef4cf8bb116a0d5d535c83.",
+            "completedAt": 1793197375613
+          },
+          "toolEnd": {
+            "callId": "d604b178-60e9-4445-9ce1-a817c104f652",
+            "receipt": "receipt_0fdb23ca3fef4cf8bb116a0d5d535c83",
+            "completedAt": 1793197374340
+          },
+          "status": "passed",
+          "originalResultSha256": "8aa5b0eb074aefa908dba1e4fd2e58fa0ac80dfe9842d461f3c4501d7f17e057",
+          "submittedAt": 1793197369888,
+          "turnElapsedMs": 5725,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197371267,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197371370,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197371474,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197371580,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197371686,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197371802,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197371913,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372019,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372126,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372229,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372336,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372440,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372544,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372650,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372759,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372863,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197372967,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373070,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373173,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373276,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373382,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373489,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373595,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373699,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373803,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197373906,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197374011,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197374115,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197374219,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197376648,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-50h59X/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: When plugins are enabled, use /plugins to browse plugins.",
+            "",
+            "",
+            "› Test 959f0841-8d93-4f73-a13f-c3ea09544e67. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_0fdb23ca3fef4cf8bb116a0d5d535c83",
+            "",
+            "• The receipt returned was receipt_0fdb23ca3fef4cf8bb116a0d5d535c83.",
+            "",
+            "  14:22",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "ef99d789-d8a2-4dae-9ba8-07dc11d00341",
+                "generation": "1e46da50-9e85-4e98-a538-aea1f49c57df"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 219
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-466e65ca-f812-4bb4-9b37-82e7d529115c",
+            "execution": {
+              "executionId": "16bc8b1a-54ca-45ee-ae31-7a96f20a0603",
+              "generation": "035cd013-d64c-4e1c-abd1-c10c1d21aba5"
+            },
+            "sessionId": "2471aee3-83e0-46a9-b815-dfcb154b2792",
+            "toolStart": {
+              "callId": "c0969be7-f2b3-4a00-b926-1ce146f9e0bf",
+              "pid": 3250,
+              "startedAt": 1793197379637
+            }
+          },
+          "turn": {
+            "sessionId": "2471aee3-83e0-46a9-b815-dfcb154b2792",
+            "turnId": "prompt@1793197378756",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_5f4ab0b7660f465281744f7ba7aa8ad1.",
+            "completedAt": 1793197383919
+          },
+          "toolEnd": {
+            "callId": "c0969be7-f2b3-4a00-b926-1ce146f9e0bf",
+            "receipt": "receipt_5f4ab0b7660f465281744f7ba7aa8ad1",
+            "completedAt": 1793197382725
+          },
+          "status": "passed",
+          "originalResultSha256": "2cd95e967bf25f5a75c2fcf1b50489ce4d00118262db5effdadd6cc2b68732a5",
+          "submittedAt": 1793197378756,
+          "turnElapsedMs": 5163,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197379685,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197379789,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197379894,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197379998,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380102,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380207,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380311,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380425,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380530,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380634,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380739,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380843,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197380947,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381050,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381154,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381259,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381362,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381467,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381570,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381675,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381780,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381884,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197381988,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197382092,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197382196,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197382299,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197382404,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197382509,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197382616,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197385750,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-50h59X/claude",
+            "",
+            "",
+            "❯ Test 162cbb80-a06c-4cb7-be76-3d31fd40ad2e. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+            "  write files. Do not respond before the tool returns.                                                                       ",
+            "",
+            "  Called tui ",
+            "",
+            "● The tool returned the receipt receipt_5f4ab0b7660f465281744f7ba7aa8ad1.",
+            "",
+            "✻ Baked for 5s · done 2:23 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                                           ● high · /effort",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯  ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "16bc8b1a-54ca-45ee-ae31-7a96f20a0603",
+                "generation": "035cd013-d64c-4e1c-abd1-c10c1d21aba5"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 93
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12822593739,
+      "zipSha256": "9da900a8b9354a6d1b0744d7744574e8ca26bd1da4823324537a47f29fa72bcc",
+      "payload": "source-host",
+      "scenario": "agent-tui/turn-completion-redraw",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "5d41b6fc1b7427f6ae6d8c156bd4d8283eecef5243dd5cd943b9fbfa71768f80",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "c22bb5348719612aaf6b275d703d63aca15d876fc43349d7ccaf8cc68f38bc51"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "3279f649f1937f3151be4f754cf24f5523b435c489695478652f4b716dddcda4",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "ea3e14ce-865c-4c19-bc74-27ef87bdc19b",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2642,
+                "startTicks": "38002",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-96062218da93579b",
+            "/tmp/dsc-ud-4872b5b95dc7"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:18:17.300Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-8cbb785a-a511-4d7f-95a0-d741c2bc97a4",
+            "execution": {
+              "executionId": "05517de2-4dc1-4356-9c23-1b53e56e09ee",
+              "generation": "bbe1435f-1a84-424d-b64d-e87d6a0b2c5e"
+            },
+            "sessionId": "01a182df-ff4c-7461-b736-25af25eaabba",
+            "toolStart": {
+              "callId": "016be04c-2d20-4791-a6cf-1f2e170d1f28",
+              "pid": 2825,
+              "startedAt": 1793197081957
+            }
+          },
+          "turn": {
+            "sessionId": "01a182df-ff4c-7461-b736-25af25eaabba",
+            "turnId": "01a182e0-0124-74a1-af0f-4727e3130d2e",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_062a3473860b463c82a7afe022ac13fc.",
+            "completedAt": 1793197083267
+          },
+          "toolEnd": {
+            "callId": "016be04c-2d20-4791-a6cf-1f2e170d1f28",
+            "receipt": "receipt_062a3473860b463c82a7afe022ac13fc",
+            "completedAt": 1793197082059
+          },
+          "status": "passed",
+          "originalResultSha256": "fc348f30af05ea80d30fe87ac50c2bdb23947bd4e32c5b95a41a55879921bb02",
+          "submittedAt": 1793197080934,
+          "turnElapsedMs": 2333,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197084615,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197084718,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197084821,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197084924,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085027,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085132,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085235,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085338,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085441,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085544,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085648,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085751,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085855,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197085958,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086062,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086166,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086269,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086376,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086479,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086583,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086688,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086792,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197086895,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087000,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087103,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087206,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087310,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087413,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087516,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197087619,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-S85oce/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test 50eb1a12-e616-4165-9f67-f069d325ed38. Call the tui wait_for_release tool exactly once and wait for",
+            "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the",
+            "  tool. Do not use other tools or write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• I'll call the tool and wait for the receipt.",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_062a3473860b463c82a7afe022ac13fc",
+            "",
+            "• The tool returned the receipt receipt_062a3473860b463c82a7afe022ac13fc.",
+            "",
+            "  14:18",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "05517de2-4dc1-4356-9c23-1b53e56e09ee",
+                "generation": "bbe1435f-1a84-424d-b64d-e87d6a0b2c5e"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 157
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-b01f8435-e7c2-4c9d-a9cf-e2849e85379d",
+            "execution": {
+              "executionId": "9646a4a7-9432-4ab7-85db-566f5c1cd47d",
+              "generation": "c3cf57d7-30a5-4d3b-b327-c6ac40fc9d33"
+            },
+            "sessionId": "6b4fe329-636e-4f19-a461-c6e474e89bb2",
+            "toolStart": {
+              "callId": "01156e07-b73f-49ed-8be9-92b247a6f2ba",
+              "pid": 2955,
+              "startedAt": 1793197090731
+            }
+          },
+          "turn": {
+            "sessionId": "6b4fe329-636e-4f19-a461-c6e474e89bb2",
+            "turnId": "prompt@1793197089884",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_c0118623c6814f2c810c25a9dca497fc.",
+            "completedAt": 1793197091861
+          },
+          "toolEnd": {
+            "callId": "01156e07-b73f-49ed-8be9-92b247a6f2ba",
+            "receipt": "receipt_c0118623c6814f2c810c25a9dca497fc",
+            "completedAt": 1793197090834
+          },
+          "status": "passed",
+          "originalResultSha256": "e4b4e5dd8bc4e88b7f02a26389b3067a38daf4e8fe311c053f8f1fe3f5c63e6d",
+          "submittedAt": 1793197089884,
+          "turnElapsedMs": 1977,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197093743,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197093848,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197093951,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094055,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094158,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094262,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094366,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094471,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094574,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094677,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094781,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094884,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197094987,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095090,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095193,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095297,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095400,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095503,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095606,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095709,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095813,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197095917,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096020,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096123,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096226,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096330,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096434,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096537,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096641,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            },
+            {
+              "at": 1793197096744,
+              "status": "waiting-input",
+              "cols": 109,
+              "rows": 35
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-S85oce/claude",
+            "",
+            "",
+            "❯ Test 083b063f-bf8f-476a-b68e-a6fd5407ae0b. Call the tui wait_for_release tool exactly once and wait for    ",
+            "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the   ",
+            "  tool. Do not use other tools or write files. Do not respond before the tool returns.                       ",
+            "",
+            "● I'll call the wait tool now.",
+            "",
+            "  Called tui ",
+            "",
+            "● The tool returned the receipt receipt_c0118623c6814f2c810c25a9dca497fc.",
+            "",
+            "✻ Cogitated for 2s · done 2:18 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                           ● high · /effort",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯ ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "9646a4a7-9432-4ab7-85db-566f5c1cd47d",
+                "generation": "c3cf57d7-30a5-4d3b-b327-c6ac40fc9d33"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 61
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12822593552,
+      "zipSha256": "3730622272f9b047caeaedcf2ca6ef81e877eab20bc56d21d2c97bc4571c012b",
+      "payload": "source-host",
+      "scenario": "agent-tui/input-during-work",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "6ffb6710f367c07df36e5a1a2c5a4b7c500492ea801e220969353a4354aededc",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "c22bb5348719612aaf6b275d703d63aca15d876fc43349d7ccaf8cc68f38bc51"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "275fdfb6c2126a410271a85c65024b622000d541cca18857cb43b8dd053e4ecf",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "67177f56-0a17-4890-8af0-5623a2646a4d",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2687,
+                "startTicks": "27041",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-21fffe9a236552af",
+            "/tmp/dsc-ud-8b0853a0039d"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:16:53.008Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-70bbb928-bb26-46b0-a0cf-cf990918def7",
+            "execution": {
+              "executionId": "01b19ce8-56e9-4c5c-8da9-5d2516b5eacc",
+              "generation": "cb648531-2858-4222-a195-b3313cc2b194"
+            },
+            "sessionId": "01a182de-b364-7cf0-ad34-3bfa9ea3e804",
+            "toolStart": {
+              "callId": "58980cdd-956e-4a60-ba4d-ff200e3c6926",
+              "pid": 2858,
+              "startedAt": 1793196997460
+            }
+          },
+          "turn": {
+            "sessionId": "01a182de-b364-7cf0-ad34-3bfa9ea3e804",
+            "turnId": "01a182de-b521-71b1-a6e5-ba9368ec8afd",
+            "completed": true,
+            "answer": "The receipt returned by the tool was receipt_afc2e0a430bd4e1388abd97a98891476.",
+            "completedAt": 1793197001940
+          },
+          "toolEnd": {
+            "callId": "58980cdd-956e-4a60-ba4d-ff200e3c6926",
+            "receipt": "receipt_afc2e0a430bd4e1388abd97a98891476",
+            "completedAt": 1793197000743
+          },
+          "status": "passed",
+          "originalResultSha256": "a26c12a1b327f7c1d8b3850cc0c90068715480246c15a2d25ead25ab3a360af4",
+          "submittedAt": 1793196995964,
+          "turnElapsedMs": 5976,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793196997609,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196997713,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196997817,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196997932,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998044,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998148,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998254,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998358,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998463,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998571,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998676,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998780,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998884,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196998988,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999093,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999199,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999304,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999407,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999512,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999616,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999720,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999823,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793196999927,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197000033,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197000137,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197000241,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197000345,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197000449,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197000553,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197002954,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-JHoIvu/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test 0c298e95-d934-4966-bb50-1bf5b976c30b. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• I'll call the tool now.",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_afc2e0a430bd4e1388abd97a98891476",
+            "",
+            "• The receipt returned by the tool was receipt_afc2e0a430bd4e1388abd97a98891476.",
+            "",
+            "  14:16",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "01b19ce8-56e9-4c5c-8da9-5d2516b5eacc",
+                "generation": "cb648531-2858-4222-a195-b3313cc2b194"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 227
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-f3bb811d-f13f-47b9-b10b-e3a8d0db3708",
+            "execution": {
+              "executionId": "456546a8-eacb-4a59-bca3-1b68e6a86841",
+              "generation": "105561c4-4206-40c5-b9d2-665fb72f7ecf"
+            },
+            "sessionId": "61e23710-cce2-475a-9928-4f1d5ffb79dc",
+            "toolStart": {
+              "callId": "ff4aaf4f-c0bc-4f9e-afdf-73169d87fe1e",
+              "pid": 2994,
+              "startedAt": 1793197006384
+            }
+          },
+          "turn": {
+            "sessionId": "61e23710-cce2-475a-9928-4f1d5ffb79dc",
+            "turnId": "prompt@1793197005121",
+            "completed": true,
+            "answer": "The test completed and the tool returned receipt_d4c815ae18e6466cbe684cded98af5c1.",
+            "completedAt": 1793197010686
+          },
+          "toolEnd": {
+            "callId": "ff4aaf4f-c0bc-4f9e-afdf-73169d87fe1e",
+            "receipt": "receipt_d4c815ae18e6466cbe684cded98af5c1",
+            "completedAt": 1793197009665
+          },
+          "status": "passed",
+          "originalResultSha256": "8f387420cdde37a668f59fb95247b8f633063f2b190bfa51495b9ccc4d532f9d",
+          "submittedAt": 1793197005121,
+          "turnElapsedMs": 5565,
+          "sampleCount": 30,
+          "observations": [
+            {
+              "at": 1793197006541,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197006646,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197006750,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197006855,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197006958,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007062,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007166,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007271,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007375,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007481,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007585,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007690,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007794,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197007898,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008003,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008107,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008210,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008314,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008421,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008525,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008629,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008733,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008838,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197008942,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197009046,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197009150,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197009255,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197009359,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197009464,
+              "status": "running",
+              "cols": 125,
+              "rows": 40
+            },
+            {
+              "at": 1793197012449,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-JHoIvu/claude",
+            "",
+            "",
+            "❯ Test 7980cf12-6955-4539-b2d9-bab73659f385. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+            "  write files. Do not respond before the tool returns.                                                                       ",
+            "",
+            "  Called tui ",
+            "",
+            "● The test completed and the tool returned receipt_d4c815ae18e6466cbe684cded98af5c1.",
+            "",
+            "✻ Cogitated for 5s · done 2:16 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                               Ctrl+Y to paste deleted text",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯  ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "456546a8-eacb-4a59-bca3-1b68e6a86841",
+                "generation": "105561c4-4206-40c5-b9d2-665fb72f7ecf"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 102
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "artifactId": 12822118885,
+      "zipSha256": "d48b0339d48eaf50e9f93859f6195e218928d19c9b2573a7c5321634f37596a9",
+      "payload": "source-host",
+      "scenario": "agent-tui/answer-with-footer",
+      "inputSHA": "7c3c412dbe1cde4798112100d17f0443ec51b7c6",
+      "originalTaskSha256": "55044934300d554338d2a00505f3d4619338e527ffc5a9293156126b2d2e8694",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "c22bb5348719612aaf6b275d703d63aca15d876fc43349d7ccaf8cc68f38bc51"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "cdf4c7fc924005be534a4bf97644d7ffd8ebec3dc6f582a7564a5f1ef13f63e2",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed",
+        "exit": {
+          "schemaVersion": 1,
+          "nonce": "b0aaa55c-4f3f-451f-905b-903aeb842880",
+          "hosts": 1,
+          "exits": [
+            {
+              "expected": {
+                "pid": 2875,
+                "startTicks": "158304",
+                "platform": "linux"
+              },
+              "actual": null,
+              "result": "original-absent"
+            }
+          ],
+          "status": "passed",
+          "retired": [
+            "/tmp/dsc-6105fab83c72f7f2",
+            "/tmp/dsc-ud-715200118737"
+          ],
+          "failures": [],
+          "completedAt": "2026-10-28T14:16:15.332Z"
+        }
+      },
+      "providers": {
+        "codex": {
+          "identity": {
+            "nodeId": "agent-2-809da23f-91b0-4f94-9cd1-966b4248c996",
+            "execution": {
+              "executionId": "9cb6af5e-ed02-4284-b8f2-438379e52cd6",
+              "generation": "fca0807a-c9f1-4921-b94e-fd12edb1ee28"
+            },
+            "sessionId": "01a182de-34c2-7d52-ab28-91f28c5961c7",
+            "toolStart": {
+              "callId": "a499e813-3252-4595-9a09-7c55385bbaeb",
+              "pid": 3086,
+              "startedAt": 1793196965145
+            }
+          },
+          "turn": {
+            "sessionId": "01a182de-34c2-7d52-ab28-91f28c5961c7",
+            "turnId": "01a182de-367f-7502-a060-cf555c172d44",
+            "completed": true,
+            "answer": "The receipt returned by the tool is receipt_6536fcbe10ec4c58987f26776df55508.",
+            "completedAt": 1793196966304
+          },
+          "toolEnd": {
+            "callId": "a499e813-3252-4595-9a09-7c55385bbaeb",
+            "receipt": "receipt_6536fcbe10ec4c58987f26776df55508",
+            "completedAt": 1793196965251
+          },
+          "status": "passed",
+          "originalResultSha256": "25e1966060d98bc604a59b828e3d48d5736f0299d1fd25979c9e57ef374a8687",
+          "submittedAt": 1793196963546,
+          "turnElapsedMs": 2758,
+          "sampleCount": 1,
+          "observations": [
+            {
+              "at": 1793196968132,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-lwaZL2/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test 14c7697b-ff83-43ae-a188-686de4ed1419. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_6536fcbe10ec4c58987f26776df55508",
+            "",
+            "• The receipt returned by the tool is receipt_6536fcbe10ec4c58987f26776df55508.",
+            "",
+            "  14:16",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "9cb6af5e-ed02-4284-b8f2-438379e52cd6",
+                "generation": "fca0807a-c9f1-4921-b94e-fd12edb1ee28"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 128
+                }
+              ]
+            }
+          ]
+        },
+        "claude": {
+          "identity": {
+            "nodeId": "agent-3-0fabcf4d-9642-4f9f-840b-349be53bf021",
+            "execution": {
+              "executionId": "fb45e0a5-db93-41f0-9008-cdfbdd709258",
+              "generation": "e9eb7ec9-56f3-4d72-a32f-afb1cc53c17d"
+            },
+            "sessionId": "e5bc3a8d-e344-46ba-84c4-1fd93f070f80",
+            "toolStart": {
+              "callId": "ecd13c7a-7d63-45f0-958f-3be98e572351",
+              "pid": 3203,
+              "startedAt": 1793196971703
+            }
+          },
+          "turn": {
+            "sessionId": "e5bc3a8d-e344-46ba-84c4-1fd93f070f80",
+            "turnId": "prompt@1793196970355",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_e7e8ebb1861e4883a61cd167255b4002.",
+            "completedAt": 1793196972950
+          },
+          "toolEnd": {
+            "callId": "ecd13c7a-7d63-45f0-958f-3be98e572351",
+            "receipt": "receipt_e7e8ebb1861e4883a61cd167255b4002",
+            "completedAt": 1793196971806
+          },
+          "status": "passed",
+          "originalResultSha256": "d0f3e4fecc4415e9b89c9858fb01d7f1d8010275a00d2a91cd76995c7ee1293b",
+          "submittedAt": 1793196970355,
+          "turnElapsedMs": 2595,
+          "sampleCount": 1,
+          "observations": [
+            {
+              "at": 1793196974716,
+              "status": "waiting-input",
+              "cols": 125,
+              "rows": 40
+            }
+          ],
+          "finalPage": [
+            "",
+            " ▐▛███▛█   Claude Code v2.1.280",
+            "▝▜██████▀  deepseek-flash · API Usage Billing",
+            "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-lwaZL2/claude",
+            "",
+            "",
+            "❯ Test 856f738e-08ef-45de-9d4b-ca5c7700994c. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+            "  write files. Do not respond before the tool returns.                                                                       ",
+            "",
+            "  Thought for 1s, called tui ",
+            "",
+            "● The tool returned the receipt receipt_e7e8ebb1861e4883a61cd167255b4002.",
+            "",
+            "✻ Brewed for 2s · done 2:16 PM",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "                                                                                                           ● high · /effort",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "❯  ",
+            "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+            "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "fb45e0a5-db93-41f0-9008-cdfbdd709258",
+                "generation": "e9eb7ec9-56f3-4d72-a32f-afb1cc53c17d"
+              },
+              "persistence": {
+                "kind": "saved"
+              },
+              "retired": true,
+              "readerWasRequired": true,
+              "readers": [
+                {
+                  "kind": "applied",
+                  "finalOutputSequence": 62
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "remainingFailure": {
+    "artifactId": 12822619264,
+    "jobId": 122868168889,
+    "case": "packaged-host/surface-continuity--live-page-remount",
+    "reason": "Terminal准备阶段verifyTerminalLineAndSnapshot等待host消息超时，Last messages=[]，尚未进入页面重挂载动作",
+    "relation": "未确认根因；与本次只修改Agent空活动路径的修复分开记录"
+  }
+}

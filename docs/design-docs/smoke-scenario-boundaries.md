@@ -226,3 +226,7 @@ Stop 证据分层：真实 PTY smoke 让原外部进程确认忽略 INT，然后
 
 
 52bbf2b2夹具对旧固定生产双包的本地packaged兼容性十一项全通过，13Host原角色/退出/清理已核，原bytes及instrumentation边界记入本轮证据。该结果为acceptance=false；最新head正式CI仍待，不用旧包追认新输入同批验收。
+
+## 2026-10-28：四项真实 TUI 接入默认门禁
+
+PR341 在 PR340 合并后新增四项 Linux / snapshot-only 的独立 source 与 packaged 入口，每项顺序执行私有 Codex / Claude fixture。152 项映射现为 implemented-unverified / 0 not-implemented；历史 148/4 保留其原输入语义。独立 prompt/Stop hook 与真实工具 receipt 关联当前回合，页面另核完整实际回答、composer 和重绘。run40701818847 的 source/packaged 两 provider 共16次全部通过，清理与Host退出已复核；整轮另有既有Terminal页面重挂载准备超时，不能据TUI通过签发完整acceptance。方案和证据见 [真实 TUI 设计](smoke-real-tui-coverage.md)。

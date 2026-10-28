@@ -1,6 +1,9 @@
 name: Release Validation
 on:
   workflow_call:
+    secrets:
+      DEEPSEEK_API_KEY:
+        required: false
     inputs:
       input_sha:
         type: string
@@ -27,6 +30,8 @@ jobs:
   full:
     if: ${{ inputs.mode == 'release-tag' }}
     uses: ./.github/workflows/ci-validation.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     with:
       input_sha: ${{ inputs.input_sha }}
       base_sha: ${{ inputs.base_sha }}

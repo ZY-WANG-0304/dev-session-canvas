@@ -1,0 +1,28 @@
+{
+  "acceptance": false,
+  "scope": "真实本地产品Host创建与固定CLI输入界面；零模型prompt；不代证四项业务",
+  "node": "25.6.0",
+  "vscode": "1.140.0",
+  "sources": {
+    "scripts/smoke/agent-tui-configuration.mjs": "528c52f09ffbe6bf2d2c5222a746cc7931ab9dcec0d924c1310350358ff7dee6",
+    "tests/vscode-smoke/agent-tui-startup.cjs": "55968f2df6b8f2e64b107fc29ea89a5cc8ecd5754e4dc8101bc82262ee8c28f9"
+  },
+  "results": [
+    {
+      "provider": "codex",
+      "nodeId": "agent-2-fd835769-372c-4559-9c03-6d6a074d4ada",
+      "cwd": "/tmp/dsc-tui-workspace-IkQKsE/codex",
+      "ready": true,
+      "modelPrompts": 0,
+      "acceptance": false
+    },
+    {
+      "provider": "claude",
+      "nodeId": "agent-3-bd101ae4-27eb-4b27-a08d-0eb36dfd2079",
+      "cwd": "/tmp/dsc-tui-workspace-IkQKsE/claude",
+      "ready": true,
+      "modelPrompts": 0,
+      "acceptance": false
+    }
+  ]
+}

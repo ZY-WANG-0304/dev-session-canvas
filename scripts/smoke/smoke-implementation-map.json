@@ -545,27 +545,63 @@
     },
     {
       "id": "agent-tui/input-during-work",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-tui/input-during-work",
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "helper": "runProvider",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "四项真实交互 TUI 入口已接入；Linux snapshot-only 两 provider 的实际结果独立验收。"
     },
     {
       "id": "agent-tui/answer-with-footer",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-tui/answer-with-footer",
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "helper": "runProvider",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "四项真实交互 TUI 入口已接入；Linux snapshot-only 两 provider 的实际结果独立验收。"
     },
     {
       "id": "agent-tui/tool-network-silence",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-tui/tool-network-silence",
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "helper": "runProvider",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "四项真实交互 TUI 入口已接入；Linux snapshot-only 两 provider 的实际结果独立验收。"
     },
     {
       "id": "agent-tui/turn-completion-redraw",
-      "status": "not-implemented",
-      "destinations": [],
-      "note": "正式设计的新目标；未进入实际任务目录，不能由 native 或 fake prompt 结果代证通过。"
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "agent-tui/turn-completion-redraw",
+          "file": "tests/vscode-smoke/agent-tui-tests.cjs",
+          "helper": "runProvider",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ],
+      "note": "四项真实交互 TUI 入口已接入；Linux snapshot-only 两 provider 的实际结果独立验收。"
     },
     {
       "id": "execution-exit/native-crash",

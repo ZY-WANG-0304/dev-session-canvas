@@ -1,0 +1,160 @@
+{
+  "runId": 40694396583,
+  "input": "3076281b",
+  "acceptance": false,
+  "scope": "独立runner的公开文件下载对照；不同VM不能证明读取方式的因果差异",
+  "samples": [
+    {
+      "artifactId": 12819465075,
+      "zipSha256": "d35e7df008b0aed9b6795b19729ce72abf7b48b34b0924f2babe2d4cdd02fcf5",
+      "result": {
+        "acceptance": false,
+        "scope": "Public supplier GET diagnostic; no product execution",
+        "method": "node-buffer",
+        "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-win-x64.zip",
+        "node": "v25.6.0",
+        "platform": "win32",
+        "arch": "x64",
+        "bytes": 26956744,
+        "expectedSha256": "ed290151efb417262b9808a70738d4ab79e9d53653a6a9f4b8dd97912e279dce",
+        "status": 200,
+        "headers": {
+          "accept-ranges": "bytes",
+          "cf-cache-status": "HIT",
+          "content-length": "26956744",
+          "etag": "\"4dcfae3de30150a58a0bad532113a3ce\""
+        },
+        "sha256": "ed290151efb417262b9808a70738d4ab79e9d53653a6a9f4b8dd97912e279dce",
+        "passed": true,
+        "elapsedMs": 302
+      }
+    },
+    {
+      "artifactId": 12818651731,
+      "zipSha256": "d083fa96627e3dfb401ae8f43eb4d6011047ad98eeed8ce4168404ae38f96021",
+      "result": {
+        "acceptance": false,
+        "scope": "Public supplier GET diagnostic; no product execution",
+        "method": "node-buffer",
+        "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-darwin-arm64.tar.gz",
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "bytes": 29959366,
+        "expectedSha256": "f9f02f7872e2e8ee54320fce13deb9d56904f32bb0615b6e21aa3371d8899150",
+        "status": 200,
+        "headers": {
+          "accept-ranges": "bytes",
+          "cf-cache-status": "HIT",
+          "content-length": "29959366",
+          "etag": "\"7ff7371dc0c29c96f34360e7b99af4bd\""
+        },
+        "sha256": "f9f02f7872e2e8ee54320fce13deb9d56904f32bb0615b6e21aa3371d8899150",
+        "passed": true,
+        "elapsedMs": 387
+      }
+    },
+    {
+      "artifactId": 12818592184,
+      "zipSha256": "2406ec324d5cf21d0ef168f2188d10a00f0120a932209e779692475f6154b51d",
+      "result": {
+        "acceptance": false,
+        "scope": "Public supplier GET diagnostic; no product execution",
+        "method": "node-stream",
+        "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-win-x64.zip",
+        "node": "v25.6.0",
+        "platform": "win32",
+        "arch": "x64",
+        "bytes": 229376,
+        "expectedSha256": "ed290151efb417262b9808a70738d4ab79e9d53653a6a9f4b8dd97912e279dce",
+        "status": 200,
+        "headers": {
+          "accept-ranges": "bytes",
+          "cf-cache-status": "HIT",
+          "content-length": "26956744",
+          "etag": "\"4dcfae3de30150a58a0bad532113a3ce\""
+        },
+        "lastProgressMs": 108278,
+        "passed": false,
+        "error": {
+          "name": "TimeoutError",
+          "message": "The operation was aborted due to timeout",
+          "code": 23
+        },
+        "elapsedMs": 120110
+      }
+    },
+    {
+      "artifactId": 12818457357,
+      "zipSha256": "8760cd654d28d37d12769ce6c82ea7b9eab61feb727fa4eb2e445b22d0f13648",
+      "result": {
+        "acceptance": false,
+        "scope": "Public supplier GET diagnostic; no product execution",
+        "method": "curl",
+        "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-win-x64.zip",
+        "node": "v25.6.0",
+        "platform": "win32",
+        "arch": "x64",
+        "bytes": 0,
+        "expectedSha256": "ed290151efb417262b9808a70738d4ab79e9d53653a6a9f4b8dd97912e279dce",
+        "curlOutput": "{\"status\":200,\"bytes\":6963200,\"seconds\":120.001067}",
+        "passed": false,
+        "error": {
+          "name": "Error",
+          "message": "Command failed: curl --location --fail --silent --show-error --max-time 120 --output C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\dsc-supplier-compare.bin --write-out {\"status\":%{http_code},\"bytes\":%{size_download},\"seconds\":%{time_total}} https://nodejs.org/dist/v16.17.1/node-v16.17.1-win-x64.zip\ncurl: (28) Operation timed out after 120000 milliseconds with 6963200 out of 26956744 bytes received\r\n",
+          "code": 28
+        },
+        "elapsedMs": 120143
+      }
+    },
+    {
+      "artifactId": 12818288243,
+      "zipSha256": "003aea27c7681542440d6d0b4cb6d15a453d7fae474ddc93b572e982147ae035",
+      "result": {
+        "acceptance": false,
+        "scope": "Public supplier GET diagnostic; no product execution",
+        "method": "curl",
+        "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-darwin-arm64.tar.gz",
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "bytes": 0,
+        "expectedSha256": "f9f02f7872e2e8ee54320fce13deb9d56904f32bb0615b6e21aa3371d8899150",
+        "curlOutput": "{\"status\":200,\"bytes\":147456,\"seconds\":120.061117}",
+        "passed": false,
+        "error": {
+          "name": "Error",
+          "message": "Command failed: curl --location --fail --silent --show-error --max-time 120 --output /var/folders/nj/vtw8zd2j31d1gdrtntc5y4600000gn/T/dsc-supplier-compare.bin --write-out {\"status\":%{http_code},\"bytes\":%{size_download},\"seconds\":%{time_total}} https://nodejs.org/dist/v16.17.1/node-v16.17.1-darwin-arm64.tar.gz\ncurl: (28) Operation timed out after 120060 milliseconds with 147456 out of 29959366 bytes received\n",
+          "code": 28
+        },
+        "elapsedMs": 120242
+      }
+    },
+    {
+      "artifactId": 12817804143,
+      "zipSha256": "fd18c9556a4be2b633d25d6dedc0f71cefb662e95268a73bdb8c5ed08a6a4629",
+      "result": {
+        "acceptance": false,
+        "scope": "Public supplier GET diagnostic; no product execution",
+        "method": "node-stream",
+        "url": "https://nodejs.org/dist/v16.17.1/node-v16.17.1-darwin-arm64.tar.gz",
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "bytes": 29959366,
+        "expectedSha256": "f9f02f7872e2e8ee54320fce13deb9d56904f32bb0615b6e21aa3371d8899150",
+        "status": 200,
+        "headers": {
+          "accept-ranges": "bytes",
+          "cf-cache-status": "HIT",
+          "content-length": "29959366",
+          "etag": "\"7ff7371dc0c29c96f34360e7b99af4bd\""
+        },
+        "lastProgressMs": 182,
+        "sha256": "f9f02f7872e2e8ee54320fce13deb9d56904f32bb0615b6e21aa3371d8899150",
+        "passed": true,
+        "elapsedMs": 289
+      }
+    }
+  ]
+}

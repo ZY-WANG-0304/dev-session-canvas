@@ -948,15 +948,15 @@ test('actual Host cleanup observes an already retired graph without a competing 
 test('smoke migration resolves actual registered helpers and causal steps without claiming unimplemented gaps', async () => {
   const result = await verifySmokeImplementationSources();
   assert.equal(result.designDestinations, 152);
-  assert.equal(result.mappedDestinations, 148);
-  assert.equal(result.unimplemented.length, 4);
+  assert.equal(result.mappedDestinations, 152);
+  assert.equal(result.unimplemented.length, 0);
   assert.equal(result.reviewedAssertionReplacements, 16);
   assert.equal(result.scope, 'implementation-traceability-not-execution-acceptance');
 });
 test('smoke migration rejects missing destinations, invented coverage and focused promotion', () => {
   const original = readSmokeImplementationMap();
   for (const mutate of [map => map.cases.pop(), map => map.cases.push(structuredClone(map.cases[0])),
-    map => { map.cases.find(item => item.status === 'not-implemented').status = 'implemented-unverified'; },
+    map => { map.cases.find(item => item.id === 'agent-tui/input-during-work').destinations = []; },
     map => { map.cases[0].destinations[0].suite = 'invented'; },
     map => { map.cases[0].destinations[0].step = 'not-an-executed-step'; },
     map => { map.cases.find(item => item.id === 'runtime-recovery/legacy-binding').destinations[0].diagnosticOnly = false; },
