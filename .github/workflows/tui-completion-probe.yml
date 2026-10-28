@@ -38,7 +38,9 @@ jobs:
           const receipt=JSON.parse(await fs.readFile('source-input/source-build-receipt.json','utf8'));
           assert.deepEqual(await treeHashes('source-input/main-dist'),receipt.trees['main-dist']);
           await fs.cp('source-input/main-dist','extensions/vscode/dev-session-canvas/dist',{recursive:true});
-          await esbuild.build({entryPoints:['extensions/vscode/dev-session-canvas/src/extension.ts'],bundle:true,external:['vscode','node-pty'],format:'cjs',outfile:'extensions/vscode/dev-session-canvas/dist/extension.js',platform:'node',target:'node18',define:{'process.env.NODE_ENV':'"development"'}});
+          const selection=JSON.parse(await fs.readFile('source-input/main-dist/execution-candidate-selection.json','utf8'));
+          assert.equal(selection.profile,'platform');
+          await esbuild.build({entryPoints:['extensions/vscode/dev-session-canvas/src/extension.ts'],bundle:true,external:['vscode','node-pty'],format:'cjs',outfile:'extensions/vscode/dev-session-canvas/dist/extension.js',platform:'node',target:'node18',define:{'process.env.NODE_ENV':'"development"',__DEV_SESSION_CANVAS_EXECUTION_PROFILE__:JSON.stringify(selection.profile),__DEV_SESSION_CANVAS_EXECUTION_ADMISSION__:JSON.stringify(selection.admissionLimits)}});
           JS
       - run: |
           sudo apt-get update -qq
