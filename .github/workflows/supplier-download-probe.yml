@@ -1,0 +1,40 @@
+name: Supplier Download Probe
+on:
+  push:
+    branches: [diagnose/tui-supplier-download]
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - runner: windows-2025
+            arch: x64
+            file: node-v16.17.1-win-x64.zip
+          - runner: macos-15
+            arch: arm64
+            file: node-v16.17.1-darwin-arm64.tar.gz
+        method: [node-buffer, node-stream, curl]
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25.6.0
+          architecture: ${{ matrix.target.arch }}
+      - name: Compare public supplier GET
+        env:
+          PROBE_METHOD: ${{ matrix.method }}
+          PROBE_FILE: ${{ matrix.target.file }}
+        run: node scripts/diagnostics/probe-supplier-download.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: supplier-${{ matrix.target.arch }}-${{ runner.os }}-${{ matrix.method }}
+          path: supplier-probe.json
+          if-no-files-found: error

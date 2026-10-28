@@ -90,3 +90,5 @@
 修订：2026-10-28 本地实际产品 Host 的 Codex / Claude 创建及真实 composer 均通过（Node25.6.0、VS Code1.140.0、零模型 prompt），同时同步私有 Codex 已配置入口以满足产品命令一致性规则。原 attempt2 剩余任务取消；新输入继续四项完整 source / packaged 业务验收。
 
 修订：2026-10-28 d1c54b0c 的 run40691355132 再次因 macOS ARM64 编译后旧 Node 下载 120 秒超时而无法进入 TUI。为解除重复的前置阻塞，在原每请求 120 秒总期限内增加最多三次传输恢复（单次最多40秒），HTTP永久错误/hash不符不重试，记录URL和尝试阶段；设计同步 release-gate-redesign，真实localhost传输/期限/hash反例纳入既有 native-assets 回归。模型业务仍不自动重试。
+
+诊断分支：2026-10-28 原40秒单次硬期限在持续慢传输下也会终止有效进展；以临时 supplier-download-probe workflow 对照 Node arrayBuffer / stream 与 curl 的固定公开文件GET，记录响应头、字节进度、耗时及完整hash，acceptance=false，不构建或请求模型。诊断输入不与正式产物混用。
