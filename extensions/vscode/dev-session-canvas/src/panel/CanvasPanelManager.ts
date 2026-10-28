@@ -19029,7 +19029,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (record.kind === 'agent') {
       const resume = this.readAgentResumeContextFromOutput(business);
       if (resume && (!business.agentResume?.sessionId || record.execution.snapshot().stopRequested)) business.agentResume = resume;
-      if (shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) {
+      if (observable.length > 0 && shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) {
         recordAgentOutputHeuristics(business.agentActivity!, observable, business.buffer, business.agentProvider,
           this.nonNativeExecutionOwner!.options.scheduler.now());
         this.traceTuiActivity(record, 'output', {length: observable.length, tail: observable.replace(/\u0000/g, '').slice(-4096)});
