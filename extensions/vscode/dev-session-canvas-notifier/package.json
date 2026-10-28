@@ -149,5 +149,8 @@
     "typecheck": "tsc -p ./tsconfig.json --noEmit",
     "vscode:prepublish": "npm run package"
   },
+  "devDependencies": {
+    "markdown-it": "^14.3.3"
+  },
   "l10n": "./l10n"
 }

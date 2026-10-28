@@ -2,6 +2,11 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-10-28：生产依赖安全公告第一轮修复
+
+基于 `origin/main` 的锁文件审计发现生产依赖公告：`markdown-it@14.3.2` 为 high、`zod@4.4.3` 为 high、`hono@4.13.7` 为 moderate，均有兼容的上游修复版本。本轮将主扩展的 `markdown-it` 更新至 `14.3.3`；notifier 同版声明为开发依赖，因为打包器将其并入扩展 bundle，不在 VSIX 运行时加载 node_modules。共享包 `zod` 更新至 `4.6.7`；模板市场 Worker 的 `hono` 更新至 `4.13.14`。更新后 `npm audit --omit=dev` 只剩 KaTeX 及 `micromark-extension-math` 关联的 2 项 low 公告，当前 registry 未提供修复版本。Note 渲染仍设置 `trust: false`；该限制不等于证明公告条件永远不成立，也没有项目内可利用路径证据。
+
+本轮已收口有修复版本的生产依赖公告，未升级构建/测试工具链。全量依赖仍有开发依赖公告，后续单独评估，不能将本轮表述为全依赖零风险。主扩展 Note、notifier Markdown、模板市场共享校验/API 需要在 PR 完整门禁中验证；当前阶段不提升扩展版本或修改发布物料。
 
 ## 2026-10-28：socket 恢复与失联节点删除的验收及旧进程边界
 
