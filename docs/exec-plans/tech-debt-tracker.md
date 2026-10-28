@@ -1019,3 +1019,7 @@ PR337 后续完整 gate（40528627405，ddf22a99）：原 review 的 regression 
 PR337 c6e11535 完整门禁后续（2026-10-28）：Windows installed-pair 通过，macOS 在新增无条件扩宽视口后通知回跳 y=-38px，原 ddf22a99 默认布局该场景通过。准备逻辑已收窄为仅在无有效拖动路径时导航，保留原通知居中断言；宽视口居中差异仍未归因，增加 flow/wrapper/window 几何用于后续定位，不声明产品定位问题已修。source-host 的 auto-start、codex-queued-exit 在 apt-get update 访问 Ubuntu 镜像阶段达到原5分钟期限，尚未运行产品用例，首败日志保留于 .debug/review337-autostart-failed.log、review337-codex-exit-failed.log。
 
 条件式视口准备及按实际包状态避免无必要apt请求已完成，完整contracts 103/103与工作流契约通过；是否发生依赖安装会在步骤日志中记录。c6e11535 的所有上一轮13项失败已通过，当前264个业务job成功；新head需独立完整验收。macOS宽视口居中偏差的产品归因仍未完成，默认布局恢复或后续CI成功不关闭这一观察缺口。
+
+## 2026-10-28：四项真实 TUI 已实施，产品验收中
+
+PR341 接入四项 Linux / snapshot-only、Codex 0.157.1 / Claude 2.1.280 的默认 source / packaged 场景，独立完成接口选定私有 UserPromptSubmit / Stop hook，工具 receipt 关联本回合实际回答。映射为 152 implemented-unverified / 0 not-implemented。CLI 探索双 provider、合同回归与反例通过，产品 Host 尚待验；因此本条不关闭真实 TUI 验证债务，也不外推网络断连/重连、其他平台/模式或产品原生状态权威性。见 [设计](../design-docs/smoke-real-tui-coverage.md) 与 [证据](../references/smoke-real-tui-coverage/README.md)。历史段落的未选定/未实施按当时输入保留。

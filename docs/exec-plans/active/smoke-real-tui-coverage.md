@@ -10,8 +10,8 @@
 
 - [x] (2026-10-28) 核对 PR340 已合并；从 origin/main 2dc6d173 创建 smoke-real-tui-scenario-coverage，保留三个用户未跟踪文件。
 - [x] (2026-10-28) 核对现有真实 CLI / DeepSeek 隔离配置和手动 Actions 入口；四项目标仍 not-implemented。
-- [ ] 里程碑一：验证固定 CLI 的独立会话/回合完成信号及受控等待方法，记录实际样本。
-- [ ] 里程碑二：实现四项独立交互式用例、证据判定和有意义的反例。
+- [x] (2026-10-28) 里程碑一：验证固定 CLI 的独立会话/回合完成信号及受控等待方法，记录实际样本。
+- [x] (2026-10-28) 里程碑二：实现四项独立交互式用例、证据判定和有意义的反例。
 - [ ] 里程碑三：接入 CI、共享目录和 source/packaged 路径，完成真实运行及相关回归。
 - [ ] 同步设计、映射、技术债和结果，提交并创建 PR。
 
@@ -25,15 +25,17 @@
 
 2026-10-28 / Codex：沿用已有固定 CLI 与 DeepSeek 配置，先验证独立信号再确定最终接口。理由是四项验收涉及外部 CLI 行为，单纯 fake 输出和目录登记无法证明目标。固定版本当前为 Codex 0.157.1、Claude 2.1.280。
 
+2026-10-28 / Codex：固定 CLI 实跑后选定 UserPromptSubmit / Stop hook；Claude 校验预定 sessionId，Codex 严格核开始/完成 turn_id，缺身份即失败。以受控 MCP 等待作为静默条件，明确不覆盖供应商断网。
+
 2026-10-28 / Codex：模型未产生目标条件时报告 prepare 失败；业务失败、网络错误、证据缺失不通过自动重试刷绿。页面内容与本次实际回答对应，排除 prompt 回显、旧 session 和旧 turn。生产误判如被实证，保留原失败并修复对应逻辑。
 
 ## 结果与复盘
 
-目前完成基线和计划登记，尚无四项真实执行通过证据。独立信号和成本仍需里程碑一验证后收口，不把候选方案写成已验证结论。
+四项真实 TUI 已接入默认 source / packaged 门禁并创建 PR341；独立 CLI 信号探索两 provider 通过，完整合同回归 139/139、证据及真实工具/hook 7/7 通过。产品 Host 验收继续执行，尚不能宣布四项通过。探索失败、修复和后续正式输入分别记录于 docs/references/smoke-real-tui-coverage/README.md。
 
 ## 上下文与定向
 
-`scripts/smoke/smoke-implementation-map.json` 中四项 agent-tui 的 destinations 为空。`scripts/smoke/smoke-catalog.mjs` 是共享场景目录，`scripts/gates/catalog.mjs` 和 `.github/workflows/ci-validation.yml` 冻结并执行门禁。`scripts/smoke/run-vscode-agent-candidate.mjs` 已提供固定 CLI 检查、私有 Host、真实进程观察和报告；`scripts/smoke/agent-candidate-deepseek.mjs` 生成私有 CODEX_HOME / CLAUDE_CONFIG_DIR，并在结束后移除凭据。不得上传私有配置或原始环境。
+任务开始时 `scripts/smoke/smoke-implementation-map.json` 中四项 agent-tui 的 destinations 为空；现已登记真实入口，152 项均为 implemented-unverified。`scripts/smoke/smoke-catalog.mjs` 是共享场景目录，`scripts/gates/catalog.mjs` 和 `.github/workflows/ci-validation.yml` 冻结并执行门禁。`scripts/smoke/run-vscode-agent-candidate.mjs` 已提供固定 CLI 检查、私有 Host、真实进程观察和报告；`scripts/smoke/agent-candidate-deepseek.mjs` 生成私有 CODEX_HOME / CLAUDE_CONFIG_DIR，并在结束后移除凭据。不得上传私有配置或原始环境。
 
 `tests/vscode-smoke/agent-candidate-tests.cjs` 通过 Host 测试桥创建真实节点，页面探针提供 terminalVisibleLines，DOM 操作进入 xterm 输入路径。`extensions/vscode/dev-session-canvas/src/common/agentActivityHeuristics.ts` 的状态推断是被测行为（实施前核对实际路径），不能作为完成事实源。session 表示 CLI 会话，turn 表示其中一次用户提交到正常完成的回合；执行身份还需绑定原节点/PTY，CLI 回合完成不等于 CLI 进程退出。
 
@@ -53,7 +55,7 @@
 
 ## 具体步骤
 
-全部命令在仓库根执行。已有基线命令为 `git status --short --branch`、`node --version`。里程碑一先运行 `codex --version`、`claude --version` 和隔离帮助查询，不打印用户凭据。现有配置回归为 `node scripts/test/test-agent-candidate-deepseek.mjs`，类型检查为 `npm run typecheck`。新 runner 命令、用例选择和实际结果将在接口确定后写入本节；在此之前不得声称入口存在。
+全部命令在仓库根执行。已有基线命令为 `git status --short --branch`、`node --version`。里程碑一先运行 `codex --version`、`claude --version` 和隔离帮助查询，不打印用户凭据。现有配置回归为 `node scripts/test/test-agent-candidate-deepseek.mjs`，类型检查为 `npm run typecheck`。独立反例命令为 `npm run test:agent-tui`。具备固定 CLI、DeepSeek key 和已构建 source 输入时，可用 `DSC_TUI_CLI_ROOT=/path/to/private-prefix node scripts/smoke/run-vscode-smoke.mjs --scenario agent-tui/input-during-work` 做定向本地运行（同理替换另外三个 ID），本地结果不签发 Actions acceptance。正式 CI 由 `Release Preflight` 冻结预合并输入，source-host 与 packaged-host 各生成四项 job；packaged 只消费同批原 VSIX。不能直接省略其冻结计划和包回执参数。
 
 ## 验证与验收
 
@@ -69,7 +71,7 @@
 
 ## 接口与依赖
 
-沿用现有 Node、真实 CLI、VS Code smoke Host 与进程观察器。独立证据接口应提供当前 provider/session/turn、开始/结束事实、实际回答及错误；页面证据必须另外取得。最终函数签名、CLI 版本证据和新增依赖在里程碑一确定后补充，禁止以占位实现产生成功回执。
+沿用现有 Node、真实 CLI、VS Code smoke Host 与进程观察器。独立证据接口应提供当前 provider/session/turn、开始/结束事实、实际回答及错误；页面证据必须另外取得。`prepareAgentTuiSuite({scenario,directory,projectRoot})` 返回两份私有 provider 配置、Host 环境和 dispose；`runAgentTuiSuite` 为 source / packaged 共用启动器。`observeTurn(events,{provider,prompt,workspace,submittedAt,toolStart,toolEnd,expectedSessionId})` 区分未提交、处理中和正常完成；Codex 要求开始/完成 turn_id 相同，Claude 要求预定 sessionId 相同。`answerWithFooter(lines,answer)` 和 `draftInComposer(lines,draft)` 单独检查真实页面。没有新增 npm 运行时依赖，CI 额外安装两份固定 CLI。
 
 修订：2026-10-28 创建计划，明确非确定性回答、独立信号探索和 CI 交付边界。
 
@@ -78,3 +80,5 @@
 修订：2026-10-28 新增 source/packaged 实际入口、独立判定反例、阶段回执及 CI secret 接线；152 项映射均为 implemented-unverified，映射不签发验收。40682240862 的 Codex 信号探索通过，Claude 菜单默认 No 导致退出，补明确 Yes 和菜单未消失不准入的判定。五组证据/反例通过，真实产品尚待运行。
 
 修订：2026-10-28 完整固定输入合同回归 139/139 通过；原并行改目录的失败不追认。PR341 首轮 CI regression shard-2 暴露旧 VM 只提供 scenarios 而新 runner 额外读取 selectedSuites，已将真实 TUI 路由并入既有 scenarios，原退役回归 18/18 通过。Claude 启动按仓库已验证的 End/两次 Yes 采样规则修正，本地真实固定 CLI、闭合本地无服务地址且零模型请求的启动实验通过；实际观察两次 End 后唯一 Enter。发布接线/环境过滤回归通过，正式业务 CI 继续待验。
+
+修订：2026-10-28 Actions 40683639714 的 Codex 和 Claude 信号探索全部通过。移除临时探索 workflow/脚本，正式测试保留同一私有初始化与观察器。PR341 旧输入 run40682891236 的 regression 失败保留，取消旧轮以解除排队；新输入 e4f865da 的 run40683646799 正式产品验收继续。

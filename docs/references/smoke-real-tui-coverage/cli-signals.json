@@ -1,0 +1,129 @@
+{
+  "runId": 40683639714,
+  "acceptance": false,
+  "scope": "仅固定 CLI 信号探索，不是产品 Host 验收",
+  "providers": {
+    "codex": {
+      "artifactId": 12813767623,
+      "sourceHashes": {
+        "probe.json": "4ae0093e219412b8ec93dee073a88bad536f526804ccbd44442f2460411d40ed",
+        "events.jsonl": "699e7efedf1c5aea2e3b99d64587964370c48644972565be18e9d93d144badb3",
+        "tool-start.json": "217d8095aed17cbbd3ca472ff3455322912ce9e5098e782f23447f50b39d1e94",
+        "tool-end.json": "116b6a3a2832b0b2d0a8bbf5a35078850ac672652fa2c9db9cd41a1f29645ead"
+      },
+      "stage": "passed",
+      "events": [
+        {
+          "observedAt": 1793188539311,
+          "observerPid": 2751,
+          "session_id": "01a1825d-aa0f-7010-b390-f82543b49388",
+          "turn_id": "01a1825d-ab74-7101-9ce6-30642a4c5637",
+          "hook_event_name": "UserPromptSubmit",
+          "cwd": "/home/runner/work/_temp/tui-evidence/workspace",
+          "prompt": "Test 23303a04-7c6b-4241-b905-54b7ee67d404. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+        },
+        {
+          "observedAt": 1793188544913,
+          "observerPid": 2784,
+          "session_id": "01a1825d-aa0f-7010-b390-f82543b49388",
+          "turn_id": "01a1825d-ab74-7101-9ce6-30642a4c5637",
+          "hook_event_name": "Stop",
+          "cwd": "/home/runner/work/_temp/tui-evidence/workspace",
+          "stop_hook_active": false,
+          "last_assistant_message": "The wait_for_release tool returned receipt_91dcb2d47342413e9fd40ad61af5f5da."
+        },
+        {
+          "observedAt": 1793188549005,
+          "observerPid": 2793,
+          "session_id": "01a1825d-aa0f-7010-b390-f82543b49388",
+          "hook_event_name": "SessionEnd",
+          "cwd": "/home/runner/work/_temp/tui-evidence/workspace"
+        }
+      ],
+      "toolStart": {
+        "callId": "c0e25412-c475-4ee8-a041-1007716be7cf",
+        "pid": 2615,
+        "startedAt": 1793188540537
+      },
+      "toolEnd": {
+        "callId": "c0e25412-c475-4ee8-a041-1007716be7cf",
+        "receipt": "receipt_91dcb2d47342413e9fd40ad61af5f5da",
+        "completedAt": 1793188543571
+      },
+      "screens": [
+        {
+          "stage": "working-input",
+          "text": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under te\nmporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/dsc-agent-deepseek-NPY7Lo/codex\"))\n╭───────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.157.1)                        │\n│                                                   │\n│ model:     DeepSeek-Flash high   /model to change │\n│ directory: ~/work/_temp/tui-evidence/workspace    │\n╰───────────────────────────────────────────────────╯\n\n  Tip: New Build faster with Codex.\n\n\n› Test 23303a04-7c6b-4241-b905-54b7ee67d404. Call the tui wait_for_release tool exactly once and wait for its\n  result. Then answer in one short plain English sentence containing the exact receipt returned by the tool.\n  Do not use other tools or write files. Do not respond before the tool returns.\n\n \n◦ Calling tui.wait_for_release({})\n \n◦ Working (4s • esc to interrupt)\n \n \n› UNSUBMITTED_TUI_DRAFT\n \n  tab to queue message                                                                     100% context left\n\n\n\n\n\n\n"
+        },
+        {
+          "stage": "completed",
+          "text": "WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under te\nmporary dir \"/tmp\" (codex_home: AbsolutePathBuf(\"/tmp/dsc-agent-deepseek-NPY7Lo/codex\"))\n╭───────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.157.1)                        │\n│                                                   │\n│ model:     DeepSeek-Flash high   /model to change │\n│ directory: ~/work/_temp/tui-evidence/workspace    │\n╰───────────────────────────────────────────────────╯\n\n  Tip: New Build faster with Codex.\n\n\n› Test 23303a04-7c6b-4241-b905-54b7ee67d404. Call the tui wait_for_release tool exactly once and wait for its\n  result. Then answer in one short plain English sentence containing the exact receipt returned by the tool.\n  Do not use other tools or write files. Do not respond before the tool returns.\n\n\n• Called tui.wait_for_release({})\n  └ receipt_91dcb2d47342413e9fd40ad61af5f5da\n\n• The wait_for_release tool returned receipt_91dcb2d47342413e9fd40ad61af5f5da.\n\n  11:55\n \n \n› Ask Codex to do anything\n \n  DeepSeek-Flash · Context 100% left                                                ⚠ 3 warnings · f2 to view\n\n\n\n"
+        },
+        {
+          "stage": "redraw",
+          "text": "╭───────────────────────────────────────────────────╮\n│ >_ OpenAI Codex (v0.157.1)                        │\n│                                                   │\n│ model:     DeepSeek-Flash high   /model to change │\n│ directory: ~/work/_temp/tui-evidence/workspace    │\n╰───────────────────────────────────────────────────╯\n\n  Tip: New Build faster with Codex.\n\n\n› Test 23303a04-7c6b-4241-b905-54b7ee67d404. Call the tui wait_for_release tool exactly\n  once and wait for its result. Then answer in one short plain English sentence containing\n  the exact receipt returned by the tool. Do not use other tools or write files. Do not\n  respond before the tool returns.\n\n\n• Called tui.wait_for_release({})\n  └ receipt_91dcb2d47342413e9fd40ad61af5f5da\n\n• The wait_for_release tool returned receipt_91dcb2d47342413e9fd40ad61af5f5da.\n\n  11:55\n \n \n› Ask Codex to do anything\n \n  DeepSeek-Flash · Context 100% left                              ⚠ 3 warnings · f2 to view\n\n\n\n\n"
+        }
+      ]
+    },
+    "claude": {
+      "artifactId": 12814331583,
+      "sourceHashes": {
+        "probe.json": "c3ded996839b4afb2d3e2a98ad1951bc5db2a5b174c2e5467d15a0ab3710dae1",
+        "events.jsonl": "b99076ab8a4c680e2ca37675c1d2c379d950a7e85d899f595762adbc759c8617",
+        "tool-start.json": "0e375a33e2258364deb081cc8a1d5852eb9be06483750ace5cac99e85412bfae",
+        "tool-end.json": "7fb8b0740928b15eaed340b7936eacaf9bf88f329fb706526e5d9b8707f85dd0"
+      },
+      "stage": "passed",
+      "events": [
+        {
+          "observedAt": 1793188539714,
+          "observerPid": 2384,
+          "session_id": "fae62f6c-bc2e-41ae-aec2-21bcab1e89ee",
+          "hook_event_name": "UserPromptSubmit",
+          "cwd": "/home/runner/work/_temp/tui-evidence/workspace",
+          "prompt": "Test 29d2e615-eaeb-44b9-a1ab-9139bfde522b. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+        },
+        {
+          "observedAt": 1793188545201,
+          "observerPid": 2403,
+          "session_id": "fae62f6c-bc2e-41ae-aec2-21bcab1e89ee",
+          "hook_event_name": "Stop",
+          "cwd": "/home/runner/work/_temp/tui-evidence/workspace",
+          "stop_hook_active": false,
+          "last_assistant_message": "The test received receipt receipt_0ea500e2fb374a6f981c1055cbc15d23."
+        },
+        {
+          "observedAt": 1793188550379,
+          "observerPid": 2412,
+          "session_id": "fae62f6c-bc2e-41ae-aec2-21bcab1e89ee",
+          "hook_event_name": "SessionEnd",
+          "cwd": "/home/runner/work/_temp/tui-evidence/workspace"
+        }
+      ],
+      "toolStart": {
+        "callId": "097c095c-4b0d-4a50-82b5-e822278478be",
+        "pid": 2365,
+        "startedAt": 1793188540935
+      },
+      "toolEnd": {
+        "callId": "097c095c-4b0d-4a50-82b5-e822278478be",
+        "receipt": "receipt_0ea500e2fb374a6f981c1055cbc15d23",
+        "completedAt": 1793188544018
+      },
+      "screens": [
+        {
+          "stage": "working-input",
+          "text": "\n ▐▛███▛█   Claude Code v2.1.280\n▝▜██████▀  deepseek-flash · API Usage Billing\n  ▝▝ ▝▝    ~/work/_temp/tui-evidence/workspace\n\n\n❯ Test 29d2e615-eaeb-44b9-a1ab-9139bfde522b. Call the tui wait_for_release tool exactly once and wait for its \n  result. Then answer in one short plain English sentence containing the exact receipt returned by the tool.  \n  Do not use other tools or write files. Do not respond before the tool returns.                              \n\n● I'll call the tool now.\n\n● Calling tui · 2s…\n\n\n\n\n\n\n\n\n\n\n\n\n\n✶ Sublimating… (4s · ↓ 13 tokens · thought for 1s)\n                                                                                            ● high · /effort\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ UNSUBMITTED_TUI_DRAFT \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle)"
+        },
+        {
+          "stage": "completed",
+          "text": "\n ▐▛███▛█   Claude Code v2.1.280\n▝▜██████▀  deepseek-flash · API Usage Billing\n  ▝▝ ▝▝    ~/work/_temp/tui-evidence/workspace\n\n\n❯ Test 29d2e615-eaeb-44b9-a1ab-9139bfde522b. Call the tui wait_for_release tool exactly once and wait for its \n  result. Then answer in one short plain English sentence containing the exact receipt returned by the tool.  \n  Do not use other tools or write files. Do not respond before the tool returns.                              \n\n● I'll call the tool now.\n\n  Called tui \n\n● The test received receipt receipt_0ea500e2fb374a6f981c1055cbc15d23.\n\n✻ Cooked for 5s · done 11:55 AM\n\n\n\n\n\n\n\n\n\n\n                                                                                Ctrl+Y to paste deleted text\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯  \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+        },
+        {
+          "stage": "redraw",
+          "text": "\n ▐▛███▛█   Claude Code v2.1.280\n▝▜██████▀  deepseek-flash · API Usage Billing\n  ▝▝ ▝▝    ~/work/_temp/tui-evidence/workspace\n\n\n❯ Test 29d2e615-eaeb-44b9-a1ab-9139bfde522b. Call the tui wait_for_release tool exactly     \n  once and wait for its result. Then answer in one short plain English sentence containing  \n  the exact receipt returned by the tool. Do not use other tools or write files. Do not     \n  respond before the tool returns.                                                          \n\n● I'll call the tool now.\n\n  Called tui \n\n● The test received receipt receipt_0ea500e2fb374a6f981c1055cbc15d23.\n\n✻ Cooked for 5s · done 11:55 AM\n\n\n\n\n\n                                                                          ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────\n❯  \n────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents\n\n\n\n"
+        }
+      ]
+    }
+  }
+}

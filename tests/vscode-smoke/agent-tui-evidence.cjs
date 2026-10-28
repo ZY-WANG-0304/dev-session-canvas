@@ -5,7 +5,7 @@ function parseEvents(text) {
   return text.slice(0, text.lastIndexOf('\n') + 1).split('\n').filter(Boolean).map(JSON.parse);
 }
 
-function observeTurn(events, { provider, prompt, workspace, submittedAt, toolStart, toolEnd }) {
+function observeTurn(events, { provider, prompt, workspace, submittedAt, toolStart, toolEnd, expectedSessionId }) {
   const starts = events.filter(event => event.hook_event_name === 'UserPromptSubmit');
   assert(starts.length <= 1, 'Unexpected extra submitted turn or hook continuation');
   if (!starts.length) {
@@ -16,6 +16,9 @@ function observeTurn(events, { provider, prompt, workspace, submittedAt, toolSta
   assert.equal(start.prompt, prompt, 'Provider observed another prompt');
   assert.equal(start.cwd, workspace, 'Provider observed another workspace');
   assert(start.session_id && start.observedAt >= submittedAt, 'Stale or missing session identity');
+  if (expectedSessionId) assert.equal(start.session_id, expectedSessionId, 'Unexpected private CLI session');
+  if (provider === 'codex') assert(typeof start.turn_id === 'string' && start.turn_id,
+    'Codex submission requires its actual turn id');
   const scoped = events.slice(events.indexOf(start));
   for (const event of scoped) {
     assert.equal(event.session_id, start.session_id, 'Cross-session provider event');
@@ -38,7 +41,7 @@ function observeTurn(events, { provider, prompt, workspace, submittedAt, toolSta
   assert(!prompt.includes(toolEnd.receipt), 'Tool receipt must not occur in submitted prompt');
   if (provider === 'codex') assert(typeof stop.turn_id === 'string' && stop.turn_id,
     'Codex completion requires its actual turn id');
-  if (provider === 'codex' && start.turn_id) assert.equal(stop.turn_id, start.turn_id, 'Cross-turn completion');
+  if (provider === 'codex') assert.equal(stop.turn_id, start.turn_id, 'Cross-turn completion');
   return { sessionId: start.session_id, turnId: stop.turn_id ?? `prompt@${start.observedAt}`,
     completed: true, answer: stop.last_assistant_message, completedAt: stop.observedAt };
 }

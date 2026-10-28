@@ -1,6 +1,6 @@
 # Smoke 重划设计的可读目录与覆盖映射
 
-原始目录设计输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`；静态报告不构成产品验收。2026-10-20按用户授权在PR335实现十一项非真实TUI默认source/packaged入口，实际映射148/4；四项真实TUI仍待覆盖，运行证据与历史输入分别记录。设计见[场景与子场景边界](../../../design-docs/smoke-scenario-boundaries.md)，原[现状六图](../smoke/README.md)保持。
+原始目录设计输入为 `50e201caefb7c7d20ee2818455318fc33d8a2ba9`；静态报告不构成产品验收。2026-10-20按用户授权在PR335实现十一项非真实TUI默认source/packaged入口，实际映射148/4；当时四项真实TUI仍待覆盖。2026-10-28 PR341 已实现四项默认 source/packaged 入口，映射现为152/0；产品验收仍待实际结果，见[本轮记录](../../smoke-real-tui-coverage/README.md)。运行证据与历史输入分别记录。设计见[场景与子场景边界](../../../design-docs/smoke-scenario-boundaries.md)，原[现状六图](../smoke/README.md)保持。
 
 ## 原入口迁移
 

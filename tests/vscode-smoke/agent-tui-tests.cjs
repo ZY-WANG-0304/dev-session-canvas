@@ -66,7 +66,8 @@ async function runProvider(config, scenario, step) {
   }
   async function observedTurn() {
     return observeTurn(await events(), { provider: config.provider, prompt: config.prompt,
-      workspace: config.workspace, submittedAt, toolStart, toolEnd });
+      workspace: config.workspace, submittedAt, toolStart, toolEnd,
+      expectedSessionId: config.provider === 'claude' ? config.sessionId : undefined });
   }
   function checkIdentity(snapshot) {
     assert(node(snapshot)?.metadata.agent.liveSession, 'Original CLI must remain live');
