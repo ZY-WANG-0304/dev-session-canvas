@@ -16,9 +16,10 @@ export async function deleteDisconnectedRuntimeNode({ directory, backend, owner,
   const module = { exports: {} };
   class Disposable { dispose() {} }
   class EventEmitter { event = () => new Disposable(); fire() {} dispose() {} }
+  const warnings = [];
   const vscode = { Disposable, EventEmitter, ThemeIcon: class {}, TreeItem: class {},
     ExtensionMode: { Test: 3, Development: 2, Production: 1 }, TreeItemCollapsibleState: { None: 0 },
-    l10n: { t: message => message }, window: {}, workspace: { workspaceFolders: [], isTrusted: true },
+    l10n: { t: message => message }, window: { showWarningMessage: async (...args) => { warnings.push(args); } }, workspace: { workspaceFolders: [], isTrusted: true },
     Uri: { file: fsPath => ({ fsPath, scheme: 'file' }) } };
   new Function('require', 'module', 'exports', '__dirname', '__filename', built.outputFiles[0].text)(
     name => name === 'vscode' ? vscode : require(name), module, module.exports, directory, path.join(directory, 'host.cjs'));
@@ -66,7 +67,9 @@ export async function deleteDisconnectedRuntimeNode({ directory, backend, owner,
     host.bindRuntimeSession(node.id, kind, sessionId, storage, backend.kind);
     await host.deleteNode(node.id);
     assert.equal(host.state.nodes.length, 0, JSON.stringify(messages));
-    assert(messages.some(message => message.payload?.message?.startsWith('Node removed.')));
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].length, 1);
+    assert.match(warnings[0][0], /background Agent or terminal process may still be running/);
     const prepared = events.find(event => event.name === 'runtime/disconnectedNodeRemovalPrepared');
     assert(prepared);
     const receipt = JSON.parse(await readFile(prepared.detail.receiptPath, 'utf8'));

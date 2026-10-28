@@ -87,7 +87,8 @@ const bundled = await esbuild.build({
             env: { appName: 'VS Code Test', shell: '/controlled/shell' },
             workspace: { isTrusted: true, workspaceFolders: [],
               getConfiguration: () => ({ get: (_key, fallback) => fallback, inspect: () => undefined }) },
-            window: { showErrorMessage: async () => undefined },
+            window: { showErrorMessage: async () => undefined, warningMessages: [],
+              showWarningMessage(...args) { this.warningMessages.push(args); return new Promise(() => {}); } },
             Uri: { file: fsPath => ({ fsPath, path: fsPath, scheme: 'file' }) }
           };
         ` : `
@@ -8629,6 +8630,7 @@ if (process.env.DEV_SESSION_CANVAS_TAKEOVER_NATIVE === '1') {
 for (const kind of ['agent', 'terminal']) {
   for (const code of ['ENOENT', 'ECONNREFUSED']) {
     test(`disconnected node deletion persists ${kind} removal and cleanup receipt after ${code}`, async () => {
+      const warningCount = testWindow.warningMessages.length;
       const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-disconnected-delete-'));
       try {
         const f = candidateRuntimeFixture();
@@ -8639,8 +8641,16 @@ for (const kind of ['agent', 'terminal']) {
         candidateStrictDeletes(f, () => ({ first: Promise.resolve(result), current: () => result,
           submitted: false, attemptSettled: true }));
         const snapshot = path.join(directory, 'canvas-state.json');
-        f.host.persistState = async () => writeFile(snapshot, JSON.stringify(f.host.state));
-        await f.host.deleteNode(session.nodeId);
+        const saving = deferred(), releaseSave = deferred();
+        f.host.persistState = async () => {
+          saving.resolve(); await releaseSave.promise;
+          await writeFile(snapshot, JSON.stringify(f.host.state));
+        };
+        const deletion = f.host.deleteNode(session.nodeId);
+        await saving.promise;
+        assert.equal(testWindow.warningMessages.length, warningCount, 'no warning before durable removal');
+        releaseSave.resolve();
+        await deletion; // The notification remains open; it must not block deletion.
         const loaded = JSON.parse(await readFile(snapshot, 'utf8'));
         assert(!loaded.nodes.some(node => node.id === session.nodeId), JSON.stringify(f.posted));
         const receipts = await readdir(path.join(directory, 'unconfirmed-runtime-deletions-v1'));
@@ -8650,7 +8660,14 @@ for (const kind of ['agent', 'terminal']) {
         assert.equal(receipt.status, 'runtime-stop-unconfirmed');
         assert.equal(receipt.runtimeStoragePath, session.runtimeStoragePath);
         assert.equal(f.host.runtimeSessionBindings.size, 0);
-        assert(f.posted.some(message => message.payload?.message?.startsWith('Node removed.')));
+        const warnings = testWindow.warningMessages.slice(warningCount);
+        assert.equal(warnings.length, 1);
+        assert.equal(warnings[0].length, 1, 'native warning is non-modal with no confirmation action');
+        assert.match(warnings[0][0], /background Agent or terminal process may still be running/);
+        assert.match(warnings[0][0], /Check and stop it manually/);
+        assert.match(warnings[0][0], /record is retained/);
+        assert.match(warnings[0][0], /does not automatically clean up the process or record/);
+        assert(!f.posted.some(message => message.type === 'host/error'), 'do not duplicate the warning as a Canvas error');
         assert.equal(f.providers.length, 0);
         // A stale second window editing the original node cannot resurrect the committed removal.
         const stale = structuredClone(before);
@@ -8665,6 +8682,7 @@ for (const kind of ['agent', 'terminal']) {
 
 for (const scenario of ['permission', 'server-rejection', 'receipt-write', 'replacement', 'canvas-save']) {
   test(`disconnected node deletion does not claim success after ${scenario}`, async () => {
+    const warningCount = testWindow.warningMessages.length;
     const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-disconnected-reject-'));
     try {
       const f = candidateRuntimeFixture();
@@ -8682,7 +8700,7 @@ for (const scenario of ['permission', 'server-rejection', 'receipt-write', 'repl
       });
       if (scenario === 'canvas-save') f.host.persistState = async () => { throw new Error('save failed'); };
       await f.host.deleteNode(session.nodeId);
-      assert(!f.posted.some(message => message.payload?.message?.startsWith('Node removed.')));
+      assert.equal(testWindow.warningMessages.length, warningCount);
       if (scenario !== 'canvas-save') assert(f.host.state.nodes.some(node => node.id === session.nodeId));
       assert(f.posted.some(message => message.type === 'host/error'));
       if (scenario === 'receipt-write') assert.equal(await readFile(path.join(directory, 'unconfirmed-runtime-deletions-v1'), 'utf8'), 'obstruction');
@@ -8691,6 +8709,7 @@ for (const scenario of ['permission', 'server-rejection', 'receipt-write', 'repl
 }
 
 test('disconnected node deletion preserves a replacement arriving during receipt persistence', async () => {
+  const warningCount = testWindow.warningMessages.length;
   const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-disconnected-race-'));
   const fsPromises = createRequire(import.meta.url)('fs/promises');
   const originalOpen = fsPromises.open;
@@ -8712,10 +8731,23 @@ test('disconnected node deletion preserves a replacement arriving during receipt
     node.metadata.agent = { ...node.metadata.agent, runtimeSessionId: 'replacement-during-save' };
     release.resolve(); await deletion;
     assert.equal(f.host.state.nodes.find(node => node.id === session.nodeId).metadata.agent.runtimeSessionId, 'replacement-during-save');
-    assert(!f.posted.some(message => message.payload?.message?.startsWith('Node removed.')));
+    assert.equal(testWindow.warningMessages.length, warningCount);
     assert(f.posted.some(message => message.payload?.message?.includes('target changed while recording')));
   } finally { release.resolve(); fsPromises.open = originalOpen; await rm(directory, { recursive: true, force: true }); }
 });
+
+for (const kind of ['agent', 'terminal']) {
+  test(`confirmed ${kind} node deletion does not warn about a background process`, async () => {
+    const f = candidateRuntimeFixture();
+    const session = addCandidateLegacyBinding(f, kind);
+    const warningCount = testWindow.warningMessages.length;
+    candidateStrictDeletes(f, () => settledLegacyDelete('legacy-acknowledged'));
+    await completed(f.clock, f.host.deleteNode(session.nodeId), 'confirmed node deletion');
+    assert(!f.host.state.nodes.some(node => node.id === session.nodeId));
+    assert.equal(testWindow.warningMessages.length, warningCount);
+    assert(!f.posted.some(message => message.type === 'host/error'));
+  });
+}
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
