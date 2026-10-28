@@ -96,3 +96,9 @@ run40692812033（d41e2b20）因 Windows 旧 Node 下载失败而未进入 TUI。
 修订：2026-10-28 d1c54b0c 的 run40691355132 再次因 macOS ARM64 编译后旧 Node 下载 120 秒超时而无法进入 TUI。为解除重复的前置阻塞，在原每请求 120 秒总期限内增加最多三次传输恢复（单次最多40秒），HTTP永久错误/hash不符不重试，记录URL和尝试阶段；设计同步 release-gate-redesign，真实localhost传输/期限/hash反例纳入既有 native-assets 回归。模型业务仍不自动重试。
 
 修订：2026-10-28 根据公开下载对照收敛为无进展恢复及校验后缓存，保留120秒总期限；工作流和本地回归已更新，完整TUI业务仍待新输入实跑。
+
+修订：2026-10-28 5252b296 的完整运行40696561957六个native目标全部通过。source的input/silence/redraw均两provider通过；footer的Codex已取得正常Stop和完整页面但5秒内产品仍running，原始工件12820093629保留。临时分支diagnose/tui-completion-state仅增加测试模式output/poll/input-ack观察，复用原source native字节、重建扩展入口，三份独立样本不签发acceptance。packaged结果继续收集。另有multi-root-real-reopen第二Host editor ready超时，独立保留。
+
+修订：2026-10-28 定向40700749341已复现：标题过滤后空输出约100ms刷新活动并取消120ms轮询；修正owned路径忽略空活动、保持标题投影。另发现Claude行内代码Markdown应与渲染文本比较，加入保留完整正文的受限inline解析及反例。首轮诊断因漏编译define进入stock路径，零模型prompt，独立保留。
+
+2026-10-28 修复后的只读诊断run40701447849（21b7554c）三份独立footer样本全部通过，两provider各三次；原五秒状态及完整正文断言不变。此为复用原native、重建观测入口的acceptance=false诊断，最终正式输入仍需完整门禁。

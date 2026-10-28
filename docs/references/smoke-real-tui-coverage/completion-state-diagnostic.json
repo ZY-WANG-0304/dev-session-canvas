@@ -1,0 +1,448 @@
+{
+  "runId": 40700749341,
+  "input": "29fcc483",
+  "acceptance": false,
+  "scope": "原生文件来自40696561957 source，扩展增加只读时间线；三份样本全部保留",
+  "samples": [
+    {
+      "artifactId": 12821012863,
+      "originalResultSha256": "69937693753ec3139ca73302dfa1f11eba0876075fbcfff33d7486a147bb0716",
+      "provider": "codex",
+      "status": "failed",
+      "error": "Timed out: product completed state",
+      "turn": {
+        "sessionId": "01a182cb-a90f-76d1-8e5c-8a9083264652",
+        "turnId": "01a182cb-aadf-76b2-97bd-9a5cd7c22164",
+        "completed": true,
+        "answer": "The receipt returned by the tool was receipt_3ffb129f8d4b4fc1820d3aabb72e91d6.",
+        "completedAt": 1793195750907
+      },
+      "failurePage": [
+        "╭───────────────────────────────────────────────────╮",
+        "│ >_ OpenAI Codex (v0.157.1)                        │",
+        "│                                                   │",
+        "│ model:     DeepSeek-Flash high   /model to change │",
+        "│ directory: /tmp/dsc-tui-workspace-8FDD0P/codex    │",
+        "╰───────────────────────────────────────────────────╯",
+        "",
+        "  Tip: New Build faster with Codex.",
+        "",
+        "",
+        "› Test 76fa9e3a-1b09-458e-a352-8eb4ee8c49a0. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+        "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+        "  write files. Do not respond before the tool returns.",
+        "",
+        "",
+        "• Called tui.wait_for_release({})",
+        "  └ receipt_3ffb129f8d4b4fc1820d3aabb72e91d6",
+        "",
+        "• The receipt returned by the tool was receipt_3ffb129f8d4b4fc1820d3aabb72e91d6.",
+        "",
+        "  13:55",
+        " ",
+        " ",
+        "› Ask Codex to do anything",
+        " ",
+        "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      "activity": [
+        {
+          "state": {
+            "oscCarryover": "",
+            "lastOutputAtMs": 12206.072887,
+            "lastSpinnerAtMs": 7271.740299,
+            "lastAbnormalStreamScanLength": 574,
+            "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+            "lastBellAtMs": 7271.740299
+          },
+          "now": 12263.921129,
+          "polling": true,
+          "tailTrace": [
+            {
+              "phase": "output",
+              "at": 11496.245055,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 11496.187488,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 581,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 11597.706165,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 11597.624202,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 580,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 11698.857496,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 11698.802313,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 579,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 11801.530248,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 11801.447143,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 578,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 11903.681066,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 11903.616626,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 577,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 12001.971086,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 12001.88181,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 576,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 12106.07372,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 12105.989132,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 575,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            },
+            {
+              "phase": "output",
+              "at": 12206.128952,
+              "detail": {
+                "length": 0,
+                "tail": ""
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 12206.072887,
+                "lastSpinnerAtMs": 7271.740299,
+                "lastAbnormalStreamScanLength": 574,
+                "abnormalStreamCarryover": "WorrWorWorkk• The• Thereceiptreturnedetoolwasreceipt_3ffb129f8d4b4fc1820d3aabb72e91d6.8d4b4fc1820d3aabb72e91d6.  › Ask Codex to do anything   DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view w :55  13:55 2 to view \u0007\n\n  13:55 2 to view \u0007\n\n  13:55 ",
+                "lastBellAtMs": 7271.740299
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "artifactId": 12821532616,
+      "originalResultSha256": "8b14a861765632047bfd73ef3cd5fdf8874e2fc423b16e52f0e9458118f1c3b4",
+      "provider": "codex",
+      "status": "passed",
+      "error": null,
+      "turn": {
+        "sessionId": "01a182cb-8c98-7f73-b876-68a85d237e77",
+        "turnId": "01a182cb-8e57-7963-b7db-84950252ddb0",
+        "completed": true,
+        "answer": "The tool returned receipt_8d93ef96d52143879091b314314dd637.",
+        "completedAt": 1793195743070
+      },
+      "failurePage": null,
+      "activity": []
+    },
+    {
+      "artifactId": 12821532616,
+      "originalResultSha256": "9ea5f8f152db01a7ff974880e8e1117ec54e3dac85d28e23e5ca502a88190525",
+      "provider": "claude",
+      "status": "failed",
+      "error": "Timed out: actual answer above real footer",
+      "turn": {
+        "sessionId": "14457da9-d168-465d-980f-59d9bf7bb15c",
+        "turnId": "prompt@1793195746802",
+        "completed": true,
+        "answer": "The tool returned the receipt `receipt_9e5dbc75144749f8aefbe28d9f98fc6c`.",
+        "completedAt": 1793195748844
+      },
+      "failurePage": [
+        "",
+        " ▐▛███▛█   Claude Code v2.1.280",
+        "▝▜██████▀  deepseek-flash · API Usage Billing",
+        "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-IpgObw/claude",
+        "",
+        "",
+        "❯ Test ded7ce70-24da-4855-b732-4ebbbbaab45a. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+        "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+        "  write files. Do not respond before the tool returns.                                                                       ",
+        "",
+        "  Called tui ",
+        "",
+        "● The tool returned the receipt receipt_9e5dbc75144749f8aefbe28d9f98fc6c.",
+        "",
+        "✻ Worked for 2s · done 1:55 PM",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "                                                                                                           ",
+        "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+        "❯  ",
+        "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+        "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+      ],
+      "activity": [
+        {
+          "state": {
+            "oscCarryover": "",
+            "lastOutputAtMs": 19641.67205,
+            "lastSpinnerAtMs": 19641.67205,
+            "lastAbnormalStreamScanLength": 2231,
+            "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+          },
+          "now": 21985.78425,
+          "polling": false,
+          "tailTrace": [
+            {
+              "phase": "poll",
+              "at": 20489.114147,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 20609.873611,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 20730.132073,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 20850.489135,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 20970.934562,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 21092.458332,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 21212.70545,
+              "detail": {
+                "shouldTransition": false,
+                "shouldKeepPolling": true
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            },
+            {
+              "phase": "poll",
+              "at": 21333.981257,
+              "detail": {
+                "shouldTransition": true,
+                "shouldKeepPolling": false,
+                "reason": "fallback"
+              },
+              "activity": {
+                "oscCarryover": "",
+                "lastOutputAtMs": 19641.67205,
+                "lastSpinnerAtMs": 19641.67205,
+                "lastAbnormalStreamScanLength": 2231,
+                "abnormalStreamCarryover": "llingtui…1Incubatin*(1s · ↓2 tokens)✶3 · thinking)✻Incubating…11 tokens · thinking)✽Incubating…5Incubating…7an8thinking 20thinking✻bi2thinking4thinking Called tui ●lreturnedthereceiptreceipt_9e5dbc75144749f8aefbe28d9f98fc6c.batrunning Stop hook · 2s · ↓ 24 tokens · thinking)✶3✻Worked for 2s · done 1:55 PM❯ ← for agents"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "artifactId": 12821502587,
+      "originalResultSha256": "4395a73025e7e26677f88b9cd66602665da1b89fb40c423db32060d2194cbb0a",
+      "provider": "codex",
+      "status": "passed",
+      "error": null,
+      "turn": {
+        "sessionId": "01a182cb-b2f1-70a0-9960-0f3c94f74d42",
+        "turnId": "01a182cb-b4e5-7e42-ad31-00063ca0abba",
+        "completed": true,
+        "answer": "The tool returned the receipt receipt_58c3ea2a7ae447c8bed09a14d4385875.",
+        "completedAt": 1793195753361
+      },
+      "failurePage": null,
+      "activity": []
+    },
+    {
+      "artifactId": 12821502587,
+      "originalResultSha256": "1eee40d5c6b348e22f53ef852fcdcca49f5509f66760ff05bb7caaa4ca09e6ec",
+      "provider": "claude",
+      "status": "passed",
+      "error": null,
+      "turn": {
+        "sessionId": "e5359a7d-4675-4239-aabf-7c715cbb8934",
+        "turnId": "prompt@1793195757532",
+        "completed": true,
+        "answer": "The tool returned the receipt receipt_af14fbf4bbd846deb25edf2b5e530e40.",
+        "completedAt": 1793195759711
+      },
+      "failurePage": null,
+      "activity": []
+    }
+  ]
+}

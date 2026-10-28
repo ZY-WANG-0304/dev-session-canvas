@@ -45,6 +45,17 @@ test('actual varying answer must be fully present above composer, including fold
   assert(draftInComposer(['• Tool log DRAFT', '❯ DRAFT'], 'DRAFT'));
   assert(!draftInComposer(['• Tool log DRAFT', '❯'], 'DRAFT'));
 });
+test('compare full rendered inline content without erasing literal or missing characters', () => {
+  const plain = `The tool returned ${receipt}.`;
+  const markdown = 'The tool returned `' + receipt + '`.';
+  assert(answerWithFooter(['● ' + plain, '❯'], markdown));
+  assert(answerWithFooter(['● ' + plain, '❯'], '**The tool** returned `' + receipt + '`.'));
+  assert(!answerWithFooter([receipt, '❯'], markdown));
+  assert(!answerWithFooter([plain.replace('returned ', ''), '❯'], markdown));
+  assert(!answerWithFooter([plain.replace('receipt_', 'receipt'), '❯'], markdown));
+  assert(!answerWithFooter([plain, '❯'], 'The tool returned \\`' + receipt + '\\`.'));
+  assert(!answerWithFooter([plain, '❯'], 'The tool returned ![hidden](receipt).'));
+});
 test('partial append cannot invent an event; corrupt complete JSON fails', () => {
   assert.deepEqual(parseEvents(JSON.stringify(start) + '\n{"incomplete"'), [start]);
   assert.throws(() => parseEvents('{broken}\n'));

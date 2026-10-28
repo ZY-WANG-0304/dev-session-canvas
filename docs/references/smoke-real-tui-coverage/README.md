@@ -56,3 +56,13 @@ run40691355132（d1c54b0c）再次在 macOS ARM64 编译后旧 Node16.17.1 下�
 run40692812033（d41e2b20）在 Windows 旧 Node 下载处失败，未执行 TUI。独立 run40694396583 的 [六份公开下载对照](supplier-download-probe.json) 记录 Node buffer、stream 与 curl：有的独立 runner 亚秒完成，有的120秒仅收到部分字节，curl 也失败。不同 VM 的结果不能证明读取方法的因果差异，acceptance=false。
 
 当前传输仍限制每请求120秒、最多三次，将40秒硬切片改为40秒无字节进展窗口。非Linux CI 缓存经官方 hash 核验的供应商原文件，缓存键包含目标和版本；每次使用重新 GET 官方 SHASUMS256.txt 并验证缓存内容。损坏视为miss，重新下载hash不符仍失败；仅成功 native load 后保存缓存，不缓存编译产物或验收回执。持续传输反例先红后绿，缓存首次写入、命中、损坏恢复和每次获取checksum的本地真实HTTP回归通过。
+
+## 第三轮产品与完成时序根因
+
+run40696561957 / 5252b296 的六个native目标通过，八个TUI job实际结果见 [原回执摘要](product-run-40696561957.json)：12次provider场景通过、source footer与packaged silence的Codex在正常Stop后仍running，后续两次Claude未执行；清理和Host退出均通过。不能把各路径的局部结果拼为完整验收。旧multi-root-real-reopen第二Host editor ready超时单独保留，工件12821370557；systemd-user-real-reopen本轮通过。
+
+[只读时间线诊断](completion-state-diagnostic.json) run40700749341复现了约100ms一次的空observable输出更新lastOutput并重排120ms轮询；这些是已过滤的终端标题更新。只让非空observable触发活动及轮询，标题投影与原输出帧仍保留。正确时钟模型的owner回归在原实现失败、修复后通过；完整Host接线648/648、TUI证据9/9、typecheck通过。诊断另一份样本的Claude用行内代码包裹receipt，页面正确渲染而原比较失败，改为解析已知inline显示语义后比较完整正文；字面转义、丢词和丢字符反例保留。
+
+最初诊断40700262735因手动重建漏编译profile/admission define进入stock路径，零模型prompt，未产生业务证据。修正后才得到上述时间线；诊断始终acceptance=false。修复后的正式source/packaged输入仍需重跑。
+
+2026-10-28 修复后的只读诊断run40701447849（21b7554c）三份独立footer样本全部通过，两provider各三次；原五秒状态及完整正文断言不变。此为复用原native、重建观测入口的acceptance=false诊断，最终正式输入仍需完整门禁。

@@ -19028,7 +19028,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (record.kind === 'agent') {
       const resume = this.readAgentResumeContextFromOutput(business);
       if (resume && (!business.agentResume?.sessionId || record.execution.snapshot().stopRequested)) business.agentResume = resume;
-      if (shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) {
+      // Title-only OSC updates contain no terminal activity. Re-arming the
+      // timer for each empty projection can otherwise starve completion polls.
+      if (observable.length > 0 && shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) {
         recordAgentOutputHeuristics(business.agentActivity!, observable, business.buffer, business.agentProvider,
           this.nonNativeExecutionOwner!.options.scheduler.now());
         this.scheduleNonNativeAgentActivity(record);

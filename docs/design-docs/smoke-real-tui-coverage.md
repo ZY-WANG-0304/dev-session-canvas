@@ -43,3 +43,9 @@ CI 在 `ci-validation.yml` 的四项 source/packaged job 安装固定 CLI，只�
 Actions 40683639714 的 Codex / Claude 私有 PTY 探索均通过，观察到工具等待、未提交草稿、当前 Stop 回答和 resize 后呈现。Claude trust 初始化复用仓库已验证的 End / 两次稳定 Yes / 唯一 Enter 规则。完整合同回归 139/139、独立证据与真实工具/hook 测试 7/7 通过。四项产品 source / packaged CI 仍待验，证据见 [验证记录](../references/smoke-real-tui-coverage/README.md)。
 
 首轮产品 run40683646799 四项 Codex source 已通过，Claude 均在启动时继承仓库 CLAUDE.md 导入菜单而失败，修复 cwd 隔离后完整新输入待验。配置隔离/清理新增回归通过（test:agent-tui 共 8/8）；原始失败及另一个既有 systemd ready 失败分别保留在验证记录。
+
+## 完成状态与正文渲染的实跑修正
+
+run40696561957 的 source footer / packaged silence 在 Codex 正常 Stop 后仍为 running。定向 run40700749341 记录到约100ms一次、标题过滤后长度为0的输出；`consumeNonNativeHostBusinessOutput` 仍刷新lastOutput并重排120ms轮询，使轮询长期无法执行。修正规则为：标题继续更新与投影，但空的可观察输出不记录Agent活动、不取消已有轮询；真实正文、控制序列和spinner仍保留原行为。以真实owner接线回归确认持续标题更新不延后完成，处理中真实spinner不提前完成。
+
+同轮诊断Claude在正常回答里用行内代码包裹receipt，页面去掉反引号，而hook保留Markdown。证据比较使用现有markdown-it解析本次完整回答，仅允许文本、行内代码、强调和换行的已知显示语义；未知结构拒绝，转为显示文字后仍只归一空白和零宽字符，不能删除缺失词句、receipt字符或字面反引号。原prompt/turn/tool因果检查不变，不要求模型遵循固定文案或格式。

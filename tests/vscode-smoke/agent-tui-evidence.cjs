@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const markdown = require('markdown-it')({ html: false });
 
 function parseEvents(text) {
   // Ignore only the final incomplete append, never a malformed complete record.
@@ -49,10 +50,22 @@ function observeTurn(events, { provider, prompt, workspace, submittedAt, toolSta
 }
 
 function compact(value) { return value.replace(/[\s\u200b\u200c\u200d]/gu, ''); }
+function renderedAnswer(answer) {
+  const tokens = markdown.parseInline(answer, {})[0].children;
+  let text = '';
+  for (const token of tokens) {
+    if (['text', 'code_inline'].includes(token.type)) text += token.content;
+    else if (['softbreak', 'hardbreak'].includes(token.type)) text += '\n';
+    else if (!['em_open', 'em_close', 'strong_open', 'strong_close'].includes(token.type)) return undefined;
+  }
+  return text;
+}
 function answerWithFooter(lines, answer) {
   assert(Array.isArray(lines) && lines.every(line => typeof line === 'string'));
   assert(answer?.trim(), 'Empty actual answer');
-  const wanted = compact(answer);
+  const rendered = renderedAnswer(answer);
+  if (!rendered?.trim()) return false;
+  const wanted = compact(rendered);
   let combined = '';
   let answerEnd = -1;
   for (let index = 0; index < lines.length; index++) {

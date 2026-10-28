@@ -1,0 +1,3032 @@
+{
+  "runId": 40696561957,
+  "head": "5252b2962166ff827ef9bc98c149a0f4f4eba702",
+  "acceptance": false,
+  "scope": "12 provider场景通过，2 Codex完成状态失败，后续2 Claude未执行；不合并不同输入结果为完整通过",
+  "cases": [
+    {
+      "artifactId": 12820093629,
+      "payload": "source-host",
+      "scenario": "agent-tui/answer-with-footer",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "9ba85f2e12b44f5121ac8b384557b81ea74e614bd5df8fd19f75e1cb98a7e998",
+      "status": "failed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "d56365df9cedc1c56e43fb13966bfc6d28a955eafd2b4ecdf5f5aaaf930eed7d"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "failed",
+        "assert": "not-run",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "2654c94c609d215ca6e8c698b4c0d89100973c18d59b9a69ae0b8d98cb89d705",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "failed",
+            "phase": "action",
+            "reason": "Timed out: product completed state"
+          },
+          {
+            "id": "codex-assert",
+            "status": "not-run"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "not-run"
+          },
+          {
+            "id": "claude-action",
+            "status": "not-run"
+          },
+          {
+            "id": "claude-assert",
+            "status": "not-run"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "failed",
+          "error": "Timed out: product completed state",
+          "identity": {
+            "nodeId": "agent-2-c16d9416-3b95-47cc-a176-13cd015e061a",
+            "execution": {
+              "executionId": "3a4c8022-eaa9-4658-9caa-16488ff7a245",
+              "generation": "f8dd2374-c9c8-42a5-b98b-6fef07c6fe81"
+            },
+            "sessionId": "01a182bf-d1a2-7da0-a7ef-84aca42c355e",
+            "toolStart": {
+              "callId": "eb3384e0-a0d4-43d1-9180-df7eae06eee9",
+              "pid": 2972,
+              "startedAt": 1793194973553
+            }
+          },
+          "turn": {
+            "sessionId": "01a182bf-d1a2-7da0-a7ef-84aca42c355e",
+            "turnId": "01a182bf-d35e-7ee3-b21b-fe7cf2525715",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_8d1acae36a2047258696e00c6a8f8793.",
+            "completedAt": 1793194975084
+          },
+          "toolEnd": {
+            "callId": "eb3384e0-a0d4-43d1-9180-df7eae06eee9",
+            "receipt": "receipt_8d1acae36a2047258696e00c6a8f8793",
+            "completedAt": 1793194973656
+          },
+          "events": [
+            {
+              "observedAt": 1793194972084,
+              "observerPid": 3002,
+              "session_id": "01a182bf-d1a2-7da0-a7ef-84aca42c355e",
+              "turn_id": "01a182bf-d35e-7ee3-b21b-fe7cf2525715",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-ZlVxOJ/codex",
+              "prompt": "Test f8927fd5-57da-4968-b7f7-55145db944ad. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793194975084,
+              "observerPid": 3029,
+              "session_id": "01a182bf-d1a2-7da0-a7ef-84aca42c355e",
+              "turn_id": "01a182bf-d35e-7ee3-b21b-fe7cf2525715",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-ZlVxOJ/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned the receipt receipt_8d1acae36a2047258696e00c6a8f8793."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "3a4c8022-eaa9-4658-9caa-16488ff7a245",
+                "generation": "f8dd2374-c9c8-42a5-b98b-6fef07c6fe81"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-c16d9416-3b95-47cc-a176-13cd015e061a",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:43:00.408Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-c16d9416-3b95-47cc-a176-13cd015e061a",
+                    "kind": "agent",
+                    "executionSessionId": "3a4c8022-eaa9-4658-9caa-16488ff7a245",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-ccb3e6e2-239c-4d1e-a3af-4e3602cf6102"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 177
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "c6464489c539e659974e3277097681fc74beec1df69f2832244704ee8988dfe3",
+          "sampleCount": 0,
+          "firstSample": null,
+          "lastSample": null,
+          "failurePage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-ZlVxOJ/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test f8927fd5-57da-4968-b7f7-55145db944ad. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• I'll call the wait_for_release tool once and wait for its result.",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_8d1acae36a2047258696e00c6a8f8793",
+            "",
+            "• The tool returned the receipt receipt_8d1acae36a2047258696e00c6a8f8793.",
+            "",
+            "  13:42",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "failureStatus": "running"
+        },
+        "claude": {
+          "status": "not-run"
+        }
+      }
+    },
+    {
+      "artifactId": 12821510276,
+      "payload": "source-host",
+      "scenario": "agent-tui/input-during-work",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "a28927908410bdf79436cd636b553ceae0d8c6a2be1e75d03d8bd98cedc4e527",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "d56365df9cedc1c56e43fb13966bfc6d28a955eafd2b4ecdf5f5aaaf930eed7d"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "80142e68376d93e56a7088ff48347e67ecef30b5d361c182b27e85c58e497b12",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-2-b1a07024-a774-4df5-9a8e-6e367917c8b3",
+            "execution": {
+              "executionId": "937fe64a-0576-4394-9544-5454b2f66d49",
+              "generation": "6317dd00-922a-44ac-a795-ec6613a62358"
+            },
+            "sessionId": "01a182c0-bf0a-7ae3-b0a8-57ce7526743b",
+            "toolStart": {
+              "callId": "83bf8536-2b76-4afb-84c3-aa153ab4521d",
+              "pid": 2876,
+              "startedAt": 1793195034258
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c0-bf0a-7ae3-b0a8-57ce7526743b",
+            "turnId": "01a182c0-c0c8-7210-a8d0-d49b3a928e01",
+            "completed": true,
+            "answer": "The receipt returned by the wait_for_release tool was receipt_fa7ef3e6689843508165620bd9e93533.",
+            "completedAt": 1793195038713
+          },
+          "toolEnd": {
+            "callId": "83bf8536-2b76-4afb-84c3-aa153ab4521d",
+            "receipt": "receipt_fa7ef3e6689843508165620bd9e93533",
+            "completedAt": 1793195037494
+          },
+          "events": [
+            {
+              "observedAt": 1793195032895,
+              "observerPid": 2904,
+              "session_id": "01a182c0-bf0a-7ae3-b0a8-57ce7526743b",
+              "turn_id": "01a182c0-c0c8-7210-a8d0-d49b3a928e01",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-hlYec7/codex",
+              "prompt": "Test 91162ae6-e287-40c7-8401-74c9d2df5716. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195038713,
+              "observerPid": 2933,
+              "session_id": "01a182c0-bf0a-7ae3-b0a8-57ce7526743b",
+              "turn_id": "01a182c0-c0c8-7210-a8d0-d49b3a928e01",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-hlYec7/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The receipt returned by the wait_for_release tool was receipt_fa7ef3e6689843508165620bd9e93533."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "937fe64a-0576-4394-9544-5454b2f66d49",
+                "generation": "6317dd00-922a-44ac-a795-ec6613a62358"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-b1a07024-a774-4df5-9a8e-6e367917c8b3",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:44:01.559Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-b1a07024-a774-4df5-9a8e-6e367917c8b3",
+                    "kind": "agent",
+                    "executionSessionId": "937fe64a-0576-4394-9544-5454b2f66d49",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-380799bd-1a70-4b04-a67b-08ce8db06e83"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 233
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "8b77602163ab24c2b223be80072863a381d97cd1991d33c9d09afb154728ceed",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195034409,
+            "status": "running",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-hlYec7/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 91162ae6-e287-40c7-8401-74c9d2df5716. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              " ",
+              "• Calling tui.wait_for_release({})",
+              " ",
+              "• Working (1s • esc to interrupt)",
+              " ",
+              " ",
+              "› DRAFT_9c078ce1f61b",
+              " ",
+              "  tab to queue message                                                                                    100% context left",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195040930,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-hlYec7/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 91162ae6-e287-40c7-8401-74c9d2df5716. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_fa7ef3e6689843508165620bd9e93533",
+              "",
+              "• The receipt returned by the wait_for_release tool was receipt_fa7ef3e6689843508165620bd9e93533.",
+              "",
+              "  13:43",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        },
+        "claude": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-3-1827617b-2869-4863-8d31-f780562793eb",
+            "execution": {
+              "executionId": "1ca870b8-6b91-4057-be02-d0dd758498c5",
+              "generation": "6a27b61e-29de-4741-9438-eba3a9d5e760"
+            },
+            "sessionId": "81aea812-5f31-42d6-ae33-90509798e2e3",
+            "toolStart": {
+              "callId": "fe945c36-28bd-4666-adcf-b56f197e28a2",
+              "pid": 3004,
+              "startedAt": 1793195044765
+            }
+          },
+          "turn": {
+            "sessionId": "81aea812-5f31-42d6-ae33-90509798e2e3",
+            "turnId": "prompt@1793195043495",
+            "completed": true,
+            "answer": "The tool returned receipt receipt_27d4fe7356254084be2822a5d4af2900.",
+            "completedAt": 1793195049446
+          },
+          "toolEnd": {
+            "callId": "fe945c36-28bd-4666-adcf-b56f197e28a2",
+            "receipt": "receipt_27d4fe7356254084be2822a5d4af2900",
+            "completedAt": 1793195048149
+          },
+          "events": [
+            {
+              "observedAt": 1793195043495,
+              "observerPid": 3023,
+              "session_id": "81aea812-5f31-42d6-ae33-90509798e2e3",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-hlYec7/claude",
+              "prompt": "Test 06c5d2ab-4d73-454e-b07b-b79feeee71b5. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195049446,
+              "observerPid": 3042,
+              "session_id": "81aea812-5f31-42d6-ae33-90509798e2e3",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-hlYec7/claude",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned receipt receipt_27d4fe7356254084be2822a5d4af2900."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "1ca870b8-6b91-4057-be02-d0dd758498c5",
+                "generation": "6a27b61e-29de-4741-9438-eba3a9d5e760"
+              },
+              "kind": "agent",
+              "nodeId": "agent-3-1827617b-2869-4863-8d31-f780562793eb",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:44:11.440Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-3-1827617b-2869-4863-8d31-f780562793eb",
+                    "kind": "agent",
+                    "executionSessionId": "1ca870b8-6b91-4057-be02-d0dd758498c5",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-380799bd-1a70-4b04-a67b-08ce8db06e83"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 98
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "7d868099bcb7752417390d6aa326c02a9805e60ff5c89f78a5d1b7866267338a",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195045041,
+            "status": "running",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-hlYec7/claude",
+              "",
+              "",
+              "❯ Test 06c5d2ab-4d73-454e-b07b-b79feeee71b5. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "● Thinking for 1s, calling tui…",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "✽ Boondoggling… (1s · ↓ 5 tokens)",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯ DRAFT_987f903cf79e ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle)"
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195051277,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-hlYec7/claude",
+              "",
+              "",
+              "❯ Test 06c5d2ab-4d73-454e-b07b-b79feeee71b5. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "  Thought for 1s, called tui ",
+              "",
+              "● The tool returned receipt receipt_27d4fe7356254084be2822a5d4af2900.",
+              "",
+              "✻ Crunched for 6s · done 1:44 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                               Ctrl+Y to paste deleted text",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        }
+      }
+    },
+    {
+      "artifactId": 12820203544,
+      "payload": "source-host",
+      "scenario": "agent-tui/turn-completion-redraw",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "d9c6ef521e16370fdf7c29a200b3bf6f7949385254a417e488177e2ae88efc83",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "d56365df9cedc1c56e43fb13966bfc6d28a955eafd2b4ecdf5f5aaaf930eed7d"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "db83af51aab8b0ff1c9ba92155df7d4bf2d24f1a7831cc58df19f12ee00103d4",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-2-7def6916-0afe-42fc-a533-1611798dd60c",
+            "execution": {
+              "executionId": "5c88eb6b-808c-41f6-8364-790a187c8cc2",
+              "generation": "03682aef-3fe3-47bb-87a0-8bf262c7ed66"
+            },
+            "sessionId": "01a182c0-f8ac-70b0-a24d-ae4d6eb67ca4",
+            "toolStart": {
+              "callId": "ddddf3b5-437c-4b02-9f22-e5f9301a1077",
+              "pid": 2941,
+              "startedAt": 1793195048777
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c0-f8ac-70b0-a24d-ae4d6eb67ca4",
+            "turnId": "01a182c0-fa93-79e2-afbc-6fa42fe6de55",
+            "completed": true,
+            "answer": "The TUI wait_for_release tool returned receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd.",
+            "completedAt": 1793195050092
+          },
+          "toolEnd": {
+            "callId": "ddddf3b5-437c-4b02-9f22-e5f9301a1077",
+            "receipt": "receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd",
+            "completedAt": 1793195048835
+          },
+          "events": [
+            {
+              "observedAt": 1793195047661,
+              "observerPid": 2974,
+              "session_id": "01a182c0-f8ac-70b0-a24d-ae4d6eb67ca4",
+              "turn_id": "01a182c0-fa93-79e2-afbc-6fa42fe6de55",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-f0Wh5E/codex",
+              "prompt": "Test 3e242152-258e-4e7d-b094-00fa91b3fa0f. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195050092,
+              "observerPid": 3004,
+              "session_id": "01a182c0-f8ac-70b0-a24d-ae4d6eb67ca4",
+              "turn_id": "01a182c0-fa93-79e2-afbc-6fa42fe6de55",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-f0Wh5E/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The TUI wait_for_release tool returned receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "5c88eb6b-808c-41f6-8364-790a187c8cc2",
+                "generation": "03682aef-3fe3-47bb-87a0-8bf262c7ed66"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-7def6916-0afe-42fc-a533-1611798dd60c",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:44:17.233Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-7def6916-0afe-42fc-a533-1611798dd60c",
+                    "kind": "agent",
+                    "executionSessionId": "5c88eb6b-808c-41f6-8364-790a187c8cc2",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-12511660-6756-4f52-b7b4-bd1d59b1a2ff"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 150
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "4d3ff7c250a6292943ba2597cf398a84a9ace73248339f23eccca8a2f7291a75",
+          "sampleCount": 31,
+          "firstSample": {
+            "at": 1793195053913,
+            "status": "waiting-input",
+            "lines": [
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-f0Wh5E/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: Use /export to save your conversation as Markdown.",
+              "",
+              "",
+              "› Test 3e242152-258e-4e7d-b094-00fa91b3fa0f. Call the tui wait_for_release tool exactly once and wait for its",
+              " result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use ot",
+              "her tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd",
+              "",
+              "• The TUI wait_for_release tool returned receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd.",
+              "",
+              "  13:44",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnin",
+              "gs · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 109,
+            "rows": 35
+          },
+          "lastSample": {
+            "at": 1793195057014,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-f0Wh5E/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: Use /export to save your conversation as Markdown.",
+              "",
+              "",
+              "› Test 3e242152-258e-4e7d-b094-00fa91b3fa0f. Call the tui wait_for_release tool exactly once and wait for",
+              "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the",
+              "  tool. Do not use other tools or write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd",
+              "",
+              "• The TUI wait_for_release tool returned receipt_d0ba139321ef4b9fb2dbd2a8a3178fbd.",
+              "",
+              "  13:44",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 109,
+            "rows": 35
+          }
+        },
+        "claude": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-3-a91f17a7-3d23-4099-8ecd-15ab8ef3502c",
+            "execution": {
+              "executionId": "c497256c-b7fe-4143-96f1-8d74b736feae",
+              "generation": "aa1ebe2f-ed82-4b43-9a85-396f52852b0a"
+            },
+            "sessionId": "ddd9b4ea-c192-41a0-82a8-eec55ea1da84",
+            "toolStart": {
+              "callId": "1e02fc57-5711-4a3e-83e4-1d24b0d4524c",
+              "pid": 3075,
+              "startedAt": 1793195060427
+            }
+          },
+          "turn": {
+            "sessionId": "ddd9b4ea-c192-41a0-82a8-eec55ea1da84",
+            "turnId": "prompt@1793195059101",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_d1abdf109fc94b22bad5e5cb118acc51.",
+            "completedAt": 1793195061459
+          },
+          "toolEnd": {
+            "callId": "1e02fc57-5711-4a3e-83e4-1d24b0d4524c",
+            "receipt": "receipt_d1abdf109fc94b22bad5e5cb118acc51",
+            "completedAt": 1793195060529
+          },
+          "events": [
+            {
+              "observedAt": 1793195059101,
+              "observerPid": 3094,
+              "session_id": "ddd9b4ea-c192-41a0-82a8-eec55ea1da84",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-f0Wh5E/claude",
+              "prompt": "Test 9d90df1f-df12-4ffc-851b-206cdba06f22. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195061459,
+              "observerPid": 3113,
+              "session_id": "ddd9b4ea-c192-41a0-82a8-eec55ea1da84",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-f0Wh5E/claude",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned the receipt receipt_d1abdf109fc94b22bad5e5cb118acc51."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "c497256c-b7fe-4143-96f1-8d74b736feae",
+                "generation": "aa1ebe2f-ed82-4b43-9a85-396f52852b0a"
+              },
+              "kind": "agent",
+              "nodeId": "agent-3-a91f17a7-3d23-4099-8ecd-15ab8ef3502c",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:44:26.541Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-3-a91f17a7-3d23-4099-8ecd-15ab8ef3502c",
+                    "kind": "agent",
+                    "executionSessionId": "c497256c-b7fe-4143-96f1-8d74b736feae",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-12511660-6756-4f52-b7b4-bd1d59b1a2ff"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 59
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "69d47b5fe293c169f969923a435c66e60ff9c2c553a9c12bdbe76db15b104592",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195063365,
+            "status": "waiting-input",
+            "lines": [
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-f0Wh5E/claude",
+              "",
+              "",
+              "❯ Test 9d90df1f-df12-4ffc-851b-206cdba06f22. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "● I'll call the tool now.",
+              "",
+              "  Called tui ",
+              "",
+              "● The tool returned the receipt receipt_d1abdf109fc94b22bad5e5cb118acc51.",
+              "",
+              "✻ Churned for 2s · done 1:44 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  "
+            ],
+            "cols": 109,
+            "rows": 35
+          },
+          "lastSample": {
+            "at": 1793195066369,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-f0Wh5E/claude",
+              "",
+              "",
+              "❯ Test 9d90df1f-df12-4ffc-851b-206cdba06f22. Call the tui wait_for_release tool exactly once and wait for    ",
+              "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the   ",
+              "  tool. Do not use other tools or write files. Do not respond before the tool returns.                       ",
+              "",
+              "● I'll call the tool now.",
+              "",
+              "  Called tui ",
+              "",
+              "● The tool returned the receipt receipt_d1abdf109fc94b22bad5e5cb118acc51.",
+              "",
+              "✻ Churned for 2s · done 1:44 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯ ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 109,
+            "rows": 35
+          }
+        }
+      }
+    },
+    {
+      "artifactId": 12820143878,
+      "payload": "source-host",
+      "scenario": "agent-tui/tool-network-silence",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "df1938ba04ad45cf1f8f303162634059ce2abf786ba38047119e213f11d0a8ab",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "source-build",
+          "sha256": "d56365df9cedc1c56e43fb13966bfc6d28a955eafd2b4ecdf5f5aaaf930eed7d"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "91365a8ef16562cd8279e34be97fc63f095d5d766664611b039b5ca23fb655f1",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-2-2b31f3ce-920b-4a6b-8203-2b0cb21f5623",
+            "execution": {
+              "executionId": "e2132d11-5a85-43f7-b6c7-2a9f95bbec08",
+              "generation": "9bb5ebb1-d50a-4a55-afc0-2a502ad4b686"
+            },
+            "sessionId": "01a182c1-0481-7cd1-8b93-bc90870b7119",
+            "toolStart": {
+              "callId": "fa1b84fe-0b69-4103-8c5b-3df620c242ae",
+              "pid": 2959,
+              "startedAt": 1793195052044
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c1-0481-7cd1-8b93-bc90870b7119",
+            "turnId": "01a182c1-068c-7883-98cf-f8e235377ded",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_59df3172336a4d679e4aea65051f337f.",
+            "completedAt": 1793195056466
+          },
+          "toolEnd": {
+            "callId": "fa1b84fe-0b69-4103-8c5b-3df620c242ae",
+            "receipt": "receipt_59df3172336a4d679e4aea65051f337f",
+            "completedAt": 1793195055179
+          },
+          "events": [
+            {
+              "observedAt": 1793195050734,
+              "observerPid": 2994,
+              "session_id": "01a182c1-0481-7cd1-8b93-bc90870b7119",
+              "turn_id": "01a182c1-068c-7883-98cf-f8e235377ded",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-Y5rsmi/codex",
+              "prompt": "Test 81b70255-2bfc-4ee8-9629-220eb8924c2f. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195056466,
+              "observerPid": 3023,
+              "session_id": "01a182c1-0481-7cd1-8b93-bc90870b7119",
+              "turn_id": "01a182c1-068c-7883-98cf-f8e235377ded",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-Y5rsmi/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned the receipt receipt_59df3172336a4d679e4aea65051f337f."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "e2132d11-5a85-43f7-b6c7-2a9f95bbec08",
+                "generation": "9bb5ebb1-d50a-4a55-afc0-2a502ad4b686"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-2b31f3ce-920b-4a6b-8203-2b0cb21f5623",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:44:17.763Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-2b31f3ce-920b-4a6b-8203-2b0cb21f5623",
+                    "kind": "agent",
+                    "executionSessionId": "e2132d11-5a85-43f7-b6c7-2a9f95bbec08",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-9e3c9e29-c799-4c00-9ac5-0638367d3f73"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 221
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "ea2cefddb4ae3e90d5f6bb5157ec3367ed4c4451300cbeee5cd4a8f2929a5366",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195052105,
+            "status": "running",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-Y5rsmi/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 81b70255-2bfc-4ee8-9629-220eb8924c2f. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• I'll call the wait_for_release tool once.",
+              " ",
+              "• Calling tui.wait_for_release({})",
+              " ",
+              "• Working (1s • esc to interrupt)",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195057499,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-Y5rsmi/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 81b70255-2bfc-4ee8-9629-220eb8924c2f. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• I'll call the wait_for_release tool once.",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_59df3172336a4d679e4aea65051f337f",
+              "",
+              "• The tool returned the receipt receipt_59df3172336a4d679e4aea65051f337f.",
+              "",
+              "  13:44",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        },
+        "claude": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-3-3d616b51-04ce-4a5a-adb6-f807685fc0b3",
+            "execution": {
+              "executionId": "802fed6e-258b-405a-b53f-306022feb4b8",
+              "generation": "e43a8ede-ffe2-45a3-b473-a7cba51ac3bd"
+            },
+            "sessionId": "b7236f63-8f0a-4028-be26-f81ea5c6428d",
+            "toolStart": {
+              "callId": "7e7fc48b-4359-4405-83b4-ba17abe479e8",
+              "pid": 3090,
+              "startedAt": 1793195061093
+            }
+          },
+          "turn": {
+            "sessionId": "b7236f63-8f0a-4028-be26-f81ea5c6428d",
+            "turnId": "prompt@1793195059814",
+            "completed": true,
+            "answer": "The tool returned receipt_efba2b5a7a3e4d25a1c01b9a2f7abbdb.",
+            "completedAt": 1793195065329
+          },
+          "toolEnd": {
+            "callId": "7e7fc48b-4359-4405-83b4-ba17abe479e8",
+            "receipt": "receipt_efba2b5a7a3e4d25a1c01b9a2f7abbdb",
+            "completedAt": 1793195064226
+          },
+          "events": [
+            {
+              "observedAt": 1793195059814,
+              "observerPid": 3109,
+              "session_id": "b7236f63-8f0a-4028-be26-f81ea5c6428d",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-Y5rsmi/claude",
+              "prompt": "Test 2f583872-b71b-44ed-ba67-42d5f28ae87d. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195065329,
+              "observerPid": 3128,
+              "session_id": "b7236f63-8f0a-4028-be26-f81ea5c6428d",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-Y5rsmi/claude",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned receipt_efba2b5a7a3e4d25a1c01b9a2f7abbdb."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "802fed6e-258b-405a-b53f-306022feb4b8",
+                "generation": "e43a8ede-ffe2-45a3-b473-a7cba51ac3bd"
+              },
+              "kind": "agent",
+              "nodeId": "agent-3-3d616b51-04ce-4a5a-adb6-f807685fc0b3",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:44:27.312Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-3-3d616b51-04ce-4a5a-adb6-f807685fc0b3",
+                    "kind": "agent",
+                    "executionSessionId": "802fed6e-258b-405a-b53f-306022feb4b8",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-9e3c9e29-c799-4c00-9ac5-0638367d3f73"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 98
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "272bcc495716b0b76c69d42067345c7edb52fc86991a632e99ee586923a774e0",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195061145,
+            "status": "running",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-Y5rsmi/claude",
+              "",
+              "",
+              "❯ Test 2f583872-b71b-44ed-ba67-42d5f28ae87d. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "● Calling tui…",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "✻ Choreographing… ",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · esc to interrupt · ← for agents"
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195067133,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-Y5rsmi/claude",
+              "",
+              "",
+              "❯ Test 2f583872-b71b-44ed-ba67-42d5f28ae87d. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "  Called tui ",
+              "",
+              "● The tool returned receipt_efba2b5a7a3e4d25a1c01b9a2f7abbdb.",
+              "",
+              "✻ Churned for 5s · done 1:44 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        }
+      }
+    },
+    {
+      "artifactId": 12821770607,
+      "payload": "packaged-host",
+      "scenario": "agent-tui/tool-network-silence",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "2dfc39770d3d021c210aa212208148c5f065267a4c1e443eb5fb565ef643e412",
+      "status": "failed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "fc1015c275a084f59bfea31e51b826f9f2b81d56a7af4367f35d9c0ea3e103d8"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "failed",
+        "assert": "not-run",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "5727ef681207994c638280ed3d505b7dc10cb7d6e0310797eb19c9affbb7cff2",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "failed",
+            "phase": "action",
+            "reason": "Timed out: product completed state"
+          },
+          {
+            "id": "codex-assert",
+            "status": "not-run"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "not-run"
+          },
+          {
+            "id": "claude-action",
+            "status": "not-run"
+          },
+          {
+            "id": "claude-assert",
+            "status": "not-run"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "failed",
+          "error": "Timed out: product completed state",
+          "identity": {
+            "nodeId": "agent-2-1e5a2df9-709e-4253-ac99-c119b7b230ea",
+            "execution": {
+              "executionId": "4b4c6184-9f64-4940-b33b-e38c1c1faad1",
+              "generation": "efe8605a-af67-4fa8-8fdc-ac7019edd6a2"
+            },
+            "sessionId": "01a182c6-b31e-7911-8610-0f55ac213ced",
+            "toolStart": {
+              "callId": "ef79106f-bd34-4e58-90f8-f0910e6a6dd7",
+              "pid": 2909,
+              "startedAt": 1793195424226
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c6-b31e-7911-8610-0f55ac213ced",
+            "turnId": "01a182c6-b514-7951-9f99-77d051be19aa",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_b5df782d40e84e2d8c9a6f5f59b2c304.",
+            "completedAt": 1793195428386
+          },
+          "toolEnd": {
+            "callId": "ef79106f-bd34-4e58-90f8-f0910e6a6dd7",
+            "receipt": "receipt_b5df782d40e84e2d8c9a6f5f59b2c304",
+            "completedAt": 1793195427307
+          },
+          "events": [
+            {
+              "observedAt": 1793195423079,
+              "observerPid": 2938,
+              "session_id": "01a182c6-b31e-7911-8610-0f55ac213ced",
+              "turn_id": "01a182c6-b514-7951-9f99-77d051be19aa",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-V4JTVi/codex",
+              "prompt": "Test d932437c-26a9-4abb-838f-8447fa7eef1a. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195428386,
+              "observerPid": 2968,
+              "session_id": "01a182c6-b31e-7911-8610-0f55ac213ced",
+              "turn_id": "01a182c6-b514-7951-9f99-77d051be19aa",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-V4JTVi/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned the receipt receipt_b5df782d40e84e2d8c9a6f5f59b2c304."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "4b4c6184-9f64-4940-b33b-e38c1c1faad1",
+                "generation": "efe8605a-af67-4fa8-8fdc-ac7019edd6a2"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-1e5a2df9-709e-4253-ac99-c119b7b230ea",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:50:33.641Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-1e5a2df9-709e-4253-ac99-c119b7b230ea",
+                    "kind": "agent",
+                    "executionSessionId": "4b4c6184-9f64-4940-b33b-e38c1c1faad1",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-30be623a-ec6e-4e52-aca2-7e681d7ceb5b"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 252
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "d2a87ad4a329710e06575047eee86fe692b977cd18892fae706a4c2770f22b03",
+          "sampleCount": 29,
+          "firstSample": {
+            "at": 1793195424253,
+            "status": "running",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-V4JTVi/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test d932437c-26a9-4abb-838f-8447fa7eef1a. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• I'll call the wait tool now.",
+              " ",
+              "• Working (1s • esc to interrupt)",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195427184,
+            "status": "running",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-V4JTVi/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test d932437c-26a9-4abb-838f-8447fa7eef1a. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• I'll call the wait tool now.",
+              " ",
+              "• Calling tui.wait_for_release({})",
+              " ",
+              "• Working (4s • esc to interrupt)",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "failurePage": [
+            "╭───────────────────────────────────────────────────╮",
+            "│ >_ OpenAI Codex (v0.157.1)                        │",
+            "│                                                   │",
+            "│ model:     DeepSeek-Flash high   /model to change │",
+            "│ directory: /tmp/dsc-tui-workspace-V4JTVi/codex    │",
+            "╰───────────────────────────────────────────────────╯",
+            "",
+            "  Tip: New Build faster with Codex.",
+            "",
+            "",
+            "› Test d932437c-26a9-4abb-838f-8447fa7eef1a. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+            "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+            "  write files. Do not respond before the tool returns.",
+            "",
+            "",
+            "• I'll call the wait tool now.",
+            "",
+            "• Called tui.wait_for_release({})",
+            "  └ receipt_b5df782d40e84e2d8c9a6f5f59b2c304",
+            "",
+            "• The tool returned the receipt receipt_b5df782d40e84e2d8c9a6f5f59b2c304.",
+            "",
+            "  13:50",
+            " ",
+            " ",
+            "› Ask Codex to do anything",
+            " ",
+            "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "failureStatus": "running"
+        },
+        "claude": {
+          "status": "not-run"
+        }
+      }
+    },
+    {
+      "artifactId": 12821481286,
+      "payload": "packaged-host",
+      "scenario": "agent-tui/input-during-work",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "2682ae7d2d51947a5ffaa7fb3ee581b2bc0d86245487c9dae1b319e5eef5aa09",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "fc1015c275a084f59bfea31e51b826f9f2b81d56a7af4367f35d9c0ea3e103d8"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "73de92f20eb90a0a9f9c5f00e1684440874c3d469012a0e92bb5341786a7f194",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-2-e5e51755-bbf4-4958-b961-6fc7f5935a61",
+            "execution": {
+              "executionId": "e6652882-b9f8-415c-aa79-c4c492581637",
+              "generation": "da440ad8-65c1-4655-99c2-8208c55c2e56"
+            },
+            "sessionId": "01a182c4-eeb7-7cd3-8574-16c3b0c29ac6",
+            "toolStart": {
+              "callId": "8de12327-991d-42ea-b87e-8d6718a5b59f",
+              "pid": 2737,
+              "startedAt": 1793195308492
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c4-eeb7-7cd3-8574-16c3b0c29ac6",
+            "turnId": "01a182c4-f06d-7750-a8f7-8a4a089ca730",
+            "completed": true,
+            "answer": "The wait_for_release tool returned receipt_e5717b7ec7454d0694f8901f4b7de072.",
+            "completedAt": 1793195313125
+          },
+          "toolEnd": {
+            "callId": "8de12327-991d-42ea-b87e-8d6718a5b59f",
+            "receipt": "receipt_e5717b7ec7454d0694f8901f4b7de072",
+            "completedAt": 1793195311726
+          },
+          "events": [
+            {
+              "observedAt": 1793195307182,
+              "observerPid": 2770,
+              "session_id": "01a182c4-eeb7-7cd3-8574-16c3b0c29ac6",
+              "turn_id": "01a182c4-f06d-7750-a8f7-8a4a089ca730",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-XvofO3/codex",
+              "prompt": "Test 884314ae-dd75-4e7e-bcb0-7c25084d35d7. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195313125,
+              "observerPid": 2802,
+              "session_id": "01a182c4-eeb7-7cd3-8574-16c3b0c29ac6",
+              "turn_id": "01a182c4-f06d-7750-a8f7-8a4a089ca730",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-XvofO3/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The wait_for_release tool returned receipt_e5717b7ec7454d0694f8901f4b7de072."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "e6652882-b9f8-415c-aa79-c4c492581637",
+                "generation": "da440ad8-65c1-4655-99c2-8208c55c2e56"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-e5e51755-bbf4-4958-b961-6fc7f5935a61",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:48:34.478Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-e5e51755-bbf4-4958-b961-6fc7f5935a61",
+                    "kind": "agent",
+                    "executionSessionId": "e6652882-b9f8-415c-aa79-c4c492581637",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-34cdbfc6-8c41-4909-a857-140fb98e872b"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 225
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "a110aea1ff557d843fa4a9e02a2449d8a7c9e16081daa85d3e278f7ca16a573e",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195308635,
+            "status": "running",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-XvofO3/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 884314ae-dd75-4e7e-bcb0-7c25084d35d7. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              " ",
+              "• Calling tui.wait_for_release({})",
+              " ",
+              "• Working (1s • esc to interrupt)",
+              " ",
+              " ",
+              "› DRAFT_a04b774684c1",
+              " ",
+              "  tab to queue message                                                                                    100% context left",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195314142,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-XvofO3/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 884314ae-dd75-4e7e-bcb0-7c25084d35d7. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_e5717b7ec7454d0694f8901f4b7de072",
+              "",
+              "• The wait_for_release tool returned receipt_e5717b7ec7454d0694f8901f4b7de072.",
+              "",
+              "  13:48",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        },
+        "claude": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-3-344d20e1-5ab2-4e06-9c3f-51761b2edcac",
+            "execution": {
+              "executionId": "651dab41-3447-423a-94cb-1fc97dc05f57",
+              "generation": "a6c7c199-dafa-461b-a5b7-4f92ac5faab9"
+            },
+            "sessionId": "47125446-565b-4750-bef7-56721c712e0b",
+            "toolStart": {
+              "callId": "ad9b6604-4764-496e-a517-cac43a0327f9",
+              "pid": 2869,
+              "startedAt": 1793195317764
+            }
+          },
+          "turn": {
+            "sessionId": "47125446-565b-4750-bef7-56721c712e0b",
+            "turnId": "prompt@1793195316461",
+            "completed": true,
+            "answer": "The tool returned receipt receipt_31fdf4a8f9614b0cbb2b48e155bc7280.",
+            "completedAt": 1793195322216
+          },
+          "toolEnd": {
+            "callId": "ad9b6604-4764-496e-a517-cac43a0327f9",
+            "receipt": "receipt_31fdf4a8f9614b0cbb2b48e155bc7280",
+            "completedAt": 1793195321058
+          },
+          "events": [
+            {
+              "observedAt": 1793195316461,
+              "observerPid": 2888,
+              "session_id": "47125446-565b-4750-bef7-56721c712e0b",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-XvofO3/claude",
+              "prompt": "Test a0592f5d-0918-477e-9e0f-ecc70900d598. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195322216,
+              "observerPid": 2908,
+              "session_id": "47125446-565b-4750-bef7-56721c712e0b",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-XvofO3/claude",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned receipt receipt_31fdf4a8f9614b0cbb2b48e155bc7280."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "651dab41-3447-423a-94cb-1fc97dc05f57",
+                "generation": "a6c7c199-dafa-461b-a5b7-4f92ac5faab9"
+              },
+              "kind": "agent",
+              "nodeId": "agent-3-344d20e1-5ab2-4e06-9c3f-51761b2edcac",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:48:44.106Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-3-344d20e1-5ab2-4e06-9c3f-51761b2edcac",
+                    "kind": "agent",
+                    "executionSessionId": "651dab41-3447-423a-94cb-1fc97dc05f57",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-34cdbfc6-8c41-4909-a857-140fb98e872b"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 99
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "7973f0a54dab47dcdc161e3e3bf04f1e59600b3af1979e8304bad854a3a064b6",
+          "sampleCount": 30,
+          "firstSample": {
+            "at": 1793195317935,
+            "status": "running",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-XvofO3/claude",
+              "",
+              "",
+              "❯ Test a0592f5d-0918-477e-9e0f-ecc70900d598. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "● Calling tui…",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "✽ Channeling… (1s · ↓ 4 tokens)",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯ DRAFT_1baa4c13bf44 ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle)"
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195323940,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-XvofO3/claude",
+              "",
+              "",
+              "❯ Test a0592f5d-0918-477e-9e0f-ecc70900d598. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "  Called tui ",
+              "",
+              "● The tool returned receipt receipt_31fdf4a8f9614b0cbb2b48e155bc7280.",
+              "",
+              "✻ Cooked for 5s · done 1:48 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                               Ctrl+Y to paste deleted text",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        }
+      }
+    },
+    {
+      "artifactId": 12821446740,
+      "payload": "packaged-host",
+      "scenario": "agent-tui/turn-completion-redraw",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "2f9d8d031454fedbfb9b9128f9702622c62225ee71eb50bc19cf985e2e2b108e",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "fc1015c275a084f59bfea31e51b826f9f2b81d56a7af4367f35d9c0ea3e103d8"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "dac847f95daf07020abbac624d868da3fe379f9a0bd5d732f23d23a5424a4660",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-2-08ecc25d-098b-49f4-929a-3e01215950c0",
+            "execution": {
+              "executionId": "bab1392f-4a17-4e0c-9ea0-1e8c46b4455c",
+              "generation": "ac50883b-1e1a-4fb4-878e-b784e26559cb"
+            },
+            "sessionId": "01a182c5-fe3f-7303-a878-b987aea910ba",
+            "toolStart": {
+              "callId": "5752b82d-fa71-4190-8c45-e4ac51b8e28d",
+              "pid": 2782,
+              "startedAt": 1793195377742
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c5-fe3f-7303-a878-b987aea910ba",
+            "turnId": "01a182c6-000a-7533-80fb-295af0103a4e",
+            "completed": true,
+            "answer": "The receipt returned by the tool is receipt_e6d0184a498241cb8a53c6008b4149f5.",
+            "completedAt": 1793195378761
+          },
+          "toolEnd": {
+            "callId": "5752b82d-fa71-4190-8c45-e4ac51b8e28d",
+            "receipt": "receipt_e6d0184a498241cb8a53c6008b4149f5",
+            "completedAt": 1793195377845
+          },
+          "events": [
+            {
+              "observedAt": 1793195376730,
+              "observerPid": 2815,
+              "session_id": "01a182c5-fe3f-7303-a878-b987aea910ba",
+              "turn_id": "01a182c6-000a-7533-80fb-295af0103a4e",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-snZNiJ/codex",
+              "prompt": "Test f95b47b1-4003-4a23-8cf0-876c20e4378a. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195378761,
+              "observerPid": 2843,
+              "session_id": "01a182c5-fe3f-7303-a878-b987aea910ba",
+              "turn_id": "01a182c6-000a-7533-80fb-295af0103a4e",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-snZNiJ/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The receipt returned by the tool is receipt_e6d0184a498241cb8a53c6008b4149f5."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "bab1392f-4a17-4e0c-9ea0-1e8c46b4455c",
+                "generation": "ac50883b-1e1a-4fb4-878e-b784e26559cb"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-08ecc25d-098b-49f4-929a-3e01215950c0",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:49:46.974Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-08ecc25d-098b-49f4-929a-3e01215950c0",
+                    "kind": "agent",
+                    "executionSessionId": "bab1392f-4a17-4e0c-9ea0-1e8c46b4455c",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-9fd24b80-e004-4d9f-9217-7effe21594b7"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 138
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "f2bf2551bb4771603db0cc86f219f5e5d5eeb08b4c08e523a199fe3e30ffd37c",
+          "sampleCount": 31,
+          "firstSample": {
+            "at": 1793195383289,
+            "status": "waiting-input",
+            "lines": [
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-snZNiJ/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test f95b47b1-4003-4a23-8cf0-876c20e4378a. Call the tui wait_for_release tool exactly once and wait for its",
+              " result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use ot",
+              "her tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_e6d0184a498241cb8a53c6008b4149f5",
+              "",
+              "• The receipt returned by the tool is receipt_e6d0184a498241cb8a53c6008b4149f5.",
+              "",
+              "  13:49",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnin",
+              "gs · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 109,
+            "rows": 35
+          },
+          "lastSample": {
+            "at": 1793195386382,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-snZNiJ/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test f95b47b1-4003-4a23-8cf0-876c20e4378a. Call the tui wait_for_release tool exactly once and wait for",
+              "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the",
+              "  tool. Do not use other tools or write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_e6d0184a498241cb8a53c6008b4149f5",
+              "",
+              "• The receipt returned by the tool is receipt_e6d0184a498241cb8a53c6008b4149f5.",
+              "",
+              "  13:49",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 109,
+            "rows": 35
+          }
+        },
+        "claude": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-3-d21d95fd-e532-4b6c-83c1-aa8e7455c16f",
+            "execution": {
+              "executionId": "36f853c1-220b-45ed-b2df-4df98ea9b1fb",
+              "generation": "7075772c-56ff-4983-bbad-dff0bb9ffab3"
+            },
+            "sessionId": "8424bb30-4e9b-4e17-8003-e22ec231b7d7",
+            "toolStart": {
+              "callId": "c38090e3-4d20-4ea1-8060-cfec7916c8b3",
+              "pid": 2913,
+              "startedAt": 1793195389629
+            }
+          },
+          "turn": {
+            "sessionId": "8424bb30-4e9b-4e17-8003-e22ec231b7d7",
+            "turnId": "prompt@1793195388619",
+            "completed": true,
+            "answer": "The tool returned the receipt receipt_6d5f467cd5dc4ad2b1d16cbbb038edb8.",
+            "completedAt": 1793195390756
+          },
+          "toolEnd": {
+            "callId": "c38090e3-4d20-4ea1-8060-cfec7916c8b3",
+            "receipt": "receipt_6d5f467cd5dc4ad2b1d16cbbb038edb8",
+            "completedAt": 1793195389682
+          },
+          "events": [
+            {
+              "observedAt": 1793195388619,
+              "observerPid": 2932,
+              "session_id": "8424bb30-4e9b-4e17-8003-e22ec231b7d7",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-snZNiJ/claude",
+              "prompt": "Test 81bba8f6-0612-4fd5-8d76-39de5813be18. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195390756,
+              "observerPid": 2952,
+              "session_id": "8424bb30-4e9b-4e17-8003-e22ec231b7d7",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-snZNiJ/claude",
+              "stop_hook_active": false,
+              "last_assistant_message": "The tool returned the receipt receipt_6d5f467cd5dc4ad2b1d16cbbb038edb8."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "36f853c1-220b-45ed-b2df-4df98ea9b1fb",
+                "generation": "7075772c-56ff-4983-bbad-dff0bb9ffab3"
+              },
+              "kind": "agent",
+              "nodeId": "agent-3-d21d95fd-e532-4b6c-83c1-aa8e7455c16f",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:49:55.842Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-3-d21d95fd-e532-4b6c-83c1-aa8e7455c16f",
+                    "kind": "agent",
+                    "executionSessionId": "36f853c1-220b-45ed-b2df-4df98ea9b1fb",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-9fd24b80-e004-4d9f-9217-7effe21594b7"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 64
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "38eba7ff39090b539ebb141519f672990ca4c3ef9bb41be2713ad648f440fe67",
+          "sampleCount": 31,
+          "firstSample": {
+            "at": 1793195392607,
+            "status": "waiting-input",
+            "lines": [
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-snZNiJ/claude",
+              "",
+              "",
+              "❯ Test 81bba8f6-0612-4fd5-8d76-39de5813be18. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "  Called tui ",
+              "",
+              "● The tool returned the receipt receipt_6d5f467cd5dc4ad2b1d16cbbb038edb8.",
+              "",
+              "✻ Baked for 2s · done 1:49 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  "
+            ],
+            "cols": 109,
+            "rows": 35
+          },
+          "lastSample": {
+            "at": 1793195395705,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-snZNiJ/claude",
+              "",
+              "",
+              "❯ Test 81bba8f6-0612-4fd5-8d76-39de5813be18. Call the tui wait_for_release tool exactly once and wait for    ",
+              "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the   ",
+              "  tool. Do not use other tools or write files. Do not respond before the tool returns.                       ",
+              "",
+              "  Called tui ",
+              "",
+              "● The tool returned the receipt receipt_6d5f467cd5dc4ad2b1d16cbbb038edb8.",
+              "",
+              "✻ Baked for 2s · done 1:49 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯ ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 109,
+            "rows": 35
+          }
+        }
+      }
+    },
+    {
+      "artifactId": 12821212002,
+      "payload": "packaged-host",
+      "scenario": "agent-tui/answer-with-footer",
+      "inputSHA": "6cb80b59ee803cb930bbeee7f878da6179ab0b96",
+      "originalTaskSha256": "fe22f5a1956da24946c8de3aa7d6a349c683da94a6abbcc91d195a3bdd718e33",
+      "status": "passed",
+      "consumed": [
+        {
+          "kind": "package-receipt",
+          "sha256": "fc1015c275a084f59bfea31e51b826f9f2b81d56a7af4367f35d9c0ea3e103d8"
+        }
+      ],
+      "stages": {
+        "prepare": "passed",
+        "action": "passed",
+        "assert": "passed",
+        "cleanup": "passed",
+        "host-exit": "passed"
+      },
+      "host": {
+        "originalSha256": "4d4311bb01def8fc7be89db115aa3e25a686686429149543bd3eee2771bf528a",
+        "environment": {
+          "vscode": "1.142.0",
+          "node": "24.21.0",
+          "platform": "linux",
+          "arch": "x64"
+        },
+        "steps": [
+          {
+            "id": "codex-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "codex-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "codex-assert",
+            "status": "passed",
+            "phase": "assert"
+          },
+          {
+            "id": "claude-prepare",
+            "status": "passed",
+            "phase": "prepare"
+          },
+          {
+            "id": "claude-action",
+            "status": "passed",
+            "phase": "action"
+          },
+          {
+            "id": "claude-assert",
+            "status": "passed",
+            "phase": "assert"
+          }
+        ],
+        "cleanup": "passed"
+      },
+      "providers": {
+        "codex": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-2-8013f04b-7865-478f-9172-b8e6e85e18c0",
+            "execution": {
+              "executionId": "f2600da6-b4ad-4abe-bdaf-175c2b021712",
+              "generation": "25706140-980c-4f4f-acc3-0175953fd507"
+            },
+            "sessionId": "01a182c6-7faf-7802-8231-26081952be7d",
+            "toolStart": {
+              "callId": "acfcb8cc-e3b0-41c6-bff0-0457516a69e4",
+              "pid": 2898,
+              "startedAt": 1793195410835
+            }
+          },
+          "turn": {
+            "sessionId": "01a182c6-7faf-7802-8231-26081952be7d",
+            "turnId": "01a182c6-8184-71a0-9c06-907b3f354ae1",
+            "completed": true,
+            "answer": "The receipt returned by the tool was receipt_0a3a65b7ad744d90b97dbd4ca913e35e.",
+            "completedAt": 1793195412409
+          },
+          "toolEnd": {
+            "callId": "acfcb8cc-e3b0-41c6-bff0-0457516a69e4",
+            "receipt": "receipt_0a3a65b7ad744d90b97dbd4ca913e35e",
+            "completedAt": 1793195410890
+          },
+          "events": [
+            {
+              "observedAt": 1793195409879,
+              "observerPid": 2924,
+              "session_id": "01a182c6-7faf-7802-8231-26081952be7d",
+              "turn_id": "01a182c6-8184-71a0-9c06-907b3f354ae1",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-k4xb0T/codex",
+              "prompt": "Test 64da986d-5193-4d4b-bb05-b1903234f853. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195412409,
+              "observerPid": 2952,
+              "session_id": "01a182c6-7faf-7802-8231-26081952be7d",
+              "turn_id": "01a182c6-8184-71a0-9c06-907b3f354ae1",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-k4xb0T/codex",
+              "stop_hook_active": false,
+              "last_assistant_message": "The receipt returned by the tool was receipt_0a3a65b7ad744d90b97dbd4ca913e35e."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "f2600da6-b4ad-4abe-bdaf-175c2b021712",
+                "generation": "25706140-980c-4f4f-acc3-0175953fd507"
+              },
+              "kind": "agent",
+              "nodeId": "agent-2-8013f04b-7865-478f-9172-b8e6e85e18c0",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:50:15.788Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-2-8013f04b-7865-478f-9172-b8e6e85e18c0",
+                    "kind": "agent",
+                    "executionSessionId": "f2600da6-b4ad-4abe-bdaf-175c2b021712",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-6f0067d7-ceb1-49ff-a2b3-8146feac7372"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 136
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "8d12ed113b31900435a642405fa00053f0ca7869294be6aac3c206976bb42b57",
+          "sampleCount": 1,
+          "firstSample": {
+            "at": 1793195415428,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-k4xb0T/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 64da986d-5193-4d4b-bb05-b1903234f853. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_0a3a65b7ad744d90b97dbd4ca913e35e",
+              "",
+              "• The receipt returned by the tool was receipt_0a3a65b7ad744d90b97dbd4ca913e35e.",
+              "",
+              "  13:50",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195415428,
+            "status": "waiting-input",
+            "lines": [
+              "╭───────────────────────────────────────────────────╮",
+              "│ >_ OpenAI Codex (v0.157.1)                        │",
+              "│                                                   │",
+              "│ model:     DeepSeek-Flash high   /model to change │",
+              "│ directory: /tmp/dsc-tui-workspace-k4xb0T/codex    │",
+              "╰───────────────────────────────────────────────────╯",
+              "",
+              "  Tip: New Build faster with Codex.",
+              "",
+              "",
+              "› Test 64da986d-5193-4d4b-bb05-b1903234f853. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+              "  write files. Do not respond before the tool returns.",
+              "",
+              "",
+              "• Called tui.wait_for_release({})",
+              "  └ receipt_0a3a65b7ad744d90b97dbd4ca913e35e",
+              "",
+              "• The receipt returned by the tool was receipt_0a3a65b7ad744d90b97dbd4ca913e35e.",
+              "",
+              "  13:50",
+              " ",
+              " ",
+              "› Ask Codex to do anything",
+              " ",
+              "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        },
+        "claude": {
+          "status": "passed",
+          "identity": {
+            "nodeId": "agent-3-0644beba-8899-4485-a519-cfd8cdf2d809",
+            "execution": {
+              "executionId": "61c7da81-5401-4a52-9115-30196e00da49",
+              "generation": "8aa833aa-a6d5-4bf7-95da-2e78d158d33c"
+            },
+            "sessionId": "641f06cf-1d0e-4abe-b9cc-59f20430b6ad",
+            "toolStart": {
+              "callId": "4ce083a5-a5da-4952-92c3-1cb39284b710",
+              "pid": 3020,
+              "startedAt": 1793195419104
+            }
+          },
+          "turn": {
+            "sessionId": "641f06cf-1d0e-4abe-b9cc-59f20430b6ad",
+            "turnId": "prompt@1793195417661",
+            "completed": true,
+            "answer": "The test controller returned receipt receipt_b6f17b621d3f4a43b72e59f269136ad3.",
+            "completedAt": 1793195420592
+          },
+          "toolEnd": {
+            "callId": "4ce083a5-a5da-4952-92c3-1cb39284b710",
+            "receipt": "receipt_b6f17b621d3f4a43b72e59f269136ad3",
+            "completedAt": 1793195419208
+          },
+          "events": [
+            {
+              "observedAt": 1793195417661,
+              "observerPid": 3039,
+              "session_id": "641f06cf-1d0e-4abe-b9cc-59f20430b6ad",
+              "hook_event_name": "UserPromptSubmit",
+              "cwd": "/tmp/dsc-tui-workspace-k4xb0T/claude",
+              "prompt": "Test 92d6da30-c188-40e0-8265-9172d17ef854. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+            },
+            {
+              "observedAt": 1793195420592,
+              "observerPid": 3060,
+              "session_id": "641f06cf-1d0e-4abe-b9cc-59f20430b6ad",
+              "hook_event_name": "Stop",
+              "cwd": "/tmp/dsc-tui-workspace-k4xb0T/claude",
+              "stop_hook_active": false,
+              "last_assistant_message": "The test controller returned receipt receipt_b6f17b621d3f4a43b72e59f269136ad3."
+            }
+          ],
+          "retirement": [
+            {
+              "identity": {
+                "executionId": "61c7da81-5401-4a52-9115-30196e00da49",
+                "generation": "8aa833aa-a6d5-4bf7-95da-2e78d158d33c"
+              },
+              "kind": "agent",
+              "nodeId": "agent-3-0644beba-8899-4485-a519-cfd8cdf2d809",
+              "persistence": {
+                "kind": "saved"
+              },
+              "readers": [
+                {
+                  "timestamp": "2026-10-28T13:50:22.584Z",
+                  "kind": "execution/localTerminalReaderSettled",
+                  "detail": {
+                    "nodeId": "agent-3-0644beba-8899-4485-a519-cfd8cdf2d809",
+                    "kind": "agent",
+                    "executionSessionId": "61c7da81-5401-4a52-9115-30196e00da49",
+                    "lifecycle": {
+                      "surface": "editor",
+                      "mode": "active",
+                      "generation": 2,
+                      "frameId": "frame-6f0067d7-ceb1-49ff-a2b3-8146feac7372"
+                    },
+                    "outcome": {
+                      "kind": "applied",
+                      "finalOutputSequence": 66
+                    }
+                  }
+                }
+              ],
+              "readerWasRequired": true,
+              "retired": true
+            }
+          ],
+          "originalResultSha256": "a88fe8fcb1d03f6b8a3baded6c8d10e745a7040a36d5d9f533df31c25cca5f5f",
+          "sampleCount": 1,
+          "firstSample": {
+            "at": 1793195422400,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-k4xb0T/claude",
+              "",
+              "",
+              "❯ Test 92d6da30-c188-40e0-8265-9172d17ef854. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "  Thought for 1s, called tui ",
+              "",
+              "● The test controller returned receipt receipt_b6f17b621d3f4a43b72e59f269136ad3.",
+              "",
+              "✻ Cogitated for 3s · done 1:50 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 125,
+            "rows": 40
+          },
+          "lastSample": {
+            "at": 1793195422400,
+            "status": "waiting-input",
+            "lines": [
+              "",
+              " ▐▛███▛█   Claude Code v2.1.280",
+              "▝▜██████▀  deepseek-flash · API Usage Billing",
+              "  ▝▝ ▝▝    /tmp/dsc-tui-workspace-k4xb0T/claude",
+              "",
+              "",
+              "❯ Test 92d6da30-c188-40e0-8265-9172d17ef854. Call the tui wait_for_release tool exactly once and wait for its result. Then   ",
+              "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or    ",
+              "  write files. Do not respond before the tool returns.                                                                       ",
+              "",
+              "  Thought for 1s, called tui ",
+              "",
+              "● The test controller returned receipt receipt_b6f17b621d3f4a43b72e59f269136ad3.",
+              "",
+              "✻ Cogitated for 3s · done 1:50 PM",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "                                                                                                           ● high · /effort",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "❯  ",
+              "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+              "  ⏵⏵ don't ask on (shift+tab to cycle) · ← for agents"
+            ],
+            "cols": 125,
+            "rows": 40
+          }
+        }
+      }
+    }
+  ]
+}
