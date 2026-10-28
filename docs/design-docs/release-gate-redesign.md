@@ -368,3 +368,12 @@ PR337 完整门禁跟进：runtime 配置 smoke 应观察全量或节点增量�
 浏览器系统依赖安装补充（2026-10-28）：失败镜像为 ubuntu-22.04/20261012.322.1，apt 在 azure.archive.ubuntu.com 更新索引时超时；其他 runner 的成功日志显示 xvfb/libgtk-3-0/libnss3/libasound2 已安装，0升级/0新装。不能假定失败 runner 的包状态，因此七个 Linux 浏览器依赖步骤统一先由 dpkg-query 检查四个实际安装状态，齐全时免除无必要的索引更新；缺少时保留原 apt update/install 并再次检查。dpkg异常、安装失败、仍缺包均失败，不增加重试或延长原5分钟期限。当前 Linux门禁仍消费这些依赖并执行原产品断言，不因预装检测跳过场景。
 
 本轮验证：条件式视口准备/原路径保留/原期限、依赖预装与各失败分支、严格几何判定共5项定向检查通过；完整 gate contracts 103/103（约249秒）与 Release preflight/workflow contracts 通过。日志 `.debug/review337-final-preparation-tests.log`、`review337-final-contracts.log`、`review337-final-workflow-tests.log`。c6e11535 正式运行的267项业务job中264项通过，剩余为两项apt基础设施超时与上述macOS宽视口问题；最终汇总另计。已确认上一轮13个失败场景全部通过，但新提交仍需独立正式验收。
+
+
+## 2026-10-28：供应商运行时下载的有界恢复
+
+PR341 在 run40686985978 attempt1（Windows x64 / macOS ARM64）及 run40691355132（macOS ARM64）重复遇到编译后旧 Node16.17.1 运行时下载 120 秒超时；没有进入 TUI 业务。原错误日志没有具体 URL 与下载阶段，不能断言是 checksum 文本还是 archive body 卡住。
+
+`build-execution-distribution-assets.mjs` 的 `fetchSupplierBytes` 保持每个原请求 120 秒绝对总期限，最多三次、每次最多 40 秒，间隔最多 100ms；计时覆盖 response body，失败尝试与 URL/阶段进入原 build log。仅超时、已识别连接/传输失败及 HTTP408/500/502/503/504 可以重试，404、认证错误、校验和缺失/歧义、字节 hash 不符立即失败。大文件持续超过单次 40 秒仍可能失败，此限制没有通过延长原总预算消除。只有供应商 hash 一致后才以 wx 写入原目标文件并登记输入 URL/hash；不拼接部分数据、不复用其他 attempt 的产物，不改变 native load 与完整来源验收。
+
+该策略只作用于幂等的供应商 GET。真实模型回合、产品断言和清理失败不采用此机制。真实 localhost HTTP 回归覆盖临时服务错误、body 挂起/断开后的新请求、总期限、永久 HTTP 与 hash 不符；正式跨平台输入继续由新一轮 CI 验证。原失败保留。

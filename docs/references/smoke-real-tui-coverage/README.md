@@ -48,3 +48,5 @@ attempt2 的四项 source 在创建第一个 Codex 节点时失败；input 工�
 判定另拒绝纯 receipt 或仅添加标点的回答，防止用工具回显代证实际回答呈现。新增反例与既有四份 Codex source 工件复核通过；当前 test:agent-tui 8/8。
 
 本地第三次真实 Host 启动校验两 provider 均通过，版本 Node25.6.0 / VS Code1.140.0；模型 prompt 为零，两个实际节点与 cwd 见 [启动结果](local-host-startup.json)。显式 Node 入口同步到私有 Codex 配置，满足产品自定义命令须匹配已配置入口的约束。原失败不改写为通过，后续完整业务仍由 CI 验收。
+
+run40691355132（d1c54b0c）再次在 macOS ARM64 编译后旧 Node16.17.1 下载处超时，工件 12817746527；TUI 未运行。已为供应商 GET 增加原每请求120秒总期限内最多三次传输恢复，每次最多40秒，记录具体URL与阶段；HTTP永久错误及hash不符不重试。localhost真实HTTP反例通过并纳入既有 native-assets 回归。设计与适用边界见 release-gate-redesign 的供应商下载规则，真实业务仍不自动重试。

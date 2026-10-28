@@ -88,3 +88,5 @@
 修订：2026-10-28 run40686985978 attempt1 为供应商旧 Node 下载超时，整轮 attempt2 重跑。attempt2 四项 source 未创建 Agent：迁出的 CLI cwd 不属于原 Host workspace，产品正常拒绝。现将 Host workspace 和两个 provider cwd 一并隔离在 checkout 外，凭据 home 独立；本地真实 Host 已确认节点创建，另修正 Codex npm 入口受 shell 旧 Node 影响的问题，显式使用控制器 Node。纯 receipt 回答反例及 8/8 回归通过，完整业务继续待验。
 
 修订：2026-10-28 本地实际产品 Host 的 Codex / Claude 创建及真实 composer 均通过（Node25.6.0、VS Code1.140.0、零模型 prompt），同时同步私有 Codex 已配置入口以满足产品命令一致性规则。原 attempt2 剩余任务取消；新输入继续四项完整 source / packaged 业务验收。
+
+修订：2026-10-28 d1c54b0c 的 run40691355132 再次因 macOS ARM64 编译后旧 Node 下载 120 秒超时而无法进入 TUI。为解除重复的前置阻塞，在原每请求 120 秒总期限内增加最多三次传输恢复（单次最多40秒），HTTP永久错误/hash不符不重试，记录URL和尝试阶段；设计同步 release-gate-redesign，真实localhost传输/期限/hash反例纳入既有 native-assets 回归。模型业务仍不自动重试。

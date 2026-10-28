@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import http from 'node:http';
+import { once } from 'node:events';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -6,7 +8,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import yaml from 'js-yaml';
-import { assertLinuxDistributionBaseline, checksumFor, distributionTargets, runtimeFiles }
+import { assertLinuxDistributionBaseline, checksumFor, distributionTargets, runtimeFiles, fetchSupplierBytes, checkedDownload }
   from '../build/build-execution-distribution-assets.mjs';
 import { assembleExecutionDistributionAssets } from '../build/assemble-execution-distribution-assets.mjs';
 import { readCandidateAssets as readMacosAssets } from '../build/macos-execution-candidate-assets.mjs';
@@ -210,3 +212,48 @@ try {
   if (process.platform !== 'win32') assert(fs.statSync(path.join(extracted, 'darwin-arm64/spawn-helper')).mode & 0o111);
 } finally { fs.rmSync(temporary, { recursive: true, force: true }); }
 console.log('Execution distribution contract passed (manual six-target or Windows-only matrix, checkout source bytes, checksums, Linux limits, mock loading and runtime-only archive; no network or native execution).');
+
+
+// Exercise actual fetch response/body cancellation, not a mirror of the retry loop.
+const requestCounts = new Map();
+const supplier = http.createServer((request, response) => {
+  const count = (requestCounts.get(request.url) ?? 0) + 1; requestCounts.set(request.url, count);
+  if (request.url === '/temporary' && count === 1) { response.writeHead(503); response.end(); return; }
+  if (request.url === '/hung' || request.url === '/hung-once' && count === 1) {
+    response.writeHead(200); response.write('partial body'); return;
+  }
+  if (request.url === '/reset-body' && count === 1) {
+    response.writeHead(200); response.write('partial'); setImmediate(() => response.destroy()); return;
+  }
+  if (request.url === '/missing') { response.writeHead(404); response.end(); return; }
+  if (request.url === '/SHASUMS256.txt') { response.end('a'.repeat(64) + '  payload\n'); return; }
+  response.end('actual downloaded bytes');
+});
+supplier.listen(0, '127.0.0.1'); await once(supplier, 'listening');
+const supplierBase = `http://127.0.0.1:${supplier.address().port}`;
+const downloadDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsc-supplier-'));
+try {
+  for (const route of ['/temporary', '/hung-once', '/reset-body']) {
+    const logs = [];
+    const bytes = await fetchSupplierBytes(supplierBase + route, { timeoutMs: 1500, log: value => logs.push(JSON.parse(value)) });
+    assert.equal(bytes.toString(), 'actual downloaded bytes');
+    assert.equal(requestCounts.get(route), 2, 'Only the temporary failure is retried');
+    assert.equal(logs.filter(item => item.phase === 'failed').length, 1, 'Original failure remains in evidence');
+  }
+  await assert.rejects(fetchSupplierBytes(supplierBase + '/missing', { timeoutMs: 1500, log() {} }), /404/);
+  assert.equal(requestCounts.get('/missing'), 1, 'Permanent HTTP errors are not retried');
+  const started = performance.now();
+  await assert.rejects(fetchSupplierBytes(supplierBase + '/hung', { timeoutMs: 450, log() {} }));
+  assert(performance.now() - started < 1500, 'A held response body must remain bounded');
+  assert(requestCounts.get('/hung') <= 3);
+  const destination = path.join(downloadDirectory, 'payload');
+  const inputs = [];
+  await assert.rejects(checkedDownload(supplierBase, 'payload', destination, inputs), /hash mismatch/);
+  assert.equal(requestCounts.get('/payload'), 1, 'Hash mismatch must not be retried');
+  assert(!fs.existsSync(destination), 'Unverified bytes must not become a build input');
+  assert.deepEqual(inputs, []);
+} finally {
+  supplier.closeAllConnections(); await new Promise(resolve => supplier.close(resolve));
+  fs.rmSync(downloadDirectory, { recursive: true, force: true });
+}
+console.log('Supplier download recovery passed: transient response/body recovery, permanent HTTP/hash rejection, original total deadline.');
