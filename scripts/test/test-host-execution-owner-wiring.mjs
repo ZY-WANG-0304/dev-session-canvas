@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { fork, spawn } from 'node:child_process';
-import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +13,8 @@ const bundled = await esbuild.build({
     contents: `
       export { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
       export { testClaudeSessionFiles, locateClaudeSessionIdFromFiles } from './extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator';
+      export { ExecutionFlowRecorder } from './extensions/vscode/dev-session-canvas/src/common/executionFlowDiagnostics';
+      export { mergeSharedCanvasState } from './extensions/vscode/dev-session-canvas/src/panel/sharedRootCanvasStore';
       export { CanvasPanelManager } from './extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager';
       export { ExecutionOwnerLifecycle } from './extensions/vscode/dev-session-canvas/src/panel/executionOwnerLifecycle';
       export { encodeOutputFrame } from './extensions/vscode/dev-session-canvas/src/common/executionLifecycle';
@@ -102,7 +104,7 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
   createRequire(import.meta.url), loaded, loaded.exports,
   path.resolve('scripts/test/host-owner-wiring.cjs'), path.resolve('scripts/test')
 );
-const { composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId, CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
+const { ExecutionFlowRecorder, mergeSharedCanvasState, composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId, CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
   testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
@@ -215,6 +217,7 @@ function fixture(options = {}) {
   const owner = new ExecutionOwnerLifecycle(injection);
   const host = Object.create(CanvasPanelManager.prototype);
   host.terminalAvailableNotifications = new TerminalAvailableNotifications();
+  host.executionFlow = new ExecutionFlowRecorder();
   const diagnostics = [];
   const persisted = [];
   const rootWrites = [];
@@ -7506,6 +7509,7 @@ test('owned Claude file follows the same record across root routing and ordinary
 
 function deletionInputFixture(kind) {
   const host = Object.create(CanvasPanelManager.prototype);
+  host.executionFlow = new ExecutionFlowRecorder();
   const node = { id: `${kind}-delete`, kind, metadata: {} };
   const session = { owner: 'supervisor', sessionId: 'original', runtimeSessionId: 'original',
     stopRequested: false, lifecycleStatus: 'waiting-input', lineContextTracker: { recordInput() {} } };
@@ -8621,6 +8625,97 @@ if (process.env.DEV_SESSION_CANVAS_TAKEOVER_NATIVE === '1') {
     }, 15000);
   }
 }
+
+for (const kind of ['agent', 'terminal']) {
+  for (const code of ['ENOENT', 'ECONNREFUSED']) {
+    test(`disconnected node deletion persists ${kind} removal and cleanup receipt after ${code}`, async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-disconnected-delete-'));
+      try {
+        const f = candidateRuntimeFixture();
+        const session = addCandidateLegacyBinding(f, kind);
+        f.host.context = { ...f.host.context, globalStorageUri: { fsPath: directory } };
+        const before = structuredClone(f.host.state);
+        const result = { kind: 'unconfirmed', error: Object.assign(new Error(`connect ${code}`), { code }) };
+        candidateStrictDeletes(f, () => ({ first: Promise.resolve(result), current: () => result,
+          submitted: false, attemptSettled: true }));
+        const snapshot = path.join(directory, 'canvas-state.json');
+        f.host.persistState = async () => writeFile(snapshot, JSON.stringify(f.host.state));
+        await f.host.deleteNode(session.nodeId);
+        const loaded = JSON.parse(await readFile(snapshot, 'utf8'));
+        assert(!loaded.nodes.some(node => node.id === session.nodeId), JSON.stringify(f.posted));
+        const receipts = await readdir(path.join(directory, 'unconfirmed-runtime-deletions-v1'));
+        assert.equal(receipts.length, 1);
+        const receipt = JSON.parse(await readFile(path.join(directory, 'unconfirmed-runtime-deletions-v1', receipts[0]), 'utf8'));
+        assert.equal(receipt.sessionId, session.sessionId);
+        assert.equal(receipt.status, 'runtime-stop-unconfirmed');
+        assert.equal(receipt.runtimeStoragePath, session.runtimeStoragePath);
+        assert.equal(f.host.runtimeSessionBindings.size, 0);
+        assert(f.posted.some(message => message.payload?.message?.startsWith('Node removed.')));
+        assert.equal(f.providers.length, 0);
+        // A stale second window editing the original node cannot resurrect the committed removal.
+        const stale = structuredClone(before);
+        stale.nodes.find(node => node.id === session.nodeId).title = 'late peer edit';
+        assert(!mergeSharedCanvasState(before, stale, loaded).nodes.some(node => node.id === session.nodeId));
+        const reopened = candidateRuntimeFixture(); reopened.host.state = loaded;
+        assert(!reopened.host.getPersistedLiveRuntimeSessionForNode(loaded.nodes.find(node => node.id !== session.nodeId)));
+      } finally { await rm(directory, { recursive: true, force: true }); }
+    });
+  }
+}
+
+for (const scenario of ['permission', 'server-rejection', 'receipt-write', 'replacement', 'canvas-save']) {
+  test(`disconnected node deletion does not claim success after ${scenario}`, async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-disconnected-reject-'));
+    try {
+      const f = candidateRuntimeFixture();
+      const session = addCandidateLegacyBinding(f, 'agent');
+      f.host.context = { ...f.host.context, globalStorageUri: { fsPath: directory } };
+      if (scenario === 'receipt-write') await writeFile(path.join(directory, 'unconfirmed-runtime-deletions-v1'), 'obstruction');
+      const result = { kind: scenario === 'server-rejection' ? 'failed' : 'unconfirmed',
+        error: Object.assign(new Error(scenario), { code: scenario === 'permission' ? 'EACCES' : 'ENOENT' }) };
+      candidateStrictDeletes(f, () => {
+        if (scenario === 'replacement') {
+          const node = f.host.state.nodes.find(node => node.id === session.nodeId);
+          node.metadata.agent = { ...node.metadata.agent, runtimeSessionId: 'replacement' };
+        }
+        return { first: Promise.resolve(result), current: () => result, submitted: false, attemptSettled: true };
+      });
+      if (scenario === 'canvas-save') f.host.persistState = async () => { throw new Error('save failed'); };
+      await f.host.deleteNode(session.nodeId);
+      assert(!f.posted.some(message => message.payload?.message?.startsWith('Node removed.')));
+      if (scenario !== 'canvas-save') assert(f.host.state.nodes.some(node => node.id === session.nodeId));
+      assert(f.posted.some(message => message.type === 'host/error'));
+      if (scenario === 'receipt-write') assert.equal(await readFile(path.join(directory, 'unconfirmed-runtime-deletions-v1'), 'utf8'), 'obstruction');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+}
+
+test('disconnected node deletion preserves a replacement arriving during receipt persistence', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-disconnected-race-'));
+  const fsPromises = createRequire(import.meta.url)('fs/promises');
+  const originalOpen = fsPromises.open;
+  const entered = deferred(), release = deferred();
+  const f = candidateRuntimeFixture();
+  const session = addCandidateLegacyBinding(f, 'agent');
+  f.host.context = { ...f.host.context, globalStorageUri: { fsPath: directory } };
+  const result = { kind: 'unconfirmed', error: Object.assign(new Error('connect ENOENT'), { code: 'ENOENT' }) };
+  candidateStrictDeletes(f, () => ({ first: Promise.resolve(result), current: () => result,
+    submitted: false, attemptSettled: true }));
+  fsPromises.open = async (filename, ...args) => {
+    if (String(filename).startsWith(directory)) { entered.resolve(); await release.promise; }
+    return originalOpen(filename, ...args);
+  };
+  try {
+    const deletion = f.host.deleteNode(session.nodeId);
+    await entered.promise;
+    const node = f.host.state.nodes.find(node => node.id === session.nodeId);
+    node.metadata.agent = { ...node.metadata.agent, runtimeSessionId: 'replacement-during-save' };
+    release.resolve(); await deletion;
+    assert.equal(f.host.state.nodes.find(node => node.id === session.nodeId).metadata.agent.runtimeSessionId, 'replacement-during-save');
+    assert(!f.posted.some(message => message.payload?.message?.startsWith('Node removed.')));
+    assert(f.posted.some(message => message.payload?.message?.includes('target changed while recording')));
+  } finally { release.resolve(); fsPromises.open = originalOpen; await rm(directory, { recursive: true, force: true }); }
+});
 
 const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;

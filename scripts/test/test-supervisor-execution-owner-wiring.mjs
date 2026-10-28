@@ -2082,6 +2082,7 @@ try {
       await f.until(() => f.server.shutdownBoundary.registry === 'settled', 'late actual registry saved');
       assert.equal(f.socket.endCalls, 0);
       assert.strictEqual(await f.server.prepareForShutdown('late save repeat'), first);
+      assert.equal(f.server.shutdownBoundary.keepAlive.hasRef(), true, 'unfinished socket work retains responsibility');
     } finally { gate.resolve(); session.terminalJournal.flush = flush; }
   });
 
@@ -2119,6 +2120,9 @@ try {
     assert.equal(f.server.shutdownBoundary.sockets.get(f.socket), 'settled');
     assert.strictEqual(f.server.shutdownBoundary.first, first);
     assert.equal(f.socket.endCalls, 1);
+    assert.equal(f.server.shutdownBoundary.keepAlive, undefined, 'late actual settlement releases keepalive');
+    assert.strictEqual(await f.server.prepareForShutdown('repeat after actual close'), first);
+    assert.equal(f.listener.closeCalls, 1);
   });
 
   await check('server close callback failure keeps original sockets open and reports a real failure', async () => {

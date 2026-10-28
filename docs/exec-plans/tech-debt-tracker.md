@@ -3,6 +3,15 @@
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
 
+## 2026-10-28：socket 恢复与失联节点删除的验收及旧进程边界
+
+本地 Linux 的真实 Codex/原生 Provider/PTY、Host 删除和共享持久化组合验收通过；macOS 实机、Windows 安装、VS Code UI 与完整 Actions 尚不能由这些本地结果代证。旧 Supervisor 无法热更新，节点移除后原进程可能继续运行；`unconfirmed-runtime-deletions-v1` 保留原身份与停止未确认记录，本轮没有自动 orphan kill、无限重试或凭据自动回收。批量清空与模式切换继续严格结算，单节点删除是本次明确例外。一次全套 Host 模式切换测试超出原 3 秒预算，隔离主线/本分支及完整重跑通过，未确认间歇成因。见 [runtime-socket-recovery.md](../design-docs/runtime-socket-recovery.md)。
+
+Review 的永久 close 拒绝已修复：路径占位期间保持原操作 pending，移除后结算；真实 CLI 验证生产 20 秒截止前后恢复、自然退出及独立进程重新取得 namespace。首份报告不变且超时后不新增保存/断开阶段。永久占位仍需外部纠正；同 UID 在 lstat 与 Node close 之间并发替换路径的 TOCTOU 不由本修复消除。旧 head ceae895b 的 Actions 269/269 已通过，新修复必须独立检查其最新 head，不复用旧绿灯。
+
+本轮共享 store 两次回归在碰撞端口测试遇到 127.0.0.1:18081 已占用（只读取证，未终止其他进程）；失败日志保留；原套件在独立 user/network namespace 开启 loopback 后 20/20 通过，不宣称此宿主端口冲突被代码修复。
+
+
 ## 2026-10-27：画布展示增量的现场与启动验证边界
 
 第三阶段已完成节点增量、bootstrap追赶、布局确认及受控A/B/C/A和同Host交替对照，1600次回显完整，通信/浏览器成本降低。仍未证实真实Agent与跨机器网络的回显尾延迟收益；40/80样本P99不代表生产P99。Host仍按原时机构造完整投影再比较，未来是否减少构造需要独立依赖和数据支持，不直接增加字段补丁。remote-b在负载开始前发生root readiness未确认，未进入性能样本、重跑成功不等于原因解决；失败日志保留于.debug/canvas-display-updates/remote-b。先前17秒Host与侧栏B隐藏1.7秒异常仍按原条目保留。完整Actions/跨平台发布门禁未由局部测试替代。详见 [画布展示增量](../design-docs/canvas-display-updates.md)。

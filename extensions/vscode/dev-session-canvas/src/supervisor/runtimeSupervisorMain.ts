@@ -1,3 +1,4 @@
+import { RuntimeSocketListener } from './runtimeSocketListener';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as net from 'net';
@@ -332,7 +333,7 @@ export class RuntimeSupervisorServer {
   private persistRegistryChain: Promise<void> = Promise.resolve();
   private persistRegistryError: Error | undefined;
   private idleShutdownTimer: NodeJS.Timeout | undefined;
-  private server: net.Server | undefined;
+  private server: net.Server | RuntimeSocketListener | undefined;
   private namespaceClaim: net.Server | undefined;
   private candidateStartAttempted = false;
   private readonly executionOwner?: ExecutionOwnerLifecycle;
@@ -455,11 +456,19 @@ export class RuntimeSupervisorServer {
         .filter(domain => domains[domain] !== 'settled')), errors: Object.freeze({ ...boundary.errors })
     });
     boundary.cancelDeadline?.();
-    if (kind === 'settled' && boundary.keepAlive) {
+    if (kind === 'settled') this.releaseSettledShutdownKeepAlive(boundary);
+    boundary.resolve(boundary.first);
+  }
+
+  private releaseSettledShutdownKeepAlive(boundary: SupervisorShutdownBoundary): void {
+    // Late callbacks may finish original obligations without changing the first report
+    // or authorizing any new shutdown work after its deadline.
+    if (this.executionOwner!.snapshot().pending > 0
+      || !Object.values(this.shutdownDomains(boundary)).every(status => status === 'settled')) return;
+    if (boundary.keepAlive) {
       clearInterval(boundary.keepAlive);
       boundary.keepAlive = undefined;
     }
-    boundary.resolve(boundary.first);
   }
 
   private observeShutdownDeadline(boundary: SupervisorShutdownBoundary): void {
@@ -472,7 +481,10 @@ export class RuntimeSupervisorServer {
     const boundary = this.shutdownBoundary;
     if (!boundary) return;
     this.observeShutdownDeadline(boundary);
-    if (boundary.first) return;
+    if (boundary.first) {
+      this.releaseSettledShutdownKeepAlive(boundary);
+      return;
+    }
     const domains = this.shutdownDomains(boundary);
     if (Object.values(domains).includes('failed')) {
       this.finishOwnedShutdown(boundary, 'failed');
@@ -573,16 +585,26 @@ export class RuntimeSupervisorServer {
   }
 
   private async listen(): Promise<void> {
+    if (this.runtimeOwner && process.platform !== 'win32') {
+      const listener = new RuntimeSocketListener(this.paths.socketPath,
+        () => ensureRuntimeRootSocketDirectory(this.paths, this.runtimeBackend, true),
+        socket => this.acceptSocket(socket),
+        error => console.error('Runtime Supervisor socket repair failed:', error));
+      this.server = listener;
+      await listener.start();
+      return;
+    }
     if (this.executionProfile === undefined && process.platform !== 'win32' && fs.existsSync(this.paths.socketPath)) {
       fs.unlinkSync(this.paths.socketPath);
     }
 
-    this.server = net.createServer((socket) => this.acceptSocket(socket));
+    const server = net.createServer((socket) => this.acceptSocket(socket));
+    this.server = server;
 
     await new Promise<void>((resolve, reject) => {
-      this.server?.once('error', reject);
-      this.server?.listen(this.paths.socketPath, () => {
-        this.server?.removeListener('error', reject);
+      server.once('error', reject);
+      server.listen(this.paths.socketPath, () => {
+        server.removeListener('error', reject);
         resolve();
       });
     });

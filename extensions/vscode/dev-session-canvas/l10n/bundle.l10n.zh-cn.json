@@ -1063,5 +1063,6 @@
   "This node is still starting in another window. Wait for startup to finish before deleting it.": "该节点仍在另一个窗口中启动，请等待启动完成后再删除。",
   "The execution node changed in another window. Review its current state before trying again.": "执行节点已在另一个窗口发生变化，请查看当前状态后再试。",
   "This shared runtime belongs to Runtime Persistence mode. This private Canvas does not control it.": "该共享运行时属于运行时持久化模式，当前独立画布不会控制它。",
-  "Execution trace started for 120 seconds. Reproduce the delay, then run Write Host Diagnostics to Disk.": "已开始执行链路诊断，最长采集 120 秒。请复现卡顿，然后运行“落盘当前宿主诊断”。"
+  "Execution trace started for 120 seconds. Reproduce the delay, then run Write Host Diagnostics to Disk.": "已开始执行链路诊断，最长采集 120 秒。请复现卡顿，然后运行“落盘当前宿主诊断”。",
+  "Node removed. The background session could not be confirmed stopped. Its runtime identity was saved for cleanup.": "节点已移除，后台会话尚未确认停止。已保存原运行时身份，供后续清理。"
 }

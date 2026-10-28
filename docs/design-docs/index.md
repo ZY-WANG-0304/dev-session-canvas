@@ -136,6 +136,8 @@
 
 | [按展示变化批量同步画布](canvas-display-updates.md) | 空更新筛选、节点与关联操作批量同步、版本恢复和三组验证 | 画布交互域、执行编排域 / 宿主、共享模型、呈现 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-journal-input-priority.md` | 2026-10-27 |
 
+| [失联节点删除与 Supervisor 入口恢复](runtime-socket-recovery.md) | 失联节点删除与原 Supervisor 入口恢复 | 执行编排域、项目状态域 / 宿主集成层、适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/completed/runtime-socket-recovery.md` | 2026-10-28 |
+
 ## 维护约定
 
 - 这里只登记具体设计方案文档，不登记模板或通用原则文档。

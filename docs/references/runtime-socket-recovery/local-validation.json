@@ -1,0 +1,85 @@
+{
+  "capturedOn": "2026-10-28",
+  "baseCommit": "e25ede616c450053c4da50fcadcc9d509db22832",
+  "scope": "Local Linux validation; not a full Actions/release acceptance receipt",
+  "sourceSha256": {
+    "extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts": "4f8436e59bacd865a56bded3c639325d44179de3fd5fd0aeb83e05051f7bde3e",
+    "extensions/vscode/dev-session-canvas/src/panel/disconnectedRuntimeDeletion.ts": "699c94d1bdec27f88148be5a0f8652cff877bf416883aafe38022a6ad47d9d81",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSocketListener.ts": "0c3e80b51e609bbe5e39329ca737cf4541e8168313fc57a9db2023f79a0e9aad",
+    "extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts": "7ef15cfe2381b10e2ba68381b912da8895703b6673ec4e47898e7e2a6d16d990",
+    "scripts/test/test-host-execution-owner-wiring.mjs": "df231587ed5693c5280597c90a68a610448fc8acb75414cc983d8c1f1ba9f02e",
+    "scripts/test/test-runtime-socket-listener.mjs": "20e60141629989db7b429e8917b0187a285885a73a59743b9d8d266354717dbf",
+    "scripts/test/test-runtime-socket-recovery-native.mjs": "e40fd585b6bcb14c78f632f714067e61e920772c32adfa725ab0fae92f3530e0",
+    "scripts/test/fixtures/disconnected-runtime-host.mjs": "15fb6f3067c94d59522610de1cb990e7b72a67c16f879e3513fdc391ad38c6e4"
+  },
+  "nativeAcceptance": {
+    "platform": "linux",
+    "node": "v25.6.0",
+    "agent": "real-cli",
+    "cases": [
+      {
+        "removal": "file",
+        "sameSupervisor": true,
+        "sameProvidersAndSubjects": true,
+        "sameSessionsAndAuthorities": true,
+        "existingConnectionWorks": true,
+        "reattachedAgent": true,
+        "terminalInputOutput": true
+      },
+      {
+        "removal": "directory",
+        "sameSupervisor": true,
+        "sameProvidersAndSubjects": true,
+        "sameSessionsAndAuthorities": true,
+        "existingConnectionWorks": true,
+        "reattachedAgent": true,
+        "terminalInputOutput": true
+      }
+    ],
+    "disconnectedDeletion": {
+      "actualHostDelete": true,
+      "strictClientConnectionFailure": true,
+      "durableStopUnconfirmedReceipt": true,
+      "sharedStaleEditCannotResurrect": true,
+      "reopenedCanvasHasNoNode": true,
+      "backgroundStillLive": true
+    },
+    "deletedAndExited": true,
+    "cliVersion": "codex-cli 0.164.0"
+  },
+  "checks": {
+    "host": "644/644 passed",
+    "disconnectedDeletion": "10/10 passed, including replacement during receipt I/O",
+    "unixSocketListener": "7/7 passed",
+    "namespace": "11/11 passed",
+    "sharedRootStore": "20/20 passed",
+    "rootOwnershipStartupHandshake": "passed; 47 controlled handshake cases",
+    "rpcTimeout": "37/37 passed",
+    "completedHistory": "passed",
+    "typecheck": "passed",
+    "localization": "passed",
+    "normalPlatformBuild": "passed using existing six-target asset set"
+  },
+  "failuresAndResolution": [
+    {
+      "failure": "Main and branch Host fixture omitted ExecutionFlowRecorder; pre-record rejection and input cases failed",
+      "resolution": "Initialized the actual production recorder in two prototype-based test fixtures; business assertions unchanged; full suite then passed"
+    },
+    {
+      "failure": "One complete Host run exceeded the existing 3-second multi-root mode-switch case budget",
+      "resolution": "Unmodified main and branch isolated runs passed; complete 644-case rerun passed; intermittent cause not claimed fixed"
+    },
+    {
+      "failure": "First native acceptance harness build had invalid esbuild define syntax",
+      "resolution": "Use JSON.stringify for the existing production admission object; no native process had started in that failed run"
+    }
+  ],
+  "limitations": [
+    "Actual Host methods and shared store with controlled VS Code services; no VS Code UI launched",
+    "Old Supervisor behavior simulated by disabling only the repair timer on the live test Supervisor",
+    "Real Codex CLI continuity tested without model inference requests",
+    "macOS native / Windows installation and full Actions are separate evidence",
+    "Only explicit single-node removal has the disconnection exception; bulk clear and mode-switch remain strict",
+    "Stop-unconfirmed receipts do not automatically kill old processes or claim background cleanup"
+  ]
+}

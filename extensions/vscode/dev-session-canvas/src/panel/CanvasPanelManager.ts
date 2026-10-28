@@ -1,3 +1,4 @@
+import { isRuntimeConnectionUnavailable, recordDisconnectedRuntimeDeletion } from './disconnectedRuntimeDeletion';
 import { CanvasDisplayPublisher, type CanvasLayoutAcknowledgement } from '../common/canvasDisplayUpdates';
 import { ExecutionFlowRecorder, EXECUTION_FLOW_DURATION_MS, FLOW_DURATION_BUCKETS_MS, type FlowSnapshot, type FlowToken } from '../common/executionFlowDiagnostics';
 import { createHash, randomUUID } from 'crypto';
@@ -1382,6 +1383,12 @@ export interface HostDeactivationReport {
   readonly local: HostBoundaryDomainResult;
   readonly canvasSnapshot: HostBoundaryDomainResult;
   readonly remoteDetach: HostBoundaryDomainResult;
+}
+
+class DisconnectedRuntimeNodeDeletionError extends Error {
+  constructor(readonly binding: PersistedLiveRuntimeSession, readonly connectionError: Error) {
+    super(`Runtime deletion is unconfirmed: ${connectionError.message}`);
+  }
 }
 
 export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode.WebviewViewProvider {
@@ -12465,6 +12472,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (record?.deletionRequested && !failed.includes(entry)) record.deletionConfirmed = true;
     }
     if (scheduler.now() >= deadline || failed.length) {
+      const failure = failed.length === 1 && sessions.length === 1 ? failed[0] : undefined;
+      if (failure && failure.result.kind === 'unconfirmed' && 'error' in failure.result &&
+          isRuntimeConnectionUnavailable(failure.result.error) && this.isStrictRuntimeDeleteBindingCurrent(failure.session)) {
+        throw new DisconnectedRuntimeNodeDeletionError(failure.session, failure.result.error);
+      }
       throw new Error(`Runtime deletion did not complete on the original bindings: ${
         failed.length ? failed.map(({ session, result }) => `${session.sessionId}: ${result.kind}`).join(', ') : 'deadline expired'}`);
     }
@@ -21788,6 +21800,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
     this.activeAssociatedNoteMarkdownEdits.delete(nodeId);
 
+    let disconnectedReceipt: string | undefined;
     if (isExecutionNodeKind(node.kind)) {
       this.invalidateExecutionSessionOperation(node.kind, nodeId);
       const key = this.getExecutionSessionOperationKey(node.kind, nodeId);
@@ -21809,15 +21822,33 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           }
         }
       } catch (error) {
-        this.postMessage({
-          type: 'host/error',
-          payload: {
-            message: error instanceof Error
-              ? error.message
-              : vscode.l10n.t('Failed to clean up live runtime while deleting the execution node.')
-          }
-        });
-        return;
+        try {
+          if (!(error instanceof DisconnectedRuntimeNodeDeletionError) || record ||
+              this.candidateRuntimeStarts?.has(key)) throw error;
+          const binding = error.binding;
+          const isCurrent = (): boolean => binding.nodeId === nodeId && binding.kind === node.kind &&
+            this.state.nodes.some(value => value.id === nodeId && value.kind === node.kind) &&
+            this.isStrictRuntimeDeleteBindingCurrent(binding) && this.executionSessionOperationTokens.get(key) === token &&
+            !this.candidateRuntimeStarts?.has(key) && !this.nonNativeHostExecutions.get(key);
+          if (!isCurrent()) throw new Error('The disconnected deletion target changed.');
+          disconnectedReceipt = await recordDisconnectedRuntimeDeletion(this.context.globalStorageUri.fsPath, {
+            nodeId, kind: node.kind, sessionId: binding.sessionId, backendKind: binding.backendKind,
+            runtimeStoragePath: this.resolveRuntimeStoragePath(binding.runtimeStoragePath),
+            runtimeOwner: binding.runtimeOwner ?? undefined, reason: error.connectionError.message
+          });
+          // Disk I/O may overlap a replacement; an old receipt never authorizes deleting it.
+          if (!isCurrent()) throw new Error('The disconnected deletion target changed while recording cleanup responsibility.');
+          this.terminalReadRelay.closeMatching(key => key.endsWith(`:${node.kind}:${nodeId}`));
+          this.disposeExecutionSession(node.kind, nodeId, { terminateProcess: false });
+          this.unbindRuntimeSession(binding.sessionId, binding.runtimeStoragePath, node.kind, binding.backendKind);
+          this.recordDiagnosticEvent('runtime/disconnectedNodeRemovalPrepared', {
+            nodeId, sessionId: binding.sessionId, receiptPath: disconnectedReceipt, reason: error.connectionError.message
+          });
+        } catch (failure) {
+          this.postMessage({ type: 'host/error', payload: { message: failure instanceof Error
+            ? failure.message : vscode.l10n.t('Failed to clean up live runtime while deleting the execution node.') } });
+          return;
+        }
       }
     }
 
@@ -21834,8 +21865,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             }
         : deleteCanvasNode(this.state, nodeId);
     this.state = this.reconcileCanvasFileArtifacts(nextState);
-    this.persistState();
+    try {
+      await this.persistState({ reason: 'node-deleted', requireRootLocalDurability: true });
+    } catch (error) {
+      this.postMessage({ type: 'host/error', payload: { message: error instanceof Error ? error.message : String(error) } });
+      return;
+    }
     this.postState('host/stateUpdated');
+    if (disconnectedReceipt) {
+      this.recordDiagnosticEvent('runtime/disconnectedNodeRemoved', { nodeId, receiptPath: disconnectedReceipt });
+      this.postMessage({ type: 'host/error', payload: { message: vscode.l10n.t(
+        'Node removed. The background session could not be confirmed stopped. Its runtime identity was saved for cleanup.'
+      ) } });
+    }
   }
 
   private cancelAllTerminalSessions(): void {
