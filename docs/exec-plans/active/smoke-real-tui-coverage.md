@@ -19,6 +19,8 @@
 
 现有 `agent-candidate-tests.cjs` 的 natural 分支使用 Codex exec / Claude -p，不能代证交互 TUI。普通 `ci-validation.yml` 尚未注册真实 agent-tui；现有真实 CLI workflow 使用独立 DeepSeek secret。当前本机 Node 为 v25.6.0，与既有真实 CLI runner 一致。
 
+首轮信号探索 Actions 40681385645 在请求之前失败：探针错误使用 CommonJS `@xterm/headless` 的命名导入。修正为默认导入；原轮无 CLI 业务证据，不能计为产品失败或通过。本机无 DeepSeek 环境变量，但已核 repository secret 存在；私有目录安装固定 CLI，不改用户现有版本。
+
 ## 决策记录
 
 2026-10-28 / Codex：沿用已有固定 CLI 与 DeepSeek 配置，先验证独立信号再确定最终接口。理由是四项验收涉及外部 CLI 行为，单纯 fake 输出和目录登记无法证明目标。固定版本当前为 Codex 0.157.1、Claude 2.1.280。

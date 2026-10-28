@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import pty from 'node-pty';
-import { Terminal } from '@xterm/headless';
+import headless from '@xterm/headless';
 import { prepareAgentTui } from '../smoke/agent-tui-configuration.mjs';
 const { values } = parseArgs({ options: { output: { type: 'string' }, 'cli-root': { type: 'string' },
   provider: { type: 'string', default: 'codex' } } });
@@ -13,7 +13,7 @@ const key = process.env.DEEPSEEK_API_KEY;
 const config = await prepareAgentTui({ provider: values.provider, directory: output,
   projectRoot: process.cwd(), cliRoot: values['cli-root'], apiKey: key });
 delete process.env.DEEPSEEK_API_KEY;
-const terminal = new Terminal({ cols: 110, rows: 32, allowProposedApi: true, scrollback: 3000 });
+const terminal = new headless.Terminal({ cols: 110, rows: 32, allowProposedApi: true, scrollback: 3000 });
 let child;
 let ended = false;
 let stage = 'startup';
