@@ -21874,9 +21874,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
     if (disconnectedReceipt) {
       this.recordDiagnosticEvent('runtime/disconnectedNodeRemoved', { nodeId, receiptPath: disconnectedReceipt });
-      this.postMessage({ type: 'host/error', payload: { message: vscode.l10n.t(
-        'Node removed. The background session could not be confirmed stopped. Its runtime identity was saved for cleanup.'
-      ) } });
+      void vscode.window.showWarningMessage(vscode.l10n.t(
+        'Node removed, but its background Agent or terminal process may still be running because stopping could not be confirmed. Check and stop it manually. The unconfirmed-stop record is retained; the extension does not automatically clean up the process or record.'
+      ));
     }
   }
 

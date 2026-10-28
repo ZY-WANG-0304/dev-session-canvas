@@ -23,7 +23,7 @@ updated_at: 2026-10-28
 
 移除前向 global storage 持久写入原节点与运行时身份、停止未确认原因和时间，不保存输出正文。写入失败不得继续删除。记录表达清理责任未确认，不是进程已停止或节点已提交的证明，也不授权按 PID 杀进程。旧 Supervisor 无法自修复时，后台可能继续运行，凭据保留供显式处理；本次不新增自动 orphan kill 或无限后台重试。
 
-节点移除沿既有共享 root 提交和 workspace 持久化路径完成，保存成功后才提示“节点已删除，后台会话停止未确认”。释放本 Host reader、订阅和映射；共享 peer 按已有结构删除释放自己的投影。已有删除优先规则保证旧编辑与迟到恢复不能复活节点。
+节点移除沿既有共享 root 提交和 workspace 持久化路径完成，保存成功后才通过 `vscode.window.showWarningMessage` 显示 VS Code 右下角原生非模态警告，说明“节点已移除，但无法确认后台 Agent 或终端进程已停止，可能仍在运行，请手动检查并停止；停止未确认记录已保留，扩展不会自动清理进程或记录”。不再以画布内 `host/error` 承载该结果，避免画布隐藏时漏看或重复提示；不等待用户关闭通知，不增加删除确认步骤。正常确认停止、记录写入失败、节点保存失败或身份变化均不弹此移除成功警告。释放本 Host reader、订阅和映射；共享 peer 按已有结构删除释放自己的投影。已有删除优先规则保证旧编辑与迟到恢复不能复活节点。
 
 ### Supervisor 自修复
 
@@ -80,3 +80,11 @@ Linux x64、Node 25.6.0、真实 Codex CLI 0.164.0 的独立 Supervisor/原生 P
     npm run test:runtime-socket-recovery-native -- --shutdown-obstruction after --agent-command <codex路径>
 
 此验收不承诺截止后开始新的保存或关闭阶段，也不证明永久占位无需外部处理；这些情况继续显示未确认并保留责任。
+
+### 删除后的宿主警告（2026-10-28）
+
+补充 VS Code 原生非模态警告，通知未关闭也不阻塞删除或共享 mutation 的完成。中文本地化与英文默认文案均明确后台进程可能继续运行、需手动检查停止，以及记录保留和无自动清理能力。升级边界同步至主扩展 CHANGELOG 的 Unreleased 节，不改写已发布版本说明。
+
+验证：12 项定向 Host 回归通过，覆盖 Agent/Terminal 的 ENOENT/ECONNREFUSED、保存等待期间不提前提醒、通知未关闭时删除仍完成、失败与身份替换不误报、正常确认停止不提醒；完整 Host 回归 646/646 通过。`npm run typecheck`、`npm run test:ui-copy-localization` 与 `git diff --check` 通过。本次未启动 VS Code UI，也未重跑真实 Codex/Supervisor 组合验收；此前运行时证据不变，原生测试夹具已同步通知断言。
+
+手动验证路径（待执行）：在隔离工作区使用无法重连的旧 Supervisor 会话删除单节点，确认节点保存后右下角出现本地化警告；不关闭通知仍可操作画布。对正常可停止会话删除时不应出现该警告。原生通知显示遵循 VS Code 的通知设置。
