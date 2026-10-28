@@ -1,0 +1,1442 @@
+{
+  "runId": 40683646799,
+  "head": "e4f865da",
+  "acceptance": false,
+  "scope": "source四场景的Codex通过；Claude均在启动外部导入菜单失败；packaged未由本记录验收",
+  "cases": {
+    "input-during-work": {
+      "artifactId": 12814782711,
+      "providers": {
+        "codex": {
+          "originalResultSha256": "2dc1fc154a743737ce09d4af457e08f6f6ad35ec4a78b8d499f4e19717b3a5b9",
+          "result": {
+            "provider": "codex",
+            "scenario": "agent-tui/input-during-work",
+            "status": "passed",
+            "identity": {
+              "nodeId": "agent-2-63d14380-97a7-42b2-9242-5f0479e08c1f",
+              "execution": {
+                "executionId": "d8ce2a89-b94c-4aa8-a874-14f110aac384",
+                "generation": "6b8bf59f-6404-4992-8900-6661a28e5a1d"
+              },
+              "sessionId": "01a18270-1b69-77d1-add4-95d5e0406f93",
+              "toolStart": {
+                "callId": "b82a2af1-96df-4970-be30-5e0bbfe9977b",
+                "pid": 2837,
+                "startedAt": 1793189749662
+              }
+            },
+            "turn": {
+              "sessionId": "01a18270-1b69-77d1-add4-95d5e0406f93",
+              "turnId": "01a18270-1d29-74a0-8f73-06ce61fdef79",
+              "completed": true,
+              "answer": "The tool returned receipt_6c27bb9188474518b5fd9bfff4f77e77.",
+              "completedAt": 1793189753949
+            },
+            "toolEnd": {
+              "callId": "b82a2af1-96df-4970-be30-5e0bbfe9977b",
+              "receipt": "receipt_6c27bb9188474518b5fd9bfff4f77e77",
+              "completedAt": 1793189752847
+            },
+            "events": [
+              {
+                "observedAt": 1793189748183,
+                "observerPid": 2881,
+                "session_id": "01a18270-1b69-77d1-add4-95d5e0406f93",
+                "turn_id": "01a18270-1d29-74a0-8f73-06ce61fdef79",
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--input-during-work/scene/agent-tui/input-during-work/tui-fixture/codex/workspace",
+                "prompt": "Test 31026933-6661-4f8f-bf9f-9fdef3a8f2a4. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+              },
+              {
+                "observedAt": 1793189753949,
+                "observerPid": 2911,
+                "session_id": "01a18270-1b69-77d1-add4-95d5e0406f93",
+                "turn_id": "01a18270-1d29-74a0-8f73-06ce61fdef79",
+                "hook_event_name": "Stop",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--input-during-work/scene/agent-tui/input-during-work/tui-fixture/codex/workspace",
+                "stop_hook_active": false,
+                "last_assistant_message": "The tool returned receipt_6c27bb9188474518b5fd9bfff4f77e77."
+              }
+            ],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "d8ce2a89-b94c-4aa8-a874-14f110aac384",
+                  "generation": "6b8bf59f-6404-4992-8900-6661a28e5a1d"
+                },
+                "kind": "agent",
+                "nodeId": "agent-2-63d14380-97a7-42b2-9242-5f0479e08c1f",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:15:55.385Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-2-63d14380-97a7-42b2-9242-5f0479e08c1f",
+                      "kind": "agent",
+                      "executionSessionId": "d8ce2a89-b94c-4aa8-a874-14f110aac384",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-61330070-f614-464f-bdee-7fd968a83521"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 213
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 30,
+            "firstSample": {
+              "at": 1793189749745,
+              "status": "running",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: Switch models or reasoning effort quickly with /model.",
+                "",
+                "",
+                "› Test 31026933-6661-4f8f-bf9f-9fdef3a8f2a4. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                " ",
+                "• Calling tui.wait_for_release({})",
+                " ",
+                "• Working (1s • esc to interrupt)",
+                " ",
+                " ",
+                "› DRAFT_faedcff06876",
+                " ",
+                "  tab to queue message                                                                                    100% context left",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 125,
+              "rows": 40
+            },
+            "lastSample": {
+              "at": 1793189755029,
+              "status": "waiting-input",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: Switch models or reasoning effort quickly with /model.",
+                "",
+                "",
+                "› Test 31026933-6661-4f8f-bf9f-9fdef3a8f2a4. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                "",
+                "• Called tui.wait_for_release({})",
+                "  └ receipt_6c27bb9188474518b5fd9bfff4f77e77",
+                "",
+                "• The tool returned receipt_6c27bb9188474518b5fd9bfff4f77e77.",
+                "",
+                "  12:15",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 125,
+              "rows": 40
+            }
+          }
+        },
+        "claude": {
+          "originalResultSha256": "c30691003450f9563e49d5cc13ccfabd00eeb716798cfd4024a05144982348eb",
+          "result": {
+            "provider": "claude",
+            "scenario": "agent-tui/input-during-work",
+            "status": "failed",
+            "error": "Late observation: interactive CLI ready",
+            "failurePage": {
+              "nodeId": "agent-3-330f6ab1-bd4d-4523-82d1-20c269b54ef6",
+              "kind": "agent",
+              "chromeTitle": "Agent 3",
+              "chromeContext": "claude/workspace/",
+              "chromeSubtitle": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-AYbs6F/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--input-during-work/scene/agent-tui/input-during-work/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' '103856bd-077d-4989-aa96-37ea7fb9f2e9'",
+              "statusText": "Waiting for input",
+              "attentionIndicatorVisible": false,
+              "attentionIndicatorFlashing": false,
+              "minimapVisible": true,
+              "minimapAttentionFlashing": false,
+              "minimapAttentionSizePulsing": false,
+              "selected": true,
+              "renderedWidth": 1000,
+              "renderedHeight": 720,
+              "titleInputValue": "Agent 3",
+              "fileEntries": [],
+              "terminalSelectionText": "",
+              "terminalCols": 125,
+              "terminalRows": 40,
+              "terminalFitCols": 125,
+              "terminalFitRows": 40,
+              "terminalProjectionPending": false,
+              "terminalExecutionSessionId": "8f70cd35-b38b-4c14-abe9-57995f63c306",
+              "terminalCursorX": 2,
+              "terminalCursorY": 13,
+              "terminalViewportY": 0,
+              "terminalVisibleLines": [
+                "",
+                "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+                "  Allow external CLAUDE.md file imports?",
+                "",
+                "  This project's CLAUDE.md imports files outside the current working directory. Never allow this for third-party",
+                "  repositories.",
+                "",
+                "  External imports:",
+                "    /home/runner/work/dev-session-canvas/dev-session-canvas/AGENTS.md",
+                "",
+                "  Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks",
+                "  https://code.claude.com/docs/en/security",
+                "",
+                "  ❯ No, disable external imports",
+                "    Yes, allow external imports",
+                "",
+                "  Enter to confirm · Esc to cancel",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "terminalTextareaLeft": 15.056,
+              "terminalTextareaTop": 195,
+              "terminalMouseTrackingMode": "none",
+              "terminalBufferType": "normal",
+              "terminalHasFocus": false,
+              "terminalTheme": {
+                "background": "#191a1b",
+                "foreground": "#cccccc",
+                "cursor": "#bfbfbf",
+                "selectionBackground": "rgba(57, 148, 188, 0.2)",
+                "ansiBlue": "#2472c8",
+                "ansiBrightWhite": "#e5e5e5"
+              }
+            },
+            "failureNode": {
+              "id": "agent-3-330f6ab1-bd4d-4523-82d1-20c269b54ef6",
+              "kind": "agent",
+              "title": "Agent 3",
+              "status": "waiting-input",
+              "summary": "\u001b[2C\u001b[4A",
+              "position": {
+                "x": 1600,
+                "y": 100
+              },
+              "size": {
+                "width": 1000,
+                "height": 720
+              },
+              "metadata": {
+                "agent": {
+                  "backend": "node-pty",
+                  "lifecycle": "waiting-input",
+                  "provider": "claude",
+                  "launchPreset": "custom",
+                  "customLaunchCommand": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-AYbs6F/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--input-during-work/scene/agent-tui/input-during-work/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' '103856bd-077d-4989-aa96-37ea7fb9f2e9'",
+                  "runtimeKind": "pty-cli",
+                  "resumeSupported": false,
+                  "resumeStrategy": "none",
+                  "shellPath": "claude",
+                  "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--input-during-work/scene/agent-tui/input-during-work/tui-fixture/claude/workspace",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "attached-live",
+                  "liveSession": true,
+                  "lastCols": 125,
+                  "lastRows": 40,
+                  "attentionPending": false,
+                  "lastBackendLabel": "Claude Code",
+                  "resumeSessionId": "103856bd-077d-4989-aa96-37ea7fb9f2e9"
+                }
+              }
+            },
+            "events": [],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "8f70cd35-b38b-4c14-abe9-57995f63c306",
+                  "generation": "239f8aac-7a86-4e27-83fe-2c5f896cfec1"
+                },
+                "kind": "agent",
+                "nodeId": "agent-3-330f6ab1-bd4d-4523-82d1-20c269b54ef6",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:16:41.094Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-3-330f6ab1-bd4d-4523-82d1-20c269b54ef6",
+                      "kind": "agent",
+                      "executionSessionId": "8f70cd35-b38b-4c14-abe9-57995f63c306",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-61330070-f614-464f-bdee-7fd968a83521"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 17
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 0,
+            "firstSample": null,
+            "lastSample": null
+          }
+        }
+      }
+    },
+    "answer-with-footer": {
+      "artifactId": 12816020014,
+      "providers": {
+        "codex": {
+          "originalResultSha256": "757bce4b4021e520d43afa51813dc89cd722c0192df0f19b343481918c0b72c8",
+          "result": {
+            "provider": "codex",
+            "scenario": "agent-tui/answer-with-footer",
+            "status": "passed",
+            "identity": {
+              "nodeId": "agent-2-c4fd0860-7524-4b63-90ed-3377bb6c5b7b",
+              "execution": {
+                "executionId": "2a880d26-7176-4e49-995a-3e168c29dc0f",
+                "generation": "ce629181-abb5-430b-a0b7-4fe1b507a8ec"
+              },
+              "sessionId": "01a18270-74b6-7901-a6ba-f8efa8055379",
+              "toolStart": {
+                "callId": "10e7dd02-8012-4e63-b82d-a4a3b53558ff",
+                "pid": 2716,
+                "startedAt": 1793189772144
+              }
+            },
+            "turn": {
+              "sessionId": "01a18270-74b6-7901-a6ba-f8efa8055379",
+              "turnId": "01a18270-76d1-7e92-b9fd-7b13034e211e",
+              "completed": true,
+              "answer": "The receipt returned by the tool was receipt_ac28963a65964197ace251ecbdc11690.",
+              "completedAt": 1793189773812
+            },
+            "toolEnd": {
+              "callId": "10e7dd02-8012-4e63-b82d-a4a3b53558ff",
+              "receipt": "receipt_ac28963a65964197ace251ecbdc11690",
+              "completedAt": 1793189772247
+            },
+            "events": [
+              {
+                "observedAt": 1793189771030,
+                "observerPid": 2752,
+                "session_id": "01a18270-74b6-7901-a6ba-f8efa8055379",
+                "turn_id": "01a18270-76d1-7e92-b9fd-7b13034e211e",
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--answer-with-footer/scene/agent-tui/answer-with-footer/tui-fixture/codex/workspace",
+                "prompt": "Test ea324efe-0c81-44b7-878f-d623255adc24. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+              },
+              {
+                "observedAt": 1793189773812,
+                "observerPid": 2781,
+                "session_id": "01a18270-74b6-7901-a6ba-f8efa8055379",
+                "turn_id": "01a18270-76d1-7e92-b9fd-7b13034e211e",
+                "hook_event_name": "Stop",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--answer-with-footer/scene/agent-tui/answer-with-footer/tui-fixture/codex/workspace",
+                "stop_hook_active": false,
+                "last_assistant_message": "The receipt returned by the tool was receipt_ac28963a65964197ace251ecbdc11690."
+              }
+            ],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "2a880d26-7176-4e49-995a-3e168c29dc0f",
+                  "generation": "ce629181-abb5-430b-a0b7-4fe1b507a8ec"
+                },
+                "kind": "agent",
+                "nodeId": "agent-2-c4fd0860-7524-4b63-90ed-3377bb6c5b7b",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:16:18.154Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-2-c4fd0860-7524-4b63-90ed-3377bb6c5b7b",
+                      "kind": "agent",
+                      "executionSessionId": "2a880d26-7176-4e49-995a-3e168c29dc0f",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-254c1397-8a49-4364-9f26-0c026c6e578d"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 148
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 1,
+            "firstSample": {
+              "at": 1793189777561,
+              "status": "waiting-input",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: New Build faster with Codex.",
+                "",
+                "",
+                "› Test ea324efe-0c81-44b7-878f-d623255adc24. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                "",
+                "• Called tui.wait_for_release({})",
+                "  └ receipt_ac28963a65964197ace251ecbdc11690",
+                "",
+                "• The receipt returned by the tool was receipt_ac28963a65964197ace251ecbdc11690.",
+                "",
+                "  12:16",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 125,
+              "rows": 40
+            },
+            "lastSample": {
+              "at": 1793189777561,
+              "status": "waiting-input",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: New Build faster with Codex.",
+                "",
+                "",
+                "› Test ea324efe-0c81-44b7-878f-d623255adc24. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                "",
+                "• Called tui.wait_for_release({})",
+                "  └ receipt_ac28963a65964197ace251ecbdc11690",
+                "",
+                "• The receipt returned by the tool was receipt_ac28963a65964197ace251ecbdc11690.",
+                "",
+                "  12:16",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 125,
+              "rows": 40
+            }
+          }
+        },
+        "claude": {
+          "originalResultSha256": "505f2a20f3de43c9f013334146ca08918981777c56c096f805d77f38d64621c9",
+          "result": {
+            "provider": "claude",
+            "scenario": "agent-tui/answer-with-footer",
+            "status": "failed",
+            "error": "Timed out: interactive CLI ready",
+            "failurePage": {
+              "nodeId": "agent-3-f4b568df-21e2-41ae-9f9f-706a46276edd",
+              "kind": "agent",
+              "chromeTitle": "Agent 3",
+              "chromeContext": "claude/workspace/",
+              "chromeSubtitle": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-3vLr0w/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--answer-with-footer/scene/agent-tui/answer-with-footer/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' '208a3c94-8804-4710-a894-2be83549b368'",
+              "statusText": "Waiting for input",
+              "attentionIndicatorVisible": false,
+              "attentionIndicatorFlashing": false,
+              "minimapVisible": true,
+              "minimapAttentionFlashing": false,
+              "minimapAttentionSizePulsing": false,
+              "selected": true,
+              "renderedWidth": 1000,
+              "renderedHeight": 720,
+              "titleInputValue": "Agent 3",
+              "fileEntries": [],
+              "terminalSelectionText": "",
+              "terminalCols": 125,
+              "terminalRows": 40,
+              "terminalFitCols": 125,
+              "terminalFitRows": 40,
+              "terminalProjectionPending": false,
+              "terminalExecutionSessionId": "ffcd91fb-fbe4-4c08-a24e-7c2a55e6931e",
+              "terminalCursorX": 2,
+              "terminalCursorY": 15,
+              "terminalViewportY": 3,
+              "terminalVisibleLines": [
+                "LAUDE_CODE_MAX_CONTEXT_TOKENS to its real window; CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 restores the previou",
+                "s wait-for-the-API behavior.",
+                "",
+                "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+                "  Allow external CLAUDE.md file imports?",
+                "",
+                "  This project's CLAUDE.md imports files outside the current working directory. Never allow this for third-party",
+                "  repositories.",
+                "",
+                "  External imports:",
+                "    /home/runner/work/dev-session-canvas/dev-session-canvas/AGENTS.md",
+                "",
+                "  Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks",
+                "  https://code.claude.com/docs/en/security",
+                "",
+                "  ❯ No, disable external imports",
+                "    Yes, allow external imports",
+                "",
+                "  Enter to confirm · Esc to cancel",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "terminalTextareaLeft": 15.056,
+              "terminalTextareaTop": 225,
+              "terminalMouseTrackingMode": "none",
+              "terminalBufferType": "normal",
+              "terminalHasFocus": false,
+              "terminalTheme": {
+                "background": "#191a1b",
+                "foreground": "#cccccc",
+                "cursor": "#bfbfbf",
+                "selectionBackground": "rgba(57, 148, 188, 0.2)",
+                "ansiBlue": "#2472c8",
+                "ansiBrightWhite": "#e5e5e5"
+              }
+            },
+            "failureNode": {
+              "id": "agent-3-f4b568df-21e2-41ae-9f9f-706a46276edd",
+              "kind": "agent",
+              "title": "Agent 3",
+              "status": "waiting-input",
+              "summary": "\u001b[2C\u001b[4A\u001b[>0q\u001b[c",
+              "position": {
+                "x": 1600,
+                "y": 100
+              },
+              "size": {
+                "width": 1000,
+                "height": 720
+              },
+              "metadata": {
+                "agent": {
+                  "backend": "node-pty",
+                  "lifecycle": "waiting-input",
+                  "provider": "claude",
+                  "launchPreset": "custom",
+                  "customLaunchCommand": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-3vLr0w/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--answer-with-footer/scene/agent-tui/answer-with-footer/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' '208a3c94-8804-4710-a894-2be83549b368'",
+                  "runtimeKind": "pty-cli",
+                  "resumeSupported": false,
+                  "resumeStrategy": "none",
+                  "shellPath": "claude",
+                  "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--answer-with-footer/scene/agent-tui/answer-with-footer/tui-fixture/claude/workspace",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "attached-live",
+                  "liveSession": true,
+                  "lastCols": 125,
+                  "lastRows": 40,
+                  "attentionPending": false,
+                  "lastBackendLabel": "Claude Code",
+                  "resumeSessionId": "208a3c94-8804-4710-a894-2be83549b368"
+                }
+              }
+            },
+            "events": [],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "ffcd91fb-fbe4-4c08-a24e-7c2a55e6931e",
+                  "generation": "b232d59d-45ba-4e00-b217-755d9622c200"
+                },
+                "kind": "agent",
+                "nodeId": "agent-3-f4b568df-21e2-41ae-9f9f-706a46276edd",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:17:03.476Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-3-f4b568df-21e2-41ae-9f9f-706a46276edd",
+                      "kind": "agent",
+                      "executionSessionId": "ffcd91fb-fbe4-4c08-a24e-7c2a55e6931e",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-254c1397-8a49-4364-9f26-0c026c6e578d"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 14
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 0,
+            "firstSample": null,
+            "lastSample": null
+          }
+        }
+      }
+    },
+    "tool-network-silence": {
+      "artifactId": 12815870352,
+      "providers": {
+        "codex": {
+          "originalResultSha256": "5282f13f5aa98645ce711ca6f8e08897b1bc8306afba500f01bb285cc2ed3046",
+          "result": {
+            "provider": "codex",
+            "scenario": "agent-tui/tool-network-silence",
+            "status": "passed",
+            "identity": {
+              "nodeId": "agent-2-df8cafe7-9fba-4fa5-8f8d-643b66c23223",
+              "execution": {
+                "executionId": "d8e6231c-aedc-469d-a8a8-4312bdba454d",
+                "generation": "591123cb-d8d2-469f-ae80-50ba5b0f1268"
+              },
+              "sessionId": "01a18271-9baa-7942-93a2-e08572a7ed6b",
+              "toolStart": {
+                "callId": "8c4668be-51cc-4a72-83d3-3678dffa1765",
+                "pid": 2778,
+                "startedAt": 1793189847596
+              }
+            },
+            "turn": {
+              "sessionId": "01a18271-9baa-7942-93a2-e08572a7ed6b",
+              "turnId": "01a18271-9d19-7531-809b-c89ea13bc5f9",
+              "completed": true,
+              "answer": "The tool returned receipt_4de1a518c91548fea783fe0ca8000760.",
+              "completedAt": 1793189852103
+            },
+            "toolEnd": {
+              "callId": "8c4668be-51cc-4a72-83d3-3678dffa1765",
+              "receipt": "receipt_4de1a518c91548fea783fe0ca8000760",
+              "completedAt": 1793189850772
+            },
+            "events": [
+              {
+                "observedAt": 1793189846384,
+                "observerPid": 2828,
+                "session_id": "01a18271-9baa-7942-93a2-e08572a7ed6b",
+                "turn_id": "01a18271-9d19-7531-809b-c89ea13bc5f9",
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--tool-network-silence/scene/agent-tui/tool-network-silence/tui-fixture/codex/workspace",
+                "prompt": "Test b25f2673-44b5-4933-90a3-5d3b539fc4a2. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+              },
+              {
+                "observedAt": 1793189852103,
+                "observerPid": 2859,
+                "session_id": "01a18271-9baa-7942-93a2-e08572a7ed6b",
+                "turn_id": "01a18271-9d19-7531-809b-c89ea13bc5f9",
+                "hook_event_name": "Stop",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--tool-network-silence/scene/agent-tui/tool-network-silence/tui-fixture/codex/workspace",
+                "stop_hook_active": false,
+                "last_assistant_message": "The tool returned receipt_4de1a518c91548fea783fe0ca8000760."
+              }
+            ],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "d8e6231c-aedc-469d-a8a8-4312bdba454d",
+                  "generation": "591123cb-d8d2-469f-ae80-50ba5b0f1268"
+                },
+                "kind": "agent",
+                "nodeId": "agent-2-df8cafe7-9fba-4fa5-8f8d-643b66c23223",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:17:33.689Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-2-df8cafe7-9fba-4fa5-8f8d-643b66c23223",
+                      "kind": "agent",
+                      "executionSessionId": "d8e6231c-aedc-469d-a8a8-4312bdba454d",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-ca6054d9-56dc-4f2d-b90f-54e1aed16eeb"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 212
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 31,
+            "firstSample": {
+              "at": 1793189847654,
+              "status": "running",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: New Build faster with Codex.",
+                "",
+                "",
+                "› Test b25f2673-44b5-4933-90a3-5d3b539fc4a2. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                " ",
+                "• Calling tui.wait_for_release({})",
+                " ",
+                "• Working (1s • esc to interrupt)",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 125,
+              "rows": 40
+            },
+            "lastSample": {
+              "at": 1793189853153,
+              "status": "waiting-input",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: New Build faster with Codex.",
+                "",
+                "",
+                "› Test b25f2673-44b5-4933-90a3-5d3b539fc4a2. Call the tui wait_for_release tool exactly once and wait for its result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                "",
+                "• Called tui.wait_for_release({})",
+                "  └ receipt_4de1a518c91548fea783fe0ca8000760",
+                "",
+                "• The tool returned receipt_4de1a518c91548fea783fe0ca8000760.",
+                "",
+                "  12:17",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnings · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 125,
+              "rows": 40
+            }
+          }
+        },
+        "claude": {
+          "originalResultSha256": "803e28f3efb94406442dc61301fc8f1fd04c5c4320ce2564bcffcd5b7e9904f1",
+          "result": {
+            "provider": "claude",
+            "scenario": "agent-tui/tool-network-silence",
+            "status": "failed",
+            "error": "Timed out: interactive CLI ready",
+            "failurePage": {
+              "nodeId": "agent-3-bf921d9b-7eb2-4799-a7a7-2ebb8cb7d807",
+              "kind": "agent",
+              "chromeTitle": "Agent 3",
+              "chromeContext": "claude/workspace/",
+              "chromeSubtitle": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-udyyev/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--tool-network-silence/scene/agent-tui/tool-network-silence/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' 'a5af8d70-f67a-48c0-9c23-9eee22db327f'",
+              "statusText": "Waiting for input",
+              "attentionIndicatorVisible": false,
+              "attentionIndicatorFlashing": false,
+              "minimapVisible": true,
+              "minimapAttentionFlashing": false,
+              "minimapAttentionSizePulsing": false,
+              "selected": true,
+              "renderedWidth": 1000,
+              "renderedHeight": 720,
+              "titleInputValue": "Agent 3",
+              "fileEntries": [],
+              "terminalSelectionText": "",
+              "terminalCols": 125,
+              "terminalRows": 40,
+              "terminalFitCols": 125,
+              "terminalFitRows": 40,
+              "terminalProjectionPending": false,
+              "terminalExecutionSessionId": "42b24b5c-819d-4752-b034-76db2d49a6b9",
+              "terminalCursorX": 2,
+              "terminalCursorY": 13,
+              "terminalViewportY": 7,
+              "terminalVisibleLines": [
+                "",
+                "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+                "  Allow external CLAUDE.md file imports?",
+                "",
+                "  This project's CLAUDE.md imports files outside the current working directory. Never allow this for third-party",
+                "  repositories.",
+                "",
+                "  External imports:",
+                "    /home/runner/work/dev-session-canvas/dev-session-canvas/AGENTS.md",
+                "",
+                "  Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks",
+                "  https://code.claude.com/docs/en/security",
+                "",
+                "  ❯ No, disable external imports",
+                "    Yes, allow external imports",
+                "",
+                "  Enter to confirm · Esc to cancel",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "terminalTextareaLeft": 15.056,
+              "terminalTextareaTop": 195,
+              "terminalMouseTrackingMode": "none",
+              "terminalBufferType": "normal",
+              "terminalHasFocus": false,
+              "terminalTheme": {
+                "background": "#191a1b",
+                "foreground": "#cccccc",
+                "cursor": "#bfbfbf",
+                "selectionBackground": "rgba(57, 148, 188, 0.2)",
+                "ansiBlue": "#2472c8",
+                "ansiBrightWhite": "#e5e5e5"
+              }
+            },
+            "failureNode": {
+              "id": "agent-3-bf921d9b-7eb2-4799-a7a7-2ebb8cb7d807",
+              "kind": "agent",
+              "title": "Agent 3",
+              "status": "waiting-input",
+              "summary": "\u001b[2C\u001b[4A\u001b[>0q\u001b[c",
+              "position": {
+                "x": 1600,
+                "y": 100
+              },
+              "size": {
+                "width": 1000,
+                "height": 720
+              },
+              "metadata": {
+                "agent": {
+                  "backend": "node-pty",
+                  "lifecycle": "waiting-input",
+                  "provider": "claude",
+                  "launchPreset": "custom",
+                  "customLaunchCommand": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-udyyev/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--tool-network-silence/scene/agent-tui/tool-network-silence/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' 'a5af8d70-f67a-48c0-9c23-9eee22db327f'",
+                  "runtimeKind": "pty-cli",
+                  "resumeSupported": false,
+                  "resumeStrategy": "none",
+                  "shellPath": "claude",
+                  "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--tool-network-silence/scene/agent-tui/tool-network-silence/tui-fixture/claude/workspace",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "attached-live",
+                  "liveSession": true,
+                  "lastCols": 125,
+                  "lastRows": 40,
+                  "attentionPending": false,
+                  "lastBackendLabel": "Claude Code",
+                  "resumeSessionId": "a5af8d70-f67a-48c0-9c23-9eee22db327f"
+                }
+              }
+            },
+            "events": [],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "42b24b5c-819d-4752-b034-76db2d49a6b9",
+                  "generation": "407d2fe9-d52e-420a-befd-1059900bf7de"
+                },
+                "kind": "agent",
+                "nodeId": "agent-3-bf921d9b-7eb2-4799-a7a7-2ebb8cb7d807",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:18:18.968Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-3-bf921d9b-7eb2-4799-a7a7-2ebb8cb7d807",
+                      "kind": "agent",
+                      "executionSessionId": "42b24b5c-819d-4752-b034-76db2d49a6b9",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-ca6054d9-56dc-4f2d-b90f-54e1aed16eeb"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 14
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 0,
+            "firstSample": null,
+            "lastSample": null
+          }
+        }
+      }
+    },
+    "turn-completion-redraw": {
+      "artifactId": 12815795900,
+      "providers": {
+        "codex": {
+          "originalResultSha256": "f74fb13835681560af34af95a4a9825b622cc1a81ee9b3a6a61cc7b485735447",
+          "result": {
+            "provider": "codex",
+            "scenario": "agent-tui/turn-completion-redraw",
+            "status": "passed",
+            "identity": {
+              "nodeId": "agent-2-a0cab85f-1f57-4526-852d-cdf0e950fcf5",
+              "execution": {
+                "executionId": "4564320f-c4b9-4fd4-b3db-40c31f908df5",
+                "generation": "b05995d9-dc74-49c2-8770-c2a87257c9d2"
+              },
+              "sessionId": "01a18272-50d2-79d2-b185-8502ae20a610",
+              "toolStart": {
+                "callId": "5609cacd-f1e7-4402-b15a-54b93aa73327",
+                "pid": 3164,
+                "startedAt": 1793189894031
+              }
+            },
+            "turn": {
+              "sessionId": "01a18272-50d2-79d2-b185-8502ae20a610",
+              "turnId": "01a18272-52c4-7291-a520-7ed15f9d0f8c",
+              "completed": true,
+              "answer": "The tool returned receipt_5583dcdd0a2541a490bc5e56d00dbb6d.",
+              "completedAt": 1793189895207
+            },
+            "toolEnd": {
+              "callId": "5609cacd-f1e7-4402-b15a-54b93aa73327",
+              "receipt": "receipt_5583dcdd0a2541a490bc5e56d00dbb6d",
+              "completedAt": 1793189894088
+            },
+            "events": [
+              {
+                "observedAt": 1793189892969,
+                "observerPid": 3222,
+                "session_id": "01a18272-50d2-79d2-b185-8502ae20a610",
+                "turn_id": "01a18272-52c4-7291-a520-7ed15f9d0f8c",
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--turn-completion-redraw/scene/agent-tui/turn-completion-redraw/tui-fixture/codex/workspace",
+                "prompt": "Test 4ce9c48f-246b-4eb6-8745-387a89374c30. Call the tui wait_for_release tool exactly once and wait for its result. Then answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use other tools or write files. Do not respond before the tool returns."
+              },
+              {
+                "observedAt": 1793189895207,
+                "observerPid": 3249,
+                "session_id": "01a18272-50d2-79d2-b185-8502ae20a610",
+                "turn_id": "01a18272-52c4-7291-a520-7ed15f9d0f8c",
+                "hook_event_name": "Stop",
+                "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--turn-completion-redraw/scene/agent-tui/turn-completion-redraw/tui-fixture/codex/workspace",
+                "stop_hook_active": false,
+                "last_assistant_message": "The tool returned receipt_5583dcdd0a2541a490bc5e56d00dbb6d."
+              }
+            ],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "4564320f-c4b9-4fd4-b3db-40c31f908df5",
+                  "generation": "b05995d9-dc74-49c2-8770-c2a87257c9d2"
+                },
+                "kind": "agent",
+                "nodeId": "agent-2-a0cab85f-1f57-4526-852d-cdf0e950fcf5",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:18:21.345Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-2-a0cab85f-1f57-4526-852d-cdf0e950fcf5",
+                      "kind": "agent",
+                      "executionSessionId": "4564320f-c4b9-4fd4-b3db-40c31f908df5",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-9e456fbc-dc90-4802-8943-fd2282377110"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 138
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 30,
+            "firstSample": {
+              "at": 1793189898043,
+              "status": "waiting-input",
+              "lines": [
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: New Build faster with Codex.",
+                "",
+                "",
+                "› Test 4ce9c48f-246b-4eb6-8745-387a89374c30. Call the tui wait_for_release tool exactly once and wait for its",
+                " result. Then",
+                "  answer in one short plain English sentence containing the exact receipt returned by the tool. Do not use ot",
+                "her tools or",
+                "  write files. Do not respond before the tool returns.",
+                "",
+                "",
+                "• Called tui.wait_for_release({})",
+                "  └ receipt_5583dcdd0a2541a490bc5e56d00dbb6d",
+                "",
+                "• The tool returned receipt_5583dcdd0a2541a490bc5e56d00dbb6d.",
+                "",
+                "  12:18",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                                               ⚠ 3 warnin",
+                "gs · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 109,
+              "rows": 35
+            },
+            "lastSample": {
+              "at": 1793189901081,
+              "status": "waiting-input",
+              "lines": [
+                "╭───────────────────────────────────────────────────╮",
+                "│ >_ OpenAI Codex (v0.157.1)                        │",
+                "│                                                   │",
+                "│ model:     DeepSeek-Flash high   /model to change │",
+                "│ directory: /home/runner/work/…/codex/workspace    │",
+                "╰───────────────────────────────────────────────────╯",
+                "",
+                "  Tip: New Build faster with Codex.",
+                "",
+                "",
+                "› Test 4ce9c48f-246b-4eb6-8745-387a89374c30. Call the tui wait_for_release tool exactly once and wait for",
+                "  its result. Then answer in one short plain English sentence containing the exact receipt returned by the",
+                "  tool. Do not use other tools or write files. Do not respond before the tool returns.",
+                "",
+                "",
+                "• Called tui.wait_for_release({})",
+                "  └ receipt_5583dcdd0a2541a490bc5e56d00dbb6d",
+                "",
+                "• The tool returned receipt_5583dcdd0a2541a490bc5e56d00dbb6d.",
+                "",
+                "  12:18",
+                " ",
+                " ",
+                "› Ask Codex to do anything",
+                " ",
+                "  DeepSeek-Flash · Context 100% left                                               ⚠ 3 warnings · f2 to view",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "cols": 109,
+              "rows": 35
+            }
+          }
+        },
+        "claude": {
+          "originalResultSha256": "ac54bb1719735b4299747de9294d4f20047cec9fc29d3a19c0d2dfcc461b448a",
+          "result": {
+            "provider": "claude",
+            "scenario": "agent-tui/turn-completion-redraw",
+            "status": "failed",
+            "error": "Late observation: interactive CLI ready",
+            "failurePage": {
+              "nodeId": "agent-3-244e7a0e-1a55-4a36-a531-4703591e1a8e",
+              "kind": "agent",
+              "chromeTitle": "Agent 3",
+              "chromeContext": "claude/workspace/",
+              "chromeSubtitle": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-oV1WBd/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--turn-completion-redraw/scene/agent-tui/turn-completion-redraw/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' '184d6114-9c40-4117-8931-a97f91bdd193'",
+              "statusText": "Waiting for input",
+              "attentionIndicatorVisible": false,
+              "attentionIndicatorFlashing": false,
+              "minimapVisible": true,
+              "minimapAttentionFlashing": false,
+              "minimapAttentionSizePulsing": false,
+              "selected": true,
+              "renderedWidth": 1000,
+              "renderedHeight": 720,
+              "titleInputValue": "Agent 3",
+              "fileEntries": [],
+              "terminalSelectionText": "",
+              "terminalCols": 125,
+              "terminalRows": 40,
+              "terminalFitCols": 125,
+              "terminalFitRows": 40,
+              "terminalProjectionPending": false,
+              "terminalExecutionSessionId": "6ce9aeb9-29ed-470e-996f-71fe6a871bdf",
+              "terminalCursorX": 2,
+              "terminalCursorY": 15,
+              "terminalViewportY": 3,
+              "terminalVisibleLines": [
+                "LAUDE_CODE_MAX_CONTEXT_TOKENS to its real window; CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1 restores the previou",
+                "s wait-for-the-API behavior.",
+                "",
+                "─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+                "  Allow external CLAUDE.md file imports?",
+                "",
+                "  This project's CLAUDE.md imports files outside the current working directory. Never allow this for third-party",
+                "  repositories.",
+                "",
+                "  External imports:",
+                "    /home/runner/work/dev-session-canvas/dev-session-canvas/AGENTS.md",
+                "",
+                "  Important: Only use Claude Code with files you trust. Accessing untrusted files may pose security risks",
+                "  https://code.claude.com/docs/en/security",
+                "",
+                "  ❯ No, disable external imports",
+                "    Yes, allow external imports",
+                "",
+                "  Enter to confirm · Esc to cancel",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "terminalTextareaLeft": 15.056,
+              "terminalTextareaTop": 225,
+              "terminalMouseTrackingMode": "none",
+              "terminalBufferType": "normal",
+              "terminalHasFocus": false,
+              "terminalTheme": {
+                "background": "#191a1b",
+                "foreground": "#cccccc",
+                "cursor": "#bfbfbf",
+                "selectionBackground": "rgba(57, 148, 188, 0.2)",
+                "ansiBlue": "#2472c8",
+                "ansiBrightWhite": "#e5e5e5"
+              }
+            },
+            "failureNode": {
+              "id": "agent-3-244e7a0e-1a55-4a36-a531-4703591e1a8e",
+              "kind": "agent",
+              "title": "Agent 3",
+              "status": "waiting-input",
+              "summary": "\u001b[2C\u001b[4A\u001b[>0q\u001b[c",
+              "position": {
+                "x": 1480,
+                "y": 100
+              },
+              "size": {
+                "width": 1000,
+                "height": 720
+              },
+              "metadata": {
+                "agent": {
+                  "backend": "node-pty",
+                  "lifecycle": "waiting-input",
+                  "provider": "claude",
+                  "launchPreset": "custom",
+                  "customLaunchCommand": "'/home/runner/work/_temp/tui-cli/node_modules/.bin/claude' '--settings' '/tmp/dsc-agent-deepseek-oV1WBd/claude/settings.json' '--strict-mcp-config' '--mcp-config' '/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--turn-completion-redraw/scene/agent-tui/turn-completion-redraw/tui-fixture/claude/mcp.json' '--tools' '' '--permission-mode' 'dontAsk' '--session-id' '184d6114-9c40-4117-8931-a97f91bdd193'",
+                  "runtimeKind": "pty-cli",
+                  "resumeSupported": false,
+                  "resumeStrategy": "none",
+                  "shellPath": "claude",
+                  "cwd": "/home/runner/work/dev-session-canvas/dev-session-canvas/gate-results/source-host/agent-tui--turn-completion-redraw/scene/agent-tui/turn-completion-redraw/tui-fixture/claude/workspace",
+                  "persistenceMode": "snapshot-only",
+                  "attachmentState": "attached-live",
+                  "liveSession": true,
+                  "lastCols": 125,
+                  "lastRows": 40,
+                  "attentionPending": false,
+                  "lastBackendLabel": "Claude Code",
+                  "resumeSessionId": "184d6114-9c40-4117-8931-a97f91bdd193"
+                }
+              }
+            },
+            "events": [],
+            "retirement": [
+              {
+                "identity": {
+                  "executionId": "6ce9aeb9-29ed-470e-996f-71fe6a871bdf",
+                  "generation": "7808362d-5c54-4a31-9e29-b876ec5b4ef7"
+                },
+                "kind": "agent",
+                "nodeId": "agent-3-244e7a0e-1a55-4a36-a531-4703591e1a8e",
+                "persistence": {
+                  "kind": "saved"
+                },
+                "readers": [
+                  {
+                    "timestamp": "2026-10-28T12:19:06.742Z",
+                    "kind": "execution/localTerminalReaderSettled",
+                    "detail": {
+                      "nodeId": "agent-3-244e7a0e-1a55-4a36-a531-4703591e1a8e",
+                      "kind": "agent",
+                      "executionSessionId": "6ce9aeb9-29ed-470e-996f-71fe6a871bdf",
+                      "lifecycle": {
+                        "surface": "editor",
+                        "mode": "active",
+                        "generation": 2,
+                        "frameId": "frame-9e456fbc-dc90-4802-8943-fd2282377110"
+                      },
+                      "outcome": {
+                        "kind": "applied",
+                        "finalOutputSequence": 14
+                      }
+                    }
+                  }
+                ],
+                "readerWasRequired": true,
+                "retired": true
+              }
+            ],
+            "sampleCount": 0,
+            "firstSample": null,
+            "lastSample": null
+          }
+        }
+      }
+    }
+  }
+}

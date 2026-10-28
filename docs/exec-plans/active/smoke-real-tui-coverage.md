@@ -82,3 +82,5 @@
 修订：2026-10-28 完整固定输入合同回归 139/139 通过；原并行改目录的失败不追认。PR341 首轮 CI regression shard-2 暴露旧 VM 只提供 scenarios 而新 runner 额外读取 selectedSuites，已将真实 TUI 路由并入既有 scenarios，原退役回归 18/18 通过。Claude 启动按仓库已验证的 End/两次 Yes 采样规则修正，本地真实固定 CLI、闭合本地无服务地址且零模型请求的启动实验通过；实际观察两次 End 后唯一 Enter。发布接线/环境过滤回归通过，正式业务 CI 继续待验。
 
 修订：2026-10-28 Actions 40683639714 的 Codex 和 Claude 信号探索全部通过。移除临时探索 workflow/脚本，正式测试保留同一私有初始化与观察器。PR341 旧输入 run40682891236 的 regression 失败保留，取消旧轮以解除排队；新输入 e4f865da 的 run40683646799 正式产品验收继续。
+
+修订：2026-10-28 首轮产品四项 Codex source 全通过，Claude 全因 cwd 在 checkout 内向上读取 CLAUDE.md 而停在外部导入菜单。将 cwd 迁到私有凭据根下、明确断言在 checkout 外并随 dispose 删除；8/8 回归通过。首轮 systemd-user-real-reopen 第二 Host ready 超时单独保留，不归因 TUI；后续输入完整验收待执行。

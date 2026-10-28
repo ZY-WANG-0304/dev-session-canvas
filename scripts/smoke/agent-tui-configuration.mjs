@@ -21,10 +21,15 @@ export async function prepareAgentTui({ provider, directory, projectRoot, cliRoo
   assert.equal(version.stdout.trim(), provider === 'codex' ? `codex-cli ${tuiProviders.codex}`
     : `${tuiProviders.claude} (Claude Code)`, 'Real CLI version differs from the fixed input');
   await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  const workspace = path.join(directory, 'workspace');
-  await fs.mkdir(workspace, { mode: 0o700 });
   const configuration = await createDeepSeekConfiguration({ apiKey });
   try {
+    // Keep the CLI cwd outside the checkout: Claude walks ancestor CLAUDE.md
+    // files even when its private settings and home are isolated.
+    const workspace = path.join(configuration.directory, 'workspace');
+    const relative = path.relative(projectRoot, workspace);
+    assert(relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative),
+      'Private CLI workspace must be outside the source checkout');
+    await fs.mkdir(workspace, { mode: 0o700 });
     const events = path.join(directory, 'events.jsonl');
     const observerCommand = [process.execPath, path.join(projectRoot, 'tests/vscode-smoke/agent-tui-hook.cjs'),
       events].map(shellQuote).join(' ');

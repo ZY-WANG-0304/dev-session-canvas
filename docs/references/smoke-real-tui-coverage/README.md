@@ -31,4 +31,8 @@
 
 PR341 的旧输入 run40682891236 在 regression shard-2 暴露 runner VM 仍仅提供 scenarios，而新入口额外读取 selectedSuites；将路由并入既有 scenarios 后原退役回归通过。旧轮失败保留并取消剩余执行，避免阻塞后续输入。
 
-输入 e4f865da 的 Release Preflight run40683646799 正在执行；四项 source 和四项 packaged、各两 provider 的结果尚待实际 Host 工件确认。所有清理及 Host 退出结果也需通过，不能由上述探索或静态检查代证。
+输入 e4f865da 的 Release Preflight run40683646799：四个 source 场景的 Codex 均通过，原执行保存/reader/退役均有证据；Claude 四项在 interactive CLI ready 失败，未提交回合。页面明确停在 `Allow external CLAUDE.md file imports?`，导入目标为仓库根 AGENTS.md。原因是旧夹具 cwd 虽为新建空目录，但位于 checkout 下，Claude 向上继承了仓库 CLAUDE.md。修复将 cwd 放在 checkout 外的私有临时目录并随凭据清理，不确认导入仓库指令；新增配置隔离/清理回归通过，test:agent-tui 现为 8/8。原始结果摘要见 [首轮产品证据](first-product-run.json)。该轮剩余执行取消，packaged 由新输入验收，不能算旧轮通过。
+
+同轮既有 `source-host/systemd-user-real-reopen` 在第二 Host 的 editor ready 45000ms 超时。原执行 identity/barrier 已建立，失败快照为 editor generation=5、ready=false，最后记录 surface/rendered；此项未归因为本次 TUI，原工件 12815266032 保留，后续结果独立记录。
+
+修复后的完整 source / packaged 结果仍待实际 Host 工件确认。所有清理及 Host 退出结果也需通过，不能由上述探索或静态检查代证。

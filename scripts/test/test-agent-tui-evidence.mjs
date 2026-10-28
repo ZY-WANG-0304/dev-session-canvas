@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import evidence from '../../tests/vscode-smoke/agent-tui-evidence.cjs';
 import startup from '../../tests/vscode-smoke/agent-tui-startup.cjs';
+import { prepareAgentTui } from '../smoke/agent-tui-configuration.mjs';
 const { parseEvents, observeTurn, answerWithFooter, draftInComposer } = evidence;
 const receipt = 'receipt_' + 'a'.repeat(32);
 const input = { provider: 'codex', prompt: 'Call the tool', workspace: '/private', submittedAt: 1,
@@ -119,5 +120,26 @@ test('hook executable records only observed fields and returns no continuation',
     assert.equal(observed.session_id, stop.session_id);
     assert.equal(observed.turn_id, stop.turn_id);
     assert(!Object.hasOwn(observed, 'unneededSecret'));
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});
+
+
+test('private provider cwd cannot inherit checkout instructions and is retired with credentials', { skip: process.platform !== 'linux' }, async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-tui-config-test-'));
+  const cliRoot = path.join(directory, 'cli');
+  const bin = path.join(cliRoot, 'node_modules/.bin');
+  await fs.mkdir(bin, { recursive: true });
+  await fs.writeFile(path.join(directory, 'CLAUDE.md'), 'Checkout instructions must not reach the private CLI.');
+  try {
+    for (const [provider, version] of [['codex', 'codex-cli 0.157.1'], ['claude', '2.1.280 (Claude Code)']]) {
+      await fs.writeFile(path.join(bin, provider), `#!/bin/sh\nprintf '%s\\n' '${version}'\n`, { mode: 0o700 });
+      const config = await prepareAgentTui({ provider, directory: path.join(directory, provider),
+        projectRoot: directory, cliRoot, apiKey: 'configuration-unit-test-only' });
+      try {
+        assert(path.relative(directory, config.workspace).startsWith(`..${path.sep}`));
+        assert.deepEqual(await fs.readdir(config.workspace), []);
+      } finally { await config.dispose(); }
+      await assert.rejects(fs.stat(config.workspace), { code: 'ENOENT' });
+    }
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 });
