@@ -67,7 +67,7 @@ if (scenarioFilter) {
     || selectSmokeSuites({ scenario: name, diagnostic: true }).length, `Unknown smoke scenario ${name}`);
 }
 
-const scenarios = selectedSuites.filter(suite => suite.launcher === 'ordinary')
+const scenarios = selectedSuites.filter(suite => suite.launcher === 'ordinary' || suite.kind === 'real-tui')
   .map(suite => ({ ...suite, name: suite.id, description: suite.title, focusedOnly: suite.diagnosticOnly }));
 
 async function main() {
@@ -75,15 +75,14 @@ async function main() {
     process.exit(runInsideXvfb(currentScriptPath, projectRoot));
   }
 
-  for (const scenario of selectedSuites.filter(suite => suite.kind === 'real-tui')) {
-    if (!shouldRunScenario(scenario.id)) continue;
-    const debugRoot = path.join(smokeDebugRoot, scenario.id);
-    const host = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
-    await runAgentTuiSuite({ projectRoot, debugRoot, scenario: scenario.id, extensionDevelopmentPath: host });
-  }
-
   for (const scenario of scenarios) {
     if (!shouldRunScenario(scenario.name) || (scenario.focusedOnly && !scenarioFilter)) {
+      continue;
+    }
+    if (scenario.kind === 'real-tui') {
+      const debugRoot = path.join(smokeDebugRoot, scenario.id);
+      const host = await prepareMainSmokeHostExtension({ projectRoot, targetRoot: path.join(debugRoot, 'smoke-host') });
+      await runAgentTuiSuite({ projectRoot, debugRoot, scenario: scenario.id, extensionDevelopmentPath: host });
       continue;
     }
 

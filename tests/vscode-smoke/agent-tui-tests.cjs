@@ -114,7 +114,9 @@ async function runProvider(config, scenario, step) {
         return action.ready;
       }, Boolean, 45000);
       submittedAt = Date.now();
-      await dom(`\x1b[200~${config.prompt}\x1b[201~`); await dom('\r');
+      await dom(`\x1b[200~${config.prompt}\x1b[201~`);
+      // Fixed CLI paste coalescing must settle before the separate Enter key.
+      await sleep(250); await dom('\r');
       toolStart = await poll('real tool waiting', () => readJSON('tool-start.json'), Boolean, 90000);
       const current = await observedTurn(); assert(current && !current.completed, 'Tool must belong to pending turn');
       report.identity = { nodeId, execution: original.identity, sessionId: current.sessionId, toolStart };
@@ -161,6 +163,8 @@ async function runProvider(config, scenario, step) {
     });
   } catch (error) {
     report.status = 'failed'; report.error = error.message; businessError = error;
+    report.failurePage = await probe().catch(() => null);
+    report.failureNode = await state().then(node).catch(() => null);
   } finally {
     report.events = await events();
     await fs.writeFile(path.join(config.directory, 'result.json'), JSON.stringify(report, null, 2));

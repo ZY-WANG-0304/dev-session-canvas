@@ -7,8 +7,7 @@ on:
       - .github/workflows/agent-tui-signals.yml
       - scripts/diagnostics/probe-agent-tui-signals.mjs
       - scripts/smoke/agent-tui-configuration.mjs
-      - tests/vscode-smoke/agent-tui-hook.cjs
-      - tests/vscode-smoke/agent-tui-tool.cjs
+      - tests/vscode-smoke/agent-tui-*.cjs
 permissions:
   contents: read
 jobs:

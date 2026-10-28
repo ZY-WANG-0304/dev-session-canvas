@@ -39,10 +39,18 @@ test('partial append cannot invent an event; corrupt complete JSON fails', () =>
   assert.throws(() => parseEvents('{broken}\n'));
 });
 test('Claude first-run No/Yes cursor cannot satisfy composer readiness or repeat acceptance', () => {
-  const menu = 'Welcome to Claude Code\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm';
+  const menu = 'Accessing workspace:\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm · Esc to cancel';
   const seen = new Set();
-  assert.deepEqual(startup.startupAction(menu, seen), { ready: false, id: 'trust', data: '\x1b[B\r' });
+  assert.deepEqual(startup.startupAction(menu, seen, 0), { ready: false, id: 'trust-navigation', data: '\x1b[F' });
+  const yes = menu.replace('❯ No, exit\n  Yes', '  No, exit\n❯ Yes');
+  assert.deepEqual(startup.startupAction(yes, seen, 100), { ready: false });
+  assert.deepEqual(startup.startupAction(menu, seen, 200), { ready: false, id: 'trust-navigation', data: '\x1b[F' });
+  assert.deepEqual(startup.startupAction(yes, seen, 300), { ready: false });
+  assert.deepEqual(startup.startupAction(yes, seen, 400), { ready: false, id: 'trust', data: '\r' });
   assert.deepEqual(startup.startupAction(menu, seen), { ready: false });
   assert.equal(startup.startupAction('Claude Code\n❯ Try a prompt\n? for shortcuts', seen).ready, true);
   assert.equal(startup.startupAction('model: loading\n› Ask Codex', seen).ready, false);
+  const neverYes = new Set();
+  for (let i = 0; i < 3; i++) startup.startupAction(menu, neverYes);
+  assert.throws(() => startup.startupAction(menu, neverYes), /navigation limit/);
 });

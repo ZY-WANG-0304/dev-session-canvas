@@ -76,3 +76,5 @@
 修订：2026-10-28 第二轮信号探索 40681635343 已取得 Codex UserPromptSubmit/Stop 的同 session/turn 及实际回答；工具未允许导致工具未运行，Claude 停在首次启动 Security notes。仅修正私有工具授权和初始化步骤，不把这些失败归为产品误判。首批正式范围选定 Linux、snapshot-only、两 provider、四项 source/packaged，CLI 信号实跑仍未通过；相应入口正在接入。
 
 修订：2026-10-28 新增 source/packaged 实际入口、独立判定反例、阶段回执及 CI secret 接线；152 项映射均为 implemented-unverified，映射不签发验收。40682240862 的 Codex 信号探索通过，Claude 菜单默认 No 导致退出，补明确 Yes 和菜单未消失不准入的判定。五组证据/反例通过，真实产品尚待运行。
+
+修订：2026-10-28 完整固定输入合同回归 139/139 通过；原并行改目录的失败不追认。PR341 首轮 CI regression shard-2 暴露旧 VM 只提供 scenarios 而新 runner 额外读取 selectedSuites，已将真实 TUI 路由并入既有 scenarios，原退役回归 18/18 通过。Claude 启动按仓库已验证的 End/两次 Yes 采样规则修正，本地真实固定 CLI、闭合本地无服务地址且零模型请求的启动实验通过；实际观察两次 End 后唯一 Enter。发布接线/环境过滤回归通过，正式业务 CI 继续待验。
