@@ -23,7 +23,7 @@
     "tests/vscode-smoke/smoke-gap-observations.cjs": "b20c3892d0c114f2642da40f30a4973470e5537763dba7c41522283364c7c49c",
     "tests/vscode-smoke/fixtures/smoke-geometry-output-subject.cjs": "9ead2256b884decff92e11268ec965182c758202d9d66aab3551634e49ed00f4",
     "scripts/smoke/snapshot-host-boundary.mjs": "89d0604bdefe298b48c25ef596af78a2e52ee855ff0b03782d6d6b12d3ae80ea",
-    "tests/vscode-smoke/agent-tui-tests.cjs": "5bd622fe16ca83e8575225bc14f50dd5c08dd994e44591e3ef1b65015f6a78e5"
+    "tests/vscode-smoke/agent-tui-tests.cjs": "593e1d386887d2c7be039a01ec3e7c46b73df1e489e000641787a0770b0e87b4"
   },
   "loopBounds": {
     "runIndependentHostBoundary:expected.nodes": [

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import evidence from '../../tests/vscode-smoke/agent-tui-evidence.cjs';
+import startup from '../../tests/vscode-smoke/agent-tui-startup.cjs';
 const { parseEvents, observeTurn, answerWithFooter, draftInComposer } = evidence;
 const receipt = 'receipt_' + 'a'.repeat(32);
 const input = { provider: 'codex', prompt: 'Call the tool', workspace: '/private', submittedAt: 1,
@@ -36,4 +37,12 @@ test('actual varying answer must be fully present above composer, including fold
 test('partial append cannot invent an event; corrupt complete JSON fails', () => {
   assert.deepEqual(parseEvents(JSON.stringify(start) + '\n{"incomplete"'), [start]);
   assert.throws(() => parseEvents('{broken}\n'));
+});
+test('Claude first-run No/Yes cursor cannot satisfy composer readiness or repeat acceptance', () => {
+  const menu = 'Welcome to Claude Code\n❯ No, exit\n  Yes, I trust this folder\nEnter to confirm';
+  const seen = new Set();
+  assert.deepEqual(startup.startupAction(menu, seen), { ready: false, id: 'trust', data: '\x1b[B\r' });
+  assert.deepEqual(startup.startupAction(menu, seen), { ready: false });
+  assert.equal(startup.startupAction('Claude Code\n❯ Try a prompt\n? for shortcuts', seen).ready, true);
+  assert.equal(startup.startupAction('model: loading\n› Ask Codex', seen).ready, false);
 });

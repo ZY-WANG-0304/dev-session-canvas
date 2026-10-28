@@ -6,6 +6,7 @@ const vscode = require('vscode');
 const { activateVisibleExtension, waitForCommand } = require('./test-helpers.cjs');
 const { verifyOriginalLocalRetirement } = require('./gate-runtime-state.cjs');
 const { parseEvents, observeTurn, answerWithFooter, draftInComposer } = require('./agent-tui-evidence.cjs');
+const { startupAction } = require('./agent-tui-startup.cjs');
 
 // Each provider has one absolute ceiling; individual waits never renew it.
 const PROVIDER_BUDGET_MS = 240000;
@@ -34,7 +35,7 @@ async function runProvider(config, scenario, step) {
   const deadline = Math.min(Date.now() + PROVIDER_BUDGET_MS,
     Number(process.env.DEV_SESSION_CANVAS_GATE_DEADLINE) || Infinity);
   const report = { provider: config.provider, scenario, samples: [], status: 'not-run' };
-  let nodeId, original, submittedAt, toolStart, toolEnd, turn;
+  let nodeId, original, submittedAt, toolStart, toolEnd, turn, businessError;
   const state = () => command('getDebugState');
   const node = value => value.state.nodes.find(item => item.id === nodeId);
   const probe = async () => (await command('captureWebviewProbe', 'editor', 5000)).nodes.find(item => item.nodeId === nodeId);
@@ -53,6 +54,11 @@ async function runProvider(config, scenario, step) {
   async function readJSON(file) {
     try { return JSON.parse(await fs.readFile(path.join(config.directory, file), 'utf8')); }
     catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+  }
+  async function releaseTool() {
+    const file = path.join(config.directory, 'release.json');
+    await fs.writeFile(`${file}.pending`, JSON.stringify({ callId: toolStart.callId }), { flag: 'wx' });
+    await fs.rename(`${file}.pending`, file);
   }
   async function events() {
     try { return parseEvents(await fs.readFile(config.events, 'utf8')); }
@@ -103,13 +109,10 @@ async function runProvider(config, scenario, step) {
       const seen = new Set();
       await poll('interactive CLI ready', async () => {
         const page = await probe(); const text = page?.terminalVisibleLines?.join('\n') ?? '';
-        for (const [id, pattern] of [['theme', /Choose.*(?:theme|text style)|Select.*theme/i],
-          ['trust', /Yes, I trust|Do you trust|Trust this (?:folder|directory)/i],
-          ['key', /Detected a custom API key/], ['login', /Select login method:/], ['security', /Press Enter to continue/]]) {
-          if (pattern.test(text) && !seen.has(id)) { seen.add(id); await dom('\r'); return ''; }
-        }
-        return text;
-      }, text => /[›❯]/u.test(text) && /help|shortcuts|Try|Ask|context|Claude Code/i.test(text), 45000);
+        const action = startupAction(text, seen);
+        if (action.data) await dom(action.data);
+        return action.ready;
+      }, Boolean, 45000);
       submittedAt = Date.now();
       await dom(`\x1b[200~${config.prompt}\x1b[201~`); await dom('\r');
       toolStart = await poll('real tool waiting', () => readJSON('tool-start.json'), Boolean, 90000);
@@ -129,7 +132,7 @@ async function runProvider(config, scenario, step) {
         await observeWindow('running');
         assert.equal(await readJSON('tool-end.json'), undefined, 'Tool completed during silence window');
       }
-      await fs.writeFile(path.join(config.directory, 'release.json'), JSON.stringify({ callId: toolStart.callId }), { flag: 'wx' });
+      await releaseTool();
       toolEnd = await poll('real tool result', () => readJSON('tool-end.json'), Boolean, 5000);
       turn = await poll('independent provider completion', observedTurn, value => value?.completed, 90000);
       report.turn = turn; report.toolEnd = toolEnd;
@@ -157,20 +160,25 @@ async function runProvider(config, scenario, step) {
       report.status = 'passed'; return { answerAndFooter: true, status: 'waiting-input' };
     });
   } catch (error) {
-    report.status = 'failed'; report.error = error.message; throw error;
+    report.status = 'failed'; report.error = error.message; businessError = error;
   } finally {
     report.events = await events();
     await fs.writeFile(path.join(config.directory, 'result.json'), JSON.stringify(report, null, 2));
     // Release only this fixture's blocked tool before product Stop. This cannot
     // change the saved business result. The outer Host wrapper verifies cleanup.
-    if (toolStart && !await readJSON('release.json')) await fs.writeFile(path.join(config.directory, 'release.json'),
-      JSON.stringify({ callId: toolStart.callId }), { flag: 'wx' });
-    if (nodeId && original) {
-      await dispatch('webview/stopExecutionSession', { nodeId, kind: 'agent' });
-      const retired = await poll('original local retirement', state, value => !node(value)?.metadata.agent.liveSession
-        && !value.localExecutions.some(item => item.identity.executionId === original.identity.executionId), 30000);
-      report.retirement = verifyOriginalLocalRetirement([original], retired, await command('getDiagnosticEvents'));
+    try {
+      if (toolStart && !await readJSON('release.json')) await releaseTool();
+      if (nodeId && original) {
+        await dispatch('webview/stopExecutionSession', { nodeId, kind: 'agent' });
+        const retired = await poll('original local retirement', state, value => !node(value)?.metadata.agent.liveSession
+          && !value.localExecutions.some(item => item.identity.executionId === original.identity.executionId), 30000);
+        report.retirement = verifyOriginalLocalRetirement([original], retired, await command('getDiagnosticEvents'));
+      }
+    } catch (error) {
+      report.cleanupError = error.message; businessError ??= error;
+    } finally {
       await fs.writeFile(path.join(config.directory, 'result.json'), JSON.stringify(report, null, 2));
     }
   }
+  if (businessError) throw businessError;
 }

@@ -7,6 +7,11 @@ const { randomUUID } = require('node:crypto');
 const directory = process.argv[2];
 let called = false;
 const write = value => process.stdout.write(`${JSON.stringify(value)}\n`);
+async function writeState(name, value) {
+  const file = path.join(directory, name);
+  await fs.writeFile(`${file}.pending`, JSON.stringify(value), { flag: 'wx', mode: 0o600 });
+  await fs.rename(`${file}.pending`, file);
+}
 async function handle(request) {
   if (request.id === undefined) return;
   const reply = result => write({ jsonrpc: '2.0', id: request.id, result });
@@ -23,16 +28,14 @@ async function handle(request) {
   if (called) throw new Error('Duplicate fixture tool call');
   called = true;
   const callId = randomUUID();
-  await fs.writeFile(path.join(directory, 'tool-start.json'), JSON.stringify({ callId, pid: process.pid,
-    startedAt: Date.now() }), { flag: 'wx', mode: 0o600 });
+  await writeState('tool-start.json', { callId, pid: process.pid, startedAt: Date.now() });
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
     try {
       const release = JSON.parse(await fs.readFile(path.join(directory, 'release.json'), 'utf8'));
       if (release.callId !== callId) throw new Error('Wrong release identity');
       const receipt = `receipt_${randomUUID().replaceAll('-', '')}`;
-      await fs.writeFile(path.join(directory, 'tool-end.json'), JSON.stringify({ callId, receipt,
-        completedAt: Date.now() }), { flag: 'wx', mode: 0o600 });
+      await writeState('tool-end.json', { callId, receipt, completedAt: Date.now() });
       return reply({ content: [{ type: 'text', text: receipt }] });
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
     await new Promise(resolve => setTimeout(resolve, 50));

@@ -160,6 +160,7 @@
     "package:main": "npm run -w extensions/vscode/dev-session-canvas package",
     "test:ui-copy-localization": "node --no-warnings --experimental-transform-types scripts/test/test-ui-copy-localization.mts",
     "test:shared-root-canvas": "node scripts/test/test-shared-root-canvas-store.mjs",
+    "test:agent-tui": "node --test scripts/test/test-agent-tui-evidence.mjs",
     "test:ci-gates": "node --test scripts/test/test-gate-contracts.mjs scripts/test/test-release-completion.mjs scripts/test/test-release-delivery.mjs scripts/test/test-dependency-install.mjs",
     "ci:verify": "node scripts/gates/run-local.mjs",
     "ci:diagnose": "node scripts/gates/run-local.mjs --diagnose",

@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util';
 import pty from 'node-pty';
 import headless from '@xterm/headless';
 import { prepareAgentTui } from '../smoke/agent-tui-configuration.mjs';
+import startup from '../../tests/vscode-smoke/agent-tui-startup.cjs';
 const { values } = parseArgs({ options: { output: { type: 'string' }, 'cli-root': { type: 'string' },
   provider: { type: 'string', default: 'codex' } } });
 const output = path.resolve(values.output);
@@ -19,8 +20,8 @@ let ended = false;
 let stage = 'startup';
 let raw = '';
 const screens = [];
-const text = () => Array.from({ length: terminal.buffer.active.length }, (_, i) =>
-  terminal.buffer.active.getLine(i)?.translateToString(true) ?? '').join('\n');
+const text = () => Array.from({ length: terminal.rows }, (_, i) =>
+  terminal.buffer.active.getLine(terminal.buffer.active.baseY + i)?.translateToString(true) ?? '').join('\n');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function poll(label, read, predicate, timeout = 60000) {
   stage = label;
@@ -47,15 +48,10 @@ try {
   const accepted = new Set();
   await poll('interactive-ready', async () => {
     const screen = text();
-    for (const [id, pattern] of [['theme', /Choose.*(?:theme|text style)|Select.*theme/i],
-      ['trust', /Yes, I trust|Do you trust|Trust this (?:folder|directory)/i],
-      ['key', /Detected a custom API key/], ['login', /Select login method:/], ['security', /Press Enter to continue/]]) {
-      if (pattern.test(screen) && !accepted.has(id)) {
-        screens.push({ stage: id, text: screen }); accepted.add(id); child.write('\r'); return '';
-      }
-    }
-    return screen;
-  }, value => /[›❯]/u.test(value) && /(?:help|shortcuts|Try|Ask|context|Claude Code)/i.test(value), 45000);
+    const action = startup.startupAction(screen, accepted);
+    if (action.data) { screens.push({ stage: action.id, text: screen }); child.write(action.data); }
+    return action.ready;
+  }, Boolean, 45000);
   screens.push({ stage: 'ready', text: text() });
   child.write(`\x1b[200~${config.prompt}\x1b[201~`);
   await sleep(250); child.write('\r');

@@ -74,3 +74,5 @@
 修订：2026-10-28 创建计划，明确非确定性回答、独立信号探索和 CI 交付边界。
 
 修订：2026-10-28 第二轮信号探索 40681635343 已取得 Codex UserPromptSubmit/Stop 的同 session/turn 及实际回答；工具未允许导致工具未运行，Claude 停在首次启动 Security notes。仅修正私有工具授权和初始化步骤，不把这些失败归为产品误判。首批正式范围选定 Linux、snapshot-only、两 provider、四项 source/packaged，CLI 信号实跑仍未通过；相应入口正在接入。
+
+修订：2026-10-28 新增 source/packaged 实际入口、独立判定反例、阶段回执及 CI secret 接线；152 项映射均为 implemented-unverified，映射不签发验收。40682240862 的 Codex 信号探索通过，Claude 菜单默认 No 导致退出，补明确 Yes 和菜单未消失不准入的判定。五组证据/反例通过，真实产品尚待运行。
