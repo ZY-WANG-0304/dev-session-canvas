@@ -38,7 +38,7 @@ export function CanvasNodeInteractionBoundary(props: {
   return (
     <CanvasOverviewInteractionContext.Provider value={props.disabled}>
       {React.cloneElement(props.children, {
-        ...canvasOverviewInertProps(props.disabled),
+        ...canvasOverviewInertProps(props.deletionPending === true),
         className: [props.children.props.className, props.deletionPending ? 'is-deletion-pending' : '']
           .filter(Boolean)
           .join(' '),

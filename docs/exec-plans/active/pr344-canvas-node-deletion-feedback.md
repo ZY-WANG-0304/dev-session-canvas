@@ -27,7 +27,8 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 按 CI `Resolve immutable plan` 提示重建 `smoke-budget-inventory.json`，确认场景预算未变化，只有 `extension-tests.cjs` 源码摘要更新。
 - [x] (2026-10-29) 确认最新 head `f4769a78` 的 run `40854227908` 收尾：三个 regression shards、source-host restricted 与 Remote SSH exit/reopen 通过；webview-function 一例超时，其余失败均为上游结果聚合。
 - [x] (2026-10-29) 对照 `origin/main` 和 Playwright trace 确认 webview timeout 是本 PR 的确定性 overview 交互回归：overview 禁用路径新增的整节点 `inert` 阻断了已有 `.window-chrome` 双击 handler。
-- [ ] 将 inert 限制在 deletion-pending 节点，不影响 overview 的 titlebar 聚焦，并重新验证最新 PR head。
+- [x] (2026-10-29) 将整节点 inert 限制在 deletion-pending 节点，同时保留 overview context 禁用内部操作的行为。
+- [ ] 由最新 PR head CI 验证 localized Stop case 和删除中锁定交互，并确认 Verify release contract 结果。
 
 ## 意外与发现
 
@@ -65,7 +66,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。最新完整代码 run `40854227908` 的 regression shard-1/2/3、source-host restricted 和 Remote SSH exit/reopen 全部通过。唯一独立 producer failure 是 `webview-function` 中 overview Terminal 双击无法触发子元素 handler 的确定性 regression；`verify-result` 报告 234 个成功目标与 4 个 webview 目标失败，`Verify release contract` 据此拒绝失败 acceptance，均属预期聚合。source-host 消息顺序断言和 smoke inventory hash 已修正。overview inert 范围仍需修复并重新验收，PR 完整门禁不通过。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
+P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。修复前完整代码 run `40854227908` 的 regression shard-1/2/3、source-host restricted 和 Remote SSH exit/reopen 全部通过；唯一独立 producer failure 是 overview Terminal 双击无法触发子元素 handler 的确定性 regression，verify-result 与 release contract 是预期下游失败。source-host 消息顺序断言和 smoke inventory hash 已修正。现已将整节点 inert 限制在 deletion-pending 状态，overview 内部操作继续由 context 禁用；最新修复 head 的 CI 待验证。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
 
 旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。最新完整代码 head 上 Remote SSH 已通过，source-host smoke 断言已通过；overview inert 回归仍需修复，两个聚合门禁据此失败。
 
