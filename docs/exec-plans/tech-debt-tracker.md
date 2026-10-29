@@ -45,9 +45,9 @@ Review 的永久 close 拒绝已修复：路径占位期间保持原操作 pendi
 
 第八轮39113768051和未改PR327组合39113960317已终态失败，分别321/324与327/330 required通过；packaged104及Linux安装同批通过，source各117/118。新Process原身份/公开Quit/概览中文Stop观察实现已有113合同、430登记的427功能/3视觉与原生产页面/原双包Linux局部诊断通过。两轮全量task本地独立下载原5分钟失败，未完成再聚合；不与正式aggregate混账。source real-reopen原45秒未ready和panel原10秒无documentFocus仍未定因，当前原动作只读CDP通过不能解除；新head完整跨平台和两生产竞态持续待验/阻塞。
 
-六平台有限操作及ed9257bd/最新临时组合三x64原样安装已有真实runner同批验收，固定环境/基础设施预算的持续成本校准仍保留为后续工作。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。远端main未保护，稳定检查尚未配置required约束；待用户授权配置后用实际红灯验证。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
+六平台有限操作及ed9257bd/最新临时组合三x64原样安装已有真实runner同批验收，固定环境/基础设施预算的持续成本校准仍保留为后续工作。最低VSCode、arm64原样安装、真实systemd manager、Marketplace依赖自动下载、桌面通知呈现与provider TUI依然各自待验。截至2026-10-29，main 已启用要求 PR、一次审批、最新 base 及 GitHub Actions `Verify release contract` 的活动 ruleset；临时红灯 PR #342 已验证失败检查对应 PR 为 BLOCKED，结果与限制见 `docs/design-docs/release-gate-redesign.md`。渠道模块只用本地HTTP/内存夹具测试，未真实发布或证明重签可忽略的文件；unknown内容保持未完成，不降级成版本可见。
 
-关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅竞态是已复现发布阻塞，不降为可延期技术债；最终修复落地及最新真实预合并完整门禁仍须按原计划完成。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。
+关联范围继续PR335，PR327发布材料不变。生产旧代恢复撤销订阅及 mode-switch 回调结算修复已由PR336合入main；相关局部验收不能代替PR327最新真实预合并完整门禁，该验收仍是0.26.1发布阻塞。失败证据导出超限、缺失、清理未settle不得绿色，相关新增反例已有本地通过，工件容量仍以真实Actions作最后验证。
 
 ## 2026-10-18：Runtime 模式切换删除期间的迟到回调（生产路径已复现，未修）
 
@@ -1029,3 +1029,11 @@ PR341 接入四项 Linux / snapshot-only、Codex 0.157.1 / Claude 2.1.280 的默
 PR341的run40701818847中，packaged `surface-continuity--live-page-remount` 在 `runIndependentLivePageRemount` 的 `verifyTerminalLineAndSnapshot` 准备步骤等待Host消息超时（Last messages=[]），尚未进入页面重挂载动作；原job122868168889、工件12822619264。source同场景本轮通过；本次产品改动只限制Agent空活动轮询，未确认该Terminal故障根因或与TUI任务的因果关系，不能标为已修。该失败阻塞本轮完整acceptance及可合并结论。
 
 此前run40696561957的multi-root-real-reopen第二Host editor ready超时（工件12821370557），以及run40683646799的systemd-user-real-reopen第二Host ready超时（12815266032）均保留；后续通过不证明其间歇机制已消除。后续应以原Host身份、准备消息及ready代际定位，保留原期限和失败，不能自动重试刷绿。证据归档见 [TUI运行记录](../references/smoke-real-tui-coverage/README.md)，本任务仅完成四项真实TUI覆盖，不顺手扩大成这些既有Host问题的修复。
+
+## 2026-10-29：main ruleset 与红灯验证
+
+main 已启用活动 ruleset，目标为默认分支：要求 PR、一次审批、禁止删除与非快进更新、必需 GitHub Actions `Verify release contract`，并要求 PR base 最新；没有 bypass actor。规则由 GitHub API 读取确认。
+
+临时 [PR #342](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/342) 基于当时最新 main，仅在 `scripts/gates/catalog.mjs` 添加故意语法错误。run [40825340916](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40825340916) 中 `Gate resolve`、`Gate verify-result` 与最终 `Verify release contract` 均失败；GitHub 将 PR 标记为 `BLOCKED`，并同时显示审批待完成。PR 未合并，关闭后远端分支、临时 worktree 均已清理。该结果确认红灯检查与整体阻断状态；没有隔离检查失败作为唯一阻断因素，也未独立测试 stale-base 拒绝。
+
+这条记录取代本跟踪器较早的“main 未保护”和“PR336 两项竞态未修”当前状态描述。PR336 已于 2026-10-24 合入（`37ff8554`），恢复订阅与 mode-switch 旧回调修复和各自验证边界见前述 2026-10-24 条目。PR327 仍须 rebase 到当前 main，并对最新真实预合并输入完成正式全量验收；分支保护和 PR336 合入不等于该发布门禁通过。
