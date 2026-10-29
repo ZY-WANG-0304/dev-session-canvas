@@ -45,6 +45,7 @@ function fixture(surface) {
     pendingWebviewProbeRequests: new Map(), pendingWebviewDomActionRequests: new Map(),
     pendingWorkspaceRootFocusReplay: {}, pendingVisibilityRestore: { editor: false, panel: false },
     pendingVisibilityRestoreFocus: {}, lastVisibleCanvasCenterBySurface: { panel: { x: 5, y: 6 } },
+    pendingNodeDeletionOperations: new Map(), remotePendingNodeDeletionOperations: new Map(),
     diagnosticHostMessages: [], testHostMessages: [], testDiagnosticEvents: [],
     executionFlow: new ExecutionFlowRecorder(), flowMessageSequence: 0,
     flowReceipts: new Map(), flowSurfaceFrames: new Map(), flowReceiptLastAt: new Map(), flowCollections: new Map(),

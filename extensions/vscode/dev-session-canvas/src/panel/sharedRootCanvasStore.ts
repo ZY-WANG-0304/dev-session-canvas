@@ -3,7 +3,12 @@ import * as net from 'net';
 import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { CanvasPrototypeState } from '../common/protocol';
-import { SharedRootCanvasParticipants, type AcceptSharedRuntimeTakeover, type SharedRootCanvasDeparture } from './sharedRootCanvasParticipants';
+import {
+  SharedRootCanvasParticipants,
+  type AcceptSharedRuntimeTakeover,
+  type SharedCanvasPendingDeletionListener,
+  type SharedRootCanvasDeparture
+} from './sharedRootCanvasParticipants';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 const collections = new Set(['nodes', 'groups', 'edges', 'fileReferences', 'owners']);
@@ -95,14 +100,15 @@ export class SharedRootCanvasStore {
 
   constructor(filename: string, initial: CanvasPrototypeState,
     private readonly onState: (state: CanvasPrototypeState) => void,
-    private readonly onError: (error: Error) => void, acceptTakeover?: AcceptSharedRuntimeTakeover) {
+    private readonly onError: (error: Error) => void, acceptTakeover?: AcceptSharedRuntimeTakeover,
+    onPendingDeletionChanged?: SharedCanvasPendingDeletionListener) {
     fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
     this.filename = path.join(fs.realpathSync(path.dirname(filename)), path.basename(filename));
     const snapshot = this.read();
     this.confirmed = sharedCanvasState(snapshot?.state ?? initial);
     this.local = sharedCanvasState(initial);
     this.revision = snapshot?.sharedRevision;
-    this.participants = new SharedRootCanvasParticipants(this.filename, acceptTakeover);
+    this.participants = new SharedRootCanvasParticipants(this.filename, acceptTakeover, onPendingDeletionChanged);
     this.ready = this.participants.ready.then(() => {
       this.admitted = true;
       if (!this.closed) this.observe(this.read(), true);
@@ -171,6 +177,10 @@ export class SharedRootCanvasStore {
   }
 
   get admissionPort(): number { return this.participants.admissionPort; }
+
+  publishPendingDeletionOperation(operationId: string, nodeIds: readonly string[] | undefined): void {
+    this.participants.publishPendingDeletionOperation(operationId, nodeIds);
+  }
 
   transferredPids(departure: SharedRootCanvasDeparture): Promise<Set<number>> {
     return this.participants.transferredPids(departure);

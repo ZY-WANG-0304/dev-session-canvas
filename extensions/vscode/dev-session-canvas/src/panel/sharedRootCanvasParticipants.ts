@@ -6,6 +6,15 @@ import type { RuntimeHostBackendKind } from '../common/protocol';
 import type { RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
 
 interface Participant { token: string; port: number }
+export interface SharedCanvasPendingDeletionEntry { operationId: string; nodeIds: string[] }
+export type SharedCanvasPendingDeletionListener = (
+  sourceToken: string,
+  operationId: string,
+  nodeIds: readonly string[] | undefined
+) => void;
+
+const MAX_PENDING_DELETION_MESSAGE_BYTES = 1024 * 1024;
+
 export interface SharedRuntimeTakeoverCandidate {
   pid: number;
   runtimeBackend: RuntimeHostBackendKind;
@@ -53,8 +62,21 @@ export class SharedRootCanvasParticipants {
   private port = 0;
   private departure?: SharedRootCanvasDeparture;
   private readonly sockets = new Set<net.Socket>();
+  // One authenticated full-duplex channel per participant in this root. Deletion operations never enter the canvas snapshot.
+  private readonly pendingChannels = new Map<string, net.Socket>();
+  private readonly pendingChannelPeers = new Map<string, Participant>();
+  private readonly pendingChannelDirections = new Map<string, 'incoming' | 'outgoing'>();
+  private readonly pendingChannelReconnects = new Set<string>();
+  private readonly pendingDeletionOperations = new Map<string, string[]>();
+  private readonly remotePendingDeletionOperations = new Map<string, Map<string, string[]>>();
+  private readonly remotePendingDeletionRevisions = new Map<string, number>();
+  private pendingDeletionRevision = 0;
 
-  constructor(private readonly filename: string, private readonly acceptTakeover?: AcceptSharedRuntimeTakeover) {
+  constructor(
+    private readonly filename: string,
+    private readonly acceptTakeover?: AcceptSharedRuntimeTakeover,
+    private readonly onPendingDeletionChanged?: SharedCanvasPendingDeletionListener
+  ) {
     this.directory = `${filename}.participants`;
     this.ready = this.register();
   }
@@ -94,8 +116,24 @@ export class SharedRootCanvasParticipants {
     return new Set(peers.flatMap(peer => departure.handoffs.get(peer.token) ?? []));
   }
 
+  publishPendingDeletionOperation(operationId: string, nodeIds: readonly string[] | undefined): void {
+    if (nodeIds?.length) this.pendingDeletionOperations.set(operationId, [...new Set(nodeIds)]);
+    else this.pendingDeletionOperations.delete(operationId);
+    const revision = ++this.pendingDeletionRevision;
+    this.broadcastPendingDeletionMessage({
+      type: 'pending-update',
+      revision,
+      operationId,
+      nodeIds: nodeIds?.length ? [...new Set(nodeIds)] : null
+    });
+  }
+
   dispose(): void {
     this.disposed = true;
+    for (const token of this.remotePendingDeletionOperations.keys()) this.clearRemotePendingDeletionOperations(token);
+    this.pendingChannels.clear();
+    this.pendingChannelDirections.clear();
+    this.pendingChannelPeers.clear();
     for (const socket of this.sockets) socket.destroy();
     if (this.listener?.listening) this.listener.close();
     this.removeOwnRecord();
@@ -127,16 +165,30 @@ export class SharedRootCanvasParticipants {
     this.listener = server;
     this.port = port;
     let lease: net.Server | undefined;
+    let peers: Participant[] = [];
     try { lease = await this.acquireAdmission(async () => this.tryJoin()); }
     catch (error) { server.close(); throw error; }
     try {
       if (this.disposed) return;
       if (lease) { await this.livePeers(); this.writeRecord({ token: this.token, port }); }
+      peers = await this.livePeers();
     } catch (error) {
       server.close(); throw error;
     } finally {
       if (lease) await close(lease);
       if (this.disposed && server.listening) server.close();
+    }
+    if (!this.disposed) {
+      try {
+        await Promise.all(peers.map(async peer => {
+          try { await this.connectPendingChannel(peer); }
+          catch { await this.reconnectPendingChannel(peer); }
+        }));
+      }
+      catch (error) {
+        try { this.dispose(); } catch { /* Keep the subscription error as the startup result. */ }
+        throw error;
+      }
     }
   }
 
@@ -151,23 +203,56 @@ export class SharedRootCanvasParticipants {
 
   private serve(socket: net.Socket): void {
     this.sockets.add(socket);
-    socket.on('close', () => this.sockets.delete(socket));
+    socket.on('close', () => {
+      this.sockets.delete(socket);
+      for (const [token, channel] of this.pendingChannels) {
+        if (channel !== socket) continue;
+        this.handlePendingChannelClosed(token, socket);
+      }
+    });
     socket.on('error', () => socket.destroy());
     socket.setTimeout(5000, () => socket.destroy());
     socket.write(`${this.token}\n`);
     let input = '';
     let processing = false;
-    socket.on('data', chunk => {
+    const receiveInitialRequest = (chunk: Buffer): void => {
       input += chunk.toString();
-      if (input.length > 65536 || processing) { socket.destroy(); return; }
-      if (!input.includes('\n')) return;
+      if (Buffer.byteLength(input, 'utf8') > MAX_PENDING_DELETION_MESSAGE_BYTES || processing) {
+        socket.destroy(); return;
+      }
+      const newline = input.indexOf('\n');
+      if (newline < 0) return;
       processing = true;
+      socket.removeListener('data', receiveInitialRequest);
+      const requestLine = input.slice(0, newline);
+      if (input.slice(newline + 1).trim()) { socket.destroy(); return; }
       void (async () => {
-        const request = JSON.parse(input.trim()) as { target: string; peer: Participant; departure?: string; pids?: number[] };
+        const request = JSON.parse(requestLine) as {
+          type?: string;
+          target: string;
+          peer: Participant;
+          departure?: string;
+          pids?: number[];
+          revision?: number;
+          operations?: SharedCanvasPendingDeletionEntry[];
+        };
         const peer = request.peer;
         if (request.target !== this.token || !peer || !/^[a-f0-9-]{36}$/.test(peer.token) ||
             !Number.isInteger(peer.port) || peer.port < 60000 || peer.port >= 65000) throw new Error('Invalid joining participant.');
         if (!await this.isAlive(peer) || socket.destroyed) throw new Error('Joining participant is unconfirmed.');
+        if (request.type === 'pending-subscribe') {
+          if (this.disposed || this.retired || !this.isRegisteredParticipant(peer)) {
+            throw new Error('Joining Host is not an active shared Canvas participant.');
+          }
+          this.replaceRemotePendingDeletionOperations(peer.token, request.revision, request.operations);
+          this.attachPendingChannel(peer, socket, 'incoming');
+          socket.write(`${JSON.stringify({
+            type: 'pending-snapshot',
+            revision: this.pendingDeletionRevision,
+            operations: this.pendingDeletionSnapshot()
+          })}\n`);
+          return;
+        }
         const departure = this.departure;
         if (!departure || this.disposed || this.retired) return { status: 'wait' };
         if (request.departure !== undefined) {
@@ -188,8 +273,297 @@ export class SharedRootCanvasParticipants {
           return { status: 'offer', departure: departure.id, candidates: departure.candidates };
         }
         return { status: 'wait' };
-      })().then(response => { if (!socket.destroyed) socket.end(`${JSON.stringify(response)}\n`); }, () => socket.destroy());
+      })().then(response => {
+        if (socket.destroyed) return;
+        if (response !== undefined) socket.end(`${JSON.stringify(response)}\n`);
+      }, () => socket.destroy());
+    };
+    socket.on('data', receiveInitialRequest);
+  }
+
+  private isRegisteredParticipant(peer: Participant): boolean {
+    const recordPath = path.join(this.directory, `${peer.token}.json`);
+    try {
+      const record = JSON.parse(fs.readFileSync(recordPath, 'utf8')) as Participant;
+      return record.token === peer.token && record.port === peer.port;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  private pendingDeletionSnapshot(): SharedCanvasPendingDeletionEntry[] {
+    return [...this.pendingDeletionOperations].map(([operationId, nodeIds]) => ({ operationId, nodeIds: [...nodeIds] }));
+  }
+
+  private replaceRemotePendingDeletionOperations(
+    sourceToken: string,
+    revision: number | undefined,
+    operations: SharedCanvasPendingDeletionEntry[] | undefined
+  ): void {
+    if (!Number.isSafeInteger(revision) || revision! < 0 || !Array.isArray(operations)) {
+      throw new Error('Invalid shared Canvas pending deletion snapshot.');
+    }
+    const currentRevision = this.remotePendingDeletionRevisions.get(sourceToken) ?? -1;
+    if (revision! < currentRevision) return;
+    const next = new Map<string, string[]>();
+    for (const entry of operations) {
+      if (!entry || typeof entry.operationId !== 'string' || !/^[a-f0-9-]{36}$/.test(entry.operationId) ||
+          !Array.isArray(entry.nodeIds) || entry.nodeIds.some(nodeId => typeof nodeId !== 'string') ||
+          entry.nodeIds.length === 0 || next.has(entry.operationId)) {
+        throw new Error('Invalid shared Canvas pending deletion operation.');
+      }
+      next.set(entry.operationId, [...new Set(entry.nodeIds)]);
+    }
+    const previous = this.remotePendingDeletionOperations.get(sourceToken) ?? new Map<string, string[]>();
+    for (const operationId of new Set([...previous.keys(), ...next.keys()])) {
+      const before = previous.get(operationId);
+      const after = next.get(operationId);
+      if (JSON.stringify(before) !== JSON.stringify(after)) this.onPendingDeletionChanged?.(sourceToken, operationId, after);
+    }
+    if (next.size) this.remotePendingDeletionOperations.set(sourceToken, next);
+    else this.remotePendingDeletionOperations.delete(sourceToken);
+    this.remotePendingDeletionRevisions.set(sourceToken, revision!);
+  }
+
+  private applyRemotePendingDeletionUpdate(
+    sourceToken: string,
+    revision: number,
+    operationId: string,
+    nodeIds: string[] | null
+  ): void {
+    if (!Number.isSafeInteger(revision) || revision < 0 || !/^[a-f0-9-]{36}$/.test(operationId) ||
+        (nodeIds !== null && (!Array.isArray(nodeIds) || nodeIds.some(nodeId => typeof nodeId !== 'string')))) {
+      throw new Error('Invalid shared Canvas pending deletion update.');
+    }
+    if (revision <= (this.remotePendingDeletionRevisions.get(sourceToken) ?? -1)) return;
+    const operations = this.remotePendingDeletionOperations.get(sourceToken) ?? new Map<string, string[]>();
+    this.remotePendingDeletionRevisions.set(sourceToken, revision);
+    if (nodeIds?.length) {
+      const next = [...new Set(nodeIds)];
+      operations.set(operationId, next);
+      this.remotePendingDeletionOperations.set(sourceToken, operations);
+      this.onPendingDeletionChanged?.(sourceToken, operationId, next);
+    } else {
+      operations.delete(operationId);
+      if (operations.size) this.remotePendingDeletionOperations.set(sourceToken, operations);
+      else this.remotePendingDeletionOperations.delete(sourceToken);
+      this.onPendingDeletionChanged?.(sourceToken, operationId, undefined);
+    }
+  }
+
+  private clearRemotePendingDeletionOperations(sourceToken: string): void {
+    const operations = this.remotePendingDeletionOperations.get(sourceToken);
+    if (operations) for (const operationId of operations.keys()) {
+      this.onPendingDeletionChanged?.(sourceToken, operationId, undefined);
+    }
+    this.remotePendingDeletionOperations.delete(sourceToken);
+    this.remotePendingDeletionRevisions.delete(sourceToken);
+  }
+
+  private attachPendingChannel(
+    peer: Participant,
+    socket: net.Socket,
+    direction: 'incoming' | 'outgoing',
+    initialInput = ''
+  ): void {
+    const previous = this.pendingChannels.get(peer.token);
+    this.pendingChannels.set(peer.token, socket);
+    this.pendingChannelPeers.set(peer.token, peer);
+    this.pendingChannelDirections.set(peer.token, direction);
+    if (previous && previous !== socket) previous.destroy();
+    socket.setTimeout(0);
+    let input = initialInput;
+    const receivePendingMessages = (chunk?: Buffer): void => {
+      if (chunk) input += chunk.toString();
+      if (Buffer.byteLength(input, 'utf8') > MAX_PENDING_DELETION_MESSAGE_BYTES) { socket.destroy(); return; }
+      let newline = input.indexOf('\n');
+      while (newline >= 0) {
+        const line = input.slice(0, newline);
+        input = input.slice(newline + 1);
+        try {
+          const message = JSON.parse(line) as {
+            type: string;
+            revision?: number;
+            operationId?: string;
+            nodeIds?: string[] | null;
+            operations?: SharedCanvasPendingDeletionEntry[];
+          };
+          if (message.type === 'pending-state') {
+            this.replaceRemotePendingDeletionOperations(peer.token, message.revision, message.operations);
+          } else if (message.type === 'pending-update' && typeof message.operationId === 'string' &&
+              (message.nodeIds === null || Array.isArray(message.nodeIds))) {
+            this.applyRemotePendingDeletionUpdate(peer.token, message.revision ?? -1, message.operationId, message.nodeIds);
+          } else {
+            throw new Error('Invalid shared Canvas pending deletion message.');
+          }
+        } catch {
+          socket.destroy(); return;
+        }
+        newline = input.indexOf('\n');
+      }
+    };
+    socket.on('data', receivePendingMessages);
+    if (initialInput) receivePendingMessages();
+  }
+
+  private broadcastPendingDeletionMessage(message: {
+    type: 'pending-update'; revision: number; operationId: string; nodeIds: string[] | null;
+  }): void {
+    const encoded = `${JSON.stringify(message)}\n`;
+    if (Buffer.byteLength(encoded, 'utf8') > MAX_PENDING_DELETION_MESSAGE_BYTES) return;
+    for (const socket of this.pendingChannels.values()) {
+      if (!socket.destroyed) socket.write(encoded);
+    }
+  }
+
+  private sendPendingDeletionSnapshot(socket: net.Socket): void {
+    const encoded = `${JSON.stringify({
+      type: 'pending-state',
+      revision: this.pendingDeletionRevision,
+      operations: this.pendingDeletionSnapshot()
+    })}\n`;
+    if (Buffer.byteLength(encoded, 'utf8') <= MAX_PENDING_DELETION_MESSAGE_BYTES && !socket.destroyed) socket.write(encoded);
+  }
+
+  private async connectPendingChannel(peer: Participant): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const socket = net.createConnection({ host: '127.0.0.1', port: peer.port });
+      this.sockets.add(socket);
+      let input = '';
+      let authenticated = false;
+      let subscribed = false;
+      let settled = false;
+      const fail = (error?: Error): void => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        if (error) reject(error); else resolve();
+      };
+      socket.setTimeout(5000, () => fail(new Error('Shared Canvas pending deletion subscription timed out.')));
+      socket.on('error', error => {
+        if (!subscribed) fail(error);
+      });
+      socket.on('close', () => {
+        this.sockets.delete(socket);
+        this.handlePendingChannelClosed(peer.token, socket);
+        if (!subscribed && !settled) fail(new Error('Shared Canvas pending deletion subscription closed before its snapshot.'));
+      });
+      const receiveBootstrap = (chunk: Buffer): void => {
+        input += chunk.toString();
+        if (Buffer.byteLength(input, 'utf8') > MAX_PENDING_DELETION_MESSAGE_BYTES) { fail(new Error('Invalid shared Canvas pending deletion response.')); return; }
+        if (!authenticated) {
+          const newline = input.indexOf('\n');
+          if (newline < 0) return;
+          if (input.slice(0, newline) !== peer.token) { fail(new Error('Shared Canvas participant identity changed.')); return; }
+          authenticated = true;
+          input = input.slice(newline + 1);
+          socket.write(`${JSON.stringify({
+            type: 'pending-subscribe',
+            target: peer.token,
+            peer: { token: this.token, port: this.port },
+            revision: this.pendingDeletionRevision,
+            operations: this.pendingDeletionSnapshot()
+          })}\n`);
+        }
+        const newline = input.indexOf('\n');
+        if (newline < 0) return;
+        const line = input.slice(0, newline);
+        input = input.slice(newline + 1);
+        try {
+          const response = JSON.parse(line) as {
+            type: string; revision?: number; operations?: SharedCanvasPendingDeletionEntry[];
+          };
+          if (response.type !== 'pending-snapshot') throw new Error('Invalid shared Canvas pending deletion snapshot.');
+          this.replaceRemotePendingDeletionOperations(peer.token, response.revision, response.operations);
+          subscribed = true;
+          settled = true;
+          socket.setTimeout(0);
+          socket.removeListener('data', receiveBootstrap);
+          this.attachPendingChannel(peer, socket, 'outgoing', input);
+          this.sendPendingDeletionSnapshot(socket);
+          resolve();
+        } catch (error) {
+          fail(error as Error);
+        }
+      };
+      socket.on('data', receiveBootstrap);
     });
+  }
+
+  private handlePendingChannelClosed(peerToken: string, socket: net.Socket): void {
+    if (this.pendingChannels.get(peerToken) !== socket) return;
+    this.pendingChannels.delete(peerToken);
+    const direction = this.pendingChannelDirections.get(peerToken);
+    this.pendingChannelDirections.delete(peerToken);
+    const peer = this.pendingChannelPeers.get(peerToken);
+    if (this.disposed || this.retired || !peer) {
+      this.pendingChannelPeers.delete(peerToken);
+      this.clearRemotePendingDeletionOperations(peerToken);
+      return;
+    }
+    if (direction === 'outgoing') {
+      void this.reconnectPendingChannel(peer);
+    } else {
+      void this.clearPendingOperationsIfPeerLeft(peer);
+    }
+  }
+
+  private async clearPendingOperationsIfPeerLeft(peer: Participant): Promise<void> {
+    try {
+      if (!this.isRegisteredParticipant(peer)) {
+        this.pendingChannelPeers.delete(peer.token);
+        this.clearRemotePendingDeletionOperations(peer.token);
+        return;
+      }
+      if (await this.isAlive(peer)) return;
+      this.removePeerRecord(peer);
+      this.pendingChannelPeers.delete(peer.token);
+      this.clearRemotePendingDeletionOperations(peer.token);
+    } catch {
+      // ECONNRESET/EPIPE and probe timeouts do not prove the peer is gone; retain its locks.
+    }
+  }
+
+  private async reconnectPendingChannel(peer: Participant): Promise<void> {
+    if (this.pendingChannelReconnects.has(peer.token)) return;
+    this.pendingChannelReconnects.add(peer.token);
+    let retryDelay = 250;
+    try {
+      while (!this.disposed && !this.retired && !this.pendingChannels.has(peer.token)) {
+        try {
+          if (!this.isRegisteredParticipant(peer)) {
+            this.pendingChannelPeers.delete(peer.token);
+            this.clearRemotePendingDeletionOperations(peer.token);
+            return;
+          }
+          if (!(await this.isAlive(peer))) {
+            this.removePeerRecord(peer);
+            this.pendingChannelPeers.delete(peer.token);
+            this.clearRemotePendingDeletionOperations(peer.token);
+            return;
+          }
+          await this.connectPendingChannel(peer);
+          return;
+        } catch {
+          // Keep the peer's pending IDs locked until absence is confirmed by its record and listener.
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          retryDelay = Math.min(retryDelay * 2, 2000);
+        }
+      }
+    } finally {
+      this.pendingChannelReconnects.delete(peer.token);
+    }
+  }
+
+  private removePeerRecord(peer: Participant): void {
+    const recordPath = path.join(this.directory, `${peer.token}.json`);
+    try {
+      const record = JSON.parse(fs.readFileSync(recordPath, 'utf8')) as Participant;
+      if (record.token === peer.token && record.port === peer.port) fs.unlinkSync(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
 
   private async tryJoin(): Promise<boolean> {

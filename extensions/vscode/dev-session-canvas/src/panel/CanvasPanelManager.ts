@@ -1473,6 +1473,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly pendingTerminalInitialInputs = new Map<string, string>();
   private readonly pendingTerminalInitialInputDispatches = new Map<string, PendingTerminalInitialInputDispatch>();
   private readonly pendingNodeDeletionOperations = new Map<string, Set<string>>();
+  private readonly remotePendingNodeDeletionOperations = new Map<string, Set<string>>();
   private readonly runtimeSessionBindings = new Map<
     string,
     {
@@ -7213,8 +7214,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           error => {
             this.recordDiagnosticEvent('state/rootLocalPersistFailed', { rootPath, message: error.message });
             this.postMessage({ type: 'host/error', payload: { message: error.message } });
-          }, candidates => this.acceptSharedRuntimeTakeover(rootPath, candidates));
+          }, candidates => this.acceptSharedRuntimeTakeover(rootPath, candidates),
+          (sourceToken, operationId, nodeIds) => this.applyRemoteNodeDeletionOperation(sourceToken, operationId, nodeIds));
         stores.set(rootPath, store);
+        for (const [operationId, nodeIds] of this.pendingNodeDeletionOperations) {
+          store.publishPendingDeletionOperation(operationId, [...nodeIds]);
+        }
       }
       void store.publish(rootLocalState).catch(() => undefined);
       return;
@@ -8248,18 +8253,38 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private beginNodeDeletionFeedback(nodeIds: readonly string[]): string {
     const operationId = randomUUID();
     this.pendingNodeDeletionOperations.set(operationId, new Set(nodeIds));
+    for (const store of this.sharedRootCanvasStores?.values() ?? []) {
+      store.publishPendingDeletionOperation(operationId, nodeIds);
+    }
     this.publishNodeDeletionPendingState();
     return operationId;
   }
 
   private endNodeDeletionFeedback(operationId: string): void {
     if (this.pendingNodeDeletionOperations.delete(operationId)) {
+      for (const store of this.sharedRootCanvasStores?.values() ?? []) {
+        store.publishPendingDeletionOperation(operationId, undefined);
+      }
       this.publishNodeDeletionPendingState();
     }
   }
 
+  private applyRemoteNodeDeletionOperation(
+    sourceToken: string,
+    operationId: string,
+    nodeIds: readonly string[] | undefined
+  ): void {
+    const key = `${sourceToken}:${operationId}`;
+    if (nodeIds?.length) this.remotePendingNodeDeletionOperations.set(key, new Set(nodeIds));
+    else this.remotePendingNodeDeletionOperations.delete(key);
+    this.publishNodeDeletionPendingState();
+  }
+
   private publishNodeDeletionPendingState(surface?: CanvasSurfaceLocation): void {
-    const nodeIds = [...new Set([...this.pendingNodeDeletionOperations.values()].flatMap(ids => [...ids]))];
+    const nodeIds = [...new Set([
+      ...[...this.pendingNodeDeletionOperations.values()].flatMap(ids => [...ids]),
+      ...[...this.remotePendingNodeDeletionOperations.values()].flatMap(ids => [...ids])
+    ])];
     const message: HostToWebviewMessage = { type: 'host/nodeDeletionPending', payload: { nodeIds } };
     if (surface) {
       this.postMessageToSurface(surface, message);
@@ -14837,6 +14862,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sourceSurface: CanvasSurfaceLocation,
     lifecycle?: WebviewLifecycleIdentity
   ): Promise<void> {
+    try {
+      await Promise.all([...(this.sharedRootCanvasStores?.values() ?? [])].map(store => store.ready));
+    } catch (error) {
+      this.recordDiagnosticEvent('state/sharedRootBootstrapFailed', { message: formatUnknownError(error) });
+      this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } }, sourceSurface);
+      return;
+    }
+
     try {
       await this.ensureDefaultTemplateAppliedIfNeeded();
     } catch (error) {
@@ -21896,7 +21929,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private async deleteNode(nodeId: string): Promise<void> {
-    if ([...this.pendingNodeDeletionOperations.values()].some(ids => ids.has(nodeId))) {
+    if ([...this.pendingNodeDeletionOperations.values(), ...this.remotePendingNodeDeletionOperations.values()]
+      .some(ids => ids.has(nodeId))) {
       return;
     }
     const operationId = this.beginNodeDeletionFeedback([nodeId]);
