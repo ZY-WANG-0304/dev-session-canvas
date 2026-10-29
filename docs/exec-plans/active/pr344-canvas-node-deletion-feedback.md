@@ -58,7 +58,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - CI 时间观察：六轮完整 PR Release Preflight（run `created_at` 至 `updated_at`）分别为 `40840058557` 19:56、`40854227908` 19:42、`40857232877` 19:18、`40865378852` 32:21、`40874575062` 20:02、`40880877833` 20:00；中位数 19:58，均值约 21:53，最长 32:21。成功 run `40880877833` 有 157 个 job（154 成功、3 按范围跳过），最长单 job 为 webview-function 9:55；完整 run 墙钟受分批依赖和 runner 队列影响，后续按最长记录留余量等待 35 分钟再查。
 - CI 归因与验证：文档记录 head `40b34575` 的 run `40874575062` 在 20:02 结束但失败。artifact 记录 editor generation 2 render 后 166ms 被 dispose，随后 generation 5 render，`surfaceReady.editor=false`；`waitForCanvasReady` 等待 45 秒后超时。单轮日志不能确认这是否为唯一根因；测试 helper 已改为临时 Canvas ready 后再关闭。修正 head `0a339295` 的 run `40880877833` 于 20:00 全绿，`remote-ssh-real-reopen-exit`、verify-result、Verify release contract 均通过。
 - CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
-- 新 blocker：reviewer 确认单根/多根 Host 的 composed node ID 不同，当前跨 Host 通道原样传播 ID 会使对端节点继续可交互。根因已在 `CanvasPanelManager` 直接确认；修复采用每 root channel 上传 root-local IDs，接收端按本机单根/多根模式映射，并用 `(rootPath, sourceToken, operationId)` 隔离多 root 更新。对应 Host 回归和设计验收已补齐，静态验证通过并提交为 `cf3252de`；待推送后由新 CI 验证回归。
+- 新 blocker：reviewer 确认单根/多根 Host 的 composed node ID 不同，当前跨 Host 通道原样传播 ID 会使对端节点继续可交互。根因已在 `CanvasPanelManager` 直接确认；修复采用每 root channel 上传 root-local IDs，接收端按本机单根/多根模式映射，并用 `(rootPath, sourceToken, operationId)` 隔离多 root 更新。对应 Host 回归和设计验收已补齐，静态验证通过；修复已推送至 PR #344 分支，待新 CI 验证回归。
 
 ## 决策记录
 
@@ -81,7 +81,7 @@ P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补
 
 旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。overview inert 回归已在 `cc61e295` 修复；Remote SSH 夹具的应用层 ready 等待已在 `0a339295` 加固，最新 run 验证通过；两个聚合门禁也已通过。
 
-本轮单根/多根 review 修复在本地通过 TypeScript typecheck、回归脚本语法检查和 `git diff --check`；Host 回归尚未执行，最新 PR CI 尚未产生。提交 `cf3252de` 待推送到 PR #344 原 head 分支。
+本轮单根/多根 review 修复在本地通过 TypeScript typecheck、回归脚本语法检查和 `git diff --check`；Host 回归尚未执行，最新 PR CI 尚未轮询。修复已推送到 PR #344 原 head 分支。
 
 ## 上下文与定向
 
