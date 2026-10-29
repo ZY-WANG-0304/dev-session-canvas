@@ -6,7 +6,7 @@
 
 ## 目标与全局图景
 
-用户在一个窗口删除节点、清空画布或重置模板时，同一共享 root 的其他窗口应立即显示删除处理中并禁用受影响节点。删除失败或发起删除的 Host 消失后，其他窗口恢复节点交互；新加入的窗口能得到仍在进行的删除状态。此瞬态状态不写入画布模型或持久化快照。关闭 Runtime Persistence 时，各窗口继续保持隔离。
+用户在一个窗口删除节点、清空画布或重置模板时，同一共享 root 的其他窗口应立即显示删除处理中并禁用受影响节点；即使窗口分别以单根和多根工作区打开，也必须把同一 root-local node ID 映射到各自画布 ID。删除失败或发起删除的 Host 消失后，其他窗口恢复节点交互；新加入的窗口能得到仍在进行的删除状态。此瞬态状态不写入画布模型或持久化快照。关闭 Runtime Persistence 时，各窗口继续保持隔离。
 
 PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁定及失败解锁保持不变。`test:smoke-lifecycle-isolation` 使用 prototype-only 测试夹具，必须初始化新字段以避免 bootstrap 期间抛错。
 
@@ -31,6 +31,9 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 最新修复 head `cc61e295` 的 Release Preflight `40865378852` 成功：154 个 job 成功、3 个按范围跳过；localized Stop case、regression shards 和 Verify release contract 全部通过。
 - [x] (2026-10-29) 统计六轮完整 PR Release Preflight 墙钟耗时为 19:18、19:42、19:56、32:21、20:02、20:00；中位数约 19:58，最长 32:21，后续默认等待 35 分钟再查，若仍未完成再续等。
 - [x] (2026-10-29) 修正 `remote-ssh-real-reopen-exit` 初始化时序：关闭临时 editor Canvas 前等待应用层 ready；重新生成 bounded wait inventory，为 setup/verify 各登记 45 秒 ready 上界（场景总预算增加 90 秒）。最新 head `0a339295` 的 Release Preflight `40880877833` 中该 job 通过。
+- [x] (2026-10-29) 处理新 review finding：每个 root channel 改为传 root-local node IDs，接收端按单根/多根模式映射本机 ID；远端操作键补入 rootPath，避免同一跨 root operation 的子集相互覆盖。
+- [x] (2026-10-29) 在 Host wiring 回归中新增多根到单根、单根到多根配对映射，以及同一 operation 跨 root 独立清除覆盖；同步设计验收口径。新增回归尚未运行。
+- [x] (2026-10-29) `npm run typecheck`、`node --check scripts/test/test-host-execution-owner-wiring.mjs` 与 `git diff --check` 通过；未本地运行测试，等待 PR CI 执行新增回归。
 
 ## 意外与发现
 
@@ -55,6 +58,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - CI 时间观察：六轮完整 PR Release Preflight（run `created_at` 至 `updated_at`）分别为 `40840058557` 19:56、`40854227908` 19:42、`40857232877` 19:18、`40865378852` 32:21、`40874575062` 20:02、`40880877833` 20:00；中位数 19:58，均值约 21:53，最长 32:21。成功 run `40880877833` 有 157 个 job（154 成功、3 按范围跳过），最长单 job 为 webview-function 9:55；完整 run 墙钟受分批依赖和 runner 队列影响，后续按最长记录留余量等待 35 分钟再查。
 - CI 归因与验证：文档记录 head `40b34575` 的 run `40874575062` 在 20:02 结束但失败。artifact 记录 editor generation 2 render 后 166ms 被 dispose，随后 generation 5 render，`surfaceReady.editor=false`；`waitForCanvasReady` 等待 45 秒后超时。单轮日志不能确认这是否为唯一根因；测试 helper 已改为临时 Canvas ready 后再关闭。修正 head `0a339295` 的 run `40880877833` 于 20:00 全绿，`remote-ssh-real-reopen-exit`、verify-result、Verify release contract 均通过。
 - CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
+- 新 blocker：reviewer 确认单根/多根 Host 的 composed node ID 不同，当前跨 Host 通道原样传播 ID 会使对端节点继续可交互。根因已在 `CanvasPanelManager` 直接确认；修复采用每 root channel 上传 root-local IDs，接收端按本机单根/多根模式映射，并用 `(rootPath, sourceToken, operationId)` 隔离多 root 更新。对应 Host 回归和设计验收已补齐，静态验证通过并提交为 `cf3252de`；待推送后由新 CI 验证回归。
 
 ## 决策记录
 
@@ -67,12 +71,17 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - 决策：P2 在触发 bootstrap 的 fixture 显式初始化 pending 状态，而不为生产方法增加只服务于 constructor-bypass 测试对象的 optional chaining。
   理由：生产构造函数保证字段存在；夹具需要按新增实例状态维持完整性，静默忽略缺失状态会掩盖后续 fixture 缺陷。
   日期/作者：2026-10-29 / Codex
+- 决策：跨 Host participant channel 的 node IDs 固定使用 root-local 形式，manager 在发送端按 root 拆分 composed IDs，在接收端根据本地单根/多根工作区重新映射；远端操作身份包含 rootPath。
+  理由：同一 root-local object 在单根画布不带 namespace，在多根画布带 root namespace；root-local 通道格式让两种参与者互通，root 维度也避免一项跨 root 删除的子集互相覆盖。
+  日期/作者：2026-10-29 / Codex
 
 ## 结果与复盘
 
 P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在 P2 修正上通过。随后修复 overview disabled 与 deletion-pending inert 的混用。代码 head `cc61e295` 的 Release Preflight `40865378852` 全绿；之后文档 head `40b34575` 的 run 暴露 Remote SSH exit/reopen Canvas ready 超时，已调整临时 Canvas 销毁时序并同步预算清单。最新 head `0a339295` 的 Release Preflight `40880877833` 全绿：157 个 job 中 154 成功、3 跳过；Remote SSH exit/reopen、regression shards、webview-function、verify-result 和 Verify release contract 均通过，墙钟 20 分钟整。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
 
 旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。overview inert 回归已在 `cc61e295` 修复；Remote SSH 夹具的应用层 ready 等待已在 `0a339295` 加固，最新 run 验证通过；两个聚合门禁也已通过。
+
+本轮单根/多根 review 修复在本地通过 TypeScript typecheck、回归脚本语法检查和 `git diff --check`；Host 回归尚未执行，最新 PR CI 尚未产生。提交 `cf3252de` 待推送到 PR #344 原 head 分支。
 
 ## 上下文与定向
 
@@ -96,10 +105,11 @@ P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补
 4. 在 `test-smoke-lifecycle-isolation.mjs` 补上 pending map 初始化。
 5. 更新 `canvas-node-deletion.md` 和本计划；review 其他四个 CI 失败项待上述 P1/P2 完成后执行。
 6. 完成后更新进度/结果，依据 `docs/workflows/COMMIT.md` 提交，并按仓库 MR 更新流程 rebase 到最新 `origin/main` 后推送原 PR branch。
+7. 本轮 review follow-up：补齐单根/多根 ID 映射和跨 root 操作隔离回归，执行适用的静态验证；推送前同步最新 `origin/main` 并 rebase，推送 PR #344 原分支后按既有 35 分钟 CI 等待约定检查新 head。
 
 ## 验证与验收
 
-验收覆盖两个独立 Host 对同一 root 的订阅。Host A 发布 pending operation 后，Host B 的待删除 union 包含相同 node IDs；并行操作中 A 结束后，B 仍保留被另一来源标记的 node IDs；新加入 Host 收到仍活动操作的快照；确认来源 Host 退出后，其他 Host 清除其操作，而 reset/timeout 不提前清除。最终节点结构仍只由现有共享画布 snapshot 提交。另须确认 Runtime Persistence 关闭时不同 Host 不互相接收 pending 消息。
+验收覆盖两个独立 Host 对同一 root 的订阅。单根 Host 与多根 Host 双向发布时，接收画布的 pending union 必须包含正确的 local/namespaced node ID；同一 operation 覆盖多个 root 时分别清除一个 root 的更新不能解锁另一个 root 的节点。并行操作中 A 结束后，B 仍保留被另一来源标记的 node IDs；新加入 Host 收到仍活动操作的快照；确认来源 Host 退出后，其他 Host 清除其操作，而 reset/timeout 不提前清除。最终节点结构仍只由现有共享画布 snapshot 提交。另须确认 Runtime Persistence 关闭时不同 Host 不互相接收 pending 消息。
 
 P2 验收为 lifecycle-isolation bootstrap 不因 pending map 缺失而抛异常，且原 isolation assertions 仍成功。代码改动完成后按本次工作授权执行必要的定向自动化验证、build/typecheck；最终状态应在 PR 最新 head 上记录。手动 Extension Development Host 验收若本环境不可启动，须说明缺口，不声称已验证。
 

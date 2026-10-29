@@ -107,7 +107,7 @@ updated_at: 2026-10-29
 
 ### 删除处理中状态的跨窗口同步
 
-开启 Runtime Persistence 时，同一 root 的 Extension Host 通过 `SharedRootCanvasParticipants` 的 loopback 订阅交换待删除操作快照和增量；该消息携带来源参与者、操作 ID 与受影响节点 ID。节点状态仍是 Host 内存中的瞬态状态，不进入 `CanvasPrototypeState`、共享画布快照或 workspace 持久化内容。新加入的 Host 在交互面可用前接收现存操作快照；各来源的操作按并集投影到本 Host 的 panel/editor，结束某个操作只清除该来源和操作 ID。订阅连接意外关闭时先保留现有锁并尝试重连；仅在参与者记录撤销或 listener 确认不可达后清除来源操作，避免把短暂的连接 reset 当成删除结束。
+开启 Runtime Persistence 时，同一 root 的 Extension Host 通过 `SharedRootCanvasParticipants` 的 loopback 订阅交换待删除操作快照和增量；该消息携带来源参与者、操作 ID 与受影响节点 ID，并且节点 ID 始终使用对应 root 的本地 ID。发送端将当前画布 ID 按 root 拆分后去掉多根 namespace；接收端用 channel 的 `rootPath` 把本地 ID 映射到本机画布 ID：多根画布添加该 root 的 namespace，单根画布保留本地 ID。远端操作以 root、来源参与者和操作 ID 联合区分，避免同一跨 root 操作在各 root 上覆盖彼此的节点子集。节点状态仍是 Host 内存中的瞬态状态，不进入 `CanvasPrototypeState`、共享画布快照或 workspace 持久化内容。新加入的 Host 在交互面可用前接收现存操作快照；各来源的操作按并集投影到本 Host 的 panel/editor，结束某个操作只清除对应 root、来源和操作 ID。订阅连接意外关闭时先保留现有锁并尝试重连；仅在参与者记录撤销或 listener 确认不可达后清除来源操作，避免把短暂的连接 reset 当成删除结束。
 
 Runtime Persistence 关闭时没有共享 root participant 订阅，待删除状态仅作用于发起 Host 的交互面，继续遵守关闭模式隔离。该订阅只用于同一执行环境、同一 root 的活动参与 Host，不扩展为跨用户或远端协作协议。
 
@@ -137,7 +137,7 @@ Runtime Persistence 关闭时没有共享 root participant 订阅，待删除状
 6. `npm run build` 和 `npm run typecheck` 通过。
 7. 删除单个执行型节点时按钮立即显示删除中，节点内输入、动作、拖动、缩放、选择与连线均被禁用；成功后节点消失。
 8. 清空组 / root / workspace、删除含成员分组及重置模板时，每个受影响节点均显示删除中并不可交互；运行时清理或保存失败后原节点恢复交互。
-9. 同一 root 的多个 Runtime Persistence 窗口中，待删除状态一致；操作并发时，任何来源仍在删除的节点继续锁定；确认 Host 退出后清除其未结束的瞬态锁，连接 reset/timeout 本身不得提前解锁。
+9. 同一 root 的多个 Runtime Persistence 窗口中，待删除状态一致；单根和多根画布混合打开时，两边都将同一节点映射到本机 ID 并锁定；覆盖多 root 操作按 root 独立保留和清除节点子集；操作并发时，任何来源仍在删除的节点继续锁定；新 Host 加入时获得现存 pending 操作；确认 Host 退出后清除其未结束的瞬态锁，连接 reset/timeout 本身不得提前解锁。
 
 ## 9. 当前验证状态
 

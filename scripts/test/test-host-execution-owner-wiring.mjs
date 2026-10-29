@@ -1963,6 +1963,79 @@ async function singleNodeDeleteFixture(kind) {
   };
 }
 
+function nodeDeletionFeedbackFixture(roots) {
+  const host = Object.create(CanvasPanelManager.prototype);
+  const posted = [];
+  Object.assign(host, {
+    pendingNodeDeletionOperations: new Map(),
+    remotePendingNodeDeletionOperations: new Map(),
+    sharedRootCanvasStores: new Map(),
+    getCanvasPersistenceWorkspaceFolders: () => roots,
+    isInteractiveSurface: () => true,
+    postMessageToSurface: (surface, message) => posted.push({ surface, message })
+  });
+  return { host, posted };
+}
+
+test('multi-root deletion feedback publishes root-local IDs for a single-root Host', () => {
+  const rootA = '/workspace/a';
+  const rootB = '/workspace/b';
+  const sourceToken = 'source-host';
+  const multi = nodeDeletionFeedbackFixture([{ path: rootA, name: 'a' }, { path: rootB, name: 'b' }]);
+  const publications = [];
+  for (const rootPath of [rootA, rootB]) {
+    multi.host.sharedRootCanvasStores.set(rootPath, {
+      publishPendingDeletionOperation(operationId, nodeIds) {
+        publications.push({ rootPath, operationId, nodeIds });
+      }
+    });
+  }
+  const operationId = multi.host.beginNodeDeletionFeedback([
+    namespaceCanvasObjectId(rootA, 'agent-a'), namespaceCanvasObjectId(rootB, 'agent-b')
+  ]);
+  assert.deepEqual(publications, [
+    { rootPath: rootA, operationId, nodeIds: ['agent-a'] },
+    { rootPath: rootB, operationId, nodeIds: ['agent-b'] }
+  ]);
+
+  const single = nodeDeletionFeedbackFixture([{ path: rootA, name: 'a' }]);
+  single.host.applyRemoteNodeDeletionOperation(rootA, sourceToken, operationId,
+    publications.find(entry => entry.rootPath === rootA).nodeIds);
+  assert.deepEqual(single.posted.at(-1).message.payload.nodeIds, ['agent-a']);
+});
+
+test('single-root deletion feedback maps to the matching ID in a multi-root Host', () => {
+  const rootA = '/workspace/a';
+  const rootB = '/workspace/b';
+  const single = nodeDeletionFeedbackFixture([{ path: rootA, name: 'a' }]);
+  const publications = [];
+  single.host.sharedRootCanvasStores.set(rootA, {
+    publishPendingDeletionOperation(operationId, nodeIds) { publications.push({ operationId, nodeIds }); }
+  });
+  const operationId = single.host.beginNodeDeletionFeedback(['agent-a']);
+  assert.deepEqual(publications, [{ operationId, nodeIds: ['agent-a'] }]);
+
+  const multi = nodeDeletionFeedbackFixture([{ path: rootA, name: 'a' }, { path: rootB, name: 'b' }]);
+  multi.host.applyRemoteNodeDeletionOperation(rootA, 'source-host', operationId, publications[0].nodeIds);
+  assert.deepEqual(multi.posted.at(-1).message.payload.nodeIds, [namespaceCanvasObjectId(rootA, 'agent-a')]);
+});
+
+test('remote deletion operations on different roots retain independent ID subsets', () => {
+  const rootA = '/workspace/a';
+  const rootB = '/workspace/b';
+  const receiver = nodeDeletionFeedbackFixture([{ path: rootA, name: 'a' }, { path: rootB, name: 'b' }]);
+  receiver.host.applyRemoteNodeDeletionOperation(rootA, 'source-host', 'shared-operation', ['agent-a']);
+  receiver.host.applyRemoteNodeDeletionOperation(rootB, 'source-host', 'shared-operation', ['agent-b']);
+  assert.deepEqual(new Set(receiver.posted.at(-1).message.payload.nodeIds), new Set([
+    namespaceCanvasObjectId(rootA, 'agent-a'), namespaceCanvasObjectId(rootB, 'agent-b')
+  ]));
+
+  receiver.host.applyRemoteNodeDeletionOperation(rootA, 'source-host', 'shared-operation', undefined);
+  assert.deepEqual(receiver.posted.at(-1).message.payload.nodeIds, [namespaceCanvasObjectId(rootB, 'agent-b')]);
+  receiver.host.applyRemoteNodeDeletionOperation(rootB, 'source-host', 'shared-operation', undefined);
+  assert.deepEqual(receiver.posted.at(-1).message.payload.nodeIds, []);
+});
+
 for (const kind of ['agent', 'terminal']) {
   for (const phase of ['running', 'retained']) {
     for (const outcome of ['saved', 'failed', 'timeout']) {

@@ -7217,10 +7217,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             this.recordDiagnosticEvent('state/rootLocalPersistFailed', { rootPath, message: error.message });
             this.postMessage({ type: 'host/error', payload: { message: error.message } });
           }, candidates => this.acceptSharedRuntimeTakeover(rootPath, candidates),
-          (sourceToken, operationId, nodeIds) => this.applyRemoteNodeDeletionOperation(sourceToken, operationId, nodeIds));
+          (sourceToken, operationId, nodeIds) => this.applyRemoteNodeDeletionOperation(rootPath, sourceToken, operationId, nodeIds));
         stores.set(rootPath, store);
         for (const [operationId, nodeIds] of this.pendingNodeDeletionOperations) {
-          store.publishPendingDeletionOperation(operationId, [...nodeIds]);
+          const rootLocalNodeIds = this.getRootLocalPendingDeletionNodeIds(rootPath, [...nodeIds]);
+          if (rootLocalNodeIds.length) store.publishPendingDeletionOperation(operationId, rootLocalNodeIds);
         }
       }
       void store.publish(rootLocalState).catch(() => undefined);
@@ -8255,8 +8256,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private beginNodeDeletionFeedback(nodeIds: readonly string[]): string {
     const operationId = randomUUID();
     this.pendingNodeDeletionOperations.set(operationId, new Set(nodeIds));
-    for (const store of this.sharedRootCanvasStores?.values() ?? []) {
-      store.publishPendingDeletionOperation(operationId, nodeIds);
+    for (const [rootPath, store] of this.sharedRootCanvasStores ?? []) {
+      const rootLocalNodeIds = this.getRootLocalPendingDeletionNodeIds(rootPath, nodeIds);
+      if (rootLocalNodeIds.length) store.publishPendingDeletionOperation(operationId, rootLocalNodeIds);
     }
     this.publishNodeDeletionPendingState();
     return operationId;
@@ -8272,14 +8274,34 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private applyRemoteNodeDeletionOperation(
+    rootPath: string,
     sourceToken: string,
     operationId: string,
     nodeIds: readonly string[] | undefined
   ): void {
-    const key = `${sourceToken}:${operationId}`;
-    if (nodeIds?.length) this.remotePendingNodeDeletionOperations.set(key, new Set(nodeIds));
+    const key = JSON.stringify([rootPath, sourceToken, operationId]);
+    const canvasNodeIds = nodeIds?.length ? this.getCanvasNodeIdsForRootPendingDeletion(rootPath, nodeIds) : [];
+    if (canvasNodeIds.length) this.remotePendingNodeDeletionOperations.set(key, new Set(canvasNodeIds));
     else this.remotePendingNodeDeletionOperations.delete(key);
     this.publishNodeDeletionPendingState();
+  }
+
+  private getRootLocalPendingDeletionNodeIds(rootPath: string, canvasNodeIds: readonly string[]): string[] {
+    const folders = this.getCanvasPersistenceWorkspaceFolders();
+    if (!folders.some(folder => folder.path === rootPath)) return [];
+    if (folders.length <= 1) return [...canvasNodeIds];
+    return canvasNodeIds.flatMap(nodeId => {
+      const localId = denamespaceCanvasObjectId(rootPath, nodeId);
+      return localId === undefined ? [] : [localId];
+    });
+  }
+
+  private getCanvasNodeIdsForRootPendingDeletion(rootPath: string, rootLocalNodeIds: readonly string[]): string[] {
+    const folders = this.getCanvasPersistenceWorkspaceFolders();
+    if (!folders.some(folder => folder.path === rootPath)) return [];
+    return folders.length > 1
+      ? rootLocalNodeIds.map(nodeId => namespaceCanvasObjectId(rootPath, nodeId))
+      : [...rootLocalNodeIds];
   }
 
   private publishNodeDeletionPendingState(surface?: CanvasSurfaceLocation): void {
