@@ -28,7 +28,8 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 确认最新 head `f4769a78` 的 run `40854227908` 收尾：三个 regression shards、source-host restricted 与 Remote SSH exit/reopen 通过；webview-function 一例超时，其余失败均为上游结果聚合。
 - [x] (2026-10-29) 对照 `origin/main` 和 Playwright trace 确认 webview timeout 是本 PR 的确定性 overview 交互回归：overview 禁用路径新增的整节点 `inert` 阻断了已有 `.window-chrome` 双击 handler。
 - [x] (2026-10-29) 将整节点 inert 限制在 deletion-pending 节点，同时保留 overview context 禁用内部操作的行为。
-- [ ] 由最新 PR head CI 验证 localized Stop case 和删除中锁定交互，并确认 Verify release contract 结果。
+- [x] (2026-10-29) 最新修复 head `cc61e295` 的 Release Preflight `40865378852` 成功：154 个 job 成功、3 个按范围跳过；localized Stop case、regression shards 和 Verify release contract 全部通过。
+- [x] (2026-10-29) 统计四轮完整 PR Release Preflight 耗时为 19:18、19:42、19:56、32:21；后续跟进默认等待 35 分钟再查状态，若仍未完成再续等。
 
 ## 意外与发现
 
@@ -50,6 +51,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - 复核：run `40854227908` 的 `remote-ssh-real-reopen-exit` 通过，旧 run 的握手超时没有重现。`webview-function` preparation deadline 超时仍重现，详见上面的页面与消息证据。
 - 归因：紧接断言修复的 heads `e6047096` 与 `169ea86c` 的 Release Preflight 都在 `Resolve immutable plan` 失败，日志为 `Smoke budget source changed: tests/vscode-smoke/extension-tests.cjs; regenerate and review the bounded wait inventory`；`verify-result` 和 release contract 随之报告 plan/acceptance 缺失，smoke 任务图没有执行。这是新增 smoke 源码后漏更受管 hash 清单，不是产品问题。已运行仓库生成器并复核只有源码 hash 变化，预算项不变。
 - 复盘：此前将 overview Terminal 超时作为未定产品/测试归因登记在 tech-debt tracker；与 `origin/main` 对照后发现 PR 正是引入全节点 inert 的改动，已从非阻塞技术债条目移出，改列为合入前待修 regression。
+- CI 时间观察：四个完整 PR Release Preflight 的墙钟时间（run `created_at` 至 `updated_at`）分别为 `40840058557` 19 分 56 秒、`40854227908` 19 分 42 秒、`40857232877` 19 分 18 秒、`40865378852` 32 分 21 秒。最新成功轮包含 157 个 job（154 成功、3 跳过）；单个最长项是 webview-function 7 分 59 秒，其次 win32-arm64 native-assets 5 分 40 秒、regression shard-1 3 分 54 秒。完整 run 的墙钟受分批依赖和 runner 队列影响，按 35 分钟等待后查询比按单个 job 时长等待更稳妥。
 - CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
 
 ## 决策记录
@@ -66,7 +68,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。修复前完整代码 run `40854227908` 的 regression shard-1/2/3、source-host restricted 和 Remote SSH exit/reopen 全部通过；唯一独立 producer failure 是 overview Terminal 双击无法触发子元素 handler 的确定性 regression，verify-result 与 release contract 是预期下游失败。source-host 消息顺序断言和 smoke inventory hash 已修正。现已将整节点 inert 限制在 deletion-pending 状态，overview 内部操作继续由 context 禁用；最新修复 head 的 CI 待验证。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
+P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在 P2 修正上通过。随后修复 overview disabled 与 deletion-pending inert 的混用。最终 head `cc61e295` 的 Release Preflight `40865378852` 全绿：157 个 job 中 154 成功、3 跳过；regression shards、`source-host (restricted)`、Remote SSH exit/reopen、webview-function localized Stop case、verify-result 与 Verify release contract 均通过。完整门禁墙钟约 32 分 21 秒。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
 
 旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。最新完整代码 head 上 Remote SSH 已通过，source-host smoke 断言已通过；overview inert 回归仍需修复，两个聚合门禁据此失败。
 
