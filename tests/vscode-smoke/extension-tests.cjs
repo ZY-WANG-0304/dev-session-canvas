@@ -1319,8 +1319,8 @@ async function verifyWebviewLifecycleRaceDiagnostics() {
     'Expected async template catalog posting after bootstrap ack to settle inside diagnostics.'
   );
   assert.deepStrictEqual(
-    result.oldWebviewPostedTypes.slice(0, 2),
-    ['host/bootstrap', 'host/visibilityRestored']
+    result.oldWebviewPostedTypes.slice(0, 3),
+    ['host/bootstrap', 'host/nodeDeletionPending', 'host/visibilityRestored']
   );
   assert.ok(
     result.oldWebviewPostedTypes.includes('host/templateCatalogUpdated') ||
