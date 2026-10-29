@@ -147,3 +147,4 @@ Runtime Persistence 关闭时没有共享 root participant 订阅，待删除状
 - `npm run typecheck` 已通过。
 - 当前 shell 环境中没有 `code`、`cursor` 或 `codium` CLI，因此无法在此终端里直接启动 `Extension Development Host` 做最终手动交互确认；文档状态继续保持“验证中”。
 - 2026-10-29 增补删除处理中反馈及失败解锁规则；本次 `npm run typecheck` 通过。用户已手动确认 Delete 状态与清空 / 重置期间的节点交互体验符合预期；失败恢复和多窗口场景仍待专项验证。
+- 2026-10-29 PR #344 跨 Host pending deletion 同步及 fixture 修正通过 `npm run build`、`npm run typecheck`、`git diff --check`。head `4035e1cb` 的 Release Preflight 已排队；head `41d5c183` 的 shard-2 CI 发现第二个 prototype-only diagnostic manager 漏初始化，现已补齐并等待新 head 验证。跨进程订阅和多窗口交互尚未运行时验证。

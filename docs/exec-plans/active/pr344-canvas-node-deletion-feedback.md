@@ -19,9 +19,10 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 实现 Runtime Persistence 同 root Host 间的瞬态删除状态订阅、活动操作快照、增量更新、Host 失联确认清理与重连恢复；Webview bootstrap 等待 root stores 就绪后发送状态。
 - [x] (2026-10-29) 修复 prototype-only lifecycle fixture 对新增字段的初始化。
 - [x] (2026-10-29) 更新正式删除设计与本计划中的跨窗口边界；设计索引无需新增条目，因为沿用现有文档。
-- [x] (2026-10-29) 复核 participant 订阅、快照/增量版本、连接重建和来源清理路径；P1/P2 变更通过 `npm run build`、`npm run typecheck` 与 `git diff --check`。未运行自动化测试；跨窗口 Extension Host 场景仍需 CI/手动验收。
-- [ ] 完成针对性代码审查，提交并将变更推送至 PR #344。
-- [ ] 以上完成后，再分别归因 `Gate webview-function`、`remote-ssh-real-reopen-exit`、`Gate verify-result` 和 `Verify release contract` 四个失败项。
+- [x] (2026-10-29) 复核 participant 订阅、快照/增量版本、连接重建和来源清理路径；修正通过 `npm run build`、`npm run typecheck` 与 `git diff --check`。本机未运行自动化测试；跨窗口 Extension Host 场景仍需 CI/手动验收。
+- [x] (2026-10-29) 针对 shard-2 暴露的第二个 constructor-bypass manager 补齐独立 pending map，并在隔离断言中校验；commit `4035e1cb` 已推送至 PR #344。
+- [x] (2026-10-29) 基于旧 CI run `40840058557` 的 job 日志与 artifacts，对其余四个失败项完成初步归因。
+- [ ] 确认最新 P2 修复在 head `4035e1cb` 的 CI 通过，并检查 webview/Remote SSH 两项是否在新 head 重现。
 
 ## 意外与发现
 
@@ -34,6 +35,12 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - 观察：shard-2 已证实是新增字段与一个 constructor-bypass 测试夹具不兼容，不代表真实 manager 构造路径缺少初始化。
   证据：CI artifact `test:smoke-lifecycle-isolation.log` 显示 `Object.create` 创建的 fake Host 在 `publishNodeDeletionPendingState()` 中对 undefined 的 map 调用 `.values()`。
 - 发现：首次给 `fixture()` 补 map 后，PR 更新触发的 shard-2 仍以同一 `.values()` 错误失败，因为 `createWebviewLifecycleRaceDiagnosticManager()` 内部还通过 `Object.create` 单独构造第二个 manager。已在该诊断 manager 初始化两个独立 map，并把独立性加入 smoke-isolation 断言；修正后结果待 PR 新一轮 CI 确认。
+- 归因：旧 run 的 `Gate webview-function` 仅 434 个 Playwright case 中 1 个失败；`installed localized Stop preparation publicly focuses the original overview Terminal before one visible action` 在 `installed-ui-observation.mjs:27` 以 preparation deadline exhausted 退出。该交互与 Canvas 节点删除不相交；单次超时不足以判定为偶发或产品回归。
+- 复核：同一 `Gate webview-function` case 在旧 run `40840058557` 和后续代码 head `41d5c183` 的 run `40848197919` 都以同一 20 秒 preparation deadline 报错，其他 433 个 case 通过。失败页面快照已有原 Terminal 节点，但 helper 只在成功后保留分阶段记录，所以 artifact 不能精确区分超时发生在新建、双击聚焦或等待 Stop 可用阶段。该检查并非一次孤立抖动；根因仍需缩小到稳定交互问题或 harness deadline/诊断缺口。
+- 归因：旧 run 的 `remote-ssh-real-reopen-exit` 在重新打开 editor Canvas 后 45 秒未等到 ready。诊断记录有 `surface/rendered`，但 lifecycle 保持 `ready:false`、`bootstrapAck:false`；远端 Host 被确认退出、Supervisor 和原执行仍在，失败发生于 Remote SSH 重开后的 Webview ready 握手。配对的 `remote-ssh-real-reopen-retain` 同 run 成功；现有证据没有证明 Remote SSH 的 `PendingMigrationError` 是原因，也不能排除这个退出/重开路径里的产品或 harness 时序问题。
+- 归因：`Gate verify-result` 的 206 个目标成功、失败项来自 shard-2、webview-functional 与 remote-ssh-real-reopen-exit producer。它报告这些 producer 失败，不是独立的验证器根因。
+- 归因：`Verify release contract` 在 `check-acceptance.mjs:50` 因 Verify result 实际结论为 failure 而拒绝上传的 acceptance，报错 `Verifier failure cannot be hidden by an uploaded file`。它是对上游验收失败的预期阻断。
+- CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
 
 ## 决策记录
 
@@ -49,9 +56,9 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1 跨 Host 同步和第一处 P2 fixture 修正已在 commit `41d5c183` 推送。该 head 的 Release Preflight run `40848197919` 发现第二处 constructor-bypass 诊断 manager 仍缺 map，已在工作区补齐，并通过 `npm run build`、`npm run typecheck`、`git diff --check`；最新修正尚未推送，也未获得 CI 确认。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺运行时验证。
+P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。head `41d5c183` 的 CI run `40848197919` 证实首个 fixture 修复仍留下第二个 manager 缺字段；包含第二处修正的 Release Preflight run `40849063900` 目前 pending，需确认 shard-2 结果。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺运行时验证。
 
-旧 head 的其余四个失败项已初步归因：webview 单 case 准备阶段超时；remote-SSH exit reopen 场景在重开 editor Canvas 后 45 秒未收到 ready/ack；verify-result 如实因三个 producer failure 拒绝；Verify release contract 如实因 verify-result failure 拒绝 acceptance。详细证据及仍待确认之处在归因完成后补录。
+旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：一个无关的 installed Terminal Playwright preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集三个失败 producer；release contract 按规则拒绝失败的 acceptance。后两项是上游失败的预期下游阻断。前两项在包含最新 P2 修复的新 head 上仍待复核。
 
 ## 上下文与定向
 
