@@ -140,4 +140,4 @@ updated_at: 2026-10-29
 - `npm run build` 已通过。
 - `npm run typecheck` 已通过。
 - 当前 shell 环境中没有 `code`、`cursor` 或 `codium` CLI，因此无法在此终端里直接启动 `Extension Development Host` 做最终手动交互确认；文档状态继续保持“验证中”。
-- 2026-10-29 增补删除处理中反馈及失败解锁规则；本次 `npm run typecheck` 通过，Webview / 宿主交互回归尚待执行。
+- 2026-10-29 增补删除处理中反馈及失败解锁规则；本次 `npm run typecheck` 通过。用户已手动确认 Delete 状态与清空 / 重置期间的节点交互体验符合预期；失败恢复和多窗口场景仍待专项验证。
