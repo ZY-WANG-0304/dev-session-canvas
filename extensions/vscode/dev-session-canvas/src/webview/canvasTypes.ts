@@ -92,6 +92,7 @@ export interface CanvasNodeData {
   /** Read-only title emitted by the execution PTY. */
   terminalTitle?: string;
   selected: boolean;
+  deletionPending: boolean;
   documentHasFocus: boolean;
   workspaceTrusted: boolean;
   overviewInteractionsDisabled: boolean;

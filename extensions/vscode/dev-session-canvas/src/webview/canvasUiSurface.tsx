@@ -17,6 +17,8 @@ export function canvasOverviewInertProps(disabled: boolean): React.HTMLAttribute
 export function CanvasNodeInteractionBoundary(props: {
   nodeId: string;
   disabled: boolean;
+  deletionPending?: boolean;
+  deletionLabel?: string;
   onModifierSelectNode: (nodeId: string) => void;
   children: JSX.Element;
 }): JSX.Element {
@@ -36,6 +38,16 @@ export function CanvasNodeInteractionBoundary(props: {
   return (
     <CanvasOverviewInteractionContext.Provider value={props.disabled}>
       {React.cloneElement(props.children, {
+        ...canvasOverviewInertProps(props.disabled),
+        className: [props.children.props.className, props.deletionPending ? 'is-deletion-pending' : '']
+          .filter(Boolean)
+          .join(' '),
+        'aria-busy': props.deletionPending ? true : undefined,
+        'aria-label': props.deletionPending
+          ? [props.children.props['aria-label'], props.deletionLabel].filter(Boolean).join(', ')
+          : props.children.props['aria-label'],
+        'data-node-deletion-pending': props.deletionPending ? 'true' : undefined,
+        'data-deletion-status-label': props.deletionPending ? props.deletionLabel : undefined,
         onPointerDownCapture: composeReactEventHandlers(
           props.children.props.onPointerDownCapture,
           handlePointerDownCapture

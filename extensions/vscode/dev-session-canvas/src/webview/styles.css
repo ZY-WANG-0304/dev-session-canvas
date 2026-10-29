@@ -355,6 +355,27 @@ body {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
+.canvas-node.is-deletion-pending {
+  position: relative;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.canvas-node.is-deletion-pending::after {
+  position: absolute;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--vscode-editor-background) 86%, transparent);
+  color: var(--vscode-editor-foreground);
+  content: attr(data-deletion-status-label);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 .canvas-node.is-selected {
   box-shadow: 0 0 0 1px var(--vscode-focusBorder), 0 10px 22px rgba(0, 0, 0, 0.14);
 }

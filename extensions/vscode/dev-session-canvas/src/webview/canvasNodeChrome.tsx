@@ -429,7 +429,9 @@ export function createCanvasNodeChrome(deps: CanvasNodeChromeDependencies): Canv
     return (
       <CanvasNodeInteractionBoundary
         nodeId={id}
-        disabled={data.overviewInteractionsDisabled}
+        disabled={data.overviewInteractionsDisabled || data.deletionPending}
+        deletionPending={data.deletionPending}
+        deletionLabel={t('action.deleting')}
         onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
       >
         <div
@@ -465,7 +467,7 @@ export function createCanvasNodeChrome(deps: CanvasNodeChromeDependencies): Canv
         <p>{data.summary}</p>
         <div className="action-row compact-node-actions">
           <ActionButton
-            label={t('action.delete')}
+            label={data.deletionPending ? t('action.deleting') : t('action.delete')}
             actionId="delete"
             tone="danger"
             onClick={() => data.onDeleteNode?.(id)}
