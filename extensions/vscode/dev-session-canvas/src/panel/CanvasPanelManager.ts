@@ -5264,6 +5264,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       pendingVisibilityRestore: { editor: false, panel: false },
       pendingVisibilityRestoreFocus: {},
       lastVisibleCanvasCenterBySurface: {},
+      pendingNodeDeletionOperations: new Map<string, Set<string>>(),
+      remotePendingNodeDeletionOperations: new Map<string, Set<string>>(),
       diagnosticHostMessages: [],
       testHostMessages: [],
       testDiagnosticEvents: [],

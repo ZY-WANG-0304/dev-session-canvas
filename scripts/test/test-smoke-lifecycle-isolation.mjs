@@ -89,7 +89,8 @@ async function protectResponsibilities(f) {
   host.flowReceipts.set('editor', flowReceipt);
   const diagnostic = host.createWebviewLifecycleRaceDiagnosticManager();
   for (const key of ['executionFlow', 'flowReceipts', 'flowSurfaceFrames', 'flowReceiptLastAt', 'flowCollections',
-    'canvasDisplayPublishers', 'pendingCanvasDisplayCatchup']) assert.notEqual(diagnostic[key], host[key], key);
+    'canvasDisplayPublishers', 'pendingCanvasDisplayCatchup', 'pendingNodeDeletionOperations',
+    'remotePendingNodeDeletionOperations']) assert.notEqual(diagnostic[key], host[key], key);
   assert.equal(diagnostic.executionFlow.active, false);
   assert.equal(diagnostic.canvasDisplayPublishers.size, 0);
   assert.equal(diagnostic.pendingCanvasDisplayCatchup.size, 0);

@@ -33,6 +33,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
   证据：`SharedRootCanvasParticipants.tryJoin()` 和 `livePeers()` 在 reset 时不授予清理权，也不删除参与者记录。
 - 观察：shard-2 已证实是新增字段与一个 constructor-bypass 测试夹具不兼容，不代表真实 manager 构造路径缺少初始化。
   证据：CI artifact `test:smoke-lifecycle-isolation.log` 显示 `Object.create` 创建的 fake Host 在 `publishNodeDeletionPendingState()` 中对 undefined 的 map 调用 `.values()`。
+- 发现：首次给 `fixture()` 补 map 后，PR 更新触发的 shard-2 仍以同一 `.values()` 错误失败，因为 `createWebviewLifecycleRaceDiagnosticManager()` 内部还通过 `Object.create` 单独构造第二个 manager。已在该诊断 manager 初始化两个独立 map，并把独立性加入 smoke-isolation 断言；修正后结果待 PR 新一轮 CI 确认。
 
 ## 决策记录
 
@@ -48,7 +49,9 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1/P2 代码与设计记录已更新。`npm run build`、`npm run typecheck`、`git diff --check` 通过；本轮没有运行自动化测试，因此跨进程订阅、迟到加入、断线重连和 Host 退出清理尚未得到运行时验证。提交并推送后先确认这两个 finding 的 PR 状态，再按用户要求归因另外四个 CI 失败项。
+P1 跨 Host 同步和第一处 P2 fixture 修正已在 commit `41d5c183` 推送。该 head 的 Release Preflight run `40848197919` 发现第二处 constructor-bypass 诊断 manager 仍缺 map，已在工作区补齐，并通过 `npm run build`、`npm run typecheck`、`git diff --check`；最新修正尚未推送，也未获得 CI 确认。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺运行时验证。
+
+旧 head 的其余四个失败项已初步归因：webview 单 case 准备阶段超时；remote-SSH exit reopen 场景在重开 editor Canvas 后 45 秒未收到 ready/ack；verify-result 如实因三个 producer failure 拒绝；Verify release contract 如实因 verify-result failure 拒绝 acceptance。详细证据及仍待确认之处在归因完成后补录。
 
 ## 上下文与定向
 
