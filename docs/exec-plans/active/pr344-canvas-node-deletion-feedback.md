@@ -29,8 +29,8 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 对照 `origin/main` 和 Playwright trace 确认 webview timeout 是本 PR 的确定性 overview 交互回归：overview 禁用路径新增的整节点 `inert` 阻断了已有 `.window-chrome` 双击 handler。
 - [x] (2026-10-29) 将整节点 inert 限制在 deletion-pending 节点，同时保留 overview context 禁用内部操作的行为。
 - [x] (2026-10-29) 最新修复 head `cc61e295` 的 Release Preflight `40865378852` 成功：154 个 job 成功、3 个按范围跳过；localized Stop case、regression shards 和 Verify release contract 全部通过。
-- [x] (2026-10-29) 统计五轮完整 PR Release Preflight 墙钟耗时为 19:18、19:42、19:56、32:21、20:02；最长仍为 32:21，后续跟进默认等待 35 分钟再查状态，若仍未完成再续等。
-- [ ] 修正 `remote-ssh-real-reopen-exit` 初始化时序：关闭临时 editor Canvas 前等待应用层 ready，避免未完成的 Webview 初始化与随后真实重开竞态；已重新生成 bounded wait inventory，为 setup/verify 各登记 45 秒 ready 上界（场景总预算增加 90 秒），由更新 head CI 验证。
+- [x] (2026-10-29) 统计六轮完整 PR Release Preflight 墙钟耗时为 19:18、19:42、19:56、32:21、20:02、20:00；中位数约 19:58，最长 32:21，后续默认等待 35 分钟再查，若仍未完成再续等。
+- [x] (2026-10-29) 修正 `remote-ssh-real-reopen-exit` 初始化时序：关闭临时 editor Canvas 前等待应用层 ready；重新生成 bounded wait inventory，为 setup/verify 各登记 45 秒 ready 上界（场景总预算增加 90 秒）。最新 head `0a339295` 的 Release Preflight `40880877833` 中该 job 通过。
 
 ## 意外与发现
 
@@ -52,8 +52,8 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - 复核：run `40854227908` 的 `remote-ssh-real-reopen-exit` 通过，旧 run 的握手超时没有重现。`webview-function` preparation deadline 超时仍重现，详见上面的页面与消息证据。
 - 归因：紧接断言修复的 heads `e6047096` 与 `169ea86c` 的 Release Preflight 都在 `Resolve immutable plan` 失败，日志为 `Smoke budget source changed: tests/vscode-smoke/extension-tests.cjs; regenerate and review the bounded wait inventory`；`verify-result` 和 release contract 随之报告 plan/acceptance 缺失，smoke 任务图没有执行。这是新增 smoke 源码后漏更受管 hash 清单，不是产品问题。已运行仓库生成器并复核只有源码 hash 变化，预算项不变。
 - 复盘：此前将 overview Terminal 超时作为未定产品/测试归因登记在 tech-debt tracker；与 `origin/main` 对照后发现 PR 正是引入全节点 inert 的改动，已从非阻塞技术债条目移出，改列为合入前待修 regression。
-- CI 时间观察：四个完整 PR Release Preflight 的墙钟时间（run `created_at` 至 `updated_at`）分别为 `40840058557` 19 分 56 秒、`40854227908` 19 分 42 秒、`40857232877` 19 分 18 秒、`40865378852` 32 分 21 秒。最新成功轮包含 157 个 job（154 成功、3 跳过）；单个最长项是 webview-function 7 分 59 秒，其次 win32-arm64 native-assets 5 分 40 秒、regression shard-1 3 分 54 秒。完整 run 的墙钟受分批依赖和 runner 队列影响，按 35 分钟等待后查询比按单个 job 时长等待更稳妥。
-- CI 时间补充：文档记录 head `40b34575` 的完整 Release Preflight `40874575062` 在 20 分 02 秒结束，但因 `remote-ssh-real-reopen-exit` 失败而未通过。artifact 记录 editor generation 2 render 后 166ms 被 dispose，随后 generation 5 render，`surfaceReady.editor=false`；`waitForCanvasReady` 等待 45 秒后超时。前次代码 head `cc61e295` 的相同 job 通过。该时序与既有快速 Webview 关闭/重开待调查边界吻合，但单轮日志不能确认它是唯一根因；当前将临时 Canvas 的关闭推迟到应用层 ready 后，待新 head CI 验证。
+- CI 时间观察：六轮完整 PR Release Preflight（run `created_at` 至 `updated_at`）分别为 `40840058557` 19:56、`40854227908` 19:42、`40857232877` 19:18、`40865378852` 32:21、`40874575062` 20:02、`40880877833` 20:00；中位数 19:58，均值约 21:53，最长 32:21。成功 run `40880877833` 有 157 个 job（154 成功、3 按范围跳过），最长单 job 为 webview-function 9:55；完整 run 墙钟受分批依赖和 runner 队列影响，后续按最长记录留余量等待 35 分钟再查。
+- CI 归因与验证：文档记录 head `40b34575` 的 run `40874575062` 在 20:02 结束但失败。artifact 记录 editor generation 2 render 后 166ms 被 dispose，随后 generation 5 render，`surfaceReady.editor=false`；`waitForCanvasReady` 等待 45 秒后超时。单轮日志不能确认这是否为唯一根因；测试 helper 已改为临时 Canvas ready 后再关闭。修正 head `0a339295` 的 run `40880877833` 于 20:00 全绿，`remote-ssh-real-reopen-exit`、verify-result、Verify release contract 均通过。
 - CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
 
 ## 决策记录
@@ -70,9 +70,9 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在 P2 修正上通过。随后修复 overview disabled 与 deletion-pending inert 的混用。代码 head `cc61e295` 的 Release Preflight `40865378852` 全绿：157 个 job 中 154 成功、3 跳过；regression shards、`source-host (restricted)`、Remote SSH exit/reopen、webview-function localized Stop case、verify-result 与 Verify release contract 均通过，墙钟 32 分 21 秒。之后仅更新文档的 head `40b34575` 上，Remote SSH exit/reopen 再次出现 Canvas ready 超时；verify-result 与 Verify release contract 为下游失败。当前针对临时 Webview 过早销毁的夹具修正待新 head CI 验证。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
+P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在 P2 修正上通过。随后修复 overview disabled 与 deletion-pending inert 的混用。代码 head `cc61e295` 的 Release Preflight `40865378852` 全绿；之后文档 head `40b34575` 的 run 暴露 Remote SSH exit/reopen Canvas ready 超时，已调整临时 Canvas 销毁时序并同步预算清单。最新 head `0a339295` 的 Release Preflight `40880877833` 全绿：157 个 job 中 154 成功、3 跳过；Remote SSH exit/reopen、regression shards、webview-function、verify-result 和 Verify release contract 均通过，墙钟 20 分钟整。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
 
-旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。最新完整代码 head 上 Remote SSH 已通过，source-host smoke 断言已通过；overview inert 回归仍需修复，两个聚合门禁据此失败。
+旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。overview inert 回归已在 `cc61e295` 修复；Remote SSH 夹具的应用层 ready 等待已在 `0a339295` 加固，最新 run 验证通过；两个聚合门禁也已通过。
 
 ## 上下文与定向
 
