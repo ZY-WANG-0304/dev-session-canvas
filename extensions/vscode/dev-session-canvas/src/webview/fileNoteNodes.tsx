@@ -170,7 +170,9 @@ function FileNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Elem
   return (
     <CanvasNodeInteractionBoundary
       nodeId={id}
-      disabled={data.overviewInteractionsDisabled}
+      disabled={data.overviewInteractionsDisabled || data.deletionPending}
+      deletionPending={data.deletionPending}
+      deletionLabel={t('action.deleting')}
       onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
     >
       <div
@@ -293,7 +295,9 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
   return (
     <CanvasNodeInteractionBoundary
       nodeId={id}
-      disabled={data.overviewInteractionsDisabled}
+      disabled={data.overviewInteractionsDisabled || data.deletionPending}
+      deletionPending={data.deletionPending}
+      deletionLabel={t('action.deleting')}
       onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
     >
       <div
@@ -359,7 +363,7 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
               >{t('fileList.view.tree')}</button>
             </div>
             <ActionButton
-              label={t('action.delete')}
+              label={data.deletionPending ? t('action.deleting') : t('action.delete')}
               actionId="delete"
               tone="danger"
               onClick={deleteFileList}
@@ -372,7 +376,7 @@ function FileListNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.
           <div className="window-chrome-actions">
             <span className={`status-pill ${statusToneClass(data.status)}`}>{webviewHumanizeCanvasStatus(data.status)}</span>
             <ActionButton
-              label={t('action.delete')}
+              label={data.deletionPending ? t('action.deleting') : t('action.delete')}
               actionId="delete"
               tone="danger"
               onClick={deleteFileList}
@@ -1734,7 +1738,9 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
   return (
     <CanvasNodeInteractionBoundary
       nodeId={id}
-      disabled={data.overviewInteractionsDisabled}
+      disabled={data.overviewInteractionsDisabled || data.deletionPending}
+      deletionPending={data.deletionPending}
+      deletionLabel={t('action.deleting')}
       onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
     >
       <div
@@ -1803,7 +1809,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
             />
           )}
           <ActionButton
-            label={t('action.delete')}
+            label={data.deletionPending ? t('action.deleting') : t('action.delete')}
             actionId="delete"
             tone="danger"
             onClick={deleteNote}

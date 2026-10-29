@@ -15,7 +15,7 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-deletion.md
-updated_at: 2026-03-30
+updated_at: 2026-10-29
 ---
 
 # 画布节点删除设计
@@ -82,9 +82,19 @@ updated_at: 2026-03-30
 
 当前结论：采用此方案。
 
-## 6. 当前结论
+## 6. 正式方案
 
-当前收敛结论如下：
+### 删除中的反馈与交互边界
+
+- `CanvasPanelManager` 在运行时清理开始前登记本次待删除节点，并通过 `host/nodeDeletionPending` 向所有交互中的 Webview 发布待删除节点 ID 的并集；新 Webview bootstrap 后也会收到当前集合。此状态只存在于宿主内存，不写入画布模型或持久化数据。
+- 所有待删除节点都显示 `Deleting…` / `正在删除…` 覆盖状态，节点头部的删除按钮同步切换为该文案。Webview 收到本地删除点击时先乐观显示状态；清空、重置、分组删除等宿主发起路径由宿主消息同步显示。
+- 待删除节点不能拖动、缩放、选择、连线或使用内部控件。`CanvasNodeInteractionBoundary` 以 inert 边界禁用节点内部交互，React Flow 节点同时关闭拖动、选择和连线能力。
+- 删除成功并完成宿主持久化后，节点随权威状态更新移除，再清除对应的待删除状态。运行时清理或最终持久化失败时清除待删除状态、恢复节点交互，并通过现有错误反馈告知用户；确认弹窗期间以及模板校验期间不锁定节点。
+- 状态覆盖节点头部删除按钮与键盘删除、分组成员删除、清空组 / root / workspace，以及重置状态和重置为模板。并发删除操作以节点 ID 并集维护状态，单个操作结束不会提前解锁另一个仍在进行的删除。
+
+实现锚点：`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 中的待删除操作登记、`deleteNode`、`deleteGroup`、`clearCanvasGroupContents`、`clearWorkspaceRootCanvas`、`resetState` 与 `applyCanvasTemplateRecord`；`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 中的 `host/nodeDeletionPending`；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 中的乐观状态与节点投影；`canvasUiSurface.tsx`、`canvasNodeChrome.tsx`、`executionSessionNodes.tsx`、`fileNoteNodes.tsx` 和 `styles.css` 中的状态呈现、交互禁用与删除按钮文案。
+
+原删除结论继续成立：
 
 - 删除能力同时提供两条路径：
   - 每个节点头部提供统一删除按钮；
@@ -94,6 +104,12 @@ updated_at: 2026-03-30
   - `Agent` / `Terminal` 删除时，宿主先销毁活跃会话，再移除节点并落盘。
 - 删除后允许画布为空。初次打开且没有存储时仍生成默认示例节点；但如果用户已经显式删除全部节点并持久化为空数组，reload 后必须保持空画布。
 - 节点创建序号不再依赖数组长度，而改为根据当前节点集合计算下一个未使用的序号，避免删除中间节点后复用已有 ID。
+
+### 删除处理中状态的跨窗口同步
+
+开启 Runtime Persistence 时，同一 root 的 Extension Host 通过 `SharedRootCanvasParticipants` 的 loopback 订阅交换待删除操作快照和增量；该消息携带来源参与者、操作 ID 与受影响节点 ID，并且节点 ID 始终使用对应 root 的本地 ID。发送端将当前画布 ID 按 root 拆分后去掉多根 namespace；接收端用 channel 的 `rootPath` 把本地 ID 映射到本机画布 ID：多根画布添加该 root 的 namespace，单根画布保留本地 ID。远端操作以 root、来源参与者和操作 ID 联合区分，避免同一跨 root 操作在各 root 上覆盖彼此的节点子集。节点状态仍是 Host 内存中的瞬态状态，不进入 `CanvasPrototypeState`、共享画布快照或 workspace 持久化内容。新加入的 Host 在交互面可用前接收现存操作快照；各来源的操作按并集投影到本 Host 的 panel/editor，结束某个操作只清除对应 root、来源和操作 ID。订阅连接意外关闭时先保留现有锁并尝试重连；仅在参与者记录撤销或 listener 确认不可达后清除来源操作，避免把短暂的连接 reset 当成删除结束。
+
+Runtime Persistence 关闭时没有共享 root participant 订阅，待删除状态仅作用于发起 Host 的交互面，继续遵守关闭模式隔离。该订阅只用于同一执行环境、同一 root 的活动参与 Host，不扩展为跨用户或远端协作协议。
 
 ## 7. 风险与取舍
 
@@ -119,6 +135,9 @@ updated_at: 2026-03-30
 4. 删除最后一个节点后，reload 仍保持空画布。
 5. 删除中间节点后继续新增同类型节点，不出现 ID 冲突。
 6. `npm run build` 和 `npm run typecheck` 通过。
+7. 删除单个执行型节点时按钮立即显示删除中，节点内输入、动作、拖动、缩放、选择与连线均被禁用；成功后节点消失。
+8. 清空组 / root / workspace、删除含成员分组及重置模板时，每个受影响节点均显示删除中并不可交互；运行时清理或保存失败后原节点恢复交互。
+9. 同一 root 的多个 Runtime Persistence 窗口中，待删除状态一致；单根和多根画布混合打开时，两边都将同一节点映射到本机 ID 并锁定；覆盖多 root 操作按 root 独立保留和清除节点子集；操作并发时，任何来源仍在删除的节点继续锁定；新 Host 加入时获得现存 pending 操作；确认 Host 退出后清除其未结束的瞬态锁，连接 reset/timeout 本身不得提前解锁。
 
 ## 9. 当前验证状态
 
@@ -127,3 +146,5 @@ updated_at: 2026-03-30
 - `npm run build` 已通过。
 - `npm run typecheck` 已通过。
 - 当前 shell 环境中没有 `code`、`cursor` 或 `codium` CLI，因此无法在此终端里直接启动 `Extension Development Host` 做最终手动交互确认；文档状态继续保持“验证中”。
+- 2026-10-29 增补删除处理中反馈及失败解锁规则；本次 `npm run typecheck` 通过。用户已手动确认 Delete 状态与清空 / 重置期间的节点交互体验符合预期；失败恢复和多窗口场景仍待专项验证。
+- 2026-10-29 PR #344 跨 Host pending deletion 同步及 fixture 修正通过 `npm run build`、`npm run typecheck`、`git diff --check`。head `4035e1cb` 的 Release Preflight 已排队；head `41d5c183` 的 shard-2 CI 发现第二个 prototype-only diagnostic manager 漏初始化，现已补齐并等待新 head 验证。跨进程订阅和多窗口交互尚未运行时验证。

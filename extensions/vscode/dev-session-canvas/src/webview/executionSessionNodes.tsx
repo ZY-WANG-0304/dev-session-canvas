@@ -764,7 +764,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     return (
       <CanvasNodeInteractionBoundary
         nodeId={id}
-        disabled={data.overviewInteractionsDisabled}
+        disabled={data.overviewInteractionsDisabled || data.deletionPending}
+        deletionPending={data.deletionPending}
+        deletionLabel={deps.t('action.deleting')}
         onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
       >
         <div
@@ -890,7 +892,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
               />
             ) : null}
             <deps.ActionButton
-              label={deps.t('action.delete')}
+              label={data.deletionPending ? deps.t('action.deleting') : deps.t('action.delete')}
               actionId="delete"
               tone="danger"
               onClick={deleteAgent}
@@ -1478,7 +1480,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     return (
       <CanvasNodeInteractionBoundary
         nodeId={id}
-        disabled={data.overviewInteractionsDisabled}
+        disabled={data.overviewInteractionsDisabled || data.deletionPending}
+        deletionPending={data.deletionPending}
+        deletionLabel={deps.t('action.deleting')}
         onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
       >
         <div
@@ -1534,7 +1538,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
               onFocus={() => data.onSelectNode?.(id)}
             />
             <deps.ActionButton
-              label={deps.t('action.delete')}
+              label={data.deletionPending ? deps.t('action.deleting') : deps.t('action.delete')}
               actionId="delete"
               tone="danger"
               onClick={deleteTerminal}

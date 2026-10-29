@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "sourceHashes": {
-    "tests/vscode-smoke/extension-tests.cjs": "e586749b27f34363ae537057da0635406fd4b5a2ff35cbb23b37982c4684f7ef",
-    "tests/vscode-smoke/real-reopen-tests.cjs": "30b655583f8affa7d4af48ecc82dc4747640a3a2eb155508ce9a34805a6176fb",
+    "tests/vscode-smoke/extension-tests.cjs": "9b3ceb353c4fe3bc000584c095efbab4e000f7079006dcc00a18e40dafaae3cc",
+    "tests/vscode-smoke/real-reopen-tests.cjs": "20b3a73c947f9031b7ac1cd4c0829fb8d9546b3caabd22f50fd27fcf20ce9856",
     "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "7bfa53d9714beacc83ead94e2bd594e782317051059ab251fe30d7b6ecfba28e",
     "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "abf93735a6bcc1ce666df1ee8e9c00e89a88880b4bb37dc1a83b77d9d66dad5d",
     "tests/vscode-smoke/runtime-compatibility-tests.cjs": "2654335090bc7aeeab7dd69d8241cc8dfc474feffbd262fe33ed843ec060c558",
@@ -56657,7 +56657,7 @@
       ]
     },
     "real-reopen": {
-      "timeoutMs": 635000,
+      "timeoutMs": 725000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -56687,7 +56687,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -56695,6 +56695,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -57044,7 +57052,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -57052,6 +57060,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -57344,7 +57360,7 @@
       ]
     },
     "multi-root-real-reopen": {
-      "timeoutMs": 635000,
+      "timeoutMs": 725000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -57374,7 +57390,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -57382,6 +57398,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -57731,7 +57755,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -57739,6 +57763,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -58031,7 +58063,7 @@
       ]
     },
     "single-to-multi-root-real-reopen": {
-      "timeoutMs": 635000,
+      "timeoutMs": 725000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -58061,7 +58093,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -58069,6 +58101,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -58418,7 +58458,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -58426,6 +58466,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -58718,7 +58766,7 @@
       ]
     },
     "systemd-user-real-reopen": {
-      "timeoutMs": 635000,
+      "timeoutMs": 725000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -58748,7 +58796,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -58756,6 +58804,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -59105,7 +59161,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -59113,6 +59169,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -59405,7 +59469,7 @@
       ]
     },
     "systemd-fallback-real-reopen": {
-      "timeoutMs": 635000,
+      "timeoutMs": 725000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -59435,7 +59499,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -59443,6 +59507,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -59792,7 +59864,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -59800,6 +59872,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -60092,7 +60172,7 @@
       ]
     },
     "remote-ssh-real-reopen-exit": {
-      "timeoutMs": 755000,
+      "timeoutMs": 845000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -60122,7 +60202,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -60130,6 +60210,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -60479,7 +60567,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -60487,6 +60575,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -60779,7 +60875,7 @@
       ]
     },
     "remote-ssh-real-reopen-retain": {
-      "timeoutMs": 755000,
+      "timeoutMs": 845000,
       "entry": "run",
       "file": "tests/vscode-smoke/real-reopen-tests.cjs",
       "times": 1,
@@ -60809,7 +60905,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -60817,6 +60913,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
@@ -61166,7 +61270,7 @@
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",
-          "line": 465,
+          "line": 471,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -61174,6 +61278,14 @@
             "command": "COMMAND_IDS.openCanvasInEditor",
             "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
+        },
+        {
+          "file": "tests/vscode-smoke/real-reopen-tests.cjs",
+          "line": 472,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 45000,
+          "multiplier": 1,
+          "detail": {}
         },
         {
           "file": "tests/vscode-smoke/real-reopen-tests.cjs",

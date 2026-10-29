@@ -1482,6 +1482,8 @@ function supersedeExecutionTerminalTitleProjection(
 
 function App(): JSX.Element {
   const [hostState, setHostState] = useState<CanvasPrototypeState | null>(null);
+  const [pendingNodeDeletionIds, setPendingNodeDeletionIds] = useState<Set<string>>(() => new Set());
+  const pendingNodeDeletionIdsRef = useRef(pendingNodeDeletionIds);
   const [executionTerminalTitles, setExecutionTerminalTitles] = useState<
     Record<string, ExecutionTerminalTitleProjection>
   >({});
@@ -1728,6 +1730,12 @@ function App(): JSX.Element {
           if (!incremental || message.payload.runtime?.terminal) scheduleEmbeddedTerminalAppearanceRefresh();
         }
         break;
+      case 'host/nodeDeletionPending': {
+        const nextPendingNodeDeletionIds = new Set(message.payload.nodeIds);
+        pendingNodeDeletionIdsRef.current = nextPendingNodeDeletionIds;
+        setPendingNodeDeletionIds(nextPendingNodeDeletionIds);
+        break;
+      }
       case 'host/templateCatalogUpdated':
         setTemplateMenuEntries(Array.isArray(message.payload.templates) ? message.payload.templates : []);
         break;
@@ -2383,6 +2391,13 @@ function App(): JSX.Element {
   };
 
   const deleteNode = (nodeId: string): void => {
+    if (pendingNodeDeletionIdsRef.current.has(nodeId)) {
+      return;
+    }
+    const nextPendingNodeDeletionIds = new Set(pendingNodeDeletionIdsRef.current);
+    nextPendingNodeDeletionIds.add(nodeId);
+    pendingNodeDeletionIdsRef.current = nextPendingNodeDeletionIds;
+    setPendingNodeDeletionIds(nextPendingNodeDeletionIds);
     setLocalUiState((current) => ({
       ...current,
       selectedNodeId: current.selectedNodeId === nodeId ? undefined : current.selectedNodeId,
@@ -3205,6 +3220,7 @@ function App(): JSX.Element {
 
   const baseNodes = useCanvasFlowNodes({
     nodes: hostState?.nodes ?? [],
+    pendingNodeDeletionIds,
     terminalTitles: executionTerminalTitles,
     selectedNodeId: localUiState.selectedNodeId,
     selectedNodeIds: localUiState.selectedNodeIds,
@@ -6543,6 +6559,7 @@ function useCanvasFlowNodes(params: Parameters<typeof toFlowNodes>[0]): CanvasFl
 
 function toFlowNodes(params: {
   nodes: CanvasNodeSummary[];
+  pendingNodeDeletionIds: ReadonlySet<string>;
   terminalTitles: Record<string, ExecutionTerminalTitleProjection>;
   selectedNodeId: string | undefined;
   selectedNodeIds: readonly string[] | undefined;
@@ -6650,6 +6667,7 @@ function toFlowNodes(params: {
 }): CanvasFlowNode[] {
   const selectedNodeIds = new Set(params.selectedNodeIds ?? (params.selectedNodeId ? [params.selectedNodeId] : []));
   return params.nodes.map((node) => {
+    const deletionPending = params.pendingNodeDeletionIds.has(node.id);
     const size = normalizeCanvasNodeFootprintForDisplayStyle(
       node.kind,
       params.fileNodeDisplayStyle,
@@ -6665,7 +6683,9 @@ function toFlowNodes(params: {
       id: node.id,
       type: node.kind === 'agent' || node.kind === 'terminal' || node.kind === 'note' || node.kind === 'file' || node.kind === 'file-list' ? node.kind : 'card',
       position: node.position,
-      draggable: true,
+      draggable: !deletionPending,
+      selectable: !deletionPending,
+      connectable: !deletionPending,
       selected: selectedNodeIds.has(node.id),
       width: renderedSize.width,
       height: renderedSize.height,
@@ -6678,6 +6698,7 @@ function toFlowNodes(params: {
         title: node.title,
         status: node.status,
         summary: node.summary,
+        deletionPending,
         terminalTitle: params.terminalTitles[node.id]?.title,
         selected: selectedNodeIds.has(node.id),
         documentHasFocus: params.documentHasFocus,

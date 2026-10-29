@@ -462,7 +462,7 @@ async function observeRemoteHostPhase(expected, stage) {
 async function activateExtension() {
   await activateVisibleExtension(vscode, EXTENSION_ID);
   await waitForCommand(vscode, COMMAND_IDS.openCanvasInEditor);
-  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInEditor);
+  await openCanvasEditor();
   await waitForCommand(vscode, COMMAND_IDS.testResetState);
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 }

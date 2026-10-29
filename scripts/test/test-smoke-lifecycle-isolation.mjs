@@ -45,6 +45,7 @@ function fixture(surface) {
     pendingWebviewProbeRequests: new Map(), pendingWebviewDomActionRequests: new Map(),
     pendingWorkspaceRootFocusReplay: {}, pendingVisibilityRestore: { editor: false, panel: false },
     pendingVisibilityRestoreFocus: {}, lastVisibleCanvasCenterBySurface: { panel: { x: 5, y: 6 } },
+    pendingNodeDeletionOperations: new Map(), remotePendingNodeDeletionOperations: new Map(),
     diagnosticHostMessages: [], testHostMessages: [], testDiagnosticEvents: [],
     executionFlow: new ExecutionFlowRecorder(), flowMessageSequence: 0,
     flowReceipts: new Map(), flowSurfaceFrames: new Map(), flowReceiptLastAt: new Map(), flowCollections: new Map(),
@@ -88,7 +89,8 @@ async function protectResponsibilities(f) {
   host.flowReceipts.set('editor', flowReceipt);
   const diagnostic = host.createWebviewLifecycleRaceDiagnosticManager();
   for (const key of ['executionFlow', 'flowReceipts', 'flowSurfaceFrames', 'flowReceiptLastAt', 'flowCollections',
-    'canvasDisplayPublishers', 'pendingCanvasDisplayCatchup']) assert.notEqual(diagnostic[key], host[key], key);
+    'canvasDisplayPublishers', 'pendingCanvasDisplayCatchup', 'pendingNodeDeletionOperations',
+    'remotePendingNodeDeletionOperations']) assert.notEqual(diagnostic[key], host[key], key);
   assert.equal(diagnostic.executionFlow.active, false);
   assert.equal(diagnostic.canvasDisplayPublishers.size, 0);
   assert.equal(diagnostic.pendingCanvasDisplayCatchup.size, 0);

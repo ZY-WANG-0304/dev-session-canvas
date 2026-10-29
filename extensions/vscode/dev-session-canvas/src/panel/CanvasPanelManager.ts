@@ -1472,6 +1472,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private readonly nonNativeHostExecutions = new Map<string, NonNativeHostExecution>();
   private readonly pendingTerminalInitialInputs = new Map<string, string>();
   private readonly pendingTerminalInitialInputDispatches = new Map<string, PendingTerminalInitialInputDispatch>();
+  private readonly pendingNodeDeletionOperations = new Map<string, Set<string>>();
+  private readonly remotePendingNodeDeletionOperations = new Map<string, Set<string>>();
   private readonly runtimeSessionBindings = new Map<
     string,
     {
@@ -4669,6 +4671,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   public async resetState(options: { clearAgentCliResolutionCache?: boolean; reason?: string } = {}): Promise<void> {
     this.assertCanvasMutationAdmissionOpen();
+    const deletionFeedbackOperation = this.beginNodeDeletionFeedback(this.state.nodes.map(node => node.id));
+    try {
     const previousNodeCount = this.state.nodes.length;
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     if (workspaceFolders.length > 1) {
@@ -4694,6 +4698,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     if (options.clearAgentCliResolutionCache) {
       this.clearAgentCliResolutionCache();
     }
+    const stateBeforeReset = this.state;
+    const rootsBeforeReset = this.lastLoadedRootLocalStates;
+    const overlayBeforeReset = this.multiRootOverlay;
     if (workspaceFolders.length > 1) {
       this.state = this.composeEmptyMultiRootCanvasState(workspaceFolders);
       this.lastLoadedRootLocalStates = workspaceFolders.map((folder) => ({
@@ -4704,7 +4711,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
     }
     this.canvasTemplateInitialized = true;
-    this.persistState({ reason: options.reason ?? 'state-reset' });
+    try {
+      await this.persistState({ reason: options.reason ?? 'state-reset' });
+    } catch (error) {
+      this.state = stateBeforeReset;
+      try {
+        this.writeRootLocalCanvasSnapshotsForState(stateBeforeReset);
+      } catch {
+        this.lastLoadedRootLocalStates = rootsBeforeReset;
+        this.multiRootOverlay = overlayBeforeReset;
+      }
+      this.postState('host/stateUpdated');
+      throw error;
+    }
     this.recordDiagnosticEvent('state/reset', {
       previousNodeCount,
       clearedAgentCliResolutionCache: options.clearAgentCliResolutionCache === true,
@@ -4714,6 +4733,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
     this.notifySidebarStateChanged();
     this.nonNativeExecutionOwner?.tryResume();
+    } finally {
+      this.endNodeDeletionFeedback(deletionFeedbackOperation);
+    }
   }
 
   private async clearAllWorkspaceRootCanvases(options: { reason?: string } = {}): Promise<boolean> {
@@ -4856,6 +4878,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? collectWorkspaceRootOwnedNodeIds(this.state, normalizedRootPath, rootGroup.id)
       : new Set(this.state.nodes.map((node) => node.id));
     const affectedNodes = this.state.nodes.filter((node) => affectedNodeIds.has(node.id));
+    const deletionFeedbackOperation = this.beginNodeDeletionFeedback(affectedNodes.map(node => node.id));
+    try {
     for (const node of affectedNodes) {
       this.dropPendingTerminalInitialInput(
         node.id,
@@ -4901,9 +4925,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return false;
     }
 
+    const stateBeforeClear = this.state;
     this.state = this.reconcileCanvasFileArtifacts(nextState);
     this.canvasTemplateInitialized = true;
-    this.persistState({ reason: options.reason ?? 'workspace-root-canvas-cleared' });
+    try {
+      await this.persistState({ reason: options.reason ?? 'workspace-root-canvas-cleared' });
+    } catch (error) {
+      this.state = stateBeforeClear;
+      try {
+        this.writeRootLocalCanvasSnapshotsForState(stateBeforeClear);
+      } catch { /* Keep the persistence failure as the primary error. */ }
+      this.postState('host/stateUpdated');
+      throw error;
+    }
     this.recordDiagnosticEvent('state/rootLocalCleared', {
       rootPath: normalizedRootPath,
       nodeCount: affectedNodes.length,
@@ -4912,6 +4946,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.postState('host/stateUpdated');
     this.notifySidebarStateChanged();
     return true;
+    } finally {
+      this.endNodeDeletionFeedback(deletionFeedbackOperation);
+    }
   }
 
   public getWorkspaceRootCanvasRemovalImpact(rootPath: string): WorkspaceRootCanvasRemovalImpact | undefined {
@@ -5227,6 +5264,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       pendingVisibilityRestore: { editor: false, panel: false },
       pendingVisibilityRestoreFocus: {},
       lastVisibleCanvasCenterBySurface: {},
+      pendingNodeDeletionOperations: new Map<string, Set<string>>(),
+      remotePendingNodeDeletionOperations: new Map<string, Set<string>>(),
       diagnosticHostMessages: [],
       testHostMessages: [],
       testDiagnosticEvents: [],
@@ -6295,6 +6334,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         : undefined
       : targetGroupId;
 
+    const resetNodeIds = targetRootGroup && targetWorkspaceRootPath
+      ? [...collectWorkspaceRootOwnedNodeIds(this.state, targetWorkspaceRootPath, targetRootGroup.id)]
+      : this.state.nodes.map(node => node.id);
+    const deletionFeedbackOperation = options?.reset
+      ? this.beginNodeDeletionFeedback(resetNodeIds)
+      : undefined;
+    try {
     if (options?.reset) {
       if (targetRootGroup && targetWorkspaceRootPath) {
         const rootId = targetRootGroup.id;
@@ -6345,9 +6391,28 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const appliedNodeIds = targetWorkspaceRootPath && targetRootGroup
       ? applyResult.nodeIds.map((nodeId) => namespaceCanvasObjectId(targetWorkspaceRootPath, nodeId))
       : applyResult.nodeIds;
+    const stateBeforeApply = this.state;
+    const rootsBeforeApply = this.lastLoadedRootLocalStates;
+    const overlayBeforeApply = this.multiRootOverlay;
     this.state = this.reconcileCanvasFileArtifacts(appliedState);
     this.canvasTemplateInitialized = true;
-    this.persistState({ reason: 'template-applied' });
+    if (options?.reset) {
+      try {
+        await this.persistState({ reason: 'template-applied' });
+      } catch (error) {
+        this.state = stateBeforeApply;
+        try {
+          this.writeRootLocalCanvasSnapshotsForState(stateBeforeApply);
+        } catch {
+          this.lastLoadedRootLocalStates = rootsBeforeApply;
+          this.multiRootOverlay = overlayBeforeApply;
+        }
+        this.postState('host/stateUpdated');
+        throw error;
+      }
+    } else {
+      this.persistState({ reason: 'template-applied' });
+    }
     this.recordDiagnosticEvent('template/applied', {
       templateId: storedTemplate.template.id,
       templateName: storedTemplate.template.name,
@@ -6362,6 +6427,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     if (options?.reset && !targetRootGroup) this.nonNativeExecutionOwner?.tryResume();
     return appliedNodeIds;
+    } finally {
+      if (deletionFeedbackOperation) this.endNodeDeletionFeedback(deletionFeedbackOperation);
+    }
   }
 
   private async confirmCanvasTemplateReset(
@@ -7148,8 +7216,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           error => {
             this.recordDiagnosticEvent('state/rootLocalPersistFailed', { rootPath, message: error.message });
             this.postMessage({ type: 'host/error', payload: { message: error.message } });
-          }, candidates => this.acceptSharedRuntimeTakeover(rootPath, candidates));
+          }, candidates => this.acceptSharedRuntimeTakeover(rootPath, candidates),
+          (sourceToken, operationId, nodeIds) => this.applyRemoteNodeDeletionOperation(rootPath, sourceToken, operationId, nodeIds));
         stores.set(rootPath, store);
+        for (const [operationId, nodeIds] of this.pendingNodeDeletionOperations) {
+          const rootLocalNodeIds = this.getRootLocalPendingDeletionNodeIds(rootPath, [...nodeIds]);
+          if (rootLocalNodeIds.length) store.publishPendingDeletionOperation(operationId, rootLocalNodeIds);
+        }
       }
       void store.publish(rootLocalState).catch(() => undefined);
       return;
@@ -8178,6 +8251,74 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const state = this.hydrateNoteMarkdownRecoverableDraftsForWebview(this.state);
     const stateWithImageResources = this.hydrateNoteMarkdownImageResourceBasesForWebview(state, webview);
     return stripExecutionTerminalRecoveryPayloadsFromCanvasState(stateWithImageResources);
+  }
+
+  private beginNodeDeletionFeedback(nodeIds: readonly string[]): string {
+    const operationId = randomUUID();
+    this.pendingNodeDeletionOperations.set(operationId, new Set(nodeIds));
+    for (const [rootPath, store] of this.sharedRootCanvasStores ?? []) {
+      const rootLocalNodeIds = this.getRootLocalPendingDeletionNodeIds(rootPath, nodeIds);
+      if (rootLocalNodeIds.length) store.publishPendingDeletionOperation(operationId, rootLocalNodeIds);
+    }
+    this.publishNodeDeletionPendingState();
+    return operationId;
+  }
+
+  private endNodeDeletionFeedback(operationId: string): void {
+    if (this.pendingNodeDeletionOperations.delete(operationId)) {
+      for (const store of this.sharedRootCanvasStores?.values() ?? []) {
+        store.publishPendingDeletionOperation(operationId, undefined);
+      }
+      this.publishNodeDeletionPendingState();
+    }
+  }
+
+  private applyRemoteNodeDeletionOperation(
+    rootPath: string,
+    sourceToken: string,
+    operationId: string,
+    nodeIds: readonly string[] | undefined
+  ): void {
+    const key = JSON.stringify([rootPath, sourceToken, operationId]);
+    const canvasNodeIds = nodeIds?.length ? this.getCanvasNodeIdsForRootPendingDeletion(rootPath, nodeIds) : [];
+    if (canvasNodeIds.length) this.remotePendingNodeDeletionOperations.set(key, new Set(canvasNodeIds));
+    else this.remotePendingNodeDeletionOperations.delete(key);
+    this.publishNodeDeletionPendingState();
+  }
+
+  private getRootLocalPendingDeletionNodeIds(rootPath: string, canvasNodeIds: readonly string[]): string[] {
+    const folders = this.getCanvasPersistenceWorkspaceFolders();
+    if (!folders.some(folder => folder.path === rootPath)) return [];
+    if (folders.length <= 1) return [...canvasNodeIds];
+    return canvasNodeIds.flatMap(nodeId => {
+      const localId = denamespaceCanvasObjectId(rootPath, nodeId);
+      return localId === undefined ? [] : [localId];
+    });
+  }
+
+  private getCanvasNodeIdsForRootPendingDeletion(rootPath: string, rootLocalNodeIds: readonly string[]): string[] {
+    const folders = this.getCanvasPersistenceWorkspaceFolders();
+    if (!folders.some(folder => folder.path === rootPath)) return [];
+    return folders.length > 1
+      ? rootLocalNodeIds.map(nodeId => namespaceCanvasObjectId(rootPath, nodeId))
+      : [...rootLocalNodeIds];
+  }
+
+  private publishNodeDeletionPendingState(surface?: CanvasSurfaceLocation): void {
+    const nodeIds = [...new Set([
+      ...[...this.pendingNodeDeletionOperations.values()].flatMap(ids => [...ids]),
+      ...[...this.remotePendingNodeDeletionOperations.values()].flatMap(ids => [...ids])
+    ])];
+    const message: HostToWebviewMessage = { type: 'host/nodeDeletionPending', payload: { nodeIds } };
+    if (surface) {
+      this.postMessageToSurface(surface, message);
+      return;
+    }
+    for (const targetSurface of ['panel', 'editor'] as const) {
+      if (this.isInteractiveSurface(targetSurface)) {
+        this.postMessageToSurface(targetSurface, message);
+      }
+    }
   }
 
   private postMessage(message: HostToWebviewMessage, surface?: CanvasSurfaceLocation, reason?: string): void {
@@ -14746,6 +14887,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     lifecycle?: WebviewLifecycleIdentity
   ): Promise<void> {
     try {
+      await Promise.all([...(this.sharedRootCanvasStores?.values() ?? [])].map(store => store.ready));
+    } catch (error) {
+      this.recordDiagnosticEvent('state/sharedRootBootstrapFailed', { message: formatUnknownError(error) });
+      this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } }, sourceSurface);
+      return;
+    }
+
+    try {
       await this.ensureDefaultTemplateAppliedIfNeeded();
     } catch (error) {
       this.recordDiagnosticEvent('template/defaultApplyFailedBeforeBootstrap', {
@@ -14766,6 +14915,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surface: sourceSurface,
       lifecycle: targetLifecycle
     });
+    this.publishNodeDeletionPendingState(sourceSurface);
     void this.postCanvasTemplateCatalogToActiveWebview();
     this.maybePostVisibilityRestored(sourceSurface, {
       force: true
@@ -15058,7 +15208,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/deleteGroup':
-        void this.deleteGroup(parsedMessage.payload.groupId);
+        void this.deleteGroup(parsedMessage.payload.groupId).catch((error) => {
+          this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } });
+        });
         return;
       case 'webview/moveNode':
         this.state = this.reconcileCanvasFileArtifacts(
@@ -21615,6 +21767,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const groupIdsToDelete = deleteImpact.groupIds;
     const nodeIdsToDelete = deleteImpact.nodeIds;
 
+    const deletionFeedbackOperation = this.beginNodeDeletionFeedback(nodeIdsToDelete);
+    try {
     for (const nodeId of nodeIdsToDelete) {
       const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
       if (!node) {
@@ -21671,9 +21825,20 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
+    const stateBeforeDelete = this.state;
     this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState));
-    this.persistState();
+    try {
+      await this.persistState();
+    } catch (error) {
+      this.state = stateBeforeDelete;
+      try { this.writeRootLocalCanvasSnapshotsForState(stateBeforeDelete); } catch { /* Keep the persist error. */ }
+      this.postState('host/stateUpdated');
+      throw error;
+    }
     this.postState('host/stateUpdated');
+    } finally {
+      this.endNodeDeletionFeedback(deletionFeedbackOperation);
+    }
   }
 
   private async clearCanvasGroupContents(
@@ -21694,7 +21859,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const deleteImpact = collectCanvasGroupDeleteImpact(this.state, groupId);
     const childGroupIdsToDelete = collectGroupDescendantIds(this.state.groups ?? [], groupId);
     const nodeIdsToDelete = deleteImpact.nodeIds;
+    const deletionFeedbackOperation = this.beginNodeDeletionFeedback(nodeIdsToDelete);
 
+    try {
     for (const nodeId of nodeIdsToDelete) {
       const node = this.state.nodes.find((currentNode) => currentNode.id === nodeId);
       if (!node) {
@@ -21759,11 +21926,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           repairTargetGroupIds
         }
       : undefined;
+    const stateBeforeClear = this.state;
     this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState, geometryRepairOptions), {
       geometryRepairOptions
     });
     this.canvasTemplateInitialized = true;
-    this.persistState({ reason: options.reason ?? 'canvas-group-cleared' });
+    try {
+      await this.persistState({ reason: options.reason ?? 'canvas-group-cleared' });
+    } catch (error) {
+      this.state = stateBeforeClear;
+      try { this.writeRootLocalCanvasSnapshotsForState(stateBeforeClear); } catch { /* Keep the persist error. */ }
+      this.postState('host/stateUpdated');
+      throw error;
+    }
     this.recordDiagnosticEvent('state/groupCleared', {
       groupId,
       nodeCount: nodeIdsToDelete.length,
@@ -21772,10 +21947,24 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     this.postState('host/stateUpdated');
     this.notifySidebarStateChanged();
+    } finally {
+      this.endNodeDeletionFeedback(deletionFeedbackOperation);
+    }
   }
 
   private async deleteNode(nodeId: string): Promise<void> {
-    return this.withSharedExecutionMutation(nodeId, () => this.deleteNodeCore(nodeId));
+    if ([...this.pendingNodeDeletionOperations.values(), ...this.remotePendingNodeDeletionOperations.values()]
+      .some(ids => ids.has(nodeId))) {
+      return;
+    }
+    const operationId = this.beginNodeDeletionFeedback([nodeId]);
+    try {
+      await this.withSharedExecutionMutation(nodeId, () => this.deleteNodeCore(nodeId));
+    } catch (error) {
+      this.postMessage({ type: 'host/error', payload: { message: formatUnknownError(error) } });
+    } finally {
+      this.endNodeDeletionFeedback(operationId);
+    }
   }
 
   private async deleteNodeCore(nodeId: string): Promise<void> {
@@ -21854,6 +22043,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
+    const stateBeforeDelete = this.state;
     const nextState =
       node.kind === 'agent'
         ? removeAgentFileReferences(deleteCanvasNode(this.state, nodeId), nodeId)
@@ -21870,6 +22060,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     try {
       await this.persistState({ reason: 'node-deleted', requireRootLocalDurability: true });
     } catch (error) {
+      this.state = stateBeforeDelete;
+      try { this.writeRootLocalCanvasSnapshotsForState(stateBeforeDelete); } catch { /* Keep the persist error. */ }
+      this.postState('host/stateUpdated');
       this.postMessage({ type: 'host/error', payload: { message: error instanceof Error ? error.message : String(error) } });
       return;
     }

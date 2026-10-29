@@ -1314,6 +1314,12 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & {
       payload: CanvasDisplayDelta;
     }
   | {
+      type: 'host/nodeDeletionPending';
+      payload: {
+        nodeIds: string[];
+      };
+    }
+  | {
       type: 'host/templateCatalogUpdated';
       payload: {
         templates: CanvasTemplateMenuEntry[];
