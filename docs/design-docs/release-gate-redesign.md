@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-28
+updated_at: 2026-10-29
 ---
 
 # CI与发布门禁重设计
@@ -16,6 +16,16 @@ updated_at: 2026-10-28
 用户要求把[分层审查](release-gate-layering-review.md)和[smoke场景重划](smoke-scenario-boundaries.md)推进为完整设计。本设计选定按验证责任组织job、按不可变输入传递产物、按独立回执判定完成的流程。一个失败应直接说明是输入、构建、产品动作、观察、清理还是交付失败；发布的包必须就是最终输入上验收过的那批文件。
 
 `已选定`表示工程设计已收口。现有覆盖迁移与分层CI已在PR335 ed9257bd及其与未改PR327的真实临时组合上完成完整验收；`验证中`仍保留最终发布输入、真实渠道和补充覆盖的验证边界。本文不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，两项生产竞态修复落地及最终正式预合并完整门禁继续按既有要求关闭。
+
+## main ruleset 与红灯验证（2026-10-29）
+
+以下状态更新取代本文 2026-10-18 实施快照中“main 未受保护、两项生产竞态未修”的当时结论；原始日期与失败事实保留作历史记录。
+
+PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复订阅竞态和模式切换期间旧回调结算修复。修复各自的范围、局部验收和限制仍按 [PR336 验收记录](../exec-plans/tech-debt-tracker.md#恢复订阅竞态独立修复的验收边界2026-10-24) 追溯。它们已不再是“代码尚未修复”的状态；PR327 仍必须追赶最新 main，并对新的正式预合并输入完成完整发布门禁。
+
+2026-10-29 GitHub `main` 已有活动 ruleset：要求 pull request、一次审批、必需检查来自 GitHub Actions，并要求分支先追上 base；未配置绕过者。必需检查在界面显示为 `Verify release contract`。临时 [PR #342](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/342) 从当时最新 main 创建，以 `scripts/gates/catalog.mjs` 的故意语法错误触发 `Gate resolve`、`Gate verify-result` 和最终 `Verify release contract` 失败；[Actions run 40825340916](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40825340916) 记录了失败，PR 状态为 `BLOCKED`，并同时显示审批待完成。该 PR 未合并，验证后已关闭并删除临时分支。
+
+此红灯运行确认活动规则下失败的发布检查和 BLOCKED PR 可见；由于该 PR 同时缺少所需审批，本次没有隔离证明“仅检查失败”是唯一阻断原因，也没有单独测试 PR base 前进后的过时分支拒绝。后续若要确认这两个独立分支条件，应保留对应的单变量证据。临时测试没有改动产品代码或 `main`。
 
 研究输入为`0abd89e80cc50711ff8a099030399c95d1837dfc`，fetch后`origin/main`仍为`6e708c6b93ce4b2b343729c422f59099f4fb42ba`。设计研究时未改workflow与发布脚本；2026-10-18起按本文实施，落点及真实验证边界见[已完成实施计划](../exec-plans/completed/release-gate-implementation.md)。实现、回归、根因与文档继续集中PR335，不另建诊断、验证或文档PR。
 
