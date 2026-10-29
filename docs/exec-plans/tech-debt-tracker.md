@@ -2,18 +2,6 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
-## 2026-10-29：overview Terminal Stop preparation 用例未退出概览
-
-触发条件：PR #344 的 Release Preflight `40854227908` 运行 webview-function 时，`tests/playwright/webview-harness.spec.mjs:8808` 的 `installed localized Stop preparation publicly focuses the original overview Terminal before one visible action` 在 helper preparation deadline 结束。434 个用例中 433 个通过；同一 case 已在 runs `40840058557`、`40848197919`、`40849874062` 重复失败。
-
-影响范围：当前会使 webview-function producer 失败，随后 verify-result 与 release contract 按设计失败；尚无证据表明实际 Stop/删除操作或本轮 pending-deletion 跨 Host 逻辑导致该失败。最新失败 artifact 显示原 Terminal 已恢复且选中，overview 仍为 true；`installed-ui-observation.mjs` 对 `.window-chrome` 的 `(4,4)` 双击后收到两条 `webview/moveNode`，未观察到 Stop 可见或 overview 退出。页面无 JS error 或请求失败。此证据显示预期焦点交互没有发生，但还不能判定是测试坐标/合成手势问题还是产品 overview 交互缺陷。
-
-当前边界：不延长 preparation deadline、不重试掩盖首败；保留 Release Preflight 的失败结果。该失败与当前删除反馈实现没有直接调用路径关系，但尚未证明与 PR 全部改动无关。
-
-建议后续：专项检查 overview 下 titlebar 双击的真实命中目标、事件序列和产品聚焦路径，并让 helper 在失败时也保留双击前后的阶段记录；先用证据区分产品交互错误和测试手势错误，再决定修复实现或校准测试。
-
-关联：`docs/exec-plans/active/pr344-canvas-node-deletion-feedback.md`、`tests/playwright/webview-harness.spec.mjs:8808`、`scripts/smoke/installed-ui-observation.mjs:17`。
-
 ## 2026-10-28：生产依赖安全公告第一轮修复
 
 基于 `origin/main` 的锁文件审计发现生产依赖公告：`markdown-it@14.3.2` 为 high、`zod@4.4.3` 为 high、`hono@4.13.7` 为 moderate，均有兼容的上游修复版本。本轮将主扩展的 `markdown-it` 更新至 `14.3.3`；notifier 同版声明为开发依赖，因为打包器将其并入扩展 bundle，不在 VSIX 运行时加载 node_modules。共享包 `zod` 更新至 `4.6.7`；模板市场 Worker 的 `hono` 更新至 `4.13.14`。更新后 `npm audit --omit=dev` 只剩 KaTeX 及 `micromark-extension-math` 关联的 2 项 low 公告，当前 registry 未提供修复版本。Note 渲染仍设置 `trust: false`；该限制不等于证明公告条件永远不成立，也没有项目内可利用路径证据。

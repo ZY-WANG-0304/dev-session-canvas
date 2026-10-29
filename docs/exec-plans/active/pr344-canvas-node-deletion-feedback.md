@@ -26,7 +26,8 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 更新 lifecycle smoke 的 bootstrap 顺序断言，覆盖新增的 `host/nodeDeletionPending`，并推送至 PR #344。
 - [x] (2026-10-29) 按 CI `Resolve immutable plan` 提示重建 `smoke-budget-inventory.json`，确认场景预算未变化，只有 `extension-tests.cjs` 源码摘要更新。
 - [x] (2026-10-29) 确认最新 head `f4769a78` 的 run `40854227908` 收尾：三个 regression shards、source-host restricted 与 Remote SSH exit/reopen 通过；webview-function 一例超时，其余失败均为上游结果聚合。
-- [x] (2026-10-29) 根据 webview failure artifact 归因到 overview Terminal 双击后仍留在 overview 并产生 `moveNode`；将尚未确定是产品交互还是测试手势的问题登记为 follow-up。
+- [x] (2026-10-29) 对照 `origin/main` 和 Playwright trace 确认 webview timeout 是本 PR 的确定性 overview 交互回归：overview 禁用路径新增的整节点 `inert` 阻断了已有 `.window-chrome` 双击 handler。
+- [ ] 将 inert 限制在 deletion-pending 节点，不影响 overview 的 titlebar 聚焦，并重新验证最新 PR head。
 
 ## 意外与发现
 
@@ -39,14 +40,15 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - 观察：shard-2 已证实是新增字段与一个 constructor-bypass 测试夹具不兼容，不代表真实 manager 构造路径缺少初始化。
   证据：CI artifact `test:smoke-lifecycle-isolation.log` 显示 `Object.create` 创建的 fake Host 在 `publishNodeDeletionPendingState()` 中对 undefined 的 map 调用 `.values()`。
 - 发现：首次给 `fixture()` 补 map 后，PR 更新触发的 shard-2 仍以同一 `.values()` 错误失败，因为 `createWebviewLifecycleRaceDiagnosticManager()` 内部还通过 `Object.create` 单独构造第二个 manager。已在该诊断 manager 初始化两个独立 map，并把独立性加入 smoke-isolation 断言；修正后结果待 PR 新一轮 CI 确认。
-- 归因：`Gate webview-function` 的 `installed localized Stop preparation publicly focuses the original overview Terminal before one visible action` 在 `installed-ui-observation.mjs:27` 以 preparation deadline exhausted 退出。该交互与 pending deletion 没有直接调用关系；首次失败不足以判定为偶发或产品回归。
-- 复核：同一 case 在 runs `40840058557`、`40848197919`、`40849874062` 和最新 run `40854227908` 均以相同 preparation deadline 报错；最新轮 434 个用例中 433 个通过。artifact 显示原 Terminal 已恢复并选中，但 `data-canvas-overview-mode=true`；helper 在 `.window-chrome` 上执行 `{x:4,y:4}` 双击后，Host 消息为两次 `webview/moveNode`，没有 Stop 可见/启用或 overview 退出证据。失败栈停在 `prepareInstalledLocalizedStop()` 等待交互视图，页面错误和请求失败列表为空。证据表明手势触发了移动路径而没有完成预期聚焦；目前仍无法仅据 artifact 判定是命中区域/合成手势问题，还是 overview 产品交互缺陷。该 case 与 pending deletion 路径无直接调用关系，但也不据此声称与 PR 所有改动无关。
+- 根因：该 webview case 验证 overview Terminal 标题栏双击后聚焦节点。测试与 `handleNodeChromeDoubleClick` 在 `origin/main` 已存在；本 PR 改动 `CanvasNodeInteractionBoundary`，将 `canvasOverviewInertProps(props.disabled)` 设到整个 `.canvas-node`，同时 execution nodes 传入 `disabled={overviewInteractionsDisabled || deletionPending}`。overview 时该父节点因此为 `inert`，浏览器不会把双击交给其子元素 `.window-chrome` 上已有的 React handler；事件落到外层 React Flow 节点，表现为选中/移动，而非 `focusNodeInViewport`。这与 trace 一致：双击完成、出现两次 `webview/moveNode`，selected 变 true，但 viewport 未改变、overview 仍为 true，故 Stop 一直不可见并耗尽 deadline。
+- 证据与边界：该 case 在多个 run 重复，最新完整代码 run `40854227908` 的 434 个用例中 433 个通过；`.window-chrome` handler 和原 test 位于 `origin/main`，造成差异的是 PR 新增的 inert 传播。由此确认是当前 PR 引入的确定性 UI regression，而非不稳定手势或单纯测试预算不足；需将 overview context disable 与删除 pending 的全节点 inert 分开。该回归不是原删除意图本身，但来自 PR 中为锁定删除节点添加的通用 interaction boundary。
 - 归因：旧 run 的 `remote-ssh-real-reopen-exit` 在重新打开 editor Canvas 后 45 秒未等到 ready。诊断记录有 `surface/rendered`，但 lifecycle 保持 `ready:false`、`bootstrapAck:false`；远端 Host 被确认退出、Supervisor 和原执行仍在，失败发生于 Remote SSH 重开后的 Webview ready 握手。配对的 `remote-ssh-real-reopen-retain` 同 run 成功；现有证据没有证明 Remote SSH 的 `PendingMigrationError` 是原因，也不能排除这个退出/重开路径里的产品或 harness 时序问题。
 - 归因：`Gate verify-result` 的 206 个目标成功、失败项来自 shard-2、webview-functional 与 remote-ssh-real-reopen-exit producer。它报告这些 producer 失败，不是独立的验证器根因。
 - 归因：`Verify release contract` 在 `check-acceptance.mjs:50` 因 Verify result 实际结论为 failure 而拒绝上传的 acceptance，报错 `Verifier failure cannot be hidden by an uploaded file`。它是对上游验收失败的预期阻断。
 - 归因：run `40849874062` 曾显示 `source-host (restricted)` 失败，原因是 lifecycle smoke 对 bootstrap 消息顺序的旧断言；bootstrap 实际依次发送 `host/bootstrap`、`host/nodeDeletionPending`、`host/visibilityRestored`。更新断言并生成 smoke budget inventory 后，最新 run `40854227908` 的 restricted job 通过，确认是测试预期/清单同步问题。
 - 复核：run `40854227908` 的 `remote-ssh-real-reopen-exit` 通过，旧 run 的握手超时没有重现。`webview-function` preparation deadline 超时仍重现，详见上面的页面与消息证据。
 - 归因：紧接断言修复的 heads `e6047096` 与 `169ea86c` 的 Release Preflight 都在 `Resolve immutable plan` 失败，日志为 `Smoke budget source changed: tests/vscode-smoke/extension-tests.cjs; regenerate and review the bounded wait inventory`；`verify-result` 和 release contract 随之报告 plan/acceptance 缺失，smoke 任务图没有执行。这是新增 smoke 源码后漏更受管 hash 清单，不是产品问题。已运行仓库生成器并复核只有源码 hash 变化，预算项不变。
+- 复盘：此前将 overview Terminal 超时作为未定产品/测试归因登记在 tech-debt tracker；与 `origin/main` 对照后发现 PR 正是引入全节点 inert 的改动，已从非阻塞技术债条目移出，改列为合入前待修 regression。
 - CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
 
 ## 决策记录
@@ -63,9 +65,9 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。最新 head `f4769a78` 的 Release Preflight `40854227908` 已收尾：regression shard-1/2/3 全通过，source-host restricted 与 Remote SSH exit/reopen 通过；唯一独立 producer failure 是 `webview-function` 中 434 个用例之一的 Stop preparation timeout。`verify-result` 报告 234 个成功目标及该 producer 下 4 个失败目标，`Verify release contract` 按规则拒绝失败 acceptance；两者都是预期下游结果。source-host 消息顺序断言及其 inventory hash 均已修正。PR 的这轮完整门禁仍非全绿，overview Terminal 用例待专项判定产品交互或测试手势问题，见 tech-debt tracker。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
+P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。最新完整代码 run `40854227908` 的 regression shard-1/2/3、source-host restricted 和 Remote SSH exit/reopen 全部通过。唯一独立 producer failure 是 `webview-function` 中 overview Terminal 双击无法触发子元素 handler 的确定性 regression；`verify-result` 报告 234 个成功目标与 4 个 webview 目标失败，`Verify release contract` 据此拒绝失败 acceptance，均属预期聚合。source-host 消息顺序断言和 smoke inventory hash 已修正。overview inert 范围仍需修复并重新验收，PR 完整门禁不通过。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺用户态 Extension Host 手动验证。
 
-旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：一个 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。最新 head 上 Remote SSH 已通过，source-host smoke 断言已通过；localized Stop preparation 超时仍重现，verify-result 与 release contract 继续按上游失败阻断。
+旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：overview inert 回归造成 localized Stop preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集 producer 失败；release contract 按规则拒绝失败的 acceptance。最新完整代码 head 上 Remote SSH 已通过，source-host smoke 断言已通过；overview inert 回归仍需修复，两个聚合门禁据此失败。
 
 ## 上下文与定向
 
