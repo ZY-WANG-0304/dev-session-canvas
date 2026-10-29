@@ -120,3 +120,6 @@ export function diagnosticTasks(all, { payload = 'source', case: selectedCase, r
   visit(job);
   return all.filter(task => ancestors.has(task.job) || task === selected[0]);
 }
+
+// Intentional temporary red-light probe; this branch must never be merged.
+export const __branchProtectionRedLightProbe = ;
