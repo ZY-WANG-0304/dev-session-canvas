@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceHashes": {
-    "tests/vscode-smoke/extension-tests.cjs": "e586749b27f34363ae537057da0635406fd4b5a2ff35cbb23b37982c4684f7ef",
+    "tests/vscode-smoke/extension-tests.cjs": "9b3ceb353c4fe3bc000584c095efbab4e000f7079006dcc00a18e40dafaae3cc",
     "tests/vscode-smoke/real-reopen-tests.cjs": "30b655583f8affa7d4af48ecc82dc4747640a3a2eb155508ce9a34805a6176fb",
     "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "7bfa53d9714beacc83ead94e2bd594e782317051059ab251fe30d7b6ecfba28e",
     "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "abf93735a6bcc1ce666df1ee8e9c00e89a88880b4bb37dc1a83b77d9d66dad5d",

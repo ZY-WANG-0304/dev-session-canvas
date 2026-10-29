@@ -24,6 +24,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - [x] (2026-10-29) 基于旧 CI run `40840058557` 的 job 日志与 artifacts，对其余四个失败项完成初步归因。
 - [x] (2026-10-29) 确认 head `621ea27c` 的最新 run `40849874062` 中 regression shard-2 通过，Remote SSH exit/reopen 通过；webview-function 超时再次出现。
 - [x] (2026-10-29) 更新 lifecycle smoke 的 bootstrap 顺序断言，覆盖新增的 `host/nodeDeletionPending`，并推送至 PR #344。
+- [x] (2026-10-29) 按 CI `Resolve immutable plan` 提示重建 `smoke-budget-inventory.json`，确认场景预算未变化，只有 `extension-tests.cjs` 源码摘要更新。
 - [ ] 确认 PR 最新 head 的 CI 通过或完成剩余问题归因。
 
 ## 意外与发现
@@ -44,6 +45,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 - 归因：`Verify release contract` 在 `check-acceptance.mjs:50` 因 Verify result 实际结论为 failure 而拒绝上传的 acceptance，报错 `Verifier failure cannot be hidden by an uploaded file`。它是对上游验收失败的预期阻断。
 - 归因：run `40849874062` 的 `source-host (restricted)` 失败来自 lifecycle smoke 对 bootstrap 消息顺序的旧断言。bootstrap 现在依次发送 `host/bootstrap`、`host/nodeDeletionPending`、`host/visibilityRestored`；断言已同步新增消息，失败属于新增行为未更新 smoke 预期，不是 Host 限权场景行为回归。
 - 复核：run `40849874062` 的 `remote-ssh-real-reopen-exit` 通过，旧 run 的握手超时未在当前 head 重现。`webview-function` 的 localized Stop preparation deadline 超时再次出现；具体归因仍需该 run 的失败日志与 artifact，不据此推断节点删除回归。
+- 归因：紧接断言修复的 heads `e6047096` 与 `169ea86c` 的 Release Preflight 都在 `Resolve immutable plan` 失败，日志为 `Smoke budget source changed: tests/vscode-smoke/extension-tests.cjs; regenerate and review the bounded wait inventory`；`verify-result` 和 release contract 随之报告 plan/acceptance 缺失，smoke 任务图没有执行。这是新增 smoke 源码后漏更受管 hash 清单，不是产品问题。已运行仓库生成器并复核只有源码 hash 变化，预算项不变。
 - CR follow-up：reviewer 未将 manager 把操作发布到所有 root stores 列为 blocker，但指出它比“仅同 root”设计边界更宽。当前随机 node ID 下没有已确认的可见错误；保留为范围隔离 follow-up。
 
 ## 决策记录
@@ -60,7 +62,7 @@ PR #344 已有的节点局部提示、键盘删除、整画布清空/重置锁�
 
 ## 结果与复盘
 
-P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。head `621ea27c` 的 Release Preflight run `40849874062` 在被新 head 取消前确认 regression shard-2 通过、Remote SSH exit/reopen 通过；webview-function preparation 超时与 source-host (restricted) 断言失败。后者已更新断言。PR 最新 head 的 Release Preflight 正等待确认。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺运行时验证。
+P1 跨 Host 同步已推送；P2 两个 constructor-bypass 初始化点均已补齐，第二处修正位于 commit `4035e1cb`，并经 subagent follow-up CR 复核。`npm run build`、`npm run typecheck` 与 `git diff --check` 在该修正上通过。head `621ea27c` 的 Release Preflight run `40849874062` 在被新 head 取消前确认 regression shard-2 通过、Remote SSH exit/reopen 通过；webview-function preparation 超时与 source-host (restricted) 断言失败。bootstrap 断言已更新；后续 heads `e6047096` 与 `169ea86c` 在计划解析阶段因 inventory 源码 hash 过期而停止，场景预算已通过生成器同步，需由新 head CI 再验。跨进程订阅、迟到加入、断线重连和 Host 退出清理仍缺运行时验证。
 
 旧 head `846bac2a` 的四个额外失败已有日志归因（job IDs `123334357754`、`123337059568`、`123340781398`、`123341449518`）：一个无关的 installed Terminal Playwright preparation 超时；一个 Remote SSH exit/reopen 后 Webview 未完成 ready 握手；verify-result 归集三个失败 producer；release contract 按规则拒绝失败的 acceptance。后两项是上游失败的预期下游阻断。head `621ea27c` 上 Remote SSH 已通过；webview preparation 超时再次出现，source-host smoke 断言回归已修正，等待最新 CI 确认。
 
