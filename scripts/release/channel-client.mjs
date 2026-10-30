@@ -7,7 +7,56 @@ import { runProcess } from '../gates/process.mjs';
 import { compareRemotePackage } from './release-completion.mjs';
 
 export class HTTPFailure extends Error {
-  constructor(status) { super(`HTTP ${status}`); this.status = status; }
+  constructor(status, body = Buffer.alloc(0), options = {}) {
+    const details = summarizeHTTPError(body, options);
+    super(details ? `HTTP ${status}: ${details}` : `HTTP ${status}`);
+    this.status = status;
+    this.details = details;
+  }
+}
+const maxHTTPErrorBodyBytes = 8 * 1024;
+const sanitizeHTTPErrorText = (value, limit = 512) => String(value)
+  .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/gu, '[REDACTED]')
+  .replace(/\bBearer\s+\S+/giu, 'Bearer [REDACTED]')
+  .replace(/[\u0000-\u001f\u007f]+/gu, ' ').trim().slice(0, limit);
+function summarizeHTTPError(body, { truncated = false, contentType, receivedBytes = body.length } = {}) {
+  const mediaType = typeof contentType === 'string' ? contentType.split(';', 1)[0].trim().toLowerCase() : '';
+  const safeMediaType = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u.test(mediaType) ? mediaType : null;
+  const mediaTypeDetail = safeMediaType ? `, ${safeMediaType}` : '';
+  const bodyMetadata = `(${body.length} bytes retained of ${receivedBytes} received${mediaTypeDetail}${truncated ? '; truncated' : ''})`;
+  if (truncated) return `Error response body omitted ${bodyMetadata}`;
+  const text = body.toString('utf8');
+  if (!text) return '';
+  let parsed;
+  try { parsed = JSON.parse(text); } catch {}
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return `Unstructured error response body omitted ${bodyMetadata}`;
+  }
+  const safe = {};
+  for (const key of ['message', 'status']) {
+    if (typeof parsed[key] === 'string') safe[key] = sanitizeHTTPErrorText(parsed[key]);
+  }
+  if (typeof parsed.documentation_url === 'string') {
+    try {
+      const url = new URL(parsed.documentation_url);
+      if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password) {
+        safe.documentation_url = `${url.origin}${url.pathname}`;
+      }
+    } catch {}
+  }
+  if (Array.isArray(parsed.errors)) {
+    safe.errors = parsed.errors.slice(0, 8).map(entry => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+      const fields = {};
+      for (const key of ['resource', 'field', 'code', 'message']) {
+        if (typeof entry[key] === 'string') fields[key] = sanitizeHTTPErrorText(entry[key], 256);
+      }
+      return Object.keys(fields).length ? fields : undefined;
+    }).filter(Boolean);
+    if (parsed.errors.length > 8) safe.errorsTruncated = true;
+  }
+  return Object.keys(safe).length ? JSON.stringify(safe)
+    : `JSON error response (${body.length} bytes${mediaTypeDetail}; fields omitted)`;
 }
 export async function requestBytes(url, { deadline, method = 'GET', headers = {}, body,
   maxBytes = 512 * 1024 ** 2, redirects = 4 } = {}) {
@@ -23,7 +72,17 @@ export async function requestBytes(url, { deadline, method = 'GET', headers = {}
         response.resume(); resolve({ redirect: new URL(response.headers.location, address), status: response.statusCode }); return;
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        response.resume(); reject(new HTTPFailure(response.statusCode)); return;
+        const chunks = []; let length = 0;
+        response.on('data', chunk => {
+          const remaining = maxHTTPErrorBodyBytes - length;
+          if (remaining > 0) chunks.push(chunk.subarray(0, remaining));
+          length += chunk.length;
+        });
+        response.once('error', reject);
+        response.once('end', () => reject(new HTTPFailure(response.statusCode,
+          Buffer.concat(chunks), { truncated: length > maxHTTPErrorBodyBytes,
+            contentType: response.headers['content-type'], receivedBytes: length })));
+        return;
       }
       const chunks = []; let length = 0, exceeded = false;
       response.on('data', chunk => {

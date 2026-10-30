@@ -41,7 +41,8 @@ export function githubClient({ repository = process.env.GITHUB_REPOSITORY, token
     url.searchParams.set('name', name);
     try {
       return JSON.parse((await request(url, { deadline, method: 'POST', body: content,
-        headers: { ...headers, 'Content-Type': 'application/octet-stream' }, maxBytes: 4 * 1024 ** 2 })).toString('utf8'));
+          headers: { ...headers, 'Content-Type': 'application/octet-stream',
+            'Content-Length': String(content.byteLength) }, maxBytes: 4 * 1024 ** 2 })).toString('utf8'));
     } catch (error) {
       // A lost response never authorizes a second upload. Query by the fixed
       // name and validate the actual bytes, or retain the original failure.
