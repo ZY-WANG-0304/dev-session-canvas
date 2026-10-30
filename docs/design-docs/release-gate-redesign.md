@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md, docs/exec-plans/active/incomplete-release-recovery.md]
-updated_at: 2026-10-30
+updated_at: 2026-10-31
 ---
 
 # CI与发布门禁重设计
@@ -55,9 +55,13 @@ PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复�
 
 正式恢复使用独立的 `incomplete-release-recovery` 模式，不重定向或删除已存在 tag/Release。维护者必须从 `main` 手动触发并提供原失败发布 run ID。resolver 核对来源 run 的 workflow、事件、分支和 SHA，确认 `Release resolve-release` 成功、`Release prepare-release` 失败、两个渠道 job 均 skipped、finalize skipped；同时确认 `publish/vX.Y.Z` 与 `vX.Y.Z` 仍指向同一原 SHA、Release 身份及初始待交付正文未变，且现有资产是不可变资产白名单的子集，没有 manifest/state 或其他资产。
 
-恢复 run 的 `release-tag` 验收在原 SHA 上完整重跑。验证 job 按 SHA checkout 产品源码；prepare、渠道与 finalize job checkout 本次 workflow 的 `main` 代码来执行已修复的交付逻辑，并且只消费该 run 通过验收生成的原样 VSIX。prepare 会再次核对 release/tag/asset 状态，逐字节验证任何已存在的同名资产，只上传缺少的固定名称资产；不删除或覆盖冲突资产。新的 prepare 状态根绑定恢复 run 的真实 job 与工件。之后渠道发布及 finalize 沿用普通流程；仅全部必需交付完成后删除 `publish/vX.Y.Z`，正式 tag 保持原样。
+首次恢复 run 的 `release-tag` 验收在原 SHA 上完整重跑。验证 job 按 SHA checkout 产品源码；prepare、渠道与 finalize job checkout 本次 workflow 的 `main` 代码来执行已修复的交付逻辑，并且只消费通过验收的原样 VSIX。prepare 会再次核对 release/tag/asset 状态，逐字节验证任何已存在的同名资产，只上传缺少的固定名称资产；不删除或覆盖冲突资产。新的 prepare 状态根绑定恢复 run 的真实 job 与工件。
 
-这一模式只覆盖“prepare 阶段失败、渠道未运行”的初始交付恢复，不替代部分渠道后的 `channel-retry`。只要来源 run、tag、Release 正文、资产集合或 producer 身份不符，恢复即失败且不执行外部交付。重复执行时，已存在的资产必须与重新验收生成的同批文件字节一致；不同则拒绝，不会静默换包。
+如果一次恢复在写入 manifest/state 前再次于 prepare 中断，后续手动触发必须同时提供原失败发布 run ID 与 `recovery_previous_run_id`。resolver 只接受同一 `main` workflow head、绑定同一原始失败 run、prepare 失败且两个渠道与 finalize 都 skipped 的前次恢复。它从前次 `resolve-release` job 的真实 artifact 读取并核实原 context；prepare 再从该 context 指向的验收 run 独立校验 acceptance 与 candidate artifacts，并复用该 run 的双包。本次新 run 仍完整通过 `release-tag` 验收。若再次中断，可指定最近失败的恢复 run；context 会继续指向首次生成远端 run-bound 文件的验收 run，因此已有文件保持原 producer 和原字节，不会被新 run 的不同证据覆盖。状态清单已经存在或任一渠道已运行时，仍只走普通 `channel-retry`。
+
+之后渠道发布及 finalize 沿用普通流程；仅全部必需交付完成后删除 `publish/vX.Y.Z`，正式 tag 保持原样。
+
+这一模式只覆盖“prepare 阶段失败、渠道未运行”的初始交付恢复及无状态根的恢复续跑，不替代部分渠道后的 `channel-retry`。只要来源 run、tag、Release 正文、资产集合或 producer 身份不符，恢复即失败且不执行外部交付。续跑只复用前次已核验验收工件中的同批字节；不同内容一律拒绝，不会静默换包。
 
 修复输入 `origin/main@034c5a02894dab45fdbde9b877e787fa4f91f242` 的本地验证使用 Node `v25.6.0`：`npm run test:ci-gates` **142/142 通过**，`npm run test:publish-tag-release` 通过，新增的四项上传/错误诊断回归单独通过；Node 语法和 `git diff --check` 通过。本地测试没有发起外部上传。修复 PR 的 Release Preflight 仍须在 GitHub Actions 对最新预合并输入完整通过。
 

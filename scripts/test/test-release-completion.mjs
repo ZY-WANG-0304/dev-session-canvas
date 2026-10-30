@@ -102,7 +102,8 @@ test('completion refuses wrong partial provenance and original-byte substitution
 test('incomplete-release recovery completion stays bound to the existing Release ID', async () => {
   const f = await releaseFixture(), complete = completionFixture(f);
   complete.context = { ...complete.context, mode: 'incomplete-release-recovery', existingReleaseID: 42,
-    recoverySourceRun: { id: '54321', attempt: 1, headSHA: complete.context.releaseSHA } };
+    recoverySourceRun: { id: '54321', attempt: 1, headSHA: complete.context.releaseSHA },
+    recoveryArtifactRun: complete.context.run };
   assert.equal(calculateReleaseCompletion(complete).status, 'complete');
   const wrong = structuredClone(complete); wrong.github.releaseID = 43;
   assert.throws(() => calculateReleaseCompletion(wrong), /releaseID|equal/u);

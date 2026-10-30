@@ -17,6 +17,10 @@ on:
         description: '仅恢复初始 prepare-release 失败且未运行渠道的 Release；填入原失败 run ID'
         type: string
         required: false
+      recovery_previous_run_id:
+        description: '恢复再次中断时填写生成当前远端部分资产的前次恢复 run ID'
+        type: string
+        required: false
 permissions:
   contents: write
   actions: read
@@ -55,6 +59,7 @@ jobs:
           RELEASE_TRIGGER: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
           RELEASE_TARGET: ${{ inputs.target || 'all' }}
           RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id || '' }}
+          RECOVERY_PREVIOUS_RUN_ID: ${{ inputs.recovery_previous_run_id || '' }}
         run: |
           set -euo pipefail
           git fetch origin --tags
@@ -62,6 +67,9 @@ jobs:
           recovery_args=()
           if [[ -n "$RECOVERY_SOURCE_RUN_ID" ]]; then
             recovery_args=(--recovery-source-run-id "$RECOVERY_SOURCE_RUN_ID")
+          fi
+          if [[ -n "$RECOVERY_PREVIOUS_RUN_ID" ]]; then
+            recovery_args+=(--recovery-previous-run-id "$RECOVERY_PREVIOUS_RUN_ID")
           fi
           node scripts/release/publish-tag-release.mjs --phase resolve --trigger-tag "$RELEASE_TRIGGER" --target "$RELEASE_TARGET" --run-head "$run_head" --output release-context "${recovery_args[@]}"
       - name: Upload frozen release context

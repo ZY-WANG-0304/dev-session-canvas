@@ -17,7 +17,8 @@ async function fixture(t, { githubRequests = false, loseCreateResponse = false, 
   const f = await releaseFixture();
   if (initialMode === 'incomplete-release-recovery') f.context = { ...f.context,
     mode: initialMode, existingReleaseID: 42,
-    recoverySourceRun: { id: '99999', attempt: 1, headSHA: f.context.releaseSHA } };
+    recoverySourceRun: { id: '99999', attempt: 1, headSHA: f.context.releaseSHA },
+    recoveryArtifactRun: f.context.run };
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-release-delivery-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const input = path.join(root, 'input');

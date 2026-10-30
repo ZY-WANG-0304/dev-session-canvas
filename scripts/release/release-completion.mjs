@@ -46,6 +46,24 @@ export function validateReleaseContext(context) {
       assertSHA(context.recoverySourceRun.headSHA);
       assert.equal(context.recoverySourceRun.headSHA, context.releaseSHA);
       assert.notEqual(String(context.recoverySourceRun.id), String(context.run.id));
+      assertRecord(context.recoveryArtifactRun, 'accepted recovery artifact run');
+      assert.match(String(context.recoveryArtifactRun.id), /^[1-9]\d*$/u);
+      assert(Number.isSafeInteger(context.recoveryArtifactRun.attempt) && context.recoveryArtifactRun.attempt > 0);
+      assertSHA(context.recoveryArtifactRun.headSHA);
+      assert.equal(context.recoveryArtifactRun.headSHA, context.run.headSHA);
+      if (context.recoveryPreviousRun) {
+        assertRecord(context.recoveryPreviousRun, 'previous recovery run');
+        assert.match(String(context.recoveryPreviousRun.id), /^[1-9]\d*$/u);
+        assert(Number.isSafeInteger(context.recoveryPreviousRun.attempt) && context.recoveryPreviousRun.attempt > 0);
+        assertSHA(context.recoveryPreviousRun.headSHA);
+        assert.equal(context.recoveryPreviousRun.headSHA, context.run.headSHA);
+        assert.notEqual(String(context.recoveryPreviousRun.id), String(context.run.id));
+        assert.equal(String(context.recoveryArtifactRun.id) === String(context.run.id), false,
+          'A resumed run must retain the accepted artifact producer from its predecessor');
+      } else {
+        assert.deepEqual(context.recoveryArtifactRun, context.run,
+          'The first recovery run is the accepted artifact producer');
+      }
     } else assert.equal(context.recoverySourceRun, undefined);
   }
   return context;
