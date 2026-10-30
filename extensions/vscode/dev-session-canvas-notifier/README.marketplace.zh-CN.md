@@ -4,6 +4,8 @@
 
 它不是独立替代品：画布、节点执行与 attention 判定仍由主扩展 `Dev Session Canvas` 负责；notifier 负责在当前本机 UI 环境中接收结构化通知请求，并尽量把它们变成可见、可诊断、在支持平台上可点击回到 VS Code 的桌面通知。
 
+`0.27.0` 随主扩展同版本更新，建议两者一起升级。主扩展改进执行提醒接线；本 companion 沿用现有投递后端、点击回跳和本地化行为。
+
 ## 适用场景
 
 - 主扩展运行在 `Remote SSH`、WSL、Dev Container 等远端 workspace，需要把提醒带回本机桌面

@@ -10,16 +10,18 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.zh-CN.mp4" controls muted loop playsinline></video>
 
-## 0.26.0 版本亮点
+## 0.27.0 版本亮点
 
-`0.26.0` 是基于 `0.25.0` 的新公开 `Preview` 里程碑，聚焦类似 tmux 的会话重新附着和终端退出完整性。
+`0.27.0` 是基于 `0.26.0` 的新公开 `Preview` 里程碑，聚焦执行可靠性、同 root 共享画布和更安全的清理反馈。
 
-- **像 tmux 一样接回仍在运行的会话**：Supervisor 持续持有进程和终端当前状态，重开窗口、重建 Webview 或切换 Pane Gallery 时直接导入当前状态，无需逐条重放累计历史来重建画面，让重连路径更简单，避免会话运行越久、历史回放越慢的问题
-- 当前已打开页面按序收齐尚未消费的输出后确认终态；主动停止与自然完整退出分别表达
-- **已结束的持久化 Runtime 重开不恢复终端正文，也不自动重启。** 节点、布局、启动配置和退出状态仍保留；snapshot-only 历史规则不变，provider 会话文件与显式 Agent Resume 是独立能力
-- 有界缓存和按消费节奏读取减少累计历史开销；资源仍随活动会话与 scrollback 设置增长
-- 修复 OSC 8 超链接重置以及终端缩高后的当前屏幕恢复
-- 主扩展和 notifier 保持同版本，已有设置与通知行为沿用
+- 开启 Runtime Persistence 后，同一执行环境和用户存储范围内的窗口会同步同一 root 的画布结构。共享删除会移除各窗口中的节点投影；停止会话仍保留节点和退出状态
+- Runtime Persistence 设置在页面关闭或重载后生效。从关闭持久化切到开启时，切换前保存在当前工作区画布中的会话、节点和内容不会迁移到共享画布；从开启切到关闭时，本窗口切换到当前工作区画布，不再恢复原共享会话和内容，其他开启窗口继续使用共享画布。只有最后一个开启持久化的窗口切换关闭时才启动共享清理：停止或删除尚未派发且新窗口成功接管时，原共享状态保留；已派发的停止或删除不能撤销，结算后新窗口使用更新后的状态；画布清空后，原 Supervisor 仍接受连接时新窗口可接管并使用清空后的画布，否则等待其退出后启动新运行时。未修改模式的普通关闭或重载继续保留共享会话；请提前备份需要保留的画布内容
+- 删除期间会显示处理中状态并锁定受影响的交互；共享同一 root 的其他窗口也会同步该状态
+- 启动失败会显示底层原因并清除待启动态；旧协议重连、历史清理以及准备失败后的重试/删除路径更可靠
+- 失联的 Agent 或 Terminal 节点可以移除。新 Supervisor 可修复丢失的 Unix socket 入口；若无法确认旧后台进程已停止，VS Code 会提醒用户手动检查，因为进程可能仍在运行
+- 修复启动期间 resize、删除前输入收口、路径拖放、逐行文件链接、文件活动与异常退出提醒
+- snapshot-only 模式中，如果 Host 关闭中断 Agent 且存在可信恢复身份，会等待用户手动 Resume；重开页面不会自动恢复
+- 主扩展和 notifier 同步为 0.27.0；notifier 投递后端、点击回跳和本地化行为沿用
 
 ## 核心功能
 
@@ -78,6 +80,8 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 - 模板市场浏览和安装需要能访问当前配置的市场来源；发布、点赞、举报和管理员动作需要 GitHub 认证，并仍按 Preview 能力处理
 - 当前为 `Preview`，不提供稳定正式版承诺
 
+- 部分 VS Code 版本在连续快速重开窗口时可能延迟画布资源加载；持续启动失败可能留下空白画布，本版本没有自动启动超时提示或重建。共享画布证据限于 Linux 单 root 窗口及受控接管检查，不能扩展为完整跨平台或多 root 验收。
+
 ## 环境要求
 
 - VS Code `1.80.0` 或更高版本
@@ -88,14 +92,14 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.25.0` 升级到 `0.26.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.26.0` 升级到 `0.27.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
 - UI 语言跟随 VS Code locale。本版本不新增扩展自己的语言设置，也不会翻译用户内容、终端输出、provider 输出或市场模板数据
 - Supervisor 支持的 live 恢复仍取决于 `runtimePersistence.enabled` 与后端可用性；旧 live 会话沿用原 Supervisor 和协议，snapshot-only 本地进程不获得跨 Host 存活保证
 - 当前节点 Agent Fork 默认使用 `devSessionCanvas.canvas.forkPlacementDirection = up`；可改为 `down` 或 `right`，该设置只影响之后的当前节点 Fork，不重排既有 Fork 或会话历史入口的落位
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.26.0` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.27.0` 后会继续沿用该明确选择
 - 截图粘贴文件是扩展存储中的临时附件，不是 workspace 文件；它们会保留一段时间以便 Agent 上下文复用，之后由后台 TTL 维护任务清理
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证

@@ -10,16 +10,18 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 
 <video src="images/marketplace/canvas-overview.mp4" controls muted loop playsinline></video>
 
-## 0.26.0 Highlights
+## 0.27.0 Highlights
 
-`0.26.0` is a new public `Preview` milestone built on `0.25.0`, focused on tmux-like session reattachment and terminal exit integrity.
+`0.27.0` is a new public `Preview` milestone built on `0.26.0`, focused on execution reliability, shared root canvases, and safer cleanup feedback.
 
-- **Reattach to a running session, much like tmux**: the Supervisor keeps the process and current terminal state alive. Reopening a window, rebuilding a Webview, or switching Pane Gallery imports that state directly, without replaying accumulated output to reconstruct the display. This simplifies reconnection and avoids replay costs growing with the lifetime of the session
-- Open pages consume their remaining output in order before terminal completion; stopping a session is distinguished from a natural complete exit
-- **Completed persistent Runtime sessions reopen without terminal text or an automatic restart.** Nodes, layout, launch settings, and exit status remain; snapshot-only history behavior, provider session files, and explicit Agent Resume remain separate
-- Bounded runtime caches and consumption-paced reads reduce accumulated-history overhead; resources still scale with active sessions and configured scrollback
-- Terminal state restoration fixes include OSC 8 hyperlink resets and screen recovery after reducing terminal height
-- Main extension and notifier stay version-aligned, with existing settings and notification behavior preserved
+- With Runtime Persistence enabled, windows in the same execution environment and user storage scope synchronize the same root's canvas structure. Deleting a shared node removes its projections in all windows; stopping a session keeps its node and exit status
+- Runtime Persistence changes take effect when the page closes or reloads. Switching the setting from disabled to enabled does not migrate sessions, nodes, or content saved in the current workspace canvas to the shared canvas. When switching from enabled to disabled, this window uses its current workspace canvas and no longer restores the shared sessions or content; other enabled windows keep using the shared canvas. Shared cleanup starts only when the last enabled window switches off: a successful takeover before stop/delete is dispatched preserves the shared state; dispatched stop/delete operations cannot be undone and the new window uses the settled state; after the canvas is cleared, a new window can reuse the Supervisor if it still accepts connections, or wait for shutdown and start a new runtime. An ordinary close or reload without a mode change preserves running shared sessions. Back up any canvas content you need to keep before switching modes
+- Deletion shows progress and locks affected interactions, including across windows sharing the root
+- Launch failures show their underlying cause and clear the pending launch state; legacy reconnect, history cleanup, and retry/delete after preparation failure are more reliable
+- A disconnected Agent or Terminal node can be removed. A new Supervisor can repair a missing Unix socket entry; when the old background process cannot be confirmed stopped, VS Code warns that it may still be running and asks you to check it manually
+- Fixes cover resize during startup, input settlement before deletion, path drag and drop, per-line file links and file activity, and abnormal-exit reminders
+- In snapshot-only mode, an Agent interrupted by Host shutdown waits for manual Resume when a trusted recovery identity exists; reopening the page does not automatically resume it
+- Main extension and notifier use version 0.27.0 together; notifier delivery backends, click callbacks, and localization behavior remain unchanged
 
 ## Core Capabilities
 
@@ -78,6 +80,8 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Template Marketplace browsing and installation require network access to the configured marketplace origin; publishing, likes, reports, and admin actions require GitHub authentication and remain Preview workflows
 - The extension is still in `Preview`, with no stable-release commitment
 
+- Rapid repeated window reopens can delay Canvas resource loading in affected VS Code versions. A persistent startup failure can leave a blank canvas; this release does not add an automatic startup timeout prompt or rebuild. Shared-canvas evidence is limited to Linux single-root windows and controlled takeover checks, rather than a full cross-platform or multi-root matrix.
+
 ## Environment Requirements
 
 - VS Code `1.80.0` or later
@@ -88,14 +92,14 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 ## Installation And Upgrades
 
 - The extension ID is `devsessioncanvas.dev-session-canvas`
-- First-time installs and upgrades from `0.25.0` to `0.26.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
+- First-time installs and upgrades from `0.26.0` to `0.27.0` should use the public extension registry configured by the current host. Open VSX should publish and verify the same version for compatible hosts and remains the current marketplace completion gate; the official VS Code `Visual Studio Marketplace` path is announced only after the release-day visibility check confirms both the main extension and notifier are public. If VSM remains deferred for this release, GitHub Release assets are the manual-install fallback
 - UI language follows the VS Code locale. This release does not add an extension-specific language setting and does not translate user-owned content, terminal output, provider output, or marketplace template data
 - Supervisor-backed live recovery still depends on `runtimePersistence.enabled` and backend availability. Existing live sessions retain their original Supervisor and protocol; local snapshot-only processes do not gain a cross-Host lifetime guarantee
 - Current-node Agent forks use `devSessionCanvas.canvas.forkPlacementDirection = up` by default. Choose `down` or `right` if preferred; the setting affects only future current-node forks and does not rearrange existing forks or Session History placement
 - The production Template Marketplace may start with an empty catalog. Production does not expose code-only seed templates; real templates must be published through the marketplace or a controlled operations flow
 - Pane Gallery only changes multi-root presentation. Single-root workspaces keep the normal canvas, and `rootGroups` remains the default multi-root mode and conservative fallback
 - Layout arrangement is an explicit one-shot action. It does not offer undo, run continuously, or move nodes across ordinary groups or workspace roots
-- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, `devSessionCanvas.canvas.multiRootPresentationMode`, or `devSessionCanvas.canvas.forkPlacementDirection`, upgrading to `0.26.0` preserves that explicit choice
+- If you previously set `devSessionCanvas.runtimePersistence.enabled`, `devSessionCanvas.notifications.attentionSignalBridge`, `devSessionCanvas.notifications.enabledAttentionSignals`, `devSessionCanvas.notifications.strongTerminalAttentionReminder`, `devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`, `devSessionCanvas.canvas.linkOpenMode`, `devSessionCanvas.canvas.workspaceRootWatermarks.enabled`, `devSessionCanvas.canvas.multiRootPresentationMode`, or `devSessionCanvas.canvas.forkPlacementDirection`, upgrading to `0.27.0` preserves that explicit choice
 - Image paste files are temporary extension-storage attachments, not workspace files. They are retained long enough for Agent context reuse and then cleaned by the background TTL maintenance task
 - If your `0.2.0` workspace kept an older view-layout cache, the sidebar `Overview` and `Common Actions` views may appear as two separate icons for a while. That does not mean two extensions are installed. Move both views back into the same `Dev Session Canvas` container, or run `View: Reset View Locations`
 - During Preview, cross-version workspace-state compatibility is not guaranteed. If a workspace contains important canvas state, back it up or validate in a non-critical environment before upgrading
