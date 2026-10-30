@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md]
-updated_at: 2026-10-29
+updated_at: 2026-10-30
 ---
 
 # CI与发布门禁重设计
@@ -22,6 +22,10 @@ updated_at: 2026-10-29
 以下状态更新取代本文 2026-10-18 实施快照中“main 未受保护、两项生产竞态未修”的当时结论；原始日期与失败事实保留作历史记录。
 
 PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复订阅竞态和模式切换期间旧回调结算修复。修复各自的范围、局部验收和限制仍按 [PR336 验收记录](../exec-plans/tech-debt-tracker.md#恢复订阅竞态独立修复的验收边界2026-10-24) 追溯。它们已不再是“代码尚未修复”的状态；PR327 仍必须追赶最新 main，并对新的正式预合并输入完成完整发布门禁。
+
+## 0.27.0 发布准备替代决策（2026-10-30）
+
+用户决定将 0.26.0 之后的主线改进作为 0.27.0 新里程碑，而非按 PR #327 准备 0.26.1 补丁；PR #327 的旧预合并验收只保留为历史输入。其通过结果不代表新版本验收。0.27.0 必须基于最新 main 生成新的预合并 SHA，并通过完整 `release-pr` 任务图及 required `Verify release contract`；最终 main SHA 仍需独立完成 `release-tag`。发布准备不创建 tag 或执行市场写入。
 
 2026-10-29 GitHub `main` 已有活动 ruleset：要求 pull request、一次审批、必需检查来自 GitHub Actions，并要求分支先追上 base；未配置绕过者。必需检查在界面显示为 `Verify release contract`。临时 [PR #342](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/342) 从当时最新 main 创建，以 `scripts/gates/catalog.mjs` 的故意语法错误触发 `Gate resolve`、`Gate verify-result` 和最终 `Verify release contract` 失败；[Actions run 40825340916](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40825340916) 记录了失败，PR 状态为 `BLOCKED`，并同时显示审批待完成。该 PR 未合并，验证后已关闭并删除临时分支。
 
