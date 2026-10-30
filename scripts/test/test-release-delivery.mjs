@@ -229,6 +229,33 @@ test('HTTP failures preserve bounded safe server diagnostics', async t => {
   });
 });
 
+test('HTTP failures omit raw text from oversized, truncated and unstructured responses', async t => {
+  const marker = 'review-only-sensitive-marker';
+  const responses = new Map([
+    ['/oversized', { contentType: 'application/json; charset=utf-8', body: JSON.stringify({
+      message: 'Validation Failed', token: marker, padding: 'x'.repeat(9000) }) }],
+    ['/unstructured', { contentType: 'text/plain', body: `upstream error token=${marker}` }]
+  ]);
+  const server = http.createServer((request, response) => {
+    const result = responses.get(new URL(request.url, 'http://127.0.0.1').pathname);
+    request.resume(); response.writeHead(400, { 'Content-Type': result.contentType }); response.end(result.body);
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject); server.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  for (const [route, expectedDetail] of [['/oversized', 'truncated'], ['/unstructured', 'Unstructured error response body omitted']]) {
+    await assert.rejects(() => requestBytes(`http://127.0.0.1:${server.address().port}${route}`, {
+      deadline: Date.now() + 5000
+    }), error => {
+      assert(error instanceof HTTPFailure); assert.equal(error.status, 400);
+      assert.match(error.message, new RegExp(expectedDetail, 'u'));
+      assert.doesNotMatch(error.message, new RegExp(marker, 'u'));
+      return true;
+    });
+  }
+});
+
 async function stateFixture(t) {
   const f = await fixture(t);
   const name = 'release-manifest-1.2.3.json';

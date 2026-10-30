@@ -7,8 +7,8 @@ import { runProcess } from '../gates/process.mjs';
 import { compareRemotePackage } from './release-completion.mjs';
 
 export class HTTPFailure extends Error {
-  constructor(status, body = Buffer.alloc(0), { truncated = false } = {}) {
-    const details = summarizeHTTPError(body, truncated);
+  constructor(status, body = Buffer.alloc(0), options = {}) {
+    const details = summarizeHTTPError(body, options);
     super(details ? `HTTP ${status}: ${details}` : `HTTP ${status}`);
     this.status = status;
     this.details = details;
@@ -19,14 +19,18 @@ const sanitizeHTTPErrorText = (value, limit = 512) => String(value)
   .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/gu, '[REDACTED]')
   .replace(/\bBearer\s+\S+/giu, 'Bearer [REDACTED]')
   .replace(/[\u0000-\u001f\u007f]+/gu, ' ').trim().slice(0, limit);
-function summarizeHTTPError(body, truncated) {
+function summarizeHTTPError(body, { truncated = false, contentType, receivedBytes = body.length } = {}) {
+  const mediaType = typeof contentType === 'string' ? contentType.split(';', 1)[0].trim().toLowerCase() : '';
+  const safeMediaType = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u.test(mediaType) ? mediaType : null;
+  const mediaTypeDetail = safeMediaType ? `, ${safeMediaType}` : '';
+  const bodyMetadata = `(${body.length} bytes retained of ${receivedBytes} received${mediaTypeDetail}${truncated ? '; truncated' : ''})`;
+  if (truncated) return `Error response body omitted ${bodyMetadata}`;
   const text = body.toString('utf8');
-  if (!text) return truncated ? 'error response body truncated' : '';
+  if (!text) return '';
   let parsed;
   try { parsed = JSON.parse(text); } catch {}
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    const summary = sanitizeHTTPErrorText(text);
-    return truncated ? `${summary} [body truncated]` : summary;
+    return `Unstructured error response body omitted ${bodyMetadata}`;
   }
   const safe = {};
   for (const key of ['message', 'status']) {
@@ -51,9 +55,8 @@ function summarizeHTTPError(body, truncated) {
     }).filter(Boolean);
     if (parsed.errors.length > 8) safe.errorsTruncated = true;
   }
-  if (truncated) safe.bodyTruncated = true;
   return Object.keys(safe).length ? JSON.stringify(safe)
-    : `JSON error response (${body.length} bytes; fields omitted)${truncated ? ' [body truncated]' : ''}`;
+    : `JSON error response (${body.length} bytes${mediaTypeDetail}; fields omitted)`;
 }
 export async function requestBytes(url, { deadline, method = 'GET', headers = {}, body,
   maxBytes = 512 * 1024 ** 2, redirects = 4 } = {}) {
@@ -77,7 +80,8 @@ export async function requestBytes(url, { deadline, method = 'GET', headers = {}
         });
         response.once('error', reject);
         response.once('end', () => reject(new HTTPFailure(response.statusCode,
-          Buffer.concat(chunks), { truncated: length > maxHTTPErrorBodyBytes })));
+          Buffer.concat(chunks), { truncated: length > maxHTTPErrorBodyBytes,
+            contentType: response.headers['content-type'], receivedBytes: length })));
         return;
       }
       const chunks = []; let length = 0, exceeded = false;
