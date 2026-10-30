@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import { prepareRelease, finalizeRelease, verifyRecoveredRelease } from '../rele
 import { collectGitHubProvenance } from '../gates/github-provenance.mjs';
 import { githubClient } from '../release/release-github.mjs';
 import { recoverReleaseState, appendReleaseState, saveReleaseState } from '../release/release-state.mjs';
+import { HTTPFailure, requestBytes } from '../release/channel-client.mjs';
 
 async function fixture(t, { githubRequests = false, loseCreateResponse = false } = {}) {
   const f = await releaseFixture();
@@ -164,13 +166,67 @@ test('tag cleanup failure does not erase completed delivery', async t => {
 test('lost GitHub upload response queries original bytes without a second upload', async () => {
   let submits = 0;
   const content = Buffer.from('accepted original bytes'), asset = { id: 55, name: 'main.vsix' };
+  let uploadHeaders;
   const client = githubClient({ repository: 'test/repo', apiURL: 'http://127.0.0.1', request: async (url, options) => {
-    if (options.method === 'POST') { submits++; throw new Error('response lost after upload'); }
+    if (options.method === 'POST') { submits++; uploadHeaders = options.headers; throw new Error('response lost after upload'); }
     if (url.pathname.endsWith('/assets/55')) return content;
     return Buffer.from(JSON.stringify([asset]));
   } });
   const observed = await client.uploadAsset({ id: 42, upload_url: 'http://127.0.0.1/upload{?name}' }, 'main.vsix', content, Date.now() + 1000);
   assert.equal(observed.id, 55); assert.equal(submits, 1);
+  assert.equal(uploadHeaders['Content-Type'], 'application/octet-stream');
+  assert.equal(uploadHeaders['Content-Length'], String(content.byteLength));
+});
+
+test('GitHub asset upload sends the exact binary Content-Length on the wire', async t => {
+  const content = Buffer.from([0x00, 0xff, 0x28, 0x80, 0x0a, 0x7f]);
+  let received;
+  const server = http.createServer((request, response) => {
+    const chunks = [];
+    request.on('data', chunk => chunks.push(chunk));
+    request.once('end', () => {
+      received = { method: request.method, headers: request.headers, body: Buffer.concat(chunks) };
+      const result = Buffer.from(JSON.stringify({ id: 55, name: 'main.vsix' }));
+      response.writeHead(201, { 'Content-Type': 'application/json', 'Content-Length': String(result.byteLength) });
+      response.end(result);
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject); server.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const baseURL = `http://127.0.0.1:${server.address().port}`;
+  const client = githubClient({ repository: 'test/repo', apiURL: baseURL, request: requestBytes });
+  const uploaded = await client.uploadAsset({ id: 42,
+    upload_url: `${baseURL}/repos/test/repo/releases/42/assets{?name,label}` }, 'main.vsix', content, Date.now() + 5000);
+  assert.equal(uploaded.id, 55);
+  assert.equal(received.method, 'POST');
+  assert.equal(received.headers['content-type'], 'application/octet-stream');
+  assert.equal(received.headers['content-length'], String(content.byteLength));
+  assert.equal(received.headers['transfer-encoding'], undefined);
+  assert.deepEqual(received.body, content);
+});
+
+test('HTTP failures preserve bounded safe server diagnostics', async t => {
+  const responseBody = JSON.stringify({ message: 'Validation Failed', documentation_url: 'https://docs.github.com/rest/releases/assets?requestToken=should-not-log',
+    errors: [{ resource: 'ReleaseAsset', field: 'name', code: 'invalid', secret: 'must not be logged' }], token: 'must not be logged' });
+  const server = http.createServer((request, response) => {
+    request.resume(); response.writeHead(400, { 'Content-Type': 'application/json' }); response.end(responseBody);
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject); server.listen(0, '127.0.0.1', resolve);
+  });
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  await assert.rejects(() => requestBytes(`http://127.0.0.1:${server.address().port}/upload`, {
+    deadline: Date.now() + 5000
+  }), error => {
+    assert(error instanceof HTTPFailure); assert.equal(error.status, 400);
+    assert.match(error.message, /Validation Failed/u); assert.match(error.message, /ReleaseAsset/u);
+    assert.match(error.message, /"code":"invalid"/u); assert.match(error.message, /"field":"name"/u);
+    assert.match(error.message, /https:\/\/docs\.github\.com\/rest\/releases\/assets/u);
+    assert.doesNotMatch(error.message, /must not be logged|should-not-log/u);
+    return true;
+  });
 });
 
 async function stateFixture(t) {

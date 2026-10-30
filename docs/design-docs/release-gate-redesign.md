@@ -41,6 +41,16 @@ PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复�
 
 请求合同使用实际 `githubClient`，仅替换 HTTP transport，覆盖正常创建、创建响应丢失后的查询恢复，以及 `release-tag` / `channel-retry` 完成时的 PATCH；与现有验包、状态链和清理测试共用实际 prepare/finalize 编排。测试不执行真实外部发布。Node22.23.3下，修复前新增四项合同全部失败；修复后发布完成/恢复合同33/33通过，publish-tag-release准备回归通过。原日志摘要见[验证结果](../references/github-release-classification/results.json)，新head完整CI另行验收。
 
+### Release 资产上传 HTTP 契约（2026-10-30）
+
+发布 run [41041508908](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41041508908) 在 `prepare-release` 上传第一个不可变资产时收到 HTTP 400。`scripts/release/release-github.mjs::uploadAsset` 将 VSIX Buffer 交给 `scripts/release/channel-client.mjs::requestBytes`，但没有提供 `Content-Length`；Node HTTP 客户端因此使用 `Transfer-Encoding: chunked`。GitHub [Release asset upload API](https://docs.github.com/en/rest/releases/assets?apiVersion=2022-11-28) 要求 `Content-Length`，所以请求未满足接口合同。原 HTTP 错误实现丢弃了响应正文，不能恢复或引用本次服务端返回的具体错误文字；根因证据是实际请求头和接口要求的直接不匹配。
+
+正式修复在 `uploadAsset` 按 Buffer 的 `byteLength` 明确设置 `Content-Length`。`requestBytes` 对非成功响应最多读取 8 KiB，并仅把服务端 `message`、`status`、去掉查询串的文档 URL 和受限的 `errors` 字段写入错误摘要；非 JSON 正文限长并清理控制字符及凭据样式字符串。请求正文和认证头不进入诊断信息。回归测试覆盖上传头长度、GitHub 风格 400 JSON 诊断、查询串和未列入白名单字段的排除。
+
+修复不重试或修改已创建的 `v0.27.0` Release/tag，也不改变 `channel-retry` 对完整原始资产及状态链的要求。原 Release 的恢复决策独立于本上传器修复。
+
+修复输入 `origin/main@034c5a02894dab45fdbde9b877e787fa4f91f242` 的本地验证使用 Node `v25.6.0`：`npm run test:ci-gates` **141/141 通过**，`npm run test:publish-tag-release` 通过，新增的三项上传/错误诊断回归单独通过；Node 语法和 `git diff --check` 通过。本地测试没有发起外部上传。修复 PR 的 Release Preflight 仍须在 GitHub Actions 对最新预合并输入完整通过。
+
 ### Linux 字体准备范围（2026-10-23）
 
 用户确认取消 CI 对完整 `fonts-noto-cjk` 系统包的网络下载与安装。`.github/workflows/ci-validation.yml` 的七类 Linux 浏览器/Host 准备步骤只安装 `xvfb libgtk-3-0 libnss3 libasound2`，保留 APT 更新和原五分钟期限。
