@@ -12,9 +12,9 @@
 - [x] (2026-10-30) 复核 v0.26.0 之后 main 的产品变更、版本规则与既有 v0.26.1 发布材料；确定采用 0.27.0 里程碑，取代 #327 的 0.26.1 补丁提案。
 - [x] (2026-10-30) 统一根、双扩展和 lockfile 版本，更新双 CHANGELOG、Marketplace / README、发布手册、支持文档、发布决策和 v0.27.0 契约；描述保留用户可见边界。
 - [x] (2026-10-30) `npm run release:preflight -- --version 0.27.0` 通过；`git diff HEAD --check` 通过；lockfile 由本地 offline `npm install --package-lock-only --ignore-scripts` 按 main package manifests 同步，只改四处 workspace 版本。
-- [ ] 提交发布准备分支，推送并创建 0.27.0 PR。
-- [ ] 将 0.27.0 PR 标记 ready；检查最新 main 的预合并完整 Release Preflight 和 required contract check。
-- [ ] 新 PR 可审阅后按用户指示关闭旧 PR #327；关闭评论说明 0.27.0 PR 已取代 0.26.1。
+- [x] (2026-10-30) 提交 `66c2a02c`，推送 `release-0-27-0`，创建草稿 PR #345。
+- [x] (2026-10-30) 用户授权后关闭旧 PR #327，并评论说明它由 #345 取代。
+- [ ] 将 PR #345 标记 ready；检查最新 main 的预合并完整 Release Preflight 和 required contract check。
 - [ ] 汇总 PR URL、静态检查、完整 CI 与尚未合并/发布的状态。
 
 ## 意外与发现
@@ -55,7 +55,7 @@
 2. 在仓库根运行 `npm run release:preflight -- --version 0.27.0`，预期静态检查通过；若失败，按具体错误修复静态输入后重跑。
 3. 运行 `git diff --check`，审阅 `git diff --stat` 和逐文件差异；通过后按仓库 commit 规范提交 `chore(release): prepare 0.27.0 milestone`。
 4. 推送 `release-0-27-0` 并创建以 main 为目标的非草稿 PR。等待该 PR 当前 head 的 Release Preflight required check 和 review；main 前进或 PR head 更新时，依工作流刷新预合并验证。
-5. 新 PR 可审阅且新发布内容可追踪后，关闭 #327，并注明其 0.26.1 补丁方案被用户决定的 0.27.0 里程碑 PR 取代。
+5. 旧 PR #327 已关闭并留言指向替代 PR #345；新 PR 转为 ready 后，检查它自己的真实预合并发布门禁。
 
 ## 验证与验收
 

@@ -15,17 +15,17 @@ updated_at: 2026-10-30
 
 用户要求把[分层审查](release-gate-layering-review.md)和[smoke场景重划](smoke-scenario-boundaries.md)推进为完整设计。本设计选定按验证责任组织job、按不可变输入传递产物、按独立回执判定完成的流程。一个失败应直接说明是输入、构建、产品动作、观察、清理还是交付失败；发布的包必须就是最终输入上验收过的那批文件。
 
-`已选定`表示工程设计已收口。现有覆盖迁移与分层CI已在PR335 ed9257bd及其与未改PR327的真实临时组合上完成完整验收；`验证中`仍保留最终发布输入、真实渠道和补充覆盖的验证边界。本文不宣布最低VSCode、六平台完整产品能力或真实TUI回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能放行0.26.1。PR327保留发布材料，两项生产竞态修复落地及最终正式预合并完整门禁继续按既有要求关闭。
+`已选定`表示工程设计已收口。现有覆盖迁移与分层 CI 已有独立验收；PR327 临时组合的历史运行只代表其固定输入。`验证中`仍保留最终发布输入、真实渠道和补充覆盖的验证边界。本文不宣布最低 VS Code、六平台完整产品能力或真实 TUI 回合识别已通过。设计模型的静态/反例检查只核对方案自洽，不能单独放行版本。0.26.1 / PR327 状态截至 2026-10-29 的记录已由下方 2026-10-30 的 0.27.0 替代决策更新。
 
 ## main ruleset 与红灯验证（2026-10-29）
 
 以下状态更新取代本文 2026-10-18 实施快照中“main 未受保护、两项生产竞态未修”的当时结论；原始日期与失败事实保留作历史记录。
 
-PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复订阅竞态和模式切换期间旧回调结算修复。修复各自的范围、局部验收和限制仍按 [PR336 验收记录](../exec-plans/tech-debt-tracker.md#恢复订阅竞态独立修复的验收边界2026-10-24) 追溯。它们已不再是“代码尚未修复”的状态；PR327 仍必须追赶最新 main，并对新的正式预合并输入完成完整发布门禁。
+PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复订阅竞态和模式切换期间旧回调结算修复。修复各自的范围、局部验收和限制仍按 [PR336 验收记录](../exec-plans/tech-debt-tracker.md#恢复订阅竞态独立修复的验收边界2026-10-24) 追溯。它们已不再是“代码尚未修复”的状态。当时的 PR327 后续预合并要求已由下方 2026-10-30 的新版本决策取代。
 
 ## 0.27.0 发布准备替代决策（2026-10-30）
 
-用户决定将 0.26.0 之后的主线改进作为 0.27.0 新里程碑，而非按 PR #327 准备 0.26.1 补丁；PR #327 的旧预合并验收只保留为历史输入。其通过结果不代表新版本验收。0.27.0 必须基于最新 main 生成新的预合并 SHA，并通过完整 `release-pr` 任务图及 required `Verify release contract`；最终 main SHA 仍需独立完成 `release-tag`。发布准备不创建 tag 或执行市场写入。
+用户决定将 0.26.0 之后的主线改进作为 0.27.0 新里程碑，而非按 PR #327 准备 0.26.1 补丁；PR #327 已关闭，旧预合并验收只保留为历史输入。其通过结果不代表新版本验收。替代 PR #345 当前为草稿，基于最新 main；标记 ready 后必须以真实预合并 SHA 通过完整 `release-pr` 任务图及 required `Verify release contract`。最终 main SHA 仍需独立完成 `release-tag`。发布准备不创建 tag 或执行市场写入。
 
 2026-10-29 GitHub `main` 已有活动 ruleset：要求 pull request、一次审批、必需检查来自 GitHub Actions，并要求分支先追上 base；未配置绕过者。必需检查在界面显示为 `Verify release contract`。临时 [PR #342](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/342) 从当时最新 main 创建，以 `scripts/gates/catalog.mjs` 的故意语法错误触发 `Gate resolve`、`Gate verify-result` 和最终 `Verify release contract` 失败；[Actions run 40825340916](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40825340916) 记录了失败，PR 状态为 `BLOCKED`，并同时显示审批待完成。该 PR 未合并，验证后已关闭并删除临时分支。
 
@@ -283,7 +283,7 @@ partial包含schemaVersion、releaseSHA/version、extensionID、target、sourceP
 1. 增加任务目录/计划/回执与严格完成判定、范围守卫/always现场/阶段期限，旧suite adapter继续完整运行；先用已有确定反例验证错ref/hash、历史verified覆盖、filter/空集合及cleanup失败不能通过。
 2. 交付一次clean双包构建、消费式packaged与原样安装；绑定最终tag验收与发布同bytes；迁移notifier类型/回跳/locale及门禁自身回归到明确层。实现渠道内容身份的受控对照，未知口径不放行新渠道完成。
 3. 抽取纯浏览器build，按真实依赖拆job，source/Marketplace Host消费统一development bundle；迁移独立smoke case并逐条核对旧断言，证明单case独立性和清理；完成六原生操作和三x64原样安装的真实验收后升级目录版本。
-4. 固定正式环境及required check，负例验证实际GitHub阻断；对新旧同输入门禁做覆盖等价，去旧串行重复接线；PR327 rebase后最新正式预合并完整验证、最终tag独立完整验证仍必须执行。
+4. 固定正式环境及 required check，负例验证实际 GitHub 阻断；对新旧同输入门禁做覆盖等价，去旧串行重复接线；发布准备 PR 的最新真实预合并输入及最终 tag 均须独立完整验证。
 
 切换实际workflow时同步`docs/WORKFLOW.md`和相关细分协作入口，明确“验证阶段构建候选双包”和“验证通过后的对外交付”。本轮不修改用户主工作区现有WORKFLOW改动；本工作树的实施文档保留并结合既有集中收口规则，不用新文档直接覆盖它。旧0.26.0/历史tag入口继续原兼容策略。
 
