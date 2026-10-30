@@ -13,8 +13,11 @@ import { githubClient } from '../release/release-github.mjs';
 import { recoverReleaseState, appendReleaseState, saveReleaseState } from '../release/release-state.mjs';
 import { HTTPFailure, requestBytes } from '../release/channel-client.mjs';
 
-async function fixture(t, { githubRequests = false, loseCreateResponse = false } = {}) {
+async function fixture(t, { githubRequests = false, loseCreateResponse = false, initialMode = 'release-tag' } = {}) {
   const f = await releaseFixture();
+  if (initialMode === 'incomplete-release-recovery') f.context = { ...f.context,
+    mode: initialMode, existingReleaseID: 42,
+    recoverySourceRun: { id: '99999', attempt: 1, headSHA: f.context.releaseSHA } };
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-release-delivery-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const input = path.join(root, 'input');
@@ -24,7 +27,9 @@ async function fixture(t, { githubRequests = false, loseCreateResponse = false }
   }
   for (const [name, bytes] of Object.entries(f.packageBytes)) await fs.writeFile(path.join(input, name), bytes);
   const remote = new Map(), calls = [], jobs = [], artifacts = [], archives = new Map();
-  const release = { id: 42, tag_name: f.context.finalTag, draft: false };
+  const release = { id: 42, tag_name: f.context.finalTag, target_commitish: f.context.releaseSHA,
+    name: `Dev Session Canvas v${f.context.version}`, draft: false, prerelease: false,
+    body: `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${f.context.releaseSHA}` };
   const client = { repository: f.context.repository,
     readTag: async () => f.context.releaseSHA,
     lookupRelease: async () => ({ observation: 'present', release }),
@@ -256,8 +261,8 @@ test('HTTP failures omit raw text from oversized, truncated and unstructured res
   }
 });
 
-async function stateFixture(t) {
-  const f = await fixture(t);
+async function stateFixture(t, { initialMode = 'release-tag' } = {}) {
+  const f = await fixture(t, { initialMode });
   const name = 'release-manifest-1.2.3.json';
   const pending = await readJSON(path.join(f.prepared, name));
   const result = await runFinalize(f);
@@ -273,6 +278,7 @@ async function stateFixture(t) {
   f.remote.get(name).asset.state = 'uploaded';
   const context = { ...f.f.context, mode: 'channel-retry', existingReleaseID: 42,
     run: { id: '67890', attempt: 1, headSHA: 'd'.repeat(40) } };
+  delete context.recoverySourceRun;
   const client = { ...f.client, json: async route => {
     const runID = Number(route.split('/').at(-1));
     assert.equal(runID, Number(f.f.context.run.id));
@@ -354,8 +360,8 @@ test('prepare interrupted midway through immutable assets keeps accepted bytes a
     output: path.join(f.root, 'incomplete'), deadline: Date.now() + 1000 }), /no recoverable manifest/u);
 });
 
-async function recoveryFixture(t) {
-  const f = await stateFixture(t);
+async function recoveryFixture(t, { initialMode = 'release-tag' } = {}) {
+  const f = await stateFixture(t, { initialMode });
   f.context = { ...f.context, selection: 'open-vsx', selectedTargets: ['open-vsx'] };
   const original = {};
   for (const name of ['gate-plan.json', 'gate-result.json', 'gate-provenance.json', 'acceptance-receipt.json'])
@@ -391,6 +397,14 @@ test('original recovery binds accepted pair, verifier, state chain and unselecte
   const history = await readJSON(path.join(output, 'validated-channel-history.json'));
   assert.deepEqual(Object.keys(history), ['visual-studio']);
   assert.deepEqual(history['visual-studio'].context.run, f.f.context.run);
+});
+
+test('incomplete-release recovery state remains verifiable by a later channel-retry', async t => {
+  const f = await recoveryFixture(t, { initialMode: 'incomplete-release-recovery' });
+  const receipt = await verifyRecovery(f);
+  assert.equal(receipt.status, 'passed');
+  const original = await readJSON(path.join(f.root, 'complete-recovery', 'original-release-context.json'));
+  assert.equal(original.mode, 'incomplete-release-recovery');
 });
 
 for (const failure of ['package-bytes', 'original-verifier', 'candidate-producer', 'history-producer', 'actual-run-head', 'missing-original']) {

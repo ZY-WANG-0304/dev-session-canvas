@@ -28,7 +28,7 @@ permissions:
   actions: read
 jobs:
   full:
-    if: ${{ inputs.mode == 'release-tag' }}
+    if: ${{ inputs.mode == 'release-tag' || inputs.mode == 'incomplete-release-recovery' }}
     uses: ./.github/workflows/ci-validation.yml
     secrets:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

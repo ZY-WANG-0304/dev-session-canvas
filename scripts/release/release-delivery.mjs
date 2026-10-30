@@ -55,6 +55,75 @@ export async function resolveRelease({ triggerTag, selection = 'all', root = pro
   return context;
 }
 
+export async function resolveIncompleteReleaseRecovery({ triggerTag, recoverySourceRunID, root = process.cwd(),
+  client = githubClient(), deadline = Date.now() + 300000, run, env = process.env }) {
+  assertFormalEnvironment(env);
+  assert.equal(run.headSHA, gitRevision(root, 'HEAD'), 'Recovery logic must run from its actual workflow checkout');
+  const version = /^publish\/v(\d+\.\d+\.\d+)$/u.exec(triggerTag ?? '')?.[1];
+  assert(version, 'Expected publish/vX.Y.Z');
+  assert.match(String(recoverySourceRunID ?? ''), /^[1-9]\d*$/u, 'Specify the original failed release run ID');
+  const finalTag = `v${version}`;
+  const sourceRun = await client.json(`actions/runs/${recoverySourceRunID}`, { deadline });
+  assert.equal(sourceRun.id, Number(recoverySourceRunID));
+  assert.equal(sourceRun.path, '.github/workflows/publish-marketplace-release.yml');
+  assert.equal(sourceRun.name, 'Publish Marketplace Release');
+  assert.equal(sourceRun.event, 'push');
+  assert.equal(sourceRun.head_branch, triggerTag);
+  assert.equal(sourceRun.conclusion, 'failure');
+  assert(Number.isSafeInteger(sourceRun.run_attempt) && sourceRun.run_attempt >= 1);
+  assert.equal(sourceRun.repository?.full_name, client.repository);
+
+  const jobs = await client.pages(`actions/runs/${sourceRun.id}/attempts/${sourceRun.run_attempt}/jobs`, 'jobs', deadline);
+  const requireJob = (suffix, conclusion) => {
+    const matches = jobs.filter(job => job.name === `Release ${suffix}`
+      || job.name.split(' / ').at(-1) === `Release ${suffix}`);
+    assert.equal(matches.length, 1, `Source run must contain exactly one Release ${suffix} job`);
+    assert.equal(matches[0].status, 'completed');
+    assert.equal(matches[0].conclusion, conclusion, `Source Release ${suffix} must be ${conclusion}`);
+    return matches[0];
+  };
+  requireJob('resolve-release', 'success');
+  requireJob('prepare-release', 'failure');
+  requireJob('publish-open-vsx', 'skipped');
+  requireJob('publish-visual-studio', 'skipped');
+  requireJob('finalize-release', 'skipped');
+
+  const lookup = await client.lookupRelease(finalTag, deadline);
+  assert.equal(lookup.observation, 'present', 'Incomplete recovery requires the original GitHub Release');
+  const triggerSHA = await client.readTag(triggerTag, deadline);
+  const finalSHA = await client.readTag(finalTag, deadline);
+  assertSHA(triggerSHA); assert.equal(finalSHA, triggerSHA, 'Final tag differs from release input');
+  assert.equal(sourceRun.head_sha, triggerSHA, 'Failed source run differs from the current release SHA');
+  assert.equal(lookup.release.tag_name, finalTag);
+  assert.equal(lookup.release.id > 0, true);
+  assert.equal(lookup.release.name, `Dev Session Canvas v${version}`);
+  assert.equal(lookup.release.target_commitish, triggerSHA);
+  assert.equal(lookup.release.draft, false);
+  assert.equal(lookup.release.prerelease, false);
+  assert.equal(lookup.release.body,
+    `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${triggerSHA}`,
+    'Release notes no longer match the untouched initial delivery state');
+  const assets = await client.pages(`releases/${lookup.release.id}/assets`, null, deadline);
+  assert(assets.every(asset => immutableReleaseFiles.includes(asset.name)),
+    'Incomplete recovery refuses manifest, state, or unrelated Release assets');
+  assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate Release assets are ambiguous');
+  assert(assets.every(asset => asset.state === 'uploaded'), 'Incomplete recovery refuses assets in an unknown state');
+
+  assert.equal(gitRevision(root, triggerSHA), triggerSHA);
+  execFileSync('git', ['merge-base', '--is-ancestor', triggerSHA, 'origin/main'], { cwd: root });
+  const baseSHA = gitRevision(root, `${triggerSHA}^1`);
+  const manifest = JSON.parse(execFileSync('git', ['show', `${triggerSHA}:package.json`], { cwd: root, encoding: 'utf8' }));
+  assert.equal(manifest.version, version, 'Tag version differs from source version');
+  try { execFileSync('git', ['cat-file', '-e', `${triggerSHA}:scripts/gates/catalog.mjs`], { cwd: root, stdio: 'pipe' }); }
+  catch { throw new Error('Release input has no supported acceptance schema'); }
+  const context = validateReleaseContext({ schemaVersion: 1, mode: 'incomplete-release-recovery', triggerTag,
+    finalTag, version, releaseSHA: triggerSHA, baseSHA, repository: client.repository, selection: 'all',
+    selectedTargets: [...marketplaceTargets], requiredTargets: [...requiredTargets], contentPolicyDigest,
+    existingReleaseID: lookup.release.id, recoverySourceRun: { id: String(sourceRun.id),
+      attempt: sourceRun.run_attempt, headSHA: sourceRun.head_sha }, run });
+  return context;
+}
+
 export async function verifyRecoveredRelease({ context, output, client = githubClient({ repository: context.repository }),
   deadline = Date.now() + 600000, collector = collectGitHubProvenance, stateCollector = collectReleaseFacts }) {
   validateReleaseContext(context); assert.equal(context.mode, 'channel-retry');
@@ -76,7 +145,8 @@ export async function verifyRecoveredRelease({ context, output, client = githubC
   const result = await readJSON(path.join(output, 'gate-result.json'));
   const provenance = await readJSON(path.join(output, 'gate-provenance.json'));
   const originalContext = validateReleaseContext(await readJSON(path.join(output, 'original-release-context.json')));
-  assert.equal(originalContext.mode, 'release-tag'); assert.equal(originalContext.releaseSHA, context.releaseSHA);
+  assert(['release-tag', 'incomplete-release-recovery'].includes(originalContext.mode));
+  assert.equal(originalContext.releaseSHA, context.releaseSHA);
   assert.equal(originalContext.repository, context.repository);
   validateAcceptance({ plan, acceptance, result, provenance, inputSHA: context.releaseSHA });
   assert.equal(plan.mode, 'release-tag'); assert.deepEqual(plan.run, originalContext.run);
@@ -150,7 +220,8 @@ export async function prepareRelease({ context, input, output, client = githubCl
   }
   await writeJSON(path.join(output, 'release-context.json'), context);
   await writeJSON(path.join(output, 'release-identity.json'), identity);
-  await writeJSON(path.join(output, 'original-release-context.json'), context.mode === 'release-tag' ? context
+  await writeJSON(path.join(output, 'original-release-context.json'),
+    ['release-tag', 'incomplete-release-recovery'].includes(context.mode) ? context
     : await readJSON(path.join(input, 'original-release-context.json')));
   await writeJSON(path.join(output, 'validated-channel-history.json'), context.mode === 'channel-retry'
     ? await readJSON(path.join(input, 'validated-channel-history.json')) : {});
@@ -160,6 +231,9 @@ export async function prepareRelease({ context, input, output, client = githubCl
     finalSHA = await client.readTag(context.finalTag, deadline);
   }
   assert.equal(finalSHA, context.releaseSHA);
+  if (context.mode === 'incomplete-release-recovery') {
+    assert.equal(await client.readTag(context.triggerTag, deadline), context.releaseSHA);
+  }
   let lookup = await client.lookupRelease(context.finalTag, deadline);
   if (lookup.observation === 'absent') {
     assert.equal(context.mode, 'release-tag');
@@ -170,16 +244,32 @@ export async function prepareRelease({ context, input, output, client = githubCl
     lookup = await client.lookupRelease(context.finalTag, deadline);
   }
   assert.equal(lookup.observation, 'present'); const release = lookup.release;
-  if (context.mode === 'channel-retry') assert.equal(release.id, context.existingReleaseID);
+  if (['channel-retry', 'incomplete-release-recovery'].includes(context.mode)) {
+    assert.equal(release.id, context.existingReleaseID);
+  }
   const assets = await client.pages(`releases/${release.id}/assets`, null, deadline);
+  if (context.mode === 'incomplete-release-recovery') {
+    assert.equal(release.tag_name, context.finalTag);
+    assert.equal(release.target_commitish, context.releaseSHA);
+    assert.equal(release.name, `Dev Session Canvas v${context.version}`);
+    assert.equal(release.draft, false); assert.equal(release.prerelease, false);
+    assert.equal(release.body,
+      `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${context.releaseSHA}`);
+    assert(assets.every(asset => immutableReleaseFiles.includes(asset.name)),
+      'Incomplete recovery refuses manifest, state, or unrelated Release assets');
+    assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate Release assets are ambiguous');
+    assert(assets.every(asset => asset.state === 'uploaded'), 'Incomplete recovery refuses assets in an unknown state');
+  }
   const deliveries = [];
   for (const name of immutableReleaseFiles) {
     const bytes = await fs.readFile(path.join(output, name)); const matches = assets.filter(asset => asset.name === name);
     assert(matches.length <= 1, 'Ambiguous GitHub asset'); let asset = matches[0];
     if (!asset) {
-      assert.equal(context.mode, 'release-tag', 'Original release assets are incomplete; refuse replacement');
+      assert(['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+        'Original release assets are incomplete; refuse replacement');
       asset = await client.uploadAsset(release, name, bytes, deadline);
     }
+    assert.equal(asset.state, 'uploaded');
     const remote = await client.downloadAsset(asset, deadline);
     assert.equal(digest(remote), digest(bytes), `GitHub asset ${name} differs; refuse clobber`);
     const pkg = identity.packages.find(pkg => pkg.path === name);
@@ -203,7 +293,8 @@ export async function prepareRelease({ context, input, output, client = githubCl
   } else if (manifests.length) {
     throw new Error('Existing release state requires verified channel-retry recovery; refuse a second prepare root');
   } else {
-    assert.equal(context.mode, 'release-tag', 'Original Release has no recoverable manifest');
+    assert(['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+      'Original Release has no recoverable manifest');
     const pending = { schemaVersion: 1, status: 'pending', releaseSHA: context.releaseSHA, version: context.version,
       identityDigest: objectDigest(identity), requiredTargets: [...requiredTargets], github, channels: {},
       errors: marketplaceTargets.map(target => ({ target, reason: 'Channel job has not reported its result' })),
