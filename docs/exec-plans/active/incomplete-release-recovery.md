@@ -17,8 +17,8 @@
 - [x] (2026-10-30) 已调整发布 workflow：恢复模式的验收仍使用原 tag SHA 的完整 `release-tag` 任务图，交付阶段使用 `main` workflow checkout 中的修复脚本。
 - [x] (2026-10-30) 已补充恢复模式回归与 workflow 合同测试，并同步工作流和设计文档。
 - [x] (2026-10-30) `npm run test:publish-tag-release`、`npm run test:publish-marketplace-workflow` 均通过；显式串行完整 CI gate 命令通过 158 项、0 失败；`git diff --check` 通过。
-- [ ] 拉取最新 `origin/main` 并 rebase；提交、推送恢复修复分支并创建面向 `main` 的 PR。
-- [ ] 等待 PR Release Preflight 和 review；合并后在原 tag 身份上执行一次恢复发布并核实结果。
+- [x] (2026-10-30) 拉取并核对最新 `origin/main`（`58a4ec2`），提交 `06998de7`，推送 `release-incomplete-release-recovery` 并创建面向 `main` 的 PR #347。
+- [ ] 等待 PR #347 的 Release Preflight 和 review；取得用户对该 PR 的合并授权后，在原 tag 身份上执行一次恢复发布并核实结果。
 
 ## 意外与发现
 
@@ -48,7 +48,7 @@
 
 ## 结果与复盘
 
-恢复模式实现、回归覆盖、正式文档更新和显式串行完整本地门禁已完成；158 项全部通过，但尚未在 GitHub 建立 PR。最终成功标准仍是 recovery mode 对正确的历史失败输入通过真实预合并发布门禁，在不移动两个 tag 的情况下准备并校验 Release 资产、正常完成渠道交付和 finalize；错误来源 run、已开始渠道交付、非空状态链和冲突内容均在外部写入前被拒绝。实际恢复发布必须等修复 PR 合并后执行。
+恢复模式实现、回归覆盖、正式文档更新、显式串行完整本地门禁和 PR #347 创建已完成；本地 158 项全部通过，PR 的真实 Release Preflight 与 review 尚待结束。最终成功标准仍是 recovery mode 对正确的历史失败输入通过真实预合并发布门禁，在不移动两个 tag 的情况下准备并校验 Release 资产、正常完成渠道交付和 finalize；错误来源 run、已开始渠道交付、非空状态链和冲突内容均在外部写入前被拒绝。实际恢复发布必须等 PR 合并后执行。
 
 ## 上下文与定向
 
@@ -90,9 +90,9 @@ resolver、验证和 API 取证为只读；不符合精确失败形状即在任�
 
 ## 证据与备注
 
-已核实的基线：run `41041508908` 的 `Release resolve-release=success`、完整 verifier success、`Release prepare-release=failure`、两个渠道 job skipped、`Release finalize-release=skipped`；Release `v0.27.0` assets 数量为 0，临时和正式 tag 均指向 `034c5a0`。合并后的修复提交为 `58a4ec2`，main push Release Preflight run `41058697974` 为 success。
+已核实的基线：run `41041508908` 的 `Release resolve-release=success`、完整 verifier success、`Release prepare-release=failure`、两个渠道 job skipped、`Release finalize-release=skipped`；Release `v0.27.0` assets 数量为 0，临时和正式 tag 均指向 `034c5a0`。合并后的修复提交为 `58a4ec2`，main push Release Preflight run `41058697974` 为 success。本恢复修复提交为 `06998de7`，PR #347 已创建，等待真实预合并门禁和 review。
 
-计划更新记录：2026-10-30，针对已发布但没有任何交付资产的 0.27.0 失败状态，增加保留原 SHA 的受控恢复设计与实施步骤；本次继续工作后，将实现和显式串行门禁标记完成，并明确剩余 PR 与恢复发布步骤。
+计划更新记录：2026-10-30，针对已发布但没有任何交付资产的 0.27.0 失败状态，增加保留原 SHA 的受控恢复设计与实施步骤；本次继续工作后，将实现、本地门禁及 PR #347 状态写入计划，并明确等待真实门禁、review、合并授权和恢复发布。
 
 ## 接口与依赖
 
