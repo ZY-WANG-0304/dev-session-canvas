@@ -14,7 +14,8 @@
 - [x] (2026-10-30) `npm run release:preflight -- --version 0.27.0` 通过；`git diff HEAD --check` 通过；lockfile 由本地 offline `npm install --package-lock-only --ignore-scripts` 按 main package manifests 同步，只改四处 workspace 版本。
 - [x] (2026-10-30) 提交 `66c2a02c`，推送 `release-0-27-0`，创建草稿 PR #345。
 - [x] (2026-10-30) 用户授权后关闭旧 PR #327，并评论说明它由 #345 取代。
-- [ ] 将 PR #345 标记 ready；检查最新 main 的预合并完整 Release Preflight 和 required contract check。
+- [x] (2026-10-30) 将 PR #345 标记为 ready，启动基于当前 head 的 Release Preflight。
+- [ ] 等待最终 head 的完整预合并任务图和 required contract check 完成，并记录终态；若更新 head，旧 run 不计入验收。
 - [ ] 汇总 PR URL、静态检查、完整 CI 与尚未合并/发布的状态。
 
 ## 意外与发现

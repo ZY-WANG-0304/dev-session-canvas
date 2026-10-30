@@ -429,4 +429,4 @@ title 控制序列和 payload 不进入终端可见输出、recent output、term
 
 主扩展和 notifier、根 workspace、锁文件、双 CHANGELOG、双语 README / listing、支持边界和发布手册统一为 `0.27.0`。确切用户说明和限制以 `docs/release-contracts/v0.27.0.md` 为准。内部 CI / smoke 重构不写作产品能力；notifier 本身无新增投递行为。无法确认已停止的失联后台可能仍运行，扩展提示用户手动检查；修复旧 socket 的能力只由新 Supervisor 提供。
 
-用户报告最近两天试用没有明显问题，但未提供确切构建、宿主或场景矩阵，因此只作为定性输入。PR #327 的旧预合并验收不是 `0.27.0` 发布输入的证明。PR #345 当前为草稿，标记 ready 后必须在最新真实预合并 SHA 上通过完整 `release-pr` 和 required `Verify release contract`；合并后最终 main SHA 还需独立通过 `release-tag`。本次准备本身不创建 tag 或对外发布。
+用户报告最近两天试用没有明显问题，但未提供确切构建、宿主或场景矩阵，因此只作为定性输入。PR #327 的旧预合并验收不是 `0.27.0` 发布输入的证明。PR #345 已标记 ready，完整 `release-pr` 与 required `Verify release contract` 正在针对当前预合并 SHA 运行；若 head 或 base 更新，须按新 SHA 重新验收；合并后最终 main SHA 还需独立通过 `release-tag`。本次准备本身不创建 tag 或对外发布。
