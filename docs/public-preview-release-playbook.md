@@ -56,11 +56,11 @@ PR 经 review 合入后，在最终 main release commit 创建 `publish/vX.Y.Z`�
 
 当前 `npm run package:vsix` 会 staging 主扩展子包，并在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
-本轮listing必须说明同root共享画布、删除/stop区别、开关在关闭或重载边界应用、非最后窗口detach与最后窗口清理接管，以及普通关闭保持会话。关闭模式按工作区私有保存，私有/共享内容不迁移；不能宣传跨设备或云同步。启动和终端交互修复按用户行为表述，45秒ready预算只属于测试，不写成自动启动恢复能力。0.26.0既有当前态导入、已结束Runtime无正文和灾后不保证恢复的边界继续沿用。
+本轮listing必须说明同root共享画布、删除/stop区别、开关在关闭或重载边界应用、非最后窗口detach与最后窗口清理接管，以及普通关闭保持会话。关闭 Runtime Persistence 时，画布保存在当前工作区对应的存储位置；工作区画布与共享画布内容不迁移，不能宣传跨设备或云同步。启动和终端交互修复按用户行为表述，45秒ready预算只属于测试，不写成自动启动恢复能力。0.26.0既有当前态导入、已结束Runtime无正文和灾后不保证恢复的边界继续沿用。
 
 ## release notes 定稿口径
 
-当前0.27.0 release notes以双CHANGELOG和docs/release-contracts/v0.27.0.md为准，基于0.26.0之后已合并的功能；历史版本条目保持原文。主扩展顶部为0.27.0 - 执行可靠性与共享画布，notifier仅版本对齐。复核共享/私有切换的数据边界、启动失败反馈、删除输入和保存责任、终端交互与提醒；保留上游快速重开资源延迟、持续启动失败缺少自动反馈、平台/真实provider有限验证及跨版本回退限制。不得写入候选hash、测试通过或渠道事实。
+当前0.27.0 release notes以双CHANGELOG和docs/release-contracts/v0.27.0.md为准，基于0.26.0之后已合并的功能；历史版本条目保持原文。主扩展顶部为0.27.0 - 执行可靠性与共享画布，notifier仅版本对齐。复核 Runtime Persistence 开关切换时的工作区画布与共享画布数据边界、启动失败反馈、删除输入和保存责任、终端交互与提醒；保留上游快速重开资源延迟、持续启动失败缺少自动反馈、平台/真实provider有限验证及跨版本回退限制。不得写入候选hash、测试通过或渠道事实。
 
 ## 安装与升级说明口径
 

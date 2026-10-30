@@ -37,7 +37,7 @@ updated_at: 2026-10-30
 
 相关代码已在 main；本分支只更新静态发布输入与本设计和计划记录。notifier 继续跟随主扩展版本，不新增通知后端、协议、点击语义或本地化行为。内部 CI 调整和测试改动仅作为发布门禁的一部分验证，不出现在产品功能列表。
 
-公开 Preview 的原有限制继续生效，包括 Supervisor 或机器故障后的恢复不保证、资源无固定硬配额、共享/私有切换不迁移内容、失联后台可能继续运行、Unix 修复不热更新旧 Supervisor、部分 VS Code 重开加载延迟、现代系统以外与 musl 支持未验证、Windows Codex 历史翻页限制、Restricted Mode 执行禁用及 Virtual Workspace 不支持。
+公开 Preview 的原有限制继续生效，包括 Supervisor 或机器故障后的恢复不保证、资源无固定硬配额、工作区画布与共享画布切换不迁移内容、失联后台可能继续运行、Unix 修复不热更新旧 Supervisor、部分 VS Code 重开加载延迟、现代系统以外与 musl 支持未验证、Windows Codex 历史翻页限制、Restricted Mode 执行禁用及 Virtual Workspace 不支持。
 
 ## 验证方法
 
