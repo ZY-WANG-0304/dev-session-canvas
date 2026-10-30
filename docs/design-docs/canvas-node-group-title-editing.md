@@ -68,7 +68,7 @@ updated_at: 2026-10-30
 
 点击图标按钮，或在按钮聚焦时按 Enter / Space，选择对应节点 / 分组并进入编辑状态。输入框获得焦点并选中现有标题，方便直接替换默认名称。编辑期间图标隐藏，输入框沿用当前标题提交规则：Enter 提交，Escape 取消并恢复进入编辑前的标题，失焦提交；清空或全空白提交时恢复原标题。没有发生文本变化时不发送更新。分组标题继续允许重名；现有标题清洗与长度保护规则保持不变。
 
-鼠标单击标题文字本身不再编辑，只选择所属对象。标题文字保持非拖动命中区，避免用户为了选中对象而意外移动节点或分组；普通分组标题 tab 的非文字区域和分组边框仍是拖动把手。节点与分组标题文字的双击执行视口聚焦，成为统一的快速定位方式；输入框和 edit 按钮双击不触发聚焦。分组标题文字需要作为“可双击聚焦但不启动拖动”的独立命中类型处理，不能简单沿用当前把整个输入框都视为交互目标的过滤规则。
+节点标题文字单击只选择节点，不移动或编辑；双击标题文字聚焦节点到视口。普通分组的标题文字交互按 pointer down 时的分组状态决定：若按下时分组未选中，本次手势只选择分组，即使按住后移动指针也不移动分组、不编辑、不平移画布；分组被选中后，若未处于标题编辑状态，从标题文字区域按下并越过现有拖动阈值会移动整个分组，未越过阈值则只保留选中状态且不提交移动。双击普通分组标题文字聚焦分组到视口，并优先识别为导航手势，不提交移动。点击 edit 按钮进入编辑；编辑期间标题文字沿用输入框文本选择 / 光标语义，绝不启动分组拖动。workspace root group 仍只读，不进入上述编辑或分组拖动流程。
 
 ### 7.3 布局、事件与可访问性
 
@@ -76,7 +76,7 @@ updated_at: 2026-10-30
 
 图标按钮使用 `<button type="button">`、本地化的 `aria-label`（例如“编辑标题：{当前标题}”）和相同含义的 tooltip。键盘 Tab 可以到达按钮；按钮聚焦时显示图标和可见 focus ring。点击按钮先选择所属对象，再将焦点交给标题输入框。
 
-按钮的 pointer down、click 与 double click 事件必须在画布手势处理前被识别为交互事件。对普通分组，它不能启动 `beginDrag`、触发 modifier 多选、提交 group move / resize，也不能触发 `handleFocusDoubleClick`；对节点，它不能让按钮 click 被解释成标题栏双击聚焦。`isInteractiveTarget`、`isGroupChromeFocusBlockedTarget` 和 `isNodeChromeFocusBlockedTarget` 相关判断应覆盖该按钮。
+按钮的 pointer down、click 与 double click 事件必须在画布手势处理前被识别为交互事件。普通分组的标题手势须在 pointer down 时读取并固定本次开始时的 `selected` / `isEditing` 状态，不能因为按下后第一击触发了选中，就把同一次未选中手势升级为拖动；处于编辑态或点击 edit 按钮时不能启动 `beginDrag`。分组标题双击优先作为聚焦手势处理，不提交 `webview/moveGroup`；edit 按钮不能触发 modifier 多选、group move / resize 或 `handleFocusDoubleClick`。对节点，edit 按钮不能让 click 被解释成标题栏双击聚焦。`isInteractiveTarget`、`isGroupChromeFocusBlockedTarget` 和 `isNodeChromeFocusBlockedTarget` 相关判断应覆盖按钮及分组标题编辑态。
 
 节点标题栏的 edit button 槽位需避开 `.window-chrome-actions`，不覆盖状态、help、start / stop 或 delete 动作；副标题和 Agent context 行的现有截断逻辑不变。普通分组的标题 tab 自然宽度应把 edit button 槽位纳入计算，保持现有反向缩放、宽度上限和 toolbar 间距。窄分组中先压缩标题文字，保留按钮完整热区；若当前最小宽度无法容纳二者，应由分组最小宽度规则兜底，而不是裁掉入口。
 
@@ -84,7 +84,7 @@ updated_at: 2026-10-30
 
 - **选择与改名分离：** 标题文字单击只选择对象，标题尾部的 edit 按钮才进入改名；输入框只在明确按下该按钮后出现。
 - **标题双击聚焦：** 节点和分组标题文字双击都聚焦对应对象到当前视口。编辑输入框与 edit 按钮双击不聚焦，避免把文本编辑解释成导航。
-- **分组拖动命中：** 普通分组标题文字保留选择 / 双击聚焦，不作为拖动把手；标题 tab 中文字以外的空白和分组边框保留原有拖动行为。edit 按钮不启动拖动、resize、多选或画布平移。
+- **分组拖动命中：** 按下时未选中的分组，本次标题文字手势只选中，不移动；按下时已选中且未编辑的分组，标题文字可作为拖动把手，只有越过拖动阈值才移动，单击仍保持选中且不提交移动。标题 tab 空白和分组边框保留拖动行为。双击标题文字聚焦视口并压过拖动判定；编辑期间标题文字和 edit 按钮都不启动拖动、resize、多选或画布平移。
 - **改名键盘路径：** Tab 聚焦标题尾部按钮，Enter / Space 进入输入框；Enter 提交，Escape 还原，失焦提交。键盘 focus、hover 使用同一个入口，不新增第二套快捷键。
 - **排版和动作冲突：** edit 按钮预留固定槽位；标题先截断，按钮保持可见。节点运行状态 / help / start-stop / delete 与分组选中 toolbar 不因 hover 而跳位或互相覆盖。
 - **只读投影边界：** workspace root group、自动 File / File List、overview 与非活动缩略图继续只读；活动画布中的可编辑节点和普通分组共享入口。
@@ -95,7 +95,7 @@ updated_at: 2026-10-30
 
 1. `Agent`、`Terminal`、`Note` 与普通用户分组在指针进入标题文字区域时出现 edit 图标，离开后图标隐藏；hover 前后标题、状态与 toolbar 不发生位移。
 2. 单击标题文本不进入编辑；单击 edit 图标后输入框获得焦点并可改名；Enter 提交、Escape 取消、失焦按既有规则提交；不变标题不产生重复更新。
-3. 节点标题栏与普通分组标题 tab 双击原有空白 / 文本区域仍聚焦视口；edit 按钮双击不聚焦；点按钮不拖动分组、不启动节点拖动或画布平移。
+3. 节点标题文字双击聚焦节点；普通分组标题文字双击聚焦分组且不提交移动。按下时未选中的分组，标题文字单击或拖动只选中、不移动；先选中分组后，从标题文字开始拖过阈值会移动整个分组，标题文字普通单击不提交移动；edit 按钮不拖动分组、不启动多选或画布平移。
 4. Tab 可以聚焦 edit 按钮，Enter / Space 可以启动编辑；屏幕阅读器可读出带当前标题的动作名称；高对比主题下图标与 focus ring 清晰可见。
 5. workspace root group、File / File List、overview 与非活动缩略图没有可操作的 edit button；活动 root 中的普通用户对象仍能编辑。
 6. 长标题、最窄允许尺寸的分组、选中态 group toolbar、节点右侧动作区、浅色 / 深色 / 高对比主题下布局均不重叠、不越界，标题仍按原规则 ellipsis。
@@ -107,3 +107,9 @@ updated_at: 2026-10-30
 - `docs/product-specs/canvas-node-groups.md` 与 `docs/design-docs/canvas-node-groups.md` 定义普通 group 标题规则；其中“单击标题区域进入重命名”的旧触发口径由本文替换。
 - `docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md` 定义节点标题属于对象身份并由标题栏承载；本文补充该标题栏的具体编辑入口。
 - 主要实现落点为 `extensions/vscode/dev-session-canvas/src/webview/canvasUiSurface.tsx`、`canvasGroupLayers.tsx`、`executionSessionNodes.tsx`、`fileNoteNodes.tsx`、`styles.css` 与 `i18n/webviewI18n.ts`。
+
+## 10. 决策记录
+
+- 决策：普通分组标题文字是否能拖动，由 pointer down 时的已选中 / 未选中状态及是否正在编辑决定；未选中按下只选择，已选中且未编辑时按下可开始拖动。
+  理由：第一次点击继续承担明确的选择反馈；选中后标题文字又能作为直接拖动把手。以手势开始时的状态判定，避免选择状态变化把同一次按压升级为移动。
+  日期/作者：2026-10-30 / 用户澄清
