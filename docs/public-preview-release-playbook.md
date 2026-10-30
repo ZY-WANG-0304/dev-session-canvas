@@ -8,7 +8,7 @@
 
 CHANGELOG 只描述用户可见的功能、安装升级、回退和限制。候选 / 最终 SHA、workflow run、工件摘要、渠道状态及门禁结果分别保留在验证证据和发布后 manifest / Release 中，不回写同版本 CHANGELOG 或契约。
 
-发布 PR 每次更新由最新远端目标与 head 生成真实预合并 SHA。`Release Preflight` 调用 `ci-validation.yml`，版本或契约变化强制 `release-pr` 全部任务。`Verify release contract` 必须独立核对实际 Actions job / 工件来源、精确必跑集合和同批双包验收成功；draft 的跳过、取消、缺结果、错误输入及取证 / 清理失败都不能放行。该稳定检查应配置为 required status check；目前 main 尚未配置保护，不能把仓库要求写成 GitHub 已强制执行。
+发布 PR 每次更新由最新远端目标与 head 生成真实预合并 SHA。`Release Preflight` 调用 `ci-validation.yml`，版本或契约变化强制 `release-pr` 全部任务。`Verify release contract` 必须独立核对实际 Actions job / 工件来源、精确必跑集合和同批双包验收成功；draft 的跳过、取消、缺结果、错误输入及取证 / 清理失败都不能放行。当前 GitHub 活动 ruleset 要求合入 `main` 必须通过 PR、至少一次审批、分支追上最新 base，并通过 required check `Verify release contract`；执行时以 GitHub 当前活动 ruleset 为准。
 
 PR 经 review 合入后，在最终 main release commit 创建 `publish/vX.Y.Z`。新发布以 `release-tag` 再次执行完整任务图：验证阶段可以构建候选 VSIX，交付阶段只消费已验收的同批原包。完整验收通过前不得创建正式 Release、写入市场或删除临时 tag。渠道恢复按下文 `channel-retry` 路径复核原包、原 acceptance 与状态链。
 

@@ -10,7 +10,7 @@ notifier 随主扩展进入同一份 `docs/release-contracts/vX.Y.Z.md`，发布
 
 正式流程由 `docs/WORKFLOW.md`、`docs/design-docs/release-gate-redesign.md` 和主扩展手册共同定义。发布 PR 的真实最新预合并 SHA 执行完整 `release-pr`；合入 main 后，最终 `publish/vX.Y.Z` 的 SHA 独立执行 `release-tag`。验证阶段的 `package-clean` 在干净源码与锁定依赖上生成同批 main / notifier VSIX，后续 packaged-host、三平台 x64 原样安装和交付消费原双包。
 
-`Verify release contract` 只有独立核对真实 Actions job / 工件来源、完整必跑集合和同批产物成功后才能通过。它应设为 required status check，但目前 main 尚未配置保护；draft 跳过或本地结果不满足该门槛。最终 SHA 完整验收前可以生成候选 VSIX，不能创建正式 Release、写市场或删除临时 tag。实际交付仅复用验收过的 bytes。
+`Verify release contract` 只有独立核对真实 Actions job / 工件来源、完整必跑集合和同批产物成功后才能通过。当前 GitHub 活动 ruleset 已将它设为 `main` 的 required status check，并要求 PR 至少一次审批、分支追上最新 base；实际规则以 GitHub 当前活动 ruleset 为准。draft 跳过或本地结果不满足该门槛。最终 SHA 完整验收前可以生成候选 VSIX，不能创建正式 Release、写市场或删除临时 tag。实际交付仅复用验收过的 bytes。
 
 ## 0.27.0 发布前检查
 
