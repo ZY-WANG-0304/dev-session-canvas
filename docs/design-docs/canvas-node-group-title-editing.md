@@ -73,6 +73,10 @@ updated_at: 2026-11-01
 
 ### 7.3 布局、事件与可访问性
 
+标题 tab 的非交互空白保留双击聚焦。首次按下只选择时，标题栏仍捕获本次 pointer，使选中后出现的 resize 热区不会改变首次释放与 click 的接收目标；后续即使命中 resize 控件，也能使用标题点击记忆识别双击。该捕获不创建分组拖动或尺寸草稿。
+
+普通分组的自然标题宽度包含 28px 编辑入口预算，workspace root 不包含；二者仍共用反向缩放和容器宽度上限规则，因此相同文本不要求 tab 等宽。窄组选中后，标题与 toolbar 合计宽度限制可使标题屏幕高度低于 14px；验收以共同缩放、容器内完整显示和按钮热区不被裁切为准。标题内容行置于 resize 热区之上，保证压缩后的文字、编辑按钮及输入框优先接收指针；标题内容以外的边缘继续保留 resize 命中。
+
 节点标题组件 `extensions/vscode/dev-session-canvas/src/webview/canvasUiSurface.tsx` 中的 `ChromeTitleEditor` 负责区分只读展示态和编辑态，并提供可复用的 edit button。`extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx` 与 `fileNoteNodes.tsx` 只为可编辑的手工节点启用该入口。workspace root group 仍以 `readOnly` 传入，不渲染 edit button；pane gallery 通过 `titleEditingDisabled` 禁止 overview 和非活动缩略图中的普通分组出现编辑入口。
 
 图标按钮使用 `<button type="button">`、本地化的 `aria-label` 与相同含义的 tooltip（英文“Edit title”，简体中文“编辑标题”）。键盘 Tab 可以到达按钮；按钮聚焦时显示图标和可见 focus ring。点击或键盘激活按钮先选择所属对象，再将焦点交给标题输入框。
@@ -103,7 +107,7 @@ updated_at: 2026-11-01
 
 优先在 `tests/playwright/webview-harness.spec.mjs` 覆盖 Webview 指针、键盘、事件隔离和布局；宿主标题持久化链路沿用已有 smoke / 状态测试，并确认重新加载后保留新标题。真实 VS Code smoke 用于确认 Tab 顺序和高对比主题焦点可见性。
 
-PR #351 两个 blocker 修复后的本地验证：主扩展 `npm run typecheck`、`npm run build -- --execution-profile=stock` 与 `git diff --check` 通过；标题相关 Playwright 定向用例 12 项通过，其中包含不更新快照的 Linux 标题视觉基线比对、编辑按钮入口、Enter / IME、workspace root 只读标题、快速拖动提交和轻微双击抖动。真实 VS Code 中的 hover / 键盘焦点、高对比主题及宿主持久化手动验收尚未执行，仍需后续界面级确认；PR 更新后 CI 也需针对新 head 重跑。
+PR #351 第一轮定向 12 项通过，但对应完整功能门禁为 432 通过 / 4 失败；第二轮修复首次选择后的空白双击、标题缩放断言以及窄组标题内容被 resize 热区覆盖的问题。第二轮提交前的类型检查、stock 构建、diff 检查、六项定向回归、三项视觉用例和徽标 / 头像 / 侧栏节点列表检查通过。完整功能与正式 CI 结果以 [PR #351](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/351) 的对应 head 为准；真实 VS Code 中的 hover / 键盘焦点、高对比主题及宿主持久化手动验收仍待确认。
 
 ## 9. 关联文档
 

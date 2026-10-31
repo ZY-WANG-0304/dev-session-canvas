@@ -24,10 +24,15 @@
 - [x] (2026-10-31) 最新提交通过 `git diff --check origin/main...HEAD` 的只读 Code Review；界面级验收仍待完成。
 - [x] (2026-11-01) 处理 PR #351 review 的两个 blocker：依据第二次按压的实际位移区分快速拖动与轻微双击抖动；迁移测试 probe / Playwright 到编辑按钮入口并更新视觉基线。
 - [x] (2026-11-01) 主扩展类型检查、stock profile 构建、`git diff --check` 和标题相关 Playwright 12 项通过；视觉用例在不更新快照模式下与更新后的 Linux 基线匹配。
+- [x] (2026-11-01) 修复第二轮 review 的标题左侧空白双击与缩放断言；补充窄组标题内容的命中优先级，六项定向回归和三项视觉用例通过。完整功能组与 PR 最新 head 的门禁结果在 PR #351 跟进。
 - [ ] 完成真实 Webview 的悬停、键盘和指针手势验收；界面级验证完成前保留本计划于 `active/`。
 
 ## 意外与发现
 
+- 观察：`5f39a385` 的完整 Webview 功能门禁为 432 通过 / 4 失败，定向 12 项通过不足以证明整个功能门禁恢复。普通分组和 workspace root 的标题左侧空白双击都被选中后新增的 resize 热区改变了事件目标；另两项测试仍假定 root 与普通标题等宽，以及窄标题高度必须大于 14px。
+  证据：PR #351 评论 `6547465652`，Actions run `41227897560`；reviewer 用相同测试切换主线 browser assets 后四项均通过。首次只选择手势需保持 pointer capture，标题宽度验收需计入普通组的 28px 编辑入口预算。
+- 观察：补充窄组编辑入口实测时，标题行中心 hover 被顶部 resize 热区截获。只验证标题与按钮矩形在容器内还不足以确认按钮可操作；标题内容行需要在 resize 热区之上接收事件。
+  证据：缩放 0.5、组宽 360、选中长标题组时，Playwright 的中心 hover 报 `canvas-group-resize-top intercepts pointer events`。回归增加中心 hover、编辑按钮点击、输入框焦点及进入编辑前后宽度一致检查；原左侧空白双击的 `left + 4px` 点击点保持不变。
 - 观察：仓库主线在设计阶段后又前进 7 个提交，其中包含新 release 记录，因此实现分支先 rebase 到最新 `origin/main`。
   证据：`origin/main` 更新到 `034c5a02`；rebase 保留两条标题设计提交和新的 release 设计索引条目。
 - 观察：当前节点标题使用始终挂载的 `<input>`；其 `onFocus` 会立即打开编辑。当前分组拖动把手也位于 `.canvas-group-titlebar`，并依靠可交互目标检测阻止输入框触发拖动。
@@ -52,6 +57,9 @@
 
 ## 决策记录
 
+- 决策：首次只选择手势使用标题栏 pointer capture 保住 click 接收目标，不创建拖动草稿；实际标题内容在压缩布局下优先于 resize 热区接收事件，内容外的边框仍可 resize。
+  理由：选中会挂载 resize 控件，必须同时保护首次手势的连续性和后续文字 / 编辑按钮操作。缩放验收按新宽度预算验证几何，并通过真实指针点击验证入口可用。
+  日期/作者：2026-11-01 / PR #351 第二轮 review 修复
 - 决策：重用共享 `ChromeTitleEditor`，把编辑入口放在同一标题的尾部，不为 Node、Group 新建独立协议或宿主更新链路。
   理由：当前 Agent / Terminal / Note / user group 已通过同一 `webview/updateNodeTitle` / `webview/updateGroupTitle` 写回；本次只改变 Webview 手势与呈现。
   日期/作者：2026-10-30 / Codex
@@ -70,7 +78,7 @@
 
 ## 结果与复盘
 
-PR #351 review 的两个 blocker 已在当前工作树修复并完成定向验证：快速选中后拖动根据释放位移提交，测试入口通过 edit button 激活，Linux 视觉基线与当前标题布局匹配。变更尚待提交、推送及最新 PR head 的 CI / reviewer 复核；真实 VS Code 的 hover、键盘焦点、高对比主题和宿主持久化手动验收仍未完成，因此本计划保留在 `active/`。
+第二轮 review 已补齐首次只选择手势的 pointer capture，恢复普通组与 root 的标题左侧空白双击聚焦，并按新编辑预算迁移缩放验收。补充真实 hover / 点击时发现窄组选中后顶部 resize 热区会覆盖标题内容，已使标题内容优先接收事件；按钮点击、焦点和编辑前后输入宽度均通过回归。定向六项、视觉三项及 Webview 功能组的徽标 / 头像 / 侧栏节点列表检查通过。完整功能门禁以 [PR #351](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/351) 对应 head 的检查与修复回复为准，局部验证和静态复审不替代完整门禁。真实 VS Code 的 hover、键盘焦点、高对比主题和宿主持久化手动验收仍未完成，因此本计划保留在 `active/`。
 
 ## 上下文与定向
 
@@ -116,7 +124,7 @@ Webview 双语文案在 `extensions/vscode/dev-session-canvas/src/webview/i18n/w
 
 workspace root group、自动 File / File List、overview 和非活动 pane gallery thumbnail 不显示可操作的编辑按钮。窄 group、长标题、选中 toolbar、执行节点右侧 actions 和浅色 / 深色 / 高对比主题下，图标可读、热区完整、标题优先 ellipsis、控件不重叠。
 
-本轮已运行 `git diff --check`、`npm run typecheck`、`npm run build -- --execution-profile=stock` 并通过。标题相关 Webview Playwright 12 项通过，包含实际 Linux 快照比较及主要手势 / 编辑入口回归。真实 UI 手动验收仍未运行，不能将主题、Tab / Space、输入态布局与宿主持久化写成已完成人工确认；PR 新 head 的 CI 尚待推送后执行。
+第二轮修复提交前，`git diff --check`、`npm run typecheck`、`npm run build -- --execution-profile=stock`、六项定向 Webview 回归、三项视觉用例（不更新快照）及 `test:activitybar-badges` / `test:avatar` / `test:sidebar-node-list` 均通过。完整功能套件使用与 CI 相同的视觉排除规则、`--workers=2 --retries=0 --update-snapshots=none` 执行；运行结果随 PR #351 的最新 head 记录。真实 UI 手动验收仍未运行，不能将主题、Tab / Space 与宿主持久化写成已完成人工确认。
 
 ## 幂等性与恢复
 

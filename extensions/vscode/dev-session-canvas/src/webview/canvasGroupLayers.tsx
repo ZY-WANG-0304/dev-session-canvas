@@ -950,6 +950,9 @@ function CanvasGroupFrame(props: {
       if (!isTitleText || !props.selected) {
         event.preventDefault();
         stopCanvasEvent(event);
+        // Selection mounts resize controls above the titlebar. Keep this first
+        // click on the titlebar so a second press can reuse its click memory.
+        event.currentTarget.setPointerCapture(event.pointerId);
         props.onSelectGroup(props.group.id);
         clearTitlebarPointerClickMemory();
         return;

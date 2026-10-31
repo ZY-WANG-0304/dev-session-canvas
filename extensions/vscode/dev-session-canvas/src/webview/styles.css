@@ -3559,6 +3559,11 @@ body {
   max-width: 100%;
 }
 
+.canvas-group-title .window-title-main-row {
+  /* Compressed title content remains interactive above the resize hit areas. */
+  z-index: 31;
+}
+
 .canvas-group-title .window-title-input,
 .canvas-group-title .window-title-text {
   color: inherit;

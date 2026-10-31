@@ -13507,7 +13507,10 @@ test('workspace root group title counter-scales like regular group titles below 
   expect(titleChrome.rootTitlebarHeight).toBeGreaterThanOrEqual(24);
   expect(titleChrome.rootFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
   expect(titleChrome.regularFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
-  expect(titleChrome.rootTitlebarWidth).toBeCloseTo(titleChrome.regularTitlebarWidth, 1);
+  // "Frontend" stays at the 112px minimum for a root. The regular tab
+  // reserves another 28px for editing, putting its natural width at 116px.
+  expect(titleChrome.rootTitlebarWidth).toBeCloseTo(112, 1);
+  expect(titleChrome.regularTitlebarWidth).toBeCloseTo(116, 1);
 });
 
 test('workspace root group resize commit survives host refresh and follow-up selection without geometry drift', async ({ page }) => {
@@ -14520,20 +14523,26 @@ test('canvas group title and action buttons only counter-scale while zooming out
     const groupFrame = page.locator('[data-group-id="' + groupId + '"]');
     await groupFrame.locator('.canvas-group-titlebar').click();
     await expect(groupFrame.locator('.canvas-group-toolbar')).toBeVisible();
-    return groupFrame.evaluate((frame, targetGroupId) => {
+    await groupFrame.locator('.window-title-main-row').hover();
+    await expect(groupFrame.locator('.window-title-edit-button')).toHaveCSS('opacity', '1');
+    const layout = await groupFrame.evaluate((frame, targetGroupId) => {
       const background = document.querySelector('[data-group-background-id="' + targetGroupId + '"]');
       const titlebar = frame.querySelector('.canvas-group-titlebar');
       const titleInput = frame.querySelector('.canvas-group-title .window-title-input');
       const toolbar = frame.querySelector('.canvas-group-toolbar');
       const primaryButton = frame.querySelector('.canvas-group-split-primary');
       const dangerButton = frame.querySelector('.canvas-group-split-danger');
+      const editButton = frame.querySelector('.window-title-edit-button');
+      const titleText = frame.querySelector('.window-title-text');
       if (
         !(background instanceof HTMLElement) ||
         !(titlebar instanceof HTMLElement) ||
         !(titleInput instanceof HTMLElement) ||
         !(toolbar instanceof HTMLElement) ||
         !(primaryButton instanceof HTMLElement) ||
-        !(dangerButton instanceof HTMLElement)
+        !(dangerButton instanceof HTMLElement) ||
+        !(editButton instanceof HTMLElement) ||
+        !(titleText instanceof HTMLElement)
       ) {
         throw new Error('Group readable chrome not found.');
       }
@@ -14543,6 +14552,8 @@ test('canvas group title and action buttons only counter-scale while zooming out
       const toolbarRect = toolbar.getBoundingClientRect();
       const primaryRect = primaryButton.getBoundingClientRect();
       const dangerRect = dangerButton.getBoundingClientRect();
+      const editRect = editButton.getBoundingClientRect();
+      const textRect = titleText.getBoundingClientRect();
       const titleStyles = getComputedStyle(titlebar);
       const inputStyles = getComputedStyle(titlebar.querySelector('.window-title-input'));
       const buttonStyles = getComputedStyle(primaryButton);
@@ -14563,19 +14574,39 @@ test('canvas group title and action buttons only counter-scale while zooming out
         titlePaddingLeft: Number.parseFloat(titleStyles.paddingLeft),
         buttonPaddingLeft: Number.parseFloat(buttonStyles.paddingLeft),
         primaryButtonWidth: primaryRect.width,
-        dangerButtonWidth: dangerRect.width
+        dangerButtonWidth: dangerRect.width,
+        editButtonLocalWidth: editButton.offsetWidth,
+        editButtonLocalHeight: editButton.offsetHeight,
+        editButtonWidth: editRect.width,
+        editButtonHeight: editRect.height,
+        editButtonLeft: editRect.left - titlebarRect.left,
+        editButtonRight: editRect.right - titlebarRect.left,
+        editButtonTop: editRect.top - titlebarRect.top,
+        editButtonBottom: editRect.bottom - titlebarRect.top,
+        titleTextRight: textRect.right - titlebarRect.left
       };
     }, groupId);
+    await groupFrame.locator('.window-title-edit-button').click();
+    const titleInput = groupFrame.locator('input[data-probe-field="title"]');
+    await expect(titleInput).toBeFocused();
+    await expect(titleInput).not.toHaveAttribute('readonly', '');
+    const inputBox = await titleInput.boundingBox();
+    expect(inputBox.width).toBeCloseTo(layout.titleInputWidth, 1);
+    await titleInput.press('Escape');
+    return layout;
   };
 
   const narrowLayout = await readGroupChromeLayout('group-1');
-  expect(narrowLayout.titlebarHeight).toBeGreaterThan(14);
+  // The 235px title budget (including edit) and 138px toolbar share a
+  // 180px screen width at zoom 0.5: the 28px title renders at about 13.51px.
+  expect(narrowLayout.titlebarHeight).toBeCloseTo(13.51, 1);
   expect(narrowLayout.titlebarHeight).toBeLessThan(28);
   expect(narrowLayout.titlebarTop + narrowLayout.titlebarHeight).toBeCloseTo(narrowLayout.bodyTopOffset, -1);
   expect(narrowLayout.toolbarHeight).toBeLessThanOrEqual(narrowLayout.titlebarHeight + 2);
   expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
   expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
-  expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1);
+  // Allow the one-pixel frame border plus subpixel layout rounding.
+  expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1.1);
   expect(narrowLayout.primaryButtonWidth).toBeGreaterThan(0);
   expect(narrowLayout.dangerButtonWidth).toBeGreaterThan(0);
 
@@ -14593,6 +14624,17 @@ test('canvas group title and action buttons only counter-scale while zooming out
   expect(wideLayout.toolbarWidth).toBeLessThan(300);
   expect(wideLayout.titlebarWidth + wideLayout.toolbarWidth).toBeLessThan(wideLayout.frameWidth);
   expect(wideLayout.titleInputWidth).toBeGreaterThan(70);
+
+  for (const layout of [narrowLayout, wideLayout]) {
+    expect(layout.editButtonLocalWidth).toBeGreaterThanOrEqual(24);
+    expect(layout.editButtonLocalHeight).toBeGreaterThanOrEqual(24);
+    expect(layout.editButtonWidth).toBeGreaterThanOrEqual(12);
+    expect(layout.editButtonHeight).toBeGreaterThanOrEqual(12);
+    expect(layout.editButtonLeft).toBeGreaterThanOrEqual(layout.titleTextRight);
+    expect(layout.editButtonRight).toBeLessThanOrEqual(layout.titlebarWidth);
+    expect(layout.editButtonTop).toBeGreaterThanOrEqual(0);
+    expect(layout.editButtonBottom).toBeLessThanOrEqual(layout.titlebarHeight);
+  }
 
   const zoomedInScale = await page.evaluate(() => {
     const frame = document.createElement('div');
