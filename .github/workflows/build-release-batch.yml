@@ -1,0 +1,111 @@
+name: Build Release Batch
+on:
+  workflow_dispatch:
+    inputs:
+      product_sha:
+        description: '已合入 main 的完整产品提交 SHA'
+        type: string
+        required: true
+      version:
+        description: '产品版本 X.Y.Z'
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: release-build-${{ inputs.version }}
+  cancel-in-progress: false
+jobs:
+  resolve:
+    name: Release resolve-build
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    outputs:
+      input_sha: ${{ steps.resolve.outputs.input_sha }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      version: ${{ steps.resolve.outputs.version }}
+      trigger_tag: ${{ steps.resolve.outputs.trigger_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+          cache: npm
+      - name: Install locked orchestration dependencies
+        run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output build-resolve-evidence -- npm ci --no-audit --no-fund
+        timeout-minutes: 10
+      - name: Resolve immutable product input
+        id: resolve
+        env:
+          PRODUCT_SHA: ${{ inputs.product_sha }}
+          PRODUCT_VERSION: ${{ inputs.version }}
+        run: node scripts/release/release-batch.mjs --phase resolve --product-sha "$PRODUCT_SHA" --version "$PRODUCT_VERSION" --output build-context
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-context
+          if-no-files-found: error
+          retention-days: 90
+  verify:
+    name: Verify product
+    needs: resolve
+    uses: ./.github/workflows/ci-validation.yml
+    secrets:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+    with:
+      input_sha: ${{ needs.resolve.outputs.input_sha }}
+      base_sha: ${{ needs.resolve.outputs.base_sha }}
+      head_sha: ${{ needs.resolve.outputs.input_sha }}
+      mode: release-tag
+      version: ${{ needs.resolve.outputs.version }}
+      trigger_tag: ${{ needs.resolve.outputs.trigger_tag }}
+  seal:
+    name: Release seal-batch
+    needs: [resolve, verify]
+    if: ${{ needs.verify.result == 'success' && needs.verify.outputs.accepted == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+          cache: npm
+      - name: Install locked batch verifier dependencies
+        run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output batch-evidence -- npm ci --no-audit --no-fund
+        timeout-minutes: 10
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-context
+      - name: Seal the accepted original pair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/release-batch.mjs --phase seal --context build-context/release-context.json --output sealed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-batch-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sealed/batch
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90
+      - name: Preserve batch verification evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            batch-evidence
+            sealed/source/acceptance-source/checked-acceptance.json
+          if-no-files-found: warn
+          retention-days: 90

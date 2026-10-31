@@ -5,11 +5,17 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { taskKey } from './catalog.mjs';
 import { collectGitHubProvenance } from './github-provenance.mjs';
-import { objectDigest, readJSON, writeJSON } from './receipts.mjs';
+import { objectDigest, readJSON, writeJSON, validatePlan } from './receipts.mjs';
 import { validateFrozenPlan } from './resolve-plan.mjs';
 
 export function validateAcceptance({ plan, acceptance, result, provenance, inputSHA, baseSHA, headSHA }) {
   validateFrozenPlan(plan);
+  return validateRecordedAcceptance({ plan, acceptance, result, provenance, inputSHA, baseSHA, headSHA });
+}
+
+// Delivery validates a producer-proven historical contract, never today's catalogue.
+export function validateRecordedAcceptance({ plan, acceptance, result, provenance, inputSHA, baseSHA, headSHA }) {
+  validatePlan(plan);
   assert(['pr','release-pr','release-tag'].includes(plan.mode),'Diagnostic results cannot accept a formal gate');
   for (const [key,value] of Object.entries({ inputSHA,baseSHA,headSHA })) if(value) assert.equal(plan[key],value);
   assert.equal(acceptance?.schemaVersion,1); assert.equal(result?.schemaVersion,1);
@@ -42,7 +48,7 @@ export async function findUniqueFile(directory,name) {
   await visit(directory); assert.equal(files.length,1,`Expected exactly one ${name}`); return files[0];
 }
 
-export async function checkGitHubAcceptance({ inputSHA,baseSHA,headSHA,output,run,repository,collector=collectGitHubProvenance }) {
+export async function checkGitHubAcceptance({ inputSHA,baseSHA,headSHA,output,run,repository,collector=collectGitHubProvenance, recordedPolicy=false }) {
   const independent=await collector({run,tasks:[]},{scope:'acceptance',repository,output});
   assert.equal(independent.artifacts.length,1,'Missing/ambiguous final acceptance artifact');
   const artifact=independent.artifacts[0]; const producer=independent.jobs.find(job=>job.id===artifact.jobID);
@@ -53,7 +59,7 @@ export async function checkGitHubAcceptance({ inputSHA,baseSHA,headSHA,output,ru
   assert.deepEqual(plan.run,run,'Acceptance belongs to a different run/input');
   const acceptance=await readJSON(await findUniqueFile(root,'acceptance-receipt.json'));
   assert(artifact.receiptDigests.includes(objectDigest(acceptance)),'Acceptance was not independently downloaded');
-  validateAcceptance({plan,acceptance,inputSHA,baseSHA,headSHA,
+  (recordedPolicy ? validateRecordedAcceptance : validateAcceptance)({plan,acceptance,inputSHA,baseSHA,headSHA,
     result:await readJSON(await findUniqueFile(root,'gate-result.json')),
     provenance:await readJSON(await findUniqueFile(root,'gate-provenance.json'))});
   await writeJSON(path.join(output,'checked-acceptance.json'),{schemaVersion:1,status:'passed',inputSHA:plan.inputSHA,

@@ -1,35 +1,34 @@
 name: Publish Marketplace Release
 on:
-  push:
-    tags: ['publish/v*']
   workflow_dispatch:
     inputs:
-      trigger_tag:
-        description: '原发布输入 publish/vX.Y.Z；已完成后也可恢复原 Release'
+      version:
+        description: '产品版本 X.Y.Z；从 main 执行发布工具'
         type: string
         required: true
+      batch_run_id:
+        description: 'Build Release Batch 的成功 run ID；仅历史完整 Release 重试可留空'
+        type: string
+        required: false
+      batch_attempt:
+        description: '已验收批次 attempt；重试必须保留原值'
+        type: string
+        default: '1'
       target:
-        description: '渠道恢复范围；仅支持 all 或 open-vsx，Visual Studio Marketplace 已从当前 workflow 移除'
+        description: '历史渠道恢复范围；VSM 保持 deferred'
         type: choice
         options: [all, open-vsx]
         default: all
-      recovery_source_run_id:
-        description: '仅恢复初始 prepare-release 失败且未运行渠道的 Release；填入原失败 run ID'
-        type: string
-        required: false
-      recovery_previous_run_id:
-        description: '恢复再次中断时填写生成当前远端部分资产的前次恢复 run ID'
-        type: string
-        required: false
 permissions:
   contents: write
   actions: read
 concurrency:
-  group: marketplace-release-${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
+  group: marketplace-release-${{ inputs.version }}
   cancel-in-progress: false
 jobs:
   resolve-release:
     name: Release resolve-release
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     outputs:
@@ -41,6 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -56,28 +56,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TRIGGER: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
-          RELEASE_TARGET: ${{ inputs.target || 'all' }}
-          RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id || '' }}
-          RECOVERY_PREVIOUS_RUN_ID: ${{ inputs.recovery_previous_run_id || '' }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TARGET: ${{ inputs.target }}
+          BATCH_RUN_ID: ${{ inputs.batch_run_id }}
+          BATCH_ATTEMPT: ${{ inputs.batch_attempt }}
         run: |
           set -euo pipefail
           git fetch origin --tags
-          run_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .head_sha)"
-          recovery_args=()
-          if [[ -n "$RECOVERY_SOURCE_RUN_ID" ]]; then
-            recovery_args=(--recovery-source-run-id "$RECOVERY_SOURCE_RUN_ID")
+          batch_args=()
+          if [[ -n "$BATCH_RUN_ID" ]]; then
+            batch_args=(--batch-run-id "$BATCH_RUN_ID" --batch-attempt "$BATCH_ATTEMPT")
           fi
-          if [[ -n "$RECOVERY_PREVIOUS_RUN_ID" ]]; then
-            recovery_args+=(--recovery-previous-run-id "$RECOVERY_PREVIOUS_RUN_ID")
-          fi
-          node scripts/release/publish-tag-release.mjs --phase resolve --trigger-tag "$RELEASE_TRIGGER" --target "$RELEASE_TARGET" --run-head "$run_head" --output release-context "${recovery_args[@]}"
+          node scripts/release/publish-tag-release.mjs --phase resolve --version "$RELEASE_VERSION" --trigger-tag "publish/v$RELEASE_VERSION" --target "$RELEASE_TARGET" --run-head "$GITHUB_SHA" --output release-context "${batch_args[@]}"
       - name: Upload frozen release context
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
           name: release-context-${{ github.run_id }}-${{ github.run_attempt }}
-          path: release-context
+          path: release-context/release-context.json
+          retention-days: 90
           if-no-files-found: error
       - name: Preserve resolution failure
         if: ${{ always() }}
@@ -87,13 +84,12 @@ jobs:
           path: |
             release-context/release-failure.json
             resolve-evidence
+          retention-days: 90
           if-no-files-found: warn
   verify-release:
     name: Verify release
     needs: resolve-release
     uses: ./.github/workflows/release-validation.yml
-    secrets:
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     with:
       input_sha: ${{ needs.resolve-release.outputs.input_sha }}
       base_sha: ${{ needs.resolve-release.outputs.base_sha }}
@@ -109,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'release-tag' && needs.resolve-release.outputs.input_sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -136,6 +132,7 @@ jobs:
           name: prepared-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: release-prepare/prepared
           include-hidden-files: true
+          retention-days: 90
           if-no-files-found: error
       - name: Preserve prepare evidence
         if: ${{ always() }}
@@ -147,6 +144,7 @@ jobs:
             release-prepare/prepared/release-manifest-*.json
             release-prepare/prepared/state-*.json
             prepare-evidence
+          retention-days: 90
           if-no-files-found: warn
   publish-open-vsx:
     name: Release publish-open-vsx
@@ -157,7 +155,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'release-tag' && needs.resolve-release.outputs.input_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -184,6 +182,7 @@ jobs:
           name: marketplace-result-open-vsx-${{ github.run_id }}-${{ github.run_attempt }}
           path: channel-result
           include-hidden-files: true
+          retention-days: 90
           if-no-files-found: error
       - name: Fail incomplete required channel
         if: ${{ steps.publish.outputs.complete != 'true' }}
@@ -197,7 +196,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'release-tag' && needs.resolve-release.outputs.input_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -223,4 +222,5 @@ jobs:
           name: marketplace-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: final-result
           include-hidden-files: true
+          retention-days: 90
           if-no-files-found: error

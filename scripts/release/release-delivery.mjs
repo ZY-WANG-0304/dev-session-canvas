@@ -4,7 +4,7 @@ import os from 'node:os';
 import fs from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { assertSHA, digest, fileDigest, objectDigest, readJSON, verifyPackageFiles, writeJSON } from '../gates/receipts.mjs';
-import { checkGitHubAcceptance, findUniqueFile, validateAcceptance } from '../gates/check-acceptance.mjs';
+import { checkGitHubAcceptance, findUniqueFile, validateRecordedAcceptance } from '../gates/check-acceptance.mjs';
 import { collectGitHubProvenance } from '../gates/github-provenance.mjs';
 import { githubClient, collectReleaseFacts, releaseArtifactJob } from './release-github.mjs';
 import { contentPolicyDigest, marketplaceTargets, requiredTargets, releaseIdentity, releaseJobName,
@@ -16,6 +16,8 @@ import { appendReleaseState, recoverReleaseState, saveReleaseState } from './rel
 export const immutableReleaseFiles = Object.freeze(['main.vsix', 'notifier.vsix', 'package-receipt.json',
   'gate-plan.json', 'gate-result.json', 'gate-provenance.json', 'acceptance-receipt.json',
   'release-identity.json', 'original-release-context.json']);
+export const releaseFiles = context => context.batchFormat === 1
+  ? [...immutableReleaseFiles, 'release-changelog.md'] : [...immutableReleaseFiles];
 const deferredMarketplaceTargets = () => ['visual-studio'];
 const assertHistoricalVisualStudioJobSkippedOrAbsent = jobs => {
   const visualStudioJobs = jobs.filter(job => job.name === 'Release publish-visual-studio'
@@ -209,7 +211,7 @@ export async function verifyRecoveredRelease({ context, output, client = githubC
   const lookup = await client.lookupRelease(context.finalTag, deadline); assert.equal(lookup.observation, 'present');
   assert.equal(lookup.release.id, context.existingReleaseID); assert.equal(await client.readTag(context.finalTag, deadline), context.releaseSHA);
   const assets = await client.pages(`releases/${lookup.release.id}/assets`, null, deadline);
-  const names = [...immutableReleaseFiles];
+  const names = releaseFiles(context);
   const downloaded = [];
   for (const name of names) {
     const matches = assets.filter(asset => asset.name === name); assert.equal(matches.length, 1,
@@ -225,9 +227,10 @@ export async function verifyRecoveredRelease({ context, output, client = githubC
   const provenance = await readJSON(path.join(output, 'gate-provenance.json'));
   const originalContext = validateReleaseContext(await readJSON(path.join(output, 'original-release-context.json')));
   assert(['release-tag', 'incomplete-release-recovery'].includes(originalContext.mode));
+  if (originalContext.batchFormat === 1) assert(context.batchSource, 'Supply the original batch run and attempt for this release');
   assert.equal(originalContext.releaseSHA, context.releaseSHA);
   assert.equal(originalContext.repository, context.repository);
-  validateAcceptance({ plan, acceptance, result, provenance, inputSHA: context.releaseSHA });
+  validateRecordedAcceptance({ plan, acceptance, result, provenance, inputSHA: context.releaseSHA });
   assert.equal(plan.mode, 'release-tag'); assert.deepEqual(plan.run, originalContext.run);
   // Independently bind the original acceptance to its actual successful
   // verifier and downloaded artifact, rather than trusting Release JSON alone.
@@ -286,26 +289,34 @@ export async function prepareRelease({ context, input, output, client = githubCl
   const plan = await readJSON(path.join(input, 'gate-plan.json'));
   const acceptance = await readJSON(path.join(input, 'acceptance-receipt.json'));
   await verifyPackageFiles(packageReceipt, plan, input);
-  validateAcceptance({ plan, acceptance, result: await readJSON(path.join(input, 'gate-result.json')),
+  validateRecordedAcceptance({ plan, acceptance, result: await readJSON(path.join(input, 'gate-result.json')),
     provenance: await readJSON(path.join(input, 'gate-provenance.json')), inputSHA: context.releaseSHA });
   if (context.mode === 'incomplete-release-recovery') {
     assert.deepEqual(plan.run, context.recoveryArtifactRun,
       'Incomplete recovery must use the acceptance run that produced the existing asset bytes');
   }
   const identity = releaseIdentity({ context, acceptance, packageReceipt });
+  if (context.batchSource) {
+    const verified = await readJSON(path.join(input, 'batch-verification.json'));
+    assert.equal(verified.status, 'passed');
+    assert.equal(verified.identityDigest, objectDigest(identity));
+    assert.deepEqual(verified.batchSource, context.batchSource);
+    assert.equal(verified.producer.runID, context.run.id);
+    assert.equal(verified.producer.attempt, context.run.attempt);
+  }
   if (context.mode === 'channel-retry') {
     const recovery = await readJSON(path.join(input, 'recovery-verification.json'));
     assert.equal(recovery.status, 'passed'); assert.equal(recovery.identityDigest, objectDigest(identity));
     assert.equal(recovery.producer.runID, String(context.run.id)); assert.equal(recovery.producer.attempt, context.run.attempt);
   }
-  for (const name of immutableReleaseFiles.filter(name => !['release-identity.json', 'original-release-context.json'].includes(name))) {
+  for (const name of releaseFiles(context).filter(name => !['release-identity.json', 'original-release-context.json'].includes(name))) {
     await fs.copyFile(path.join(input, name), path.join(output, name));
   }
   await writeJSON(path.join(output, 'release-context.json'), context);
   await writeJSON(path.join(output, 'release-identity.json'), identity);
   if (['release-tag', 'incomplete-release-recovery'].includes(context.mode)) {
     const originalContext = context.mode === 'incomplete-release-recovery'
-      ? { ...context, run: context.recoveryArtifactRun } : context;
+      ? { ...context, run: context.recoveryArtifactRun } : { ...context };
     delete originalContext.recoveryPreviousRun;
     await writeJSON(path.join(output, 'original-release-context.json'), originalContext);
   } else await fs.copyFile(path.join(input, 'original-release-context.json'),
@@ -314,7 +325,7 @@ export async function prepareRelease({ context, input, output, client = githubCl
     ? await readJSON(path.join(input, 'validated-channel-history.json')) : {});
   let finalSHA = await client.readTag(context.finalTag, deadline);
   if (!finalSHA) {
-    assert.equal(context.mode, 'release-tag'); await client.createTag(context.finalTag, context.releaseSHA, deadline);
+    assert(['release-tag', 'artifact-release'].includes(context.mode)); await client.createTag(context.finalTag, context.releaseSHA, deadline);
     finalSHA = await client.readTag(context.finalTag, deadline);
   }
   assert.equal(finalSHA, context.releaseSHA);
@@ -323,7 +334,7 @@ export async function prepareRelease({ context, input, output, client = githubCl
   }
   let lookup = await client.lookupRelease(context.finalTag, deadline);
   if (lookup.observation === 'absent') {
-    assert.equal(context.mode, 'release-tag');
+    assert(['release-tag', 'artifact-release'].includes(context.mode));
     // Initial Release notes honestly describe pending delivery; finalize writes
     // the actual channel facts. No external action occurs before acceptance.
     await client.createRelease(context.finalTag, context.releaseSHA, `Dev Session Canvas v${context.version}`,
@@ -331,28 +342,38 @@ export async function prepareRelease({ context, input, output, client = githubCl
     lookup = await client.lookupRelease(context.finalTag, deadline);
   }
   assert.equal(lookup.observation, 'present'); const release = lookup.release;
-  if (['channel-retry', 'incomplete-release-recovery'].includes(context.mode)) {
+  if (context.existingReleaseID !== null) {
     assert.equal(release.id, context.existingReleaseID);
   }
   const assets = await client.pages(`releases/${release.id}/assets`, null, deadline);
-  if (context.mode === 'incomplete-release-recovery') {
+  if (['incomplete-release-recovery', 'artifact-release'].includes(context.mode)) {
     assert.equal(release.tag_name, context.finalTag);
     assert.equal(release.target_commitish, context.releaseSHA);
     assert.equal(release.name, `Dev Session Canvas v${context.version}`);
     assert.equal(release.draft, false); assert.equal(release.prerelease, false);
     assert.equal(release.body,
       `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${context.releaseSHA}`);
-    assert(assets.every(asset => immutableReleaseFiles.includes(asset.name)),
+    assert(assets.every(asset => releaseFiles(context).includes(asset.name)),
       'Incomplete recovery refuses manifest, state, or unrelated Release assets');
     assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate Release assets are ambiguous');
     assert(assets.every(asset => asset.state === 'uploaded'), 'Incomplete recovery refuses assets in an unknown state');
   }
+  // Detect every existing immutable conflict before uploading any missing file.
+  for (const name of releaseFiles(context)) {
+    const matches = assets.filter(asset => asset.name === name);
+    assert(matches.length <= 1, 'Ambiguous GitHub asset');
+    if (matches.length) {
+      assert.equal(matches[0].state, 'uploaded');
+      assert.equal(digest(await client.downloadAsset(matches[0], deadline)),
+        digest(await fs.readFile(path.join(output, name))), `GitHub asset ${name} differs; refuse clobber`);
+    }
+  }
   const deliveries = [];
-  for (const name of immutableReleaseFiles) {
+  for (const name of releaseFiles(context)) {
     const bytes = await fs.readFile(path.join(output, name)); const matches = assets.filter(asset => asset.name === name);
     assert(matches.length <= 1, 'Ambiguous GitHub asset'); let asset = matches[0];
     if (!asset) {
-      assert(['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+      assert(['release-tag', 'incomplete-release-recovery', 'artifact-release'].includes(context.mode),
         'Original release assets are incomplete; refuse replacement');
       asset = await client.uploadAsset(release, name, bytes, deadline);
     }
@@ -380,7 +401,7 @@ export async function prepareRelease({ context, input, output, client = githubCl
   } else if (manifests.length) {
     throw new Error('Existing release state requires verified channel-retry recovery; refuse a second prepare root');
   } else {
-    assert(['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+    assert(['release-tag', 'incomplete-release-recovery', 'artifact-release'].includes(context.mode),
       'Original Release has no recoverable manifest');
     const pending = { schemaVersion: 1, status: 'pending', releaseSHA: context.releaseSHA, version: context.version,
       identityDigest: objectDigest(identity), requiredTargets: [...requiredTargets], github, channels: {},
@@ -418,10 +439,10 @@ function releaseManifest(context, identity, github, completion, channels, histor
     channelHistory: history, context, tags: { finalTagStatus: 'present', triggerTagStatus: 'kept' } };
 }
 
-export async function collectNewReleaseInput({ context, output, client = githubClient({ repository: context.repository }) }) {
+export async function collectNewReleaseInput({ context, output, client = githubClient({ repository: context.repository }), recordedPolicy = false }) {
   const { plan, acceptance, root } = await checkGitHubAcceptance({ inputSHA: context.releaseSHA,
     baseSHA: context.baseSHA, headSHA: context.releaseSHA, run: context.run,
-    output: path.join(output, 'acceptance-source'), repository: context.repository });
+    output: path.join(output, 'acceptance-source'), repository: context.repository, recordedPolicy });
   assert.equal(acceptance.mode, 'release-tag');
   const provenance = await collectGitHubProvenance(plan, { output: path.join(output, 'candidate-source'),
     repository: context.repository, scope: 'candidate' });
@@ -455,7 +476,8 @@ export async function collectIncompleteRecoveryInput({ context, output, client =
 export async function finalizeRelease({ context, prepared, output, client = githubClient({ repository: context.repository }),
   deadline = Date.now() + 1200000, collector = collectReleaseFacts,
   renderNotes = manifest => buildReleaseNotes({ version: context.version,
-    changelog: 'extensions/vscode/dev-session-canvas/CHANGELOG.md', manifest }) }) {
+    changelog: context.batchFormat === 1 ? path.resolve(prepared, 'release-changelog.md')
+      : 'extensions/vscode/dev-session-canvas/CHANGELOG.md', manifest }) }) {
   validateReleaseContext(context);
   const allowedNames = [`prepared-release-${context.run.id}-${context.run.attempt}`,
     ...context.selectedTargets.map(target => `marketplace-result-${target}-${context.run.id}-${context.run.attempt}`)];
