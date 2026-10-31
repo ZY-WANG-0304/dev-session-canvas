@@ -32,7 +32,8 @@
 - [x] (2026-10-31) PR #348 以 `3433e35672495f3e99dca485a87d50c6116bcdb4` 合并；main 上 Preflight 重跑通过。
 - [x] (2026-10-31) `channel-retry` run `41198214739` 的 resolver 成功，恢复验证失败；失败回执显示 `selectedTargets=['open-vsx']` 与旧校验器预期 `['open-vsx','visual-studio']` 不一致，prepare、Open VSX 和 finalize 均 skipped，无渠道写入。
 - [x] 修正所有恢复模式的代码 checkout：恢复验证与交付编排使用调用 workflow 的 `github.sha`，普通 `release-tag` 继续使用不可变发布输入 SHA；同步 workflow 合同回归和根因文档。workflow YAML 解析、变更脚本语法检查和 `git diff --check` 通过；尚未在本机执行测试套件，等待 PR Release Preflight 验证。
-- [ ] 更新分支并创建 PR，等待 Release Preflight 与正式复审。
+- [x] 创建 PR #349，head `2233f959927794d5ed1682bed1cae083cb46d657`；Release Preflight 已启动，正式复审待完成。
+- [ ] 等待最新 PR head 的 Release Preflight 与正式复审通过。
 - [ ] 修复合并后，使用同一 `v0.27.0` 输入再次 `channel-retry`，确认 GitHub/Open VSX 收尾成功、VSM deferred、临时 tag 按门禁清理。
 
 ## 意外与发现
