@@ -1053,3 +1053,12 @@ main 已启用活动 ruleset，目标为默认分支：要求 PR、一次审批�
 影响限于 Release notes 的临时 tag 状态表述，不改变正式版本 tag 指向、产品身份、VSIX 字节或渠道交付结果。当前查验临时 tag 应以 GitHub 实际 ref 和最终状态证据为准，不能只依据该行文案。本次按非阻塞历史问题登记，未将其纳入两条流水线改造的实现范围。
 
 建议在下一次发布收尾工具修复时单独处理：先获得清理后的实际状态，再生成与最终状态一致的 notes，并覆盖不存在、保留和删除失败的情况；相关入口为 `release-delivery.mjs::releaseManifest/finalizeRelease`、`write-github-release-notes.mjs` 与 `scripts/test/test-release-delivery.mjs`。设计与验收边界见 [发布解耦设计](../design-docs/release-product-decoupling.md)；此记录不表示修复已完成或已有修复 PR。
+
+
+## 合并 CI 文档路径过重与缺少显式验证复用（2026-11-01）
+
+PR #350 的代码 CI 通过后仅补四份文档，第二轮 run `41229901129` 仍执行 277 jobs、观察跨度约 29.18 分钟。当前按完整 PR diff 分类是正确的安全边界，但缺少相同有效输入的复用证明；此外 `taskCatalog` 对纯文档仍无条件安排 90 tasks / 8 个业务 jobs，包括前端功能和视觉验证，增加不必要的等待与 runner 消耗。
+
+建议下一轮 CI 优化先实施普通文档轻量检查和同 base、原完整成功运行的显式复用验证，保持稳定必需检查、未知输入回退及发布完整验收。不能只比较最后一个 commit，或删除 input SHA / producer 断言。`docs/` 内存在测试和门禁真实输入，白名单需完整消费者审计；构建会写来源 SHA，原结果复用不等于新 SHA 的包已构建验收。当前运行策略未修改，不能依据本记录手动省掉 required jobs。
+
+范围、任务矩阵、实际证据与反例要求见 [设计](../design-docs/ci-validation-scope-policy.md) 和 [已完成的设计计划](completed/ci-validation-scope-policy.md)。该计划完成的是研究，轻量路径、证明格式和模块依赖裁剪均尚未实施。
