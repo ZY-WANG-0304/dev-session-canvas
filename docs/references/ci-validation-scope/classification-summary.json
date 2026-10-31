@@ -1,0 +1,624 @@
+{
+  "baseline": "ee4d367c8dd7cf310282a253758d4536b9d7051d",
+  "method": "Existing buildPlan/planJobs only; no workflow executed. docsFollowup is a counterfactual using only the last commit diff. Four control jobs are outside the matrix; skipped placeholders are not runner allocations.",
+  "cases": [
+    {
+      "name": "pr350",
+      "changedPaths": [
+        ".github/workflows/build-release-batch.yml",
+        ".github/workflows/ci-validation.yml",
+        ".github/workflows/publish-marketplace-release.yml",
+        ".github/workflows/release-validation.yml",
+        "docs/WORKFLOW.md",
+        "docs/design-docs/core-beliefs.md",
+        "docs/design-docs/index.md",
+        "docs/design-docs/release-gate-redesign.md",
+        "docs/design-docs/release-product-decoupling.md",
+        "docs/exec-plans/completed/release-product-decoupling.md",
+        "docs/exec-plans/tech-debt-tracker.md",
+        "docs/notifier-preview-release-playbook.md",
+        "docs/public-preview-release-playbook.md",
+        "docs/workflows/VERSION.md",
+        "package.json",
+        "scripts/gates/check-acceptance.mjs",
+        "scripts/gates/github-provenance.mjs",
+        "scripts/release/publish-tag-release.mjs",
+        "scripts/release/release-batch.mjs",
+        "scripts/release/release-completion.mjs",
+        "scripts/release/release-delivery.mjs",
+        "scripts/release/release-state.mjs",
+        "scripts/release/write-github-release-notes.mjs",
+        "scripts/test/release-fixture.mjs",
+        "scripts/test/test-publish-marketplace-workflow.mjs",
+        "scripts/test/test-release-batch.mjs"
+      ],
+      "scope": {
+        "functional": true,
+        "artifact": true,
+        "release": false
+      },
+      "tasks": 362,
+      "required": 356,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "native-assets": {
+          "count": 6,
+          "runners": [
+            "macos-15",
+            "macos-15-intel",
+            "ubuntu-24.04",
+            "ubuntu-24.04-arm",
+            "windows-11-arm",
+            "windows-2025"
+          ]
+        },
+        "source-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "source-host": {
+          "count": 133,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-host": {
+          "count": 2,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "package-clean": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "packaged-host": {
+          "count": 119,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "installed-pair": {
+          "count": 3,
+          "runners": [
+            "macos-15-intel",
+            "ubuntu-22.04",
+            "windows-2025"
+          ]
+        }
+      },
+      "matrixJobs": 273
+    },
+    {
+      "name": "docsFollowup",
+      "changedPaths": [
+        "docs/design-docs/index.md",
+        "docs/design-docs/release-product-decoupling.md",
+        "docs/exec-plans/active/release-product-decoupling.md",
+        "docs/exec-plans/completed/release-product-decoupling.md",
+        "docs/exec-plans/tech-debt-tracker.md"
+      ],
+      "scope": {
+        "functional": false,
+        "artifact": false,
+        "release": false
+      },
+      "tasks": 90,
+      "required": 90,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        }
+      },
+      "matrixJobs": 8
+    },
+    {
+      "name": "docs",
+      "changedPaths": [
+        "docs/design-docs/example.md"
+      ],
+      "scope": {
+        "functional": false,
+        "artifact": false,
+        "release": false
+      },
+      "tasks": 90,
+      "required": 90,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        }
+      },
+      "matrixJobs": 8
+    },
+    {
+      "name": "source",
+      "changedPaths": [
+        "extensions/vscode/dev-session-canvas/src/extension.ts"
+      ],
+      "scope": {
+        "functional": true,
+        "artifact": false,
+        "release": false
+      },
+      "tasks": 238,
+      "required": 232,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "native-assets": {
+          "count": 6,
+          "runners": [
+            "macos-15",
+            "macos-15-intel",
+            "ubuntu-24.04",
+            "ubuntu-24.04-arm",
+            "windows-11-arm",
+            "windows-2025"
+          ]
+        },
+        "source-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "source-host": {
+          "count": 133,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-host": {
+          "count": 2,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        }
+      },
+      "matrixJobs": 150
+    },
+    {
+      "name": "readme",
+      "changedPaths": [
+        "README.md"
+      ],
+      "scope": {
+        "functional": true,
+        "artifact": true,
+        "release": false
+      },
+      "tasks": 362,
+      "required": 356,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "native-assets": {
+          "count": 6,
+          "runners": [
+            "macos-15",
+            "macos-15-intel",
+            "ubuntu-24.04",
+            "ubuntu-24.04-arm",
+            "windows-11-arm",
+            "windows-2025"
+          ]
+        },
+        "source-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "source-host": {
+          "count": 133,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-host": {
+          "count": 2,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "package-clean": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "packaged-host": {
+          "count": 119,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "installed-pair": {
+          "count": 3,
+          "runners": [
+            "macos-15-intel",
+            "ubuntu-22.04",
+            "windows-2025"
+          ]
+        }
+      },
+      "matrixJobs": 273
+    },
+    {
+      "name": "gate",
+      "changedPaths": [
+        "scripts/gates/resolve-plan.mjs"
+      ],
+      "scope": {
+        "functional": true,
+        "artifact": true,
+        "release": false
+      },
+      "tasks": 362,
+      "required": 356,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "native-assets": {
+          "count": 6,
+          "runners": [
+            "macos-15",
+            "macos-15-intel",
+            "ubuntu-24.04",
+            "ubuntu-24.04-arm",
+            "windows-11-arm",
+            "windows-2025"
+          ]
+        },
+        "source-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "source-host": {
+          "count": 133,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-host": {
+          "count": 2,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "package-clean": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "packaged-host": {
+          "count": 119,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "installed-pair": {
+          "count": 3,
+          "runners": [
+            "macos-15-intel",
+            "ubuntu-22.04",
+            "windows-2025"
+          ]
+        }
+      },
+      "matrixJobs": 273
+    },
+    {
+      "name": "releaseContract",
+      "changedPaths": [
+        "docs/release-contracts/v0.27.0.md"
+      ],
+      "scope": {
+        "functional": true,
+        "artifact": true,
+        "release": true
+      },
+      "tasks": 362,
+      "required": 362,
+      "jobs": {
+        "input-contract": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "regression": {
+          "count": 3,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "frontend-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-function": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "webview-visual": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-browser": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "native-assets": {
+          "count": 6,
+          "runners": [
+            "macos-15",
+            "macos-15-intel",
+            "ubuntu-24.04",
+            "ubuntu-24.04-arm",
+            "windows-11-arm",
+            "windows-2025"
+          ]
+        },
+        "source-build": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "source-host": {
+          "count": 133,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "marketplace-host": {
+          "count": 2,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "package-clean": {
+          "count": 1,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "packaged-host": {
+          "count": 119,
+          "runners": [
+            "ubuntu-22.04"
+          ]
+        },
+        "installed-pair": {
+          "count": 3,
+          "runners": [
+            "macos-15-intel",
+            "ubuntu-22.04",
+            "windows-2025"
+          ]
+        }
+      },
+      "matrixJobs": 273
+    }
+  ]
+}

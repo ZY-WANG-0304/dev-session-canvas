@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/ci-validation-scope-policy.md` | 合并 CI 必跑任务、普通文档轻量路径与已验收代码追加文档的复用边界；现状已核验，规则待实施 | 执行编排域、VSCode 集成域 / 适配与基础设施层 | 比较中 | 验证中 | `docs/exec-plans/completed/ci-validation-scope-policy.md` | 2026-11-01 |
 | `docs/design-docs/release-product-decoupling.md` | 发布工具与产品内容独立演进；首次发布和恢复均固定产品输入，工具更新不得换包；两条流水线已实现并通过 PR CI，实际交付待首次使用 | VSCode 集成域、执行编排域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/completed/release-product-decoupling.md` | 2026-11-01 |
 | `docs/design-docs/release-0-27-0.md` | 0.27.0 公开 Preview 里程碑范围、版本选择、用户说明和发布验证边界 | 项目状态域、执行编排域、画布交互域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/release-0-27-0-prep.md` | 2026-10-30 |
 | `docs/design-docs/smoke-real-tui-coverage.md` | 四项真实 TUI 独立回合证据、非确定性回答与 CI 覆盖 | 执行编排域、VSCode 集成域、画布交互域 / 宿主集成层、画布呈现层、适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/smoke-real-tui-coverage.md` | 2026-10-28 |
