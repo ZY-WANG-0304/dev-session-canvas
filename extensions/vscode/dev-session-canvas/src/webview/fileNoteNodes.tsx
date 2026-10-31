@@ -1755,6 +1755,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
         <ChromeTitleEditor
           value={data.title}
           placeholder={t('note.title.placeholder')}
+          titleEditLabel={t('action.editTitle')}
           className="note-window-title"
           subtitle={associatedMarkdownSubtitle}
           subtitleAccessory={
