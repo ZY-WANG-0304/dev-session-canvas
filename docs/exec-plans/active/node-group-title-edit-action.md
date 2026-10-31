@@ -22,6 +22,8 @@
 - [x] (2026-10-31) subagent Code Review 两轮复核：修复双击候选移动提交与快速选中后拖动被拦截，最终未发现确定性 blocker。
 - [x] (2026-10-31) 统一标题编辑按钮的 hover / focus feedback；按钮跟随主标题实际显示文本，编辑态沿用原输入框宽度规则。
 - [x] (2026-10-31) 最新提交通过 `git diff --check origin/main...HEAD` 的只读 Code Review；界面级验收仍待完成。
+- [x] (2026-11-01) 处理 PR #351 review 的两个 blocker：依据第二次按压的实际位移区分快速拖动与轻微双击抖动；迁移测试 probe / Playwright 到编辑按钮入口并更新视觉基线。
+- [x] (2026-11-01) 主扩展类型检查、stock profile 构建、`git diff --check` 和标题相关 Playwright 12 项通过；视觉用例在不更新快照模式下与更新后的 Linux 基线匹配。
 - [ ] 完成真实 Webview 的悬停、键盘和指针手势验收；界面级验证完成前保留本计划于 `active/`。
 
 ## 意外与发现
@@ -41,6 +43,12 @@
   日期/作者：2026-10-31 / 用户反馈与实现判断
 - 观察：首轮 Code Review 确认，第二次标题按下如果跨过 3px 阈值，会在原生双击聚焦前提交分组位置。随后直接吞掉双击候选又会挡住快速拖动；现实现让候选按下仍可达到阈值，并把位置提交延迟到 click 事件可判定是否为双击之后。
   证据：`CanvasGroupFrame.beginDrag` 标记候选，`completeDrag` 延迟候选位置提交，标题栏 `onClick` 在 `detail > 1` 时清除草稿；最终 reviewer 复核确认双击不会提交移动，快速拖动仍可提交。
+- 观察：PR #351 的原生鼠标复现推翻了上面的快速拖动结论。Chromium 在 pointer capture 下会为第二次快速拖动派发 `click(detail=2)`，当前标题栏据此无条件取消 deferred move，之后双击事件仍聚焦视口；Xvfb + headed Chromium + X11 XTest 连续三次复现为 0 条 move 消息。
+  证据：PR #351 的 2026-10-31 review comment；同一用例在两次按下间隔约 800ms 时产生 1 条 move 消息。
+- 观察：标题编辑入口替换了原本可直接聚焦并输入的标题字段，但 Webview DOM probe 的 `setNodeTextField` 和若干 Playwright 测试仍直接 focus / click 隐藏、只读的测量 input；同一 PR 的定向测试因此失败，视觉基线记录到 10,190 个像素差异。
+  证据：PR #351 Gate `webview-function` 和 `webview-visual` 失败工件，以及 review 中列出的两条标题测试。
+- 观察：按 edit button 入口迁移测试 probe 和 Playwright 后，标题提交 / IME / 只读 root 边界用例与视觉快照均通过；快速拖动和容差内轻微双击分别提交移动和聚焦，没有混淆。
+  证据：2026-11-01 在当前工作树运行定向 Webview Playwright 12 项，均通过；`npm run typecheck`、`npm run build -- --execution-profile=stock`、`git diff --check` 均通过。
 
 ## 决策记录
 
@@ -53,10 +61,16 @@
 - 决策：workspace root group、自动 File / File List、overview 和非活动缩略图不显示可操作的编辑入口。
   理由：这些对象的标题只读或当前画面禁止写入；入口只属于用户可命名且正在交互的对象。
   日期/作者：2026-10-30 / 用户需求与现行产品边界
+- 决策：第二次标题按压被识别为双击候选时，若该次手势结束位置相对按下点超过现有 8px 双击位置容差，则立即提交已越过 3px 拖动阈值的位置，并吞掉紧随的聚焦双击；位移不超过 8px 时继续短暂延迟移动，让 `click(detail=2)` 取消轻微抖动并保留聚焦。
+  理由：`click.detail` 只表示浏览器识别到多次点击，不足以证明第二次按压没有拖动。用释放位置区分明显拖动与容差内抖动，同时保留原双击导航语义。
+  日期/作者：2026-11-01 / PR #351 review 反馈
+- 决策：所有标题提交测试入口都必须先激活可访问的 edit button，再写入 / 断言当前 input；DOM probe 的 `setNodeTextField` 也复用该真实入口，不再聚焦只读测量字段。标题展示快照在确认实际 UI 变化后更新 Linux 基线。
+  理由：测试应覆盖用户当前可操作的入口与展示/编辑边界，视觉基线要记录有意的标题布局变化。
+  日期/作者：2026-11-01 / PR #351 review 反馈
 
 ## 结果与复盘
 
-上一版实现和静态构建已完成。rebase 到 `origin/main@aa18ec56` 无冲突；主扩展 `npm run typecheck`、`git diff --check` 与 `npm run build -- --execution-profile=stock` 通过。默认构建因当前 checkout 缺少 `generated/execution-assets` 失败。subagent 对 `700dcae7` 的只读 Code Review 执行 `git diff --check origin/main...HEAD` 并通过，未发现新的确定性 blocker。最新提交没有重新运行类型检查或构建；Webview Playwright 与真实 VS Code 手动交互也未执行。hover / focus、输入态尺寸稳定、节点与组双击聚焦、未选中拖动阻断、选中组 3px 阈值和只读投影仍需界面级验收，因此计划暂留 `active/`。
+PR #351 review 的两个 blocker 已在当前工作树修复并完成定向验证：快速选中后拖动根据释放位移提交，测试入口通过 edit button 激活，Linux 视觉基线与当前标题布局匹配。变更尚待提交、推送及最新 PR head 的 CI / reviewer 复核；真实 VS Code 的 hover、键盘焦点、高对比主题和宿主持久化手动验收仍未完成，因此本计划保留在 `active/`。
 
 ## 上下文与定向
 
@@ -78,7 +92,7 @@ Webview 双语文案在 `extensions/vscode/dev-session-canvas/src/webview/i18n/w
 
 接着改 group titlebar 手势。标题文字 pointer down 时读取本次开始时的 `props.selected` 和标题编辑态；未选中时消费手势并只选择，阻断 React Flow 的拖动 / 画布平移；已选中且未编辑时建立标题拖动候选。只有越过现有阈值才发布 draft 和最终 `webview/moveGroup`；普通点击不提交位置。双击意图检测必须在标题拖动启动之前优先处理。编辑按钮和输入框的 pointer down 不进入 group drag。
 
-最后增加双语 edit label，补图标焦点 / hover / 屏幕热区样式，为 group tab 预留稳定宽度；在设计文档中同步实现事实、验证结果和残余手动验证项。自动化回归建议覆盖节点编辑按钮、只读态、组的两步选择后拖动、未选中拖动只选择、编辑态无拖动、普通点击无位置提交、双击聚焦无位置提交和布局边界。
+最后增加双语 edit label，补图标焦点 / hover / 屏幕热区样式，为 group tab 预留稳定宽度；在设计文档中同步实现事实、验证结果和残余手动验证项。自动化回归需覆盖节点 edit button 与 DOM probe 写入、IME / Enter / Escape 提交，组的两步选择后拖动、快速选中后拖动、双击轻微抖动取消位置变更、标题文字双击聚焦与 edit button 隔离，并运行标题视觉基线测试。
 
 ## 具体步骤
 
@@ -87,10 +101,12 @@ Webview 双语文案在 `extensions/vscode/dev-session-canvas/src/webview/i18n/w
 1. 在 `canvasUiSurface.tsx` 修改 `ChromeTitleEditor`，并在必要时拆分标题溢出测量以支持 `span` 展示态和 `input` 编辑态。保持 `data-probe-field="title"` 在两种状态下都能让现有 harness 定位当前标题。
 2. 在 `executionSessionNodes.tsx`、`fileNoteNodes.tsx` 检查 Agent / Terminal / Note 调用均启用图标，保持 context、subtitleAccessory、readOnly 和 overview 退化行为。
 3. 在 `canvasGroupLayers.tsx` 修改 `beginDrag` 与标题编辑态 / 双击意图判断。未选中 gesture 不得创建 draft，不得调用 `onMoveGroup`，不得落入画布 pan；已选中标题文字拖动仅在越阈值后提交。编辑按钮点击选择 group 并进入输入态。
-4. 在 `canvasGroupFrameStyles.ts` 和 `styles.css` 为 group edit button 槽位增加固定布局空间，先截断标题文字，确保按钮热区可见且不覆盖选中态 toolbar。节点 edit button 放在 `window-title-copy` 中标题文字尾部，并避开右侧 actions。
+4. 在 `canvasGroupFrameStyles.ts` 和 `styles.css` 为 group edit button 热区保留布局空间，先截断标题文字，确保按钮热区可见且不覆盖选中态 toolbar。节点 edit button 跟随标题文字并避开右侧 actions。
 5. 在 `i18n/webviewI18n.ts` 为英文和简体中文增加编辑标题 accessible name / tooltip。更新 `docs/design-docs/canvas-node-group-title-editing.md` 的实现状态及 `docs/design-docs/index.md` 对应验证状态；计划进展持续写入本文。
-6. 执行静态质量命令：`git diff --check`；主扩展工作目录 `extensions/vscode/dev-session-canvas` 下运行 `npm run typecheck` 与构建。默认构建依赖工作树中缺少的 `generated/execution-assets`；本次显式运行 `npm run build -- --execution-profile=stock` 成功。Webview harness `npm run test:webview` 与真实宿主手动验收尚未运行。
-7. 按 `docs/workflows/COMMIT.md` 暂存本功能相关实现和计划 / 设计记录，排除已存在的 OSC 研究文件、设计索引本地 OSC 行和图片。
+6. 在 `main.tsx` 的 `setNodeTextField` probe 中先激活对应标题 edit button，再写入当前 input；在 Playwright helper 中提供同一真实 UI 入口。迁移直接点击 / 填写隐藏 title input 的测试，并新增快速拖动和轻微双击抖动的真实鼠标回归。
+7. 下载并检查 PR 失败工件中的 expected / actual / diff 图，确认差异来自有意的标题布局后，通过 Webview visual Playwright 测试更新当前平台截图基线，并运行相关功能与视觉用例。
+8. 执行静态质量命令：`git diff --check`；主扩展工作目录 `extensions/vscode/dev-session-canvas` 下运行 `npm run typecheck` 与 stock profile 构建；从仓库根目录运行标题定向 Webview Playwright 和视觉基线用例。默认构建依赖工作树中缺少的 `generated/execution-assets`。
+9. 按 `docs/workflows/COMMIT.md` 暂存本功能相关实现、测试和计划 / 设计记录，排除已存在的 OSC 研究文件、设计索引本地 OSC 行和图片；rebase 最新 `origin/main` 后更新 PR #351。
 
 ## 验证与验收
 
@@ -100,7 +116,7 @@ Webview 双语文案在 `extensions/vscode/dev-session-canvas/src/webview/i18n/w
 
 workspace root group、自动 File / File List、overview 和非活动 pane gallery thumbnail 不显示可操作的编辑按钮。窄 group、长标题、选中 toolbar、执行节点右侧 actions 和浅色 / 深色 / 高对比主题下，图标可读、热区完整、标题优先 ellipsis、控件不重叠。
 
-本次已运行 `git diff --check`、`npm run typecheck` 和显式 stock profile 构建并通过。默认构建失败信息指出缺少 `generated/execution-assets`；此 checkout 未提供默认资产目录。`npm run test:webview` 与真实 UI 手动验收未运行，不能将实现行为写成已通过界面验收。
+本轮已运行 `git diff --check`、`npm run typecheck`、`npm run build -- --execution-profile=stock` 并通过。标题相关 Webview Playwright 12 项通过，包含实际 Linux 快照比较及主要手势 / 编辑入口回归。真实 UI 手动验收仍未运行，不能将主题、Tab / Space、输入态布局与宿主持久化写成已完成人工确认；PR 新 head 的 CI 尚待推送后执行。
 
 ## 幂等性与恢复
 

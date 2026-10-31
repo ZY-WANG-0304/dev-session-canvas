@@ -153,8 +153,13 @@ export function ChromeTitleEditor(props: {
   }, [isEditing]);
 
   const displayTitle = draft || props.placeholder;
-  const overflowTitle = useOverflowAwareElementTitle(titleElementRef, displayTitle, props.tooltip, isEditing);
   const titleReadOnly = props.readOnly === true;
+  const overflowTitle = useOverflowAwareElementTitle(
+    titleElementRef,
+    displayTitle,
+    props.tooltip,
+    `${isEditing}:${titleReadOnly}`
+  );
   const editingDisabled = overviewInteractionsDisabled || titleReadOnly || props.disableEditing === true;
   const canEditTitle = !editingDisabled && Boolean(props.onSubmit);
   const titleTextClassName = [
@@ -207,15 +212,15 @@ export function ChromeTitleEditor(props: {
           <input
             ref={(element) => {
               inputRef.current = element;
-              if (isEditing) {
+              if (isEditing || titleReadOnly) {
                 titleElementRef.current = element;
               }
             }}
-            className={`window-title-input nodrag nopan${isEditing ? '' : ' is-title-display-measure'}`}
-            data-node-interactive={isEditing ? 'true' : undefined}
+            className={`window-title-input nodrag nopan${isEditing || titleReadOnly ? '' : ' is-title-display-measure'}`}
+            data-node-interactive={isEditing || titleReadOnly ? 'true' : undefined}
             data-probe-field="title"
-            aria-hidden={!isEditing ? true : undefined}
-            tabIndex={isEditing ? undefined : -1}
+            aria-hidden={!isEditing && !titleReadOnly ? true : undefined}
+            tabIndex={isEditing || (titleReadOnly && !overviewInteractionsDisabled) ? undefined : -1}
             value={draft}
             title={overflowTitle ?? props.tooltip}
             readOnly={!isEditing || editingDisabled}
@@ -253,6 +258,17 @@ export function ChromeTitleEditor(props: {
             }}
             onKeyDown={(event) => {
               if (!isEditing) {
+                if (titleReadOnly) {
+                  if (shouldHandleReadonlySelectAllShortcut(event)) {
+                    event.preventDefault();
+                    stopCanvasEvent(event);
+                    event.currentTarget.select();
+                    return;
+                  }
+                  if (shouldAllowReadonlyTextShortcutToBubble(event)) {
+                    return;
+                  }
+                }
                 stopCanvasEvent(event);
                 return;
               }
@@ -268,7 +284,7 @@ export function ChromeTitleEditor(props: {
             }}
             placeholder={props.placeholder}
           />
-          {!isEditing ? (
+          {!isEditing && !titleReadOnly ? (
             <div className="window-title-display-row">
               <span
                 ref={(element) => {

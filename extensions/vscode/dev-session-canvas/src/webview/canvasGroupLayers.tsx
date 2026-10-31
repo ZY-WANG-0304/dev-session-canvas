@@ -564,6 +564,7 @@ function CanvasGroupFrame(props: {
     clientY: number;
     timestamp: number;
   } | null>(null);
+  const suppressNextTitlebarFocusDoubleClickRef = useRef(false);
   const deferredTitlebarMoveRef = useRef<{
     timerId: number;
     pointerId: number;
@@ -788,9 +789,14 @@ function CanvasGroupFrame(props: {
       x: Math.round(position.x + dragStart.pointerOffset.x),
       y: Math.round(position.y + dragStart.pointerOffset.y)
     };
-    if (dragStart.source === 'titlebar' && dragStart.isDoubleClickCandidate) {
+    const dragDistance = Math.hypot(event.clientX - dragStart.clientX, event.clientY - dragStart.clientY);
+    if (dragStart.source === 'titlebar' && dragStart.isDoubleClickCandidate &&
+        dragDistance <= CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX) {
       deferTitlebarMove(event.pointerId, currentProps.group.id, position, pointerPosition);
     } else {
+      if (dragStart.source === 'titlebar' && dragStart.isDoubleClickCandidate) {
+        suppressNextTitlebarFocusDoubleClickRef.current = true;
+      }
       currentProps.onMoveGroup(currentProps.group.id, position, pointerPosition);
     }
     return true;
@@ -914,6 +920,9 @@ function CanvasGroupFrame(props: {
   }, []);
 
   const beginDrag = (event: React.PointerEvent, source: 'titlebar' | 'border'): void => {
+    if (source === 'titlebar') {
+      suppressNextTitlebarFocusDoubleClickRef.current = false;
+    }
     if (event.button !== 0) {
       return;
     }
@@ -1026,6 +1035,12 @@ function CanvasGroupFrame(props: {
   };
 
   const handleFocusDoubleClick = (event: React.MouseEvent<HTMLElement>): void => {
+    if (suppressNextTitlebarFocusDoubleClickRef.current) {
+      suppressNextTitlebarFocusDoubleClickRef.current = false;
+      event.preventDefault();
+      stopCanvasEvent(event);
+      return;
+    }
     if (isGroupChromeFocusBlockedTarget(event.target)) {
       return;
     }

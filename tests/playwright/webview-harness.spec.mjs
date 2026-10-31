@@ -8607,10 +8607,9 @@ test('pressing Enter in the title input commits exactly one update and keeps the
   await bootstrap(page, createCanvasScreenshotState());
   await clearPostedMessages(page);
 
-  const titleInput = nodeById(page, 'agent-1').locator('[data-probe-field="title"]');
+  const titleInput = await enterTitleEditMode(nodeById(page, 'agent-1'));
   const nextTitle = 'Agent Heading Via Enter';
 
-  await titleInput.click();
   await titleInput.fill(nextTitle);
   await titleInput.press('Enter');
   await settleWebview(page, 4);
@@ -8653,7 +8652,7 @@ test('IME confirmation Enter does not submit or duplicate the title before expli
   await bootstrap(page, createCanvasScreenshotState());
   await clearPostedMessages(page);
 
-  const titleInput = nodeById(page, 'agent-1').locator('[data-probe-field="title"]');
+  const titleInput = await enterTitleEditMode(nodeById(page, 'agent-1'));
   const nextTitle = 'Code';
 
   await simulateImeCompositionOnTextField(page, titleInput, nextTitle);
@@ -8786,7 +8785,7 @@ test('fit view can zoom below the comfort minimum and enters overview mode for d
     expect(box.y).toBeLessThanOrEqual(viewportSize.height + 2);
   }
 
-  await expect(nodeById(page, 'agent-1').locator('[data-probe-field="title"]')).toBeVisible();
+  await expect(nodeById(page, 'agent-1').locator('.window-title-text')).toBeVisible();
   await expect
     .poll(async () => readComputedOpacity(page, '[data-node-id="note-1"] .note-editor-surface'))
     .toBe('0');
@@ -9412,9 +9411,8 @@ test('double-clicking the title input keeps the current viewport unchanged', asy
 
   const beforeState = await readPersistedUiState(page);
 
-  await nodeById(page, 'agent-1')
-    .locator('[data-probe-field="title"]')
-    .dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
+  const titleInput = await enterTitleEditMode(nodeById(page, 'agent-1'), { pointer: false });
+  await titleInput.dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
   await settleWebview(page, 4);
 
   const afterState = await readPersistedUiState(page);
@@ -12696,8 +12694,9 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(selectedTitlebarStyles.borderBottomColor).toBe('rgb(69, 69, 69)');
   expect(selectedTitlebarStyles.color).toBe('rgb(204, 204, 204)');
 
-  await groupFrame.locator('[data-probe-field="title"]').fill('Planning Group');
-  await groupFrame.locator('[data-probe-field="title"]').press('Enter');
+  const groupTitleInput = await enterTitleEditMode(groupFrame);
+  await groupTitleInput.fill('Planning Group');
+  await groupTitleInput.press('Enter');
   const titleMessage = await waitForPostedMessageByType(page, 'webview/updateGroupTitle');
   expect(titleMessage.payload).toEqual({ groupId: 'group-1', title: 'Planning Group' });
 
@@ -12764,10 +12763,10 @@ test('canvas group title exposes the full title when truncated like node titles'
   await bootstrap(page, state, createRuntimeContext());
   await settleWebview(page, 2);
 
-  const groupTitle = page.locator('[data-group-id="group-long-title"] [data-probe-field="title"]');
-  const nodeTitle = nodeById(page, 'note-long-title').locator('[data-probe-field="title"]');
-  await expect(groupTitle).toHaveValue(longTitle);
-  await expect(nodeTitle).toHaveValue(longTitle);
+  const groupTitle = page.locator('[data-group-id="group-long-title"] .window-title-text');
+  const nodeTitle = nodeById(page, 'note-long-title').locator('.window-title-text');
+  await expect(groupTitle).toHaveText(longTitle);
+  await expect(nodeTitle).toHaveText(longTitle);
   await expect
     .poll(async () =>
       groupTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
@@ -12804,7 +12803,7 @@ test('workspace root group keeps the root path tooltip when its display title is
   await bootstrap(page, state, createRuntimeContext());
   await settleWebview(page, 2);
 
-  const rootTitle = page.locator('[data-group-id="workspace-root-long-title"] [data-probe-field="title"]');
+  const rootTitle = page.locator('[data-group-id="workspace-root-long-title"] input[data-probe-field="title"]');
   await expect(rootTitle).toHaveValue(displayTitle);
   await expect(rootTitle).toHaveAttribute('readonly', '');
   await expect
@@ -13018,7 +13017,7 @@ test('workspace root watermark keeps overview-scale text when the title chrome i
   const watermark = page.locator(
     '[data-root-watermark-frame-id="workspace-root-watermark-long-title"] .canvas-root-watermark-tile'
   );
-  const title = page.locator('[data-group-id="workspace-root-watermark-long-title"] [data-probe-field="title"]');
+  const title = page.locator('[data-group-id="workspace-root-watermark-long-title"] input[data-probe-field="title"]');
   await expect(watermark.locator(`[data-root-watermark-label="${longTitle}"]`)).toHaveText(longTitle);
   await expect(title).toHaveValue(longTitle);
 
@@ -13146,12 +13145,14 @@ test('workspace root group title reuses regular group title chrome without renam
 
   const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
   const regularFrame = page.locator('[data-group-id="group-regular"]');
-  const rootTitle = rootFrame.locator('[data-probe-field="title"]');
-  const regularTitle = regularFrame.locator('[data-probe-field="title"]');
+  const rootTitle = rootFrame.locator('input[data-probe-field="title"]');
+  const regularTitle = regularFrame.locator('.window-title-text');
   await expect(rootTitle).toHaveValue('Frontend');
   await expect(rootTitle).toHaveAttribute('readonly', '');
   await expect(rootTitle).toHaveAttribute('title', '/repo/frontend');
-  await expect(regularTitle).not.toHaveAttribute('readonly', '');
+  await expect(regularTitle).toHaveText('Frontend');
+  await expect(rootFrame.locator('.window-title-edit-button')).toHaveCount(0);
+  await expect(regularFrame.locator('.window-title-edit-button')).toHaveCount(1);
 
   const titleChrome = await rootFrame.evaluate((frame) => {
     const regularFrame = document.querySelector('[data-group-id="group-regular"]');
@@ -13183,7 +13184,8 @@ test('workspace root group title reuses regular group title chrome without renam
     };
   });
   expect(titleChrome.rootTagName).toBe(titleChrome.regularTagName);
-  expect(titleChrome.rootDataInteractive).toBe(titleChrome.regularDataInteractive);
+  expect(titleChrome.rootDataInteractive).toBe('true');
+  expect(titleChrome.regularDataInteractive).toBeUndefined();
   expect(titleChrome.rootFontSize).toBeCloseTo(titleChrome.regularFontSize, 1);
   expect(titleChrome.rootFontWeight).toBe(titleChrome.regularFontWeight);
   expect(titleChrome.rootHeight).toBeCloseTo(titleChrome.regularHeight, 1);
@@ -13331,6 +13333,73 @@ test('double-clicking group body blank area focuses the existing group', async (
   await expectGroupCenteredInViewport(page, group.id);
 });
 
+test('quick drag after selecting a group moves it and suppresses the following title double-click focus', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, {
+    persistedState: { viewport: { x: 0, y: 0, zoom: 1 } }
+  });
+  const group = {
+    id: 'group-quick-title-drag',
+    title: 'Quick Drag Group',
+    position: { x: 180, y: 160 },
+    size: { width: 620, height: 420 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  await settleWebview(page, 2);
+
+  const titleText = page.locator(`[data-group-id="${group.id}"] .window-title-text`);
+  const titleBox = await titleText.boundingBox();
+  expect(titleBox).not.toBeNull();
+  const pointer = { x: titleBox.x + titleBox.width / 2, y: titleBox.y + titleBox.height / 2 };
+  await page.mouse.click(pointer.x, pointer.y);
+  await expect.poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null).toBe(group.id);
+
+  const beforeState = await readPersistedUiState(page);
+  await clearPostedMessages(page);
+  await page.waitForTimeout(100);
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.mouse.down();
+  await page.mouse.move(pointer.x + 120, pointer.y + 40);
+  await page.mouse.up();
+
+  await expect.poll(async () => (await readPostedMessagesByType(page, 'webview/moveGroup')).length).toBe(1);
+  expect(await readPersistedUiState(page)).toMatchObject({ viewport: beforeState.viewport });
+});
+
+test('a small second-press jitter still focuses the group without committing its candidate move', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, {
+    persistedState: { viewport: { x: -180, y: -120, zoom: 0.8 } }
+  });
+  const group = {
+    id: 'group-title-double-click-jitter',
+    title: 'Jitter Group',
+    position: { x: 260, y: 220 },
+    size: { width: 620, height: 420 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  await settleWebview(page, 2);
+
+  const titleText = page.locator(`[data-group-id="${group.id}"] .window-title-text`);
+  const titleBox = await titleText.boundingBox();
+  expect(titleBox).not.toBeNull();
+  const pointer = { x: titleBox.x + titleBox.width / 2, y: titleBox.y + titleBox.height / 2 };
+  await page.mouse.click(pointer.x, pointer.y);
+  await expect.poll(async () => (await readPersistedUiState(page)).selectedGroupId ?? null).toBe(group.id);
+  const beforeGeometry = await readGroupCanvasGeometry(page, group.id);
+  const beforeState = await readPersistedUiState(page);
+  await clearPostedMessages(page);
+
+  await page.waitForTimeout(100);
+  await page.mouse.dblclick(pointer.x + 2, pointer.y + 1);
+  await waitForNodeFocusAnimation(page);
+
+  const afterState = await readPersistedUiState(page);
+  expect(afterState.viewport).not.toEqual(beforeState.viewport);
+  expect(await readGroupCanvasGeometry(page, group.id)).toEqual(beforeGeometry);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+});
+
 test('double-clicking group title input keeps the current viewport unchanged', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 620 });
   await openHarness(page, {
@@ -13350,7 +13419,8 @@ test('double-clicking group title input keeps the current viewport unchanged', a
 
   const beforeState = await readPersistedUiState(page);
 
-  await page.locator(`[data-group-id="${group.id}"] [data-probe-field="title"]`).dblclick();
+  const titleInput = await enterTitleEditMode(page.locator(`[data-group-id="${group.id}"]`));
+  await titleInput.dblclick();
   await waitForNodeFocusAnimation(page);
 
   const afterState = await readPersistedUiState(page);
@@ -19358,6 +19428,26 @@ async function expectTestDomActionError(page, action, expectedSubstring) {
 
 function nodeById(page, nodeId) {
   return page.locator(`[data-node-id="${nodeId}"]`);
+}
+
+async function enterTitleEditMode(titleOwner, options = {}) {
+  const titleInput = titleOwner.locator('input[data-probe-field="title"]');
+  const editButton = titleOwner.locator('.window-title-edit-button');
+
+  if (options.pointer === false) {
+    await editButton.evaluate((button) => {
+      button.focus();
+      button.click();
+    });
+  } else {
+    await titleOwner.locator('.window-title-main-row').hover();
+    await expect(editButton).toHaveCSS('opacity', '1');
+    await editButton.click();
+  }
+  await expect(titleInput).toBeFocused();
+  await expect(titleInput).not.toHaveAttribute('readonly', '');
+
+  return titleInput;
 }
 
 function expectBoxEdgesClose(actualBox, expectedBox, tolerance = 2) {
