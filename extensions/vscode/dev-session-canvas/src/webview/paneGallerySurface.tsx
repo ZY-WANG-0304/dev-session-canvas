@@ -937,6 +937,7 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
           <CanvasGroupsViewportLayer
             groups={model.groups}
             workspaceRootWatermarksEnabled={false}
+            titleEditingDisabled={!interactive || overviewState.active}
             selectedGroupIds={interactive ? props.selectedGroupIds : []}
             workspaceRootForegroundMode="background-only"
             t={props.t}

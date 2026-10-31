@@ -47,6 +47,7 @@ const CANVAS_GROUP_TITLEBAR_DOUBLE_CLICK_POSITION_TOLERANCE_PX = 8;
 export function CanvasGroupsViewportLayer(props: {
   groups: CanvasGroupSummary[];
   workspaceRootWatermarksEnabled: boolean;
+  titleEditingDisabled?: boolean;
   selectedGroupIds?: readonly string[];
   workspaceRootForegroundMode?: 'editable' | 'background-only';
   t: CanvasGroupTranslator;
@@ -230,6 +231,7 @@ function CanvasGroupLayer(props: {
   groups: CanvasGroupSummary[];
   selectedGroupIds?: readonly string[];
   workspaceRootForegroundMode?: 'editable' | 'background-only';
+  titleEditingDisabled?: boolean;
   viewport: Viewport;
   t: CanvasGroupTranslator;
   onSelectGroup: (
@@ -276,6 +278,7 @@ function CanvasGroupLayer(props: {
           group={group}
           selected={selectedGroupIds.has(group.id)}
           zoom={props.viewport.zoom}
+          titleEditingDisabled={props.titleEditingDisabled === true}
           t={props.t}
           onSelectGroup={props.onSelectGroup}
           onFocusGroupInViewport={props.onFocusGroupInViewport}
@@ -507,6 +510,7 @@ function CanvasGroupFrame(props: {
   group: CanvasGroupSummary;
   selected: boolean;
   zoom: number;
+  titleEditingDisabled: boolean;
   t: CanvasGroupTranslator;
   onSelectGroup: (
     groupId: string,
@@ -537,6 +541,7 @@ function CanvasGroupFrame(props: {
   const dragStartRef = useRef<{
     pointerId: number;
     source: 'titlebar' | 'border';
+    isDoubleClickCandidate: boolean;
     clientX: number;
     clientY: number;
     position: CanvasNodePosition;
@@ -559,6 +564,13 @@ function CanvasGroupFrame(props: {
     clientY: number;
     timestamp: number;
   } | null>(null);
+  const deferredTitlebarMoveRef = useRef<{
+    timerId: number;
+    pointerId: number;
+    groupId: string;
+    position: CanvasNodePosition;
+    pointerPosition: CanvasNodePosition;
+  } | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const ignoreNextClickSelectionRef = useRef(false);
   const latestPropsRef = useRef(props);
@@ -580,6 +592,7 @@ function CanvasGroupFrame(props: {
       return;
     }
 
+    clearTitlebarPointerClickMemory();
     event.preventDefault();
     stopCanvasEvent(event);
     ignoreNextClickSelectionRef.current = true;
@@ -638,6 +651,46 @@ function CanvasGroupFrame(props: {
     lastTitlebarPointerClickRef.current = null;
   };
 
+  const clearDeferredTitlebarMove = (): void => {
+    const deferredMove = deferredTitlebarMoveRef.current;
+    if (!deferredMove) {
+      return;
+    }
+
+    window.clearTimeout(deferredMove.timerId);
+    deferredTitlebarMoveRef.current = null;
+    latestPropsRef.current.onDraftGroup(deferredMove.groupId, null);
+  };
+
+  const deferTitlebarMove = (
+    pointerId: number,
+    groupId: string,
+    position: CanvasNodePosition,
+    pointerPosition: CanvasNodePosition
+  ): void => {
+    clearDeferredTitlebarMove();
+    const timerId = window.setTimeout(() => {
+      const deferredMove = deferredTitlebarMoveRef.current;
+      if (!deferredMove || deferredMove.timerId !== timerId) {
+        return;
+      }
+
+      deferredTitlebarMoveRef.current = null;
+      latestPropsRef.current.onMoveGroup(
+        deferredMove.groupId,
+        deferredMove.position,
+        deferredMove.pointerPosition
+      );
+    }, 0);
+    deferredTitlebarMoveRef.current = {
+      timerId,
+      pointerId,
+      groupId,
+      position,
+      pointerPosition
+    };
+  };
+
   const applyDragMove = (
     event: Pick<PointerEvent | React.PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
   ): boolean => {
@@ -651,6 +704,12 @@ function CanvasGroupFrame(props: {
       clientY: event.clientY
     };
     const currentProps = latestPropsRef.current;
+    if (
+      dragStart.source === 'titlebar' &&
+      !hasGroupPointerCommitMovement(dragStart, event, currentProps.zoom)
+    ) {
+      return true;
+    }
     const publishDraft = (): void => {
       currentProps.onDraftGroup(currentProps.group.id, {
         position: resolveGroupDragPosition(dragStart, event, currentProps.zoom)
@@ -725,10 +784,15 @@ function CanvasGroupFrame(props: {
 
     clearTitlebarPointerClickMemory();
     currentProps.onGroupInteractionEnd(currentProps.group.id);
-    currentProps.onMoveGroup(currentProps.group.id, position, {
+    const pointerPosition = {
       x: Math.round(position.x + dragStart.pointerOffset.x),
       y: Math.round(position.y + dragStart.pointerOffset.y)
-    });
+    };
+    if (dragStart.source === 'titlebar' && dragStart.isDoubleClickCandidate) {
+      deferTitlebarMove(event.pointerId, currentProps.group.id, position, pointerPosition);
+    } else {
+      currentProps.onMoveGroup(currentProps.group.id, position, pointerPosition);
+    }
     return true;
   };
 
@@ -770,8 +834,20 @@ function CanvasGroupFrame(props: {
     const hasMatchingResize = Boolean(
       resizeStartRef.current && (!event || resizeStartRef.current.pointerId === event.pointerId)
     );
-    if (!hasMatchingDrag && !hasMatchingResize) {
+    const hasMatchingDeferredTitlebarMove = Boolean(
+      deferredTitlebarMoveRef.current &&
+      (!event || deferredTitlebarMoveRef.current.pointerId === event.pointerId)
+    );
+    if (!hasMatchingDrag && !hasMatchingResize && !hasMatchingDeferredTitlebarMove) {
       return false;
+    }
+
+    if (hasMatchingDeferredTitlebarMove) {
+      clearDeferredTitlebarMove();
+    }
+    if (!hasMatchingDrag && !hasMatchingResize) {
+      clearTitlebarPointerClickMemory();
+      return true;
     }
 
     dragStartRef.current = null;
@@ -838,15 +914,37 @@ function CanvasGroupFrame(props: {
   }, []);
 
   const beginDrag = (event: React.PointerEvent, source: 'titlebar' | 'border'): void => {
-    if (event.button !== 0 || isInteractiveTarget(event.target)) {
+    if (event.button !== 0) {
+      return;
+    }
+    if (isInteractiveTarget(event.target)) {
+      if (source === 'titlebar') {
+        clearTitlebarPointerClickMemory();
+        stopCanvasEvent(event);
+      }
       return;
     }
     if (event.ctrlKey || event.metaKey) {
+      clearTitlebarPointerClickMemory();
       event.preventDefault();
       stopCanvasEvent(event);
       ignoreNextClickSelectionRef.current = true;
       props.onSelectGroup(props.group.id, event);
       return;
+    }
+
+    let isDoubleClickCandidate = false;
+    if (source === 'titlebar') {
+      isDoubleClickCandidate = takeTitlebarDoubleClickPointerIntent(event);
+      const isTitleText = event.target instanceof HTMLElement &&
+        Boolean(event.target.closest('.window-title-text'));
+      if (!isTitleText || !props.selected) {
+        event.preventDefault();
+        stopCanvasEvent(event);
+        props.onSelectGroup(props.group.id);
+        clearTitlebarPointerClickMemory();
+        return;
+      }
     }
 
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -861,6 +959,7 @@ function CanvasGroupFrame(props: {
     dragStartRef.current = {
       pointerId: event.pointerId,
       source,
+      isDoubleClickCandidate,
       clientX: event.clientX,
       clientY: event.clientY,
       position: props.group.position,
@@ -984,11 +1083,26 @@ function CanvasGroupFrame(props: {
       <div
         className="canvas-group-titlebar"
         onPointerDown={(event) => beginDrag(event, 'titlebar')}
+        onClick={(event) => {
+          if (event.ctrlKey || event.metaKey || isGroupChromeFocusBlockedTarget(event.target)) {
+            clearTitlebarPointerClickMemory();
+            return;
+          }
+          if (event.detail > 1) {
+            clearTitlebarPointerClickMemory();
+            clearDeferredTitlebarMove();
+          } else {
+            rememberTitlebarPointerClick(event);
+          }
+        }}
         onDoubleClick={handleFocusDoubleClick}
       >
         <ChromeTitleEditor
           value={props.group.title}
           placeholder={props.t('group.title.placeholder')}
+          titleEditLabel={props.t('action.editTitle')}
+          disableEditing={props.titleEditingDisabled}
+          groupTitleDragHandle
           className="canvas-group-title"
           tooltip={isWorkspaceRootGroup ? props.group.workspaceRootPath ?? props.group.title : undefined}
           readOnly={isWorkspaceRootGroup}

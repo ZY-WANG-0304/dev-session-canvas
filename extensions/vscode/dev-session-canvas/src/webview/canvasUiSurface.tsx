@@ -98,7 +98,10 @@ export function ChromeTitleEditor(props: {
   subtitleAccessory?: React.ReactNode;
   className?: string;
   tooltip?: string;
+  titleEditLabel: string;
   readOnly?: boolean;
+  disableEditing?: boolean;
+  groupTitleDragHandle?: boolean;
   onSelectNode?: () => void;
   onSubmit?: (title: string) => void;
 }): JSX.Element {
@@ -110,6 +113,8 @@ export function ChromeTitleEditor(props: {
   const pendingTitleRef = useRef<string | null>(null);
   const lastPropValueRef = useRef(props.value);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const titleElementRef = useRef<HTMLElement | null>(null);
+  const cancelOnBlurRef = useRef(false);
 
   useLayoutEffect(() => {
     const previousPropValue = lastPropValueRef.current;
@@ -128,7 +133,7 @@ export function ChromeTitleEditor(props: {
   }, [isEditing, props.value]);
 
   useEffect(() => {
-    if (!overviewInteractionsDisabled) {
+    if (!overviewInteractionsDisabled && props.disableEditing !== true && props.readOnly !== true) {
       return;
     }
 
@@ -136,11 +141,28 @@ export function ChromeTitleEditor(props: {
     if (document.activeElement === inputRef.current) {
       inputRef.current?.blur();
     }
-  }, [overviewInteractionsDisabled]);
+  }, [overviewInteractionsDisabled, props.disableEditing, props.readOnly]);
 
-  const overflowTitle = useOverflowAwareElementTitle(inputRef, draft, props.tooltip);
+  useEffect(() => {
+    if (!isEditing) {
+      return;
+    }
+
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [isEditing]);
+
+  const displayTitle = draft || props.placeholder;
+  const overflowTitle = useOverflowAwareElementTitle(titleElementRef, displayTitle, props.tooltip, isEditing);
   const titleReadOnly = props.readOnly === true;
-  const editingDisabled = overviewInteractionsDisabled || titleReadOnly;
+  const editingDisabled = overviewInteractionsDisabled || titleReadOnly || props.disableEditing === true;
+  const canEditTitle = !editingDisabled && Boolean(props.onSubmit);
+  const titleTextClassName = [
+    'window-title-text',
+    props.groupTitleDragHandle ? '' : 'nodrag nopan',
+    titleReadOnly ? 'is-readonly' : '',
+    draft ? '' : 'is-empty'
+  ].filter(Boolean).join(' ');
 
   const commitTitle = (rawValue: string): void => {
     const baselineTitle = committedTitleRef.current;
@@ -158,8 +180,19 @@ export function ChromeTitleEditor(props: {
     }
   };
 
+  const cancelEditing = (): void => {
+    const baselineTitle = committedTitleRef.current;
+    cancelOnBlurRef.current = true;
+    setDraft(baselineTitle);
+    setIsEditing(false);
+    if (inputRef.current) {
+      inputRef.current.value = baselineTitle;
+      inputRef.current.blur();
+    }
+  };
+
   return (
-    <div className={`window-title ${props.className ?? ''}`.trim()}>
+    <div className={`window-title ${props.className ?? ''}`.trim()} data-title-editing={isEditing ? 'true' : 'false'}>
       <div className="window-title-copy">
         {props.contextLabel ? (
           <div className="window-title-context-row">
@@ -170,75 +203,104 @@ export function ChromeTitleEditor(props: {
             />
           </div>
         ) : null}
-        <input
-          ref={inputRef}
-          className="window-title-input nodrag nopan"
-          data-node-interactive="true"
-          data-probe-field="title"
-          value={draft}
-          title={overflowTitle ?? props.tooltip}
-          readOnly={editingDisabled}
-          tabIndex={overviewInteractionsDisabled ? -1 : undefined}
-          onFocus={() => {
-            if (overviewInteractionsDisabled) {
+        <div className={`window-title-main-row${canEditTitle ? ' has-edit-button' : ''}`}>
+          <input
+            ref={(element) => {
+              inputRef.current = element;
+              if (isEditing) {
+                titleElementRef.current = element;
+              }
+            }}
+            className={`window-title-input nodrag nopan${isEditing ? '' : ' is-title-display-measure'}`}
+            data-node-interactive={isEditing ? 'true' : undefined}
+            data-probe-field="title"
+            aria-hidden={!isEditing ? true : undefined}
+            tabIndex={isEditing ? undefined : -1}
+            value={draft}
+            title={overflowTitle ?? props.tooltip}
+            readOnly={!isEditing || editingDisabled}
+            onFocus={props.onSelectNode}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+            onCompositionStart={() => {
+              if (isEditing) {
+                setIsComposing(true);
+              }
+            }}
+            onCompositionEnd={(event) => {
+              setIsComposing(false);
+              if (isEditing) {
+                setDraft(event.currentTarget.value);
+              }
+            }}
+            onChange={(event) => {
+              if (isEditing) {
+                setDraft(event.target.value);
+              }
+            }}
+            onBlur={(event) => {
+              setIsComposing(false);
+              if (!isEditing) {
+                return;
+              }
               setIsEditing(false);
-              inputRef.current?.blur();
-              return;
-            }
-            props.onSelectNode?.();
-            if (titleReadOnly) {
-              setIsEditing(false);
-              return;
-            }
-            setIsEditing(true);
-          }}
-          onMouseDown={stopCanvasEvent}
-          onClick={stopCanvasEvent}
-          onCompositionStart={() => {
-            if (!editingDisabled) {
-              setIsComposing(true);
-            }
-          }}
-          onCompositionEnd={(event) => {
-            setIsComposing(false);
-            if (!editingDisabled) {
-              setDraft(event.currentTarget.value);
-            }
-          }}
-          onChange={(event) => {
-            if (!editingDisabled) {
-              setDraft(event.target.value);
-            }
-          }}
-          onBlur={(event) => {
-            setIsComposing(false);
-            setIsEditing(false);
-            commitTitle(event.currentTarget.value);
-          }}
-          onKeyDown={(event) => {
-            if (titleReadOnly) {
-              if (shouldHandleReadonlySelectAllShortcut(event)) {
+              if (cancelOnBlurRef.current) {
+                cancelOnBlurRef.current = false;
+                setDraft(committedTitleRef.current);
+                return;
+              }
+              commitTitle(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (!isEditing) {
+                stopCanvasEvent(event);
+                return;
+              }
+              if (event.key === 'Escape' && !isComposing && !isImeComposingKeyboardEvent(event)) {
                 event.preventDefault();
                 stopCanvasEvent(event);
-                event.currentTarget.select();
+                cancelEditing();
                 return;
               }
-              if (shouldAllowReadonlyTextShortcutToBubble(event)) {
-                return;
-              }
-              stopCanvasEvent(event);
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                event.currentTarget.blur();
-              }
-              return;
-            }
-            handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
-              isComposing
-            });
-          }}
-          placeholder={props.placeholder}
-        />
+              handleEditableFieldKeyDown(event, () => commitTitle(event.currentTarget.value), {
+                isComposing
+              });
+            }}
+            placeholder={props.placeholder}
+          />
+          {!isEditing ? (
+            <div className="window-title-display-row">
+              <span
+                ref={(element) => {
+                  titleElementRef.current = element;
+                }}
+                className={titleTextClassName}
+                data-node-interactive={titleReadOnly ? 'true' : undefined}
+                title={overflowTitle ?? props.tooltip}
+              >
+                {displayTitle}
+              </span>
+              {canEditTitle ? (
+                <button
+                  type="button"
+                  className="window-title-edit-button nodrag nopan"
+                  data-node-interactive="true"
+                  aria-label={props.titleEditLabel}
+                  title={props.titleEditLabel}
+                  onFocus={() => props.onSelectNode?.()}
+                  onMouseDown={stopCanvasEvent}
+                  onClick={(event) => {
+                    stopCanvasEvent(event);
+                    props.onSelectNode?.();
+                    setIsEditing(true);
+                  }}
+                >
+                  <span className="codicon codicon-edit" aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         {props.subtitle || props.subtitleAccessory ? (
           <div className="window-title-subtitle-row">
             {props.subtitle ? (
@@ -270,7 +332,8 @@ export function OverflowAwareText(props: { className: string; text: string; tool
 export function useOverflowAwareElementTitle<TElement extends HTMLElement>(
   elementRef: React.RefObject<TElement>,
   text: string,
-  tooltipText?: string
+  tooltipText?: string,
+  refreshKey?: unknown
 ): string | undefined {
   const [title, setTitle] = useState<string | undefined>(undefined);
 
@@ -311,7 +374,7 @@ export function useOverflowAwareElementTitle<TElement extends HTMLElement>(
       resizeObserver?.disconnect();
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [elementRef, text, tooltipText]);
+  }, [elementRef, text, tooltipText, refreshKey]);
 
   return title;
 }
