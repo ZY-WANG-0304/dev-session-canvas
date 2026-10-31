@@ -157,8 +157,8 @@ PR 经 review 合入后，在最终 main release commit 创建 `publish/vX.Y.Z`�
    - `extensions/vscode/dev-session-canvas-notifier/package.nls.zh-cn.json`
    - `extensions/vscode/dev-session-canvas-notifier/l10n/bundle.l10n.zh-cn.json`
    - `docs/workflows/SERVICE_DEPLOY.md`
-7. 确认发布 workflow 会先把同一批 VSIX 镜像到 GitHub Release assets，并以 Open VSX 主扩展 / notifier 发布验证作为本轮完成门禁；Visual Studio Marketplace 仍会尝试发布 / 验证并写入 manifest，但当前允许 deferred，不阻塞 `0.25.0` 完成。仓库 Actions 必须具备 `contents: write` 权限，且 `GITHUB_TOKEN` 可创建 / 更新 Release、上传 assets、创建正式 tag 与按完成门禁删除临时 tag。
-8. 复核 `OVSX_PAT`、`VSCE_PAT`、本地 `vsce login devsessioncanvas` 和 Open VSX token；当前完成门禁要求 Open VSX 可发布验证。`VSCE_PAT` 仍用于尝试 Visual Studio Marketplace 发布 / 验证，但 VSM 不可见时可记录为 deferred channel。GitHub Release assets 只使用 `GITHUB_TOKEN` 作为额外下载入口。
+7. 确认发布 workflow 会先把同一批 VSIX 镜像到 GitHub Release assets，并以 Open VSX 主扩展 / notifier 发布验证作为本轮完成门禁；Visual Studio Marketplace 当前已从 workflow 移除且记录为 deferred。仓库 Actions 必须具备 `contents: write` 权限，且 `GITHUB_TOKEN` 可创建 / 更新 Release、上传 assets、创建正式 tag 与按完成门禁删除临时 tag。
+8. 复核 `OVSX_PAT` 和 Open VSX token；当前发布 workflow 只运行 GitHub Release assets 与 Open VSX。Visual Studio Marketplace 暂停期间不使用 `VSCE_PAT`，并在 manifest 中记录为 deferred。GitHub Release assets 只使用 `GITHUB_TOKEN` 作为额外下载入口。
 9. 确认 GitHub Release notes 的安装口径准确：当前优先使用已验证的 Open VSX 或 `vX.Y.Z` 对应 GitHub Release Assets；Visual Studio Marketplace 只有在 public gallery 恢复且主扩展 / notifier 均可见后才作为已可用路径宣称。
 10. 确认生产模板市场事实没有被写成插件发布事实：服务当前线上版本应结合 `/api/v1/meta`、deploy tag、Cloudflare deployment id 和 production smoke 判断；插件发布 tag 不自动部署生产服务。
 
@@ -220,13 +220,13 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
     git tag publish/v0.27.0 <final-release-sha>
     git push origin publish/v0.27.0
 
-推送临时 tag 触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow 只响应 `publish/v*` push 和手动 `workflow_dispatch`，按六个外层 job 执行：
+推送临时 tag 触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow 只响应 `publish/v*` push 和手动 `workflow_dispatch`，按五个外层 job 执行：
 
 1. `resolve-release` 冻结版本、最终 SHA、main 归属及交付目标，区分首次发布和原包恢复；首次发布必须选择 `all`。
 2. `verify-release` 经 `release-validation.yml` 调用 `ci-validation.yml`，在最终 SHA 以 `release-tag` 验收全部任务和同批候选双包；恢复模式则复核原 acceptance、双包来源和所选渠道。
 3. `prepare-release` 消费已验收的原双包，复算摘要 / ref / 版本及回执来源，再创建或确认正式 tag / GitHub Release、上传原 bytes 并校验远端内容。此阶段不打包。
-4. `publish-open-vsx` 与 `publish-visual-studio` 独立消费原双包，逐扩展查询、提交并验真；提交结果未知时先查询，不能盲目重复提交。
-5. `finalize-release` 核对实际 job 与渠道回执，更新 manifest / Release notes；必需目标完成后才删除临时 tag，清理失败保留独立结果。
+4. `publish-open-vsx` 消费原双包，逐扩展查询、提交并验真；提交结果未知时先查询，不能盲目重复提交。Visual Studio Marketplace 当前不在 workflow 中，manifest 将其记录为 deferred。
+5. `finalize-release` 核对实际 job 与渠道回执，并确认本次 run 没有 Visual Studio 发布 job 或结果工件后，更新 manifest / Release notes；必需目标完成后才删除临时 tag，清理失败保留独立结果。
 
 `release:publish-tag` 现在是 workflow 使用的显式 phase 入口：`resolve` 生成冻结 context，`verify-recovery`、`prepare`、`finalize` 消费该 context 与对应来源。旧 `--package-only`、`--skip-package`、`--dry-run`、`--no-create-final-tag` 不是当前入口，不应用旧手工命令绕过验收。历史 tag 使用其 tag 内原 workflow，不把旧例外带到 0.27.0。
 
@@ -236,7 +236,7 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
 
     gh workflow run publish-marketplace-release.yml --ref v0.27.0 -f trigger_tag=publish/v0.27.0 -f target=open-vsx
 
-补发 Visual Studio Marketplace 时将 `target` 改为 `visual-studio`；同时复核两渠道使用 `all`。即使临时 publish tag 已删除，resolver 也能依据同版本正式 tag 和原 Release 识别 `channel-retry`，无需移动或重建发布输入。
+Visual Studio Marketplace 当前已从发布 workflow 移除，不能通过 `target` 触发。发布链重新打通后，需先通过代码复审恢复该 job 与单渠道选项；此前不得查询或提交 VSM。Open VSX 恢复仍使用 `target=open-vsx`。即使临时 publish tag 已删除，resolver 也能依据同版本正式 tag 和原 Release 识别 `channel-retry`，无需移动或重建发布输入。
 
 恢复下载原双包、原 acceptance 和连通父状态链，独立核对输入、摘要与 producer，只处理所选渠道并按规则保留未选渠道的原成功事实。缺资产、缺回执、状态分叉、内容冲突或来源不可核验时停止并保留现场，不通过删除原 Release、覆盖资产或重打包修复。当前恢复入口只选择渠道，不提供单独 `--extension notifier` 的发布分支。
 

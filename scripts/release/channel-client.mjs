@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import https from 'node:https';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runProcess } from '../gates/process.mjs';
 import { compareRemotePackage } from './release-completion.mjs';
@@ -195,11 +196,15 @@ export function visualStudioClient({ baseURL = 'https://marketplace.visualstudio
         return { observation: 'present', observedAt: new Date().toISOString(), ...compared };
       } catch { return unknown('Gallery version/package query or content validation is unavailable'); }
     },
-    async submit(_pkg, deadline, file) {
+    async submit(pkg, deadline, file) {
       if (!token) return { submission: 'not-submitted', reason: 'VSCE_PAT is unavailable; channel remains deferred' };
       const entry = fileURLToPath(new URL('../../node_modules/@vscode/vsce/vsce', import.meta.url));
+      const parsedLogPath = logPath ? path.parse(logPath) : null;
+      const packageLogPath = parsedLogPath
+        ? path.join(parsedLogPath.dir, `${parsedLogPath.name}-${encodeURIComponent(pkg.id)}${parsedLogPath.ext}`)
+        : undefined;
       const result = await runner(process.execPath, [entry, 'publish', '--packagePath', file], {
-        deadline, env: { ...process.env, VSCE_PAT: token }, logPath, quiet: true
+        deadline, env: { ...process.env, VSCE_PAT: token }, logPath: packageLogPath, quiet: true
       });
       return { submission: result.status === 'passed' ? 'submitted' : 'unknown',
         reason: result.status === 'passed' ? null : 'VSCE completion is unknown; query before retrying',

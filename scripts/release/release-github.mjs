@@ -156,7 +156,8 @@ export async function collectReleaseFacts(context, { client = githubClient({ rep
     }
   }
   const facts = { schemaVersion: 1, repository: context.repository, runID: String(run.id),
-    attempt: context.run.attempt, headSHA: run.head_sha, jobs, artifacts, errors };
+    attempt: context.run.attempt, headSHA: run.head_sha, jobs, artifacts,
+    artifactNames: all.map(artifact => artifact.name), errors };
   await writeJSON(path.join(output, 'release-provenance.json'), facts); return facts;
 }
 

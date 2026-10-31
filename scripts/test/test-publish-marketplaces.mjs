@@ -5,6 +5,8 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { releaseFixture } from './release-fixture.mjs';
 import { writeJSON, objectDigest } from '../gates/receipts.mjs';
+import { runProcess } from '../gates/process.mjs';
+import { visualStudioClient } from '../release/channel-client.mjs';
 import { publishChannel } from '../release/publish-marketplaces.mjs';
 
 const f = await releaseFixture(), root = await fs.mkdtemp(path.join(os.tmpdir(),'dsc-channel-contract-'));
@@ -21,6 +23,16 @@ try {
       submit:async()=>{throw new Error('Present verified package must not submit');}}});
   assert.equal(result.complete,true); assert(calls[0].endsWith('-notifier'));
   assert.equal(result.partial.packages.length,2);
+  const visualStudioLogRoot=path.join(root,'visual-studio-logs');
+  const visualStudio=visualStudioClient({token:'test-token',logPath:path.join(visualStudioLogRoot,'vsce.log'),
+    runner:async(_file,_args,options)=>runProcess(process.execPath,['-e',"process.stdout.write('VSCE test log\\n')"],options)});
+  for(const pkg of f.identity.packages) {
+    const result=await visualStudio.submit(pkg,Date.now()+10000,path.join(prepared,pkg.path));
+    assert.equal(result.submission,'submitted');
+  }
+  const logFiles=(await fs.readdir(visualStudioLogRoot)).sort();
+  assert.deepEqual(logFiles,f.identity.packages.map(pkg=>`vsce-${encodeURIComponent(pkg.id)}.log`).sort());
+  for(const logFile of logFiles)assert.match(await fs.readFile(path.join(visualStudioLogRoot,logFile),'utf8'),/VSCE test log/u);
   const invalidContext=structuredClone(f.context); invalidContext.releaseSHA='d'.repeat(40);
   await assert.rejects(()=>publishChannel({context:invalidContext,prepared,target:'open-vsx',output:path.join(root,'bad-ref'),
     client:{query:async()=>{throw new Error('Wrong ref must not query');}}}));
@@ -33,5 +45,5 @@ try {
     const run=spawnSync(process.execPath,['scripts/release/publish-marketplaces.mjs',...args],{encoding:'utf8',timeout:5000});
     assert.notEqual(run.status,0,'No implicit package lookup/build/publish entry is allowed');
   }
-  console.log('publish-marketplaces: accepted original pair, notifier order, wrong ref/hash and implicit packaging rejection passed');
+  console.log('publish-marketplaces: accepted original pair, per-package VSCE logs, notifier order and input rejection passed');
 }finally{await fs.rm(root,{recursive:true,force:true});}
