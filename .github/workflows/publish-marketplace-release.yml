@@ -9,7 +9,7 @@ on:
         type: string
         required: true
       target:
-        description: '渠道恢复范围；首次发布必须 all，Visual Studio Marketplace 暂停期间不可单独选择'
+        description: '渠道恢复范围；仅支持 all 或 open-vsx，Visual Studio Marketplace 已从当前 workflow 移除'
         type: choice
         options: [all, open-vsx]
         default: all
@@ -38,7 +38,6 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       mode: ${{ steps.resolve.outputs.mode }}
       trigger_tag: ${{ steps.resolve.outputs.trigger_tag }}
-      visual_studio_enabled: ${{ steps.resolve.outputs.visual_studio_enabled }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,7 +58,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TRIGGER: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
           RELEASE_TARGET: ${{ inputs.target || 'all' }}
-          VISUAL_STUDIO_MARKETPLACE_ENABLED: ${{ vars.VISUAL_STUDIO_MARKETPLACE_ENABLED || 'false' }}
           RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id || '' }}
           RECOVERY_PREVIOUS_RUN_ID: ${{ inputs.recovery_previous_run_id || '' }}
         run: |
@@ -190,49 +188,9 @@ jobs:
       - name: Fail incomplete required channel
         if: ${{ steps.publish.outputs.complete != 'true' }}
         run: exit 1
-  publish-visual-studio:
-    name: Release publish-visual-studio
-    needs: [resolve-release, prepare-release]
-    if: ${{ needs.prepare-release.result == 'success' && needs.resolve-release.outputs.visual_studio_enabled == 'true' }}
-    runs-on: ubuntu-22.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.23.3
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install locked channel dependencies
-        run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output channel-result -- npm ci --no-audit --no-fund
-        timeout-minutes: 10
-      - name: Download prepared original pair
-        uses: actions/download-artifact@v4
-        with:
-          name: prepared-release-${{ github.run_id }}-${{ github.run_attempt }}
-          path: prepared
-      - name: Query submit and verify gallery content
-        id: publish
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: node scripts/release/publish-marketplaces.mjs --context prepared/release-context.json --prepared prepared --target visual-studio --output channel-result
-      - name: Upload gallery result including deferred state
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: marketplace-result-visual-studio-${{ github.run_id }}-${{ github.run_attempt }}
-          path: channel-result
-          include-hidden-files: true
-          if-no-files-found: error
-      - name: Report deferred optional channel
-        if: ${{ steps.publish.outputs.complete == 'false' }}
-        run: echo 'Visual Studio Marketplace remains deferred; its fresh query and submission facts are retained.'
   finalize-release:
     name: Release finalize-release
-    needs: [resolve-release, prepare-release, publish-open-vsx, publish-visual-studio]
+    needs: [resolve-release, prepare-release, publish-open-vsx]
     if: ${{ always() && needs.prepare-release.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 20

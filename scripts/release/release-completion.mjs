@@ -316,18 +316,19 @@ export function calculateReleaseCompletion({ context, identity, github, partials
   }
   for (const target of marketplaceTargets) {
     const partial = channels[target];
+    if (context.deferredTargets?.includes(target)) {
+      assert.equal(partial, undefined, 'Paused channel cannot have a current result');
+      const job = facts.jobs.find(item => item.name === releaseJobName(`publish-${target}`));
+      assert.equal(job, undefined, 'Paused channel must not have a release job in this workflow');
+      const artifactNames = facts.artifactNames ?? facts.artifacts.map(artifact => artifact.name);
+      assert(!artifactNames.some(name => name.startsWith(`marketplace-result-${target}-`)),
+        'Paused channel must not produce a result artifact');
+      continue;
+    }
     if (!partial) {
       const historical = context.mode === 'channel-retry' && !context.selectedTargets.includes(target)
         ? history[target]?.partial : null;
       if (historical) { channels[target] = historical; continue; }
-      if (context.deferredTargets?.includes(target)) {
-        const job = facts.jobs.find(item => item.name === releaseJobName(`publish-${target}`));
-        assert.equal(job?.status, 'completed', 'Deferred channel job must be present in workflow evidence');
-        assert.equal(job?.conclusion, 'skipped', 'Deferred channel job must not run');
-        assert(!facts.artifacts.some(artifact => artifact.name === `marketplace-result-${target}-${context.run.id}-${context.run.attempt}`),
-          'Deferred channel must not produce a result artifact');
-        continue;
-      }
       errors.push({ target, reason: 'Missing channel result or producer evidence' }); continue;
     }
     const allowReuse = context.mode === 'channel-retry' && !context.selectedTargets.includes(target);

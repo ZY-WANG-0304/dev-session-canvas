@@ -94,16 +94,16 @@ notifier 随主扩展进入同一份 `docs/release-contracts/vX.Y.Z.md`，发布
 
    `test:notifier-smoke` 验证主扩展 attention bridge 到 notifier callback 再回到画布居中；`test:notifier-locale-smoke` 验证英文 / 简体中文真实 VS Code 宿主中 notifier sidebar、view title、手动测试通知、工作台提示和 action label 随 locale 切换。
 7. 确认打包日志打印了 `VSCE README doc ref: <final-ref-or-sha>`；如果当前 `README.marketplace.md` 没有相对链接，日志也应显式打印“当前没有需要重写的相对链接”，避免误把“没有输出”当成脚本未校验。
-8. 确认 workflow 仍会把 notifier 与主扩展同轮上传到 GitHub Release assets，并以 Open VSX 主扩展 / notifier 发布验证作为本轮完成门禁；Visual Studio Marketplace 仍会尝试发布和验证，但当前可记录为 deferred channel，不阻塞 `0.25.0` 完成。
-9. 复核 Open VSX namespace / token、`OVSX_PAT`、本地 `vsce login devsessioncanvas` 与 `VSCE_PAT`；当前完成门禁要求 Open VSX 可验证，`VSCE_PAT` 用于尝试 Visual Studio Marketplace 补发 / 验证。GitHub Release assets 只是额外下载入口。
+8. 确认 workflow 会把 notifier 与主扩展同轮上传到 GitHub Release assets，并以 Open VSX 主扩展 / notifier 发布验证作为本轮完成门禁；Visual Studio Marketplace 当前已从发布 workflow 移除，manifest 将其记录为 deferred。
+9. 复核 Open VSX namespace / token 与 `OVSX_PAT`；当前发布 workflow 只运行 GitHub Release assets 和 Open VSX。Visual Studio Marketplace 暂停期间不使用 `VSCE_PAT`，并在 manifest 中记为 deferred。GitHub Release assets 只是额外下载入口。
 
 ## 发布命令
 
 主扩展与 notifier 通过同一次发布交付两个独立 VSIX。取得发布授权、发布准备 PR 正式验收并合入 main 后，按主扩展手册在最终 release commit 创建并推送 `publish/v0.27.0`；完整命令见 [主扩展发布手册](public-preview-release-playbook.md#发布命令)。
 
-`.github/workflows/publish-marketplace-release.yml` 的 resolve → verify → prepare → 两个独立渠道 → finalize 流程冻结同一个最终 SHA。新发布 verify 执行完整 `release-tag`；prepare 只消费已经验收的 main / notifier 双包，创建或确认正式 tag、GitHub Release 并上传原包与来源证据，随后两渠道各自验真。GitHub Release Assets 是下载入口，裸 tag 对象不承载这些文件。
+`.github/workflows/publish-marketplace-release.yml` 的 resolve → verify → prepare → Open VSX → finalize 流程冻结同一个最终 SHA。新发布 verify 执行完整 `release-tag`；prepare 只消费已经验收的 main / notifier 双包，创建或确认正式 tag、GitHub Release 并上传原包与来源证据，随后 Open VSX 验真。Visual Studio Marketplace 当前已从 workflow 移除，并在 manifest 中记为 deferred。GitHub Release Assets 是下载入口，裸 tag 对象不承载这些文件。
 
-渠道部分完成后的恢复入口为同一个 workflow 的 `workflow_dispatch`，参数是原 `trigger_tag` 和 `target=all|open-vsx|visual-studio`。具体命令见 [渠道恢复](public-preview-release-playbook.md#渠道恢复)。resolver 复核原 Release 双包、acceptance 和状态链后进入 `channel-retry`，包括原临时 tag 已删除的情况；不提供 `--extension notifier` 单包重发路径，也不重新打包或替换原资产。旧 `--package-only` / `--skip-package` 参数只属于历史发布实现。
+渠道部分完成后的恢复入口为同一个 workflow 的 `workflow_dispatch`，参数是原 `trigger_tag` 和 `target=all|open-vsx`。Visual Studio Marketplace 暂未列为可选目标；发布链重新打通后，须经代码复审恢复 workflow job 与单渠道选项。具体命令见 [渠道恢复](public-preview-release-playbook.md#渠道恢复)。resolver 复核原 Release 双包、acceptance 和状态链后进入 `channel-retry`，包括原临时 tag 已删除的情况；不提供 `--extension notifier` 单包重发路径，也不重新打包或替换原资产。旧 `--package-only` / `--skip-package` 参数只属于历史发布实现。
 
 notifier 与主扩展在所选渠道逐包检查；提交结果未知时先查询，内容 match 才能完成。GitHub Release assets 与 Open VSX 两个必需目标都必须包含主包和 notifier，Visual Studio Marketplace 继续保留明确的 deferred 策略。最终 manifest / notes 与实际渠道状态一致，未完成目标或清理失败必须保留，不能用另一渠道通过覆盖。
 

@@ -257,9 +257,9 @@ deadline 的合同测试使用受控时钟，分别验证调用时传入的原�
 
 取消/超时缺回执视为非成功。聚合使用always及计划内所有job的实际状态；同名required check若整个workflow取消显示cancelled，不用另一成功skip覆盖。发布workflow使用同版本互斥且不自动取消正在交付的attempt；PR旧输入可取消但不可复用为新SHA通过。
 
-### 6. 发布workflow仍保留六个外层job
+### 6. 当前发布workflow的外层job
 
-`.github/workflows/publish-marketplace-release.yml`重划为以下六job。现有native资产job移到reusable完整验证内部，不丢六matrix。所有checkout固定resolve输出SHA，不能在后续重新解析可移动tag作为唯一代码身份。
+`.github/workflows/publish-marketplace-release.yml` 当前使用五个外层 job。Native 资产 job 位于 reusable 完整验证内部，不丢六 matrix。所有 checkout 固定 resolve 输出 SHA，不能在后续重新解析可移动 tag 作为唯一代码身份。Visual Studio Marketplace 在发布链重新打通前已从当前 workflow 移除；它不参与 job DAG，也没有 gallery 查询或提交调用。
 
 | 外层job | 执行与验证 | 失败规则 |
 | --- | --- | --- |
@@ -267,10 +267,9 @@ deadline 的合同测试使用受控时钟，分别验证调用时传入的原�
 | `verify-release` | 新发布调用reusable `release-tag`完整范围；恢复则核原acceptance/双包来源及所选交付范围 | 任一必跑结果非通过/错身份拒绝prepare；历史tag无新schema按原tag路径，不伪造新回执 |
 | `prepare-release` | 仅消费已验双包；复算摘要/ref/版本；创建正式v tag/Release并上传同bytes，读取远端asset核摘要，写GitHub交付回执 | 未验证不得对外；已有资产不完整/不匹配不自动clobber重打；保留恢复证据 |
 | `publish-open-vsx` | 消费原包及prepare回执；逐主/notifier查询/提交/验真 | 提交未知先查询，不盲重发；必需内容未验则失败 |
-| `publish-visual-studio` | 同上，独立执行；保留既定deferred策略 | 失败/deferred有回执，不阻断当前requiredTargets但如实记录 |
-| `finalize-release` | prepare成功后always运行；严格校验两partial和job事实、GitHub回执及requiredTargets；更新manifest/notes | 必需结果缺失/未知/错身份失败，保留publish tag；完成后才删除，删除失败单列 |
+| `finalize-release` | prepare成功后always运行；严格校验 Open VSX partial、VSM job / result artifact 缺席、GitHub回执及requiredTargets；更新manifest/notes | 必需结果缺失/未知/错身份，或 VSM job / artifact 存在时失败并保留publish tag；完成后才删除，删除失败单列 |
 
-requiredTargets保持`github-release-assets`和`open-vsx`，每个目标都含主包与notifier。VS Marketplace并行且允许deferred。先上传GitHub再发布渠道有恢复价值，保持；外部发布不原子，不以重设计承诺全渠道同时成功。最终manifest/notes/GitHub assets是发布后事实，不回写同版本CHANGELOG或仓库契约。
+requiredTargets保持`github-release-assets`和`open-vsx`，每个目标都含主包与notifier。VSM context 状态为 deferred；完成记录要求当前 run 中没有 VSM job 与结果 artifact。先上传GitHub再发布渠道有恢复价值，保持；外部发布不原子，不以重设计承诺全渠道同时成功。最终manifest/notes/GitHub assets是发布后事实，不回写同版本CHANGELOG或仓库契约。
 
 现有`publish-tag-release.mjs`提取共享判定到新增`scripts/release/release-completion.mjs`和渠道回执生成；workflow调用此模块，不再内嵌另一套字符串merge。`publish-marketplaces.mjs`只接受已验路径，channels严禁打包。GitHub artifact/Release的回执具名下载，无find/glob/mtime选对象。
 

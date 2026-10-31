@@ -6,7 +6,7 @@
 
 用户希望完成 `v0.27.0` 发布，同时保留已经公开创建的 `v0.27.0` Release 和两个仍一致的 tag。原恢复 run 已在原 SHA 完整验收，GitHub Release 双包和 Open VSX 已验证。用户随后明确要求：在 Visual Studio Marketplace 重新打通前，不再尝试该渠道。发布收尾应只依赖 GitHub Release assets 与 Open VSX，把 VSM 记为本轮未查询、未提交的 deferred 状态，并保留原 release SHA。
 
-本计划此前增加了范围严格的 `incomplete-release-recovery` 模式，并已经用它恢复 Release assets 与 Open VSX。现在还需更新发布 workflow：只有仓库变量 `VISUAL_STUDIO_MARKETPLACE_ENABLED` 精确为 `true` 才运行 VSM job；关闭时必须验证 job 为 skipped 且没有 VSM 结果工件，再将两个包记为 deferred。这样能通过现有 channel-retry 使用原双包完成 GitHub/Open VSX 收尾，而不访问 VSM。最终 tag 不移动；必需渠道完成并写入状态后才按常规流程删除临时 `publish/` tag。
+本计划此前增加了范围严格的 `incomplete-release-recovery` 模式，并已经用它恢复 Release assets 与 Open VSX。PR #348 更新将从当前发布 workflow 中彻底删除 VSM job、gallery 查询和提交调用；resolver 固定把 VSM 标为 deferred，finalize 验证本次 run 没有 VSM job 或结果工件。这样可通过现有 channel-retry 使用原双包完成 GitHub/Open VSX 收尾，而不访问 VSM。最终 tag 不移动；必需渠道完成并写入状态后才按常规流程删除临时 `publish/` tag。
 
 ## 进度
 
@@ -27,8 +27,9 @@
 - [x] (2026-10-31) 恢复 run `41157851285` 的原 SHA 全量验收和 prepare 成功；GitHub 双包资产内容校验通过，Open VSX 主扩展与 notifier 均 verified。
 - [x] (2026-10-31) 将 VSCE 日志改为每个 package 独立文件，并新增真实 `runProcess` 回归重现独占创建；`test:publish-marketplaces`、`test:publish-tag-release`、发布 workflow 合同测试和 `git diff --check` 均通过。
 - [x] (2026-10-31) 用户明确要求暂停所有 Visual Studio Marketplace 查询与提交，直到发布链重新打通；此前的 `EEXIST` 失败不能当作市场拒绝证据，也不再以重试 VSM 作为收尾条件。
-- [ ] 更新 PR #348 的 release workflow：仓库变量缺失/关闭时跳过 VSM job；resolver 固定 deferred 状态；finalize 核实 job skipped、无 VSM artifact 后，将缺少的 VSM 结果记为 deferred，不查询市场。
-- [ ] 更新发布设计、工作流和本 ExecPlan；提交 PR head 后等待 Release Preflight 与正式复审。
+- [x] 更新 PR #348：从 workflow DAG 删除 VSM 发布 job 与调用；移除市场开关变量；resolver 固定 deferred；finalize 要求当前 run 没有 VSM job 或 VSM 结果工件。
+- [x] 更新发布设计、工作流、发布手册和本 ExecPlan；同步更新 workflow 合同检查的 job DAG 断言。
+- [ ] 更新 PR 描述并提交新 head；等待 Release Preflight 与正式复审。
 - [ ] PR 合并后，通过 `channel-retry` 完成原 `v0.27.0` GitHub Release + Open VSX 收尾，确认 VSM 无查询/提交、manifest 为 deferred、临时 tag 按完成门禁收口。
 
 ## 意外与发现
@@ -71,13 +72,14 @@
 - 决策：连续续跑时，`recovery_previous_run_id` 可指向最近一次 prepare 失败的恢复 run，但上下文始终传播首次生成远端 run-bound 文件的 `recoveryArtifactRun`。
   理由：每次 workflow dispatch 都会生成不同的 run-bound acceptance 文件。最近 run 用于核对失败形状；首次 recovery artifact run 用于保持 Release 已上传证据的 producer 与原字节不变。
   日期/作者：2026-10-31 / Codex
-- 决策：`VISUAL_STUDIO_MARKETPLACE_ENABLED` 只有精确为 `true` 才启用 VSM job；缺失或关闭时，resolver 将 `visual-studio` 固定为 deferred，finalize 必须检查该 job 为 skipped 且没有渠道结果工件后，才能接受无 VSM partial 的 completion。
-  理由：用户要求在发布链重新打通前不再尝试 VSM。把停用状态纳入冻结 release context，并核对真实 Actions job/artifacts，能证明本轮没有访问该市场，同时保留 GitHub/Open VSX 的既定必需门禁。
+- 先前决策：`VISUAL_STUDIO_MARKETPLACE_ENABLED` 只有精确为 `true` 才启用 VSM job；关闭时检查该 job 为 skipped 后 defer。
+  状态：2026-10-31 被用户后续要求“可以把这个 CI 去掉，直到我们重新打通 VSM 再说”取代；不再保留仓库变量开关。
+  理由：用户要求发布链恢复前完全不尝试 VSM。移除 workflow job 和发布调用，并核对本次 Actions run 不存在该 job 或结果工件，才能清楚证明 CI 没有执行 VSM。
   日期/作者：2026-10-31 / 用户决定，由 Codex 落地
 
 ## 结果与复盘
 
-恢复 resolver、跨 run 续跑修复和 PR #347 已合入。恢复 run `41157851285` 的 GitHub Release assets 与 Open VSX 已有完整证据；VSM job 因日志路径 `EEXIST` 退出，finalize 未完成，临时 trigger tag 保留。用户决定不再尝试 VSM，直到账号/发布链重新打通。本计划现在收口为：发布 workflow 默认跳过 VSM、以经核实的 skipped job 记 deferred，并用原 VSIX 完成 GitHub/Open VSX 收尾。最终成功标准是原 tag 身份不变、双包与 Open VSX 均 verified、VSM 明确显示本轮未查询/未提交的 deferred，且临时 trigger tag 按完成门禁收口。
+恢复 resolver、跨 run 续跑修复和 PR #347 已合入。恢复 run `41157851285` 的 GitHub Release assets 与 Open VSX 已有完整证据；旧版 VSM job 因日志路径 `EEXIST` 退出，finalize 未完成，临时 trigger tag 保留。用户决定不再尝试 VSM，直到发布链重新打通。PR #348 现从发布 workflow 移除 VSM job 与调用，并让当前 resolver/finalize 以 VSM job 和结果工件均不存在作为 deferred 证据。最终成功标准是原 tag 身份不变、双包与 Open VSX 均 verified、VSM 明确显示本轮未查询/未提交的 deferred，且临时 trigger tag 按完成门禁收口。
 
 ## 上下文与定向
 
@@ -105,15 +107,15 @@
 
 在 `/tmp/dsc-vsce-per-package-logs` 工作树继续更新 PR #348。该分支基于最新 `origin/main` 的直接后代，保留每包日志修复，并追加 VSM 默认禁用、deferred manifest 与 release 文档变更。提交前再 fetch/rebase 最新 main；本地只做代码语法、workflow YAML 结构和 `git diff --check` 核对。推送后依靠 PR 的真实 Release Preflight 与 `Verify release contract` 复核最新 head，并等待正式 reviewer approval。
 
-修复 PR 合并后，在 GitHub Actions 中从 `main` 手动触发 `Publish Marketplace Release`，输入 `trigger_tag=publish/v0.27.0` 和 `target=all`。触发前核对两个 tag、Release ID、不可变资产与状态链；resolver 必须把 `visual-studio` 固定为 deferred，VSM job 必须 skipped，不能查询 gallery 或运行 `vsce publish`。验收输入与 release SHA `034c5a02894dab45fdbde9b877e787fa4f91f242` 保持不变；prepare 复用原 VSIX，Open VSX 只查询已有版本并验证原包，finalize 必须记录 VSM deferred 和 Open VSX/GitHub verified，之后才按门禁删除 `publish/v0.27.0`。
+修复 PR 合并后，在 GitHub Actions 中从 `main` 手动触发 `Publish Marketplace Release`，输入 `trigger_tag=publish/v0.27.0` 和 `target=all`。触发前核对两个 tag、Release ID、不可变资产与状态链；resolver 必须把 `visual-studio` 固定为 deferred，当前 workflow 不应包含 VSM job 或调用 gallery / `vsce publish` 的步骤。验收输入与 release SHA `034c5a02894dab45fdbde9b877e787fa4f91f242` 保持不变；prepare 复用原 VSIX，Open VSX 只查询已有版本并验证原包，finalize 必须记录 VSM deferred 和 Open VSX/GitHub verified，之后才按门禁删除 `publish/v0.27.0`。
 
-如 channel-retry 在完成 manifest/state 更新或 trigger tag cleanup 前失败，后续只能沿现有状态链重试，不得重打包、覆盖资产或执行 VSM 查询/提交。VSM 重新打通后，先通过代码复审恢复 workflow dispatch 的单渠道选项，再将仓库变量精确设为 `true`；此前任何发布 run 都应继续保持 VSM deferred。
+如 channel-retry 在完成 manifest/state 更新或 trigger tag cleanup 前失败，后续只能沿现有状态链重试，不得重打包、覆盖资产或执行 VSM 查询/提交。VSM 重新打通后，先通过代码复审恢复 workflow job、单渠道选项和 resolver 目标；此前任何发布 run 都应继续保持 VSM deferred。
 
 ## 验证与验收
 
-Release Preflight 必须在 PR 最新 head 上完成，并通过稳定 `Verify release contract`。本地只做 JavaScript 语法、workflow YAML 结构和 `git diff --check` 核对，不运行 Visual Studio Marketplace 操作。合并后的 channel-retry 必须显示 `publish-visual-studio` 为 skipped，且 Actions run 没有 VSM result artifact；resolver context 与最终 manifest 必须将 `visual-studio` 列为 deferred，并说明本轮没有查询或提交。Open VSX 与 GitHub Release assets 必须继续 verified。
+Release Preflight 必须在 PR 最新 head 上完成，并通过稳定 `Verify release contract`，由 CI 执行更新后的发布回归和 workflow 合同检查。本地验证 workflow YAML 结构、JavaScript 语法与 `git diff --check`；不运行 Visual Studio Marketplace 操作。合并后的 channel-retry 必须没有 `publish-visual-studio` job 或 VSM result artifact；resolver context 与最终 manifest 必须将 `visual-studio` 列为 deferred，并说明本轮没有查询或提交。Open VSX 与 GitHub Release assets 必须继续 verified。
 
-实际恢复时，接受、candidate、prepared、Open VSX partial、manifest 与 state chain 必须能从同一新 workflow run 的真实 job/artifact 复查；最终 release assets 的 SHA256 必须与 manifest 和 Open VSX verification 的 original package hashes 一致。VSM 被 defer 的条件是 workflow job 确实 skipped，且不存在该 run 的 `marketplace-result-visual-studio-*` artifact；任何一个条件不符都要失败。
+实际恢复时，接受、candidate、prepared、Open VSX partial、manifest 与 state chain 必须能从同一新 workflow run 的真实 job/artifact 复查；最终 release assets 的 SHA256 必须与 manifest 和 Open VSX verification 的 original package hashes 一致。VSM 被 defer 的条件是当前 workflow 不包含 VSM job，且该 run 不存在 `marketplace-result-visual-studio-*` artifact；任何一个条件不符都要失败。
 
 截至 2026-10-31，PR #347 与修复跨 run partial-asset resume 的验证均已通过并合入。PR #348 head `c4096df73673665256a14bbdd2867d4b66da8968` 的上一轮 Release Preflight `41162609994` 与 `Verify release contract` 已通过；本次新增 VSM 暂停机制后，必须以更新后的 PR head 重新完成完整门禁和正式复审。
 

@@ -40,7 +40,7 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
       } else context = await resolveRelease({ triggerTag: values['trigger-tag'], selection: values.target, run, client });
       await writeJSON(path.join(output, 'release-context.json'), context);
       if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT,
-        `input_sha=${context.releaseSHA}\nbase_sha=${context.baseSHA}\nversion=${context.version}\nmode=${context.mode}\ntrigger_tag=${context.triggerTag}\nvisual_studio_enabled=${context.deferredTargets?.includes('visual-studio') ? 'false' : 'true'}\n`);
+        `input_sha=${context.releaseSHA}\nbase_sha=${context.baseSHA}\nversion=${context.version}\nmode=${context.mode}\ntrigger_tag=${context.triggerTag}\n`);
       return;
     }
     assert(values.context, 'Consumer phases require a frozen release context');

@@ -348,6 +348,8 @@ unknown是当时缺少证明的观察，不应擦除已确认事实，也不阻�
 
 用户明确接受的发布验证例外必须记录精确版本、保留检查和延后项，测试失败记录不追认为通过。0.26.0 的一次性授权见 `public-marketplace-release-readiness.md` 第 9.0 节，后续版本不自动继承。
 
+渠道暂停应从当前发布 workflow 中移除对应的查询与提交 job，并在发布 manifest 中明确记录 deferred；不能保留可由可变仓库变量重新触发的市场发布调用。恢复渠道前先确认发布链已连通，再通过代码复审恢复 workflow。当前 VSM 暂停决策见 `public-marketplace-release-readiness.md`。
+
 0.26.0 将已结束持久化 Runtime 的重开收口为节点与退出状态，健康 live 会话采用类似 tmux 的重新附着，直接导入后台持有的终端当前状态，免去累计历史回放；配置内 scrollback 是当前模型的一部分。发布文案必须分别说明这两种用户结果，不能用“恢复改进”掩盖终端正文不再保留，也不能把现代系统或具名 workload 的证据扩大成旧平台、任意并发和固定资源保证。依据见 `public-marketplace-release-readiness.md` 第 9.0 节与 `runtime-live-state-recovery.md`。
 
 请求等待超时只结束本地观察，不证明远端操作未发生。普通请求释放等待与严格删除保留迟到证据应分别定义；不能因结果未知自动重发有副作用的请求，也不能让无关输出延长请求期限。资源获取请求的调用者等待结束后，原请求仍须承担迟到 descriptor 的清理责任；该责任计入原 client 和 reader 容量，不能随 Promise 超时丢弃或转移到新连接。

@@ -151,7 +151,9 @@
 
 新增 `scripts/release/publish-tag-release.mjs` 需要提供以下 CLI：
 
-    node scripts/release/publish-tag-release.mjs --trigger-tag publish/vX.Y.Z [--dry-run] [--package-only] [--skip-package] [--target all|visual-studio|open-vsx] [--extension all|main|notifier]
+    node scripts/release/publish-tag-release.mjs --phase resolve --trigger-tag publish/vX.Y.Z --target all --run-head <sha> --output release-context
+
+当前 GitHub Actions 发布 workflow 只开放 `all` / `open-vsx`。Visual Studio Marketplace job 已暂停并移除；恢复前需先更新 workflow 和 CLI 范围并复审。
 
 新增 `package.json` scripts：
 

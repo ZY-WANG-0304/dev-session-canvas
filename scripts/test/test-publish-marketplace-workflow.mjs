@@ -6,12 +6,13 @@ import { buildPlan } from '../gates/resolve-plan.mjs';
 
 const workflow=yaml.load(await fs.readFile('.github/workflows/publish-marketplace-release.yml','utf8'));
 const jobs=workflow.jobs;
-assert.deepEqual(Object.keys(jobs),['resolve-release','verify-release','prepare-release','publish-open-vsx','publish-visual-studio','finalize-release']);
+assert.deepEqual(Object.keys(jobs),['resolve-release','verify-release','prepare-release','publish-open-vsx','finalize-release']);
 assert.equal(workflow.concurrency['cancel-in-progress'],false,'An in-flight release cannot be automatically cancelled');
 assert.equal(jobs['verify-release'].uses,'./.github/workflows/release-validation.yml');
 assert.deepEqual(jobs['prepare-release'].needs,['resolve-release','verify-release']);
 assert.match(jobs['prepare-release'].if,/outputs.accepted == 'true'/);
-for(const name of ['publish-open-vsx','publish-visual-studio'])assert.deepEqual(jobs[name].needs,['resolve-release','prepare-release']);
+assert.deepEqual(jobs['publish-open-vsx'].needs,['resolve-release','prepare-release']);
+assert.deepEqual(jobs['finalize-release'].needs,['resolve-release','prepare-release','publish-open-vsx']);
 assert(jobs['finalize-release'].if.includes('always()'));assert(jobs['finalize-release'].if.includes("needs.prepare-release.result == 'success'"));
 for(const [name,job]of Object.entries(jobs)){
   if(job.uses)continue;
@@ -25,7 +26,10 @@ for(const [name,job]of Object.entries(jobs)){
     'Release consumers cannot rebuild, guess or clobber original packages');
 }
 assert(jobs['publish-open-vsx'].steps.some(step=>step.name==='Fail incomplete required channel'));
-assert(jobs['publish-visual-studio'].steps.some(step=>step.name==='Report deferred optional channel'));
+assert(!JSON.stringify(workflow).includes('VISUAL_STUDIO_MARKETPLACE_ENABLED'));
+assert(!JSON.stringify(workflow).includes('VSCE_PAT'));
+assert(!JSON.stringify(workflow).includes('publish-visual-studio'));
+assert.deepEqual(workflow.on.workflow_dispatch.inputs.target.options,['all','open-vsx']);
 const validation=yaml.load(await fs.readFile('.github/workflows/release-validation.yml','utf8'));
 assert.equal(validation.jobs.full.uses,'./.github/workflows/ci-validation.yml');
 assert.equal(validation.jobs.full.with.mode,'release-tag');
@@ -38,4 +42,4 @@ assert(jobs['resolve-release'].steps.some(step=>step.run?.includes('--recovery-p
 assert(!validation.jobs.recovery.steps.some(step=>/build|package-only/.test(step.run??'')),'Recovery cannot repackage');
 const plan=buildPlan({mode:'release-pr',inputSHA:'a'.repeat(40),baseSHA:'b'.repeat(40),version:'1.2.3',changedPaths:['package.json']});
 assert.equal(localStageGraph(plan).flatMap(stage=>stage.tasks).length,plan.tasks.length,'Local entry must use the complete CI catalogue');
-console.log('Publish six-job DAG, immutable checkout, accepted-package consumers, independent channels and local graph passed');
+console.log('Publish five-job DAG, VSM job removal, immutable checkout, accepted-package consumer and local graph passed');
