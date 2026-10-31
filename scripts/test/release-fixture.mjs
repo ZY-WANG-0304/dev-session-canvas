@@ -4,15 +4,16 @@ import { aggregateResults } from '../gates/verify-result.mjs';
 import { newTaskReceipt, objectDigest, digest } from '../gates/receipts.mjs';
 import { contentPolicyDigest, requiredTargets, marketplaceTargets, releaseIdentity } from '../release/release-completion.mjs';
 
-export async function releaseFixture() {
-  const sha = 'a'.repeat(40), hash = 'c'.repeat(64);
-  const plan = buildPlan({ mode: 'release-tag', inputSHA: sha, baseSHA: 'b'.repeat(40), headSHA: sha,
-    version: '1.2.3', changedPaths: ['package.json'], run: { id: '12345', attempt: 2, headSHA: sha } });
+export async function releaseFixture({ inputSHA = 'a'.repeat(40), baseSHA = 'b'.repeat(40),
+  run = { id: '12345', attempt: 2, headSHA: inputSHA }, repository = 'test/repo' } = {}) {
+  const sha = inputSHA, hash = 'c'.repeat(64);
+  const plan = buildPlan({ mode: 'release-tag', inputSHA: sha, baseSHA, headSHA: sha,
+    version: '1.2.3', changedPaths: ['package.json'], run });
   const packageReceipt = { schemaVersion: 1, inputSHA: sha, version: plan.version, planDigest: objectDigest(plan),
     profile: 'platform', production: true, admission: { executions: null, starting: 1, pending: 2 },
     readmeRef: sha, sourceDigest: hash, lockDigest: hash, nativeSetDigest: hash, environmentDigest: plan.environmentDigest,
     buildCount: { main: 1, notifier: 1 }, npmHooksStripped: true,
-    producer: { runID: plan.run.id, attempt: plan.run.attempt, repository: 'test/repo',
+    producer: { runID: plan.run.id, attempt: plan.run.attempt, repository,
       job: 'package-clean', variant: 'default', jobName: 'Gate package-clean (default)' }, packages: [] };
   const packageBytes = {};
   for (const name of ['dev-session-canvas', 'dev-session-canvas-notifier']) {
@@ -28,7 +29,7 @@ export async function releaseFixture() {
       size: bytes.length, sha256: digest(bytes), payloadDigest });
   }
   const receipts = plan.tasks.map(task => {
-    const r = newTaskReceipt(plan, task, { GITHUB_REPOSITORY: 'test/repo' });
+    const r = newTaskReceipt(plan, task, { GITHUB_REPOSITORY: repository });
     const start = Date.now() - 100; r.status = 'passed';
     r.startedAt = new Date(start).toISOString(); r.completedAt = new Date(start + 10).toISOString(); r.deadline = start + task.timeoutMs;
     r.stages = Object.fromEntries(task.stages.map(stage => [stage, { status: 'passed', startedAt: r.startedAt, completedAt: r.completedAt }]));
@@ -42,11 +43,11 @@ export async function releaseFixture() {
   artifacts.push({ id: 999, name: `gate-transfer-candidate-${plan.run.id}-${plan.run.attempt}`, expired: false,
     runID: plan.run.id, attempt: plan.run.attempt, headSHA: sha, archiveHash: hash,
     jobID: jobs.find(job => job.name === 'Gate package-clean (default)').id, receiptDigests: [objectDigest(packageReceipt)] });
-  const provenance = { schemaVersion: 1, repository: 'test/repo', runID: plan.run.id,
+  const provenance = { schemaVersion: 1, repository, runID: plan.run.id,
     attempt: plan.run.attempt, headSHA: sha, jobs, artifacts };
   const { result, acceptance } = aggregateResults({ plan, receipts, provenance, packageReceipt });
   const context = { schemaVersion: 1, releaseSHA: sha, version: plan.version, baseSHA: plan.baseSHA, run: plan.run,
-    mode: 'release-tag', triggerTag: 'publish/v1.2.3', finalTag: 'v1.2.3', repository: 'test/repo',
+    mode: 'release-tag', triggerTag: 'publish/v1.2.3', finalTag: 'v1.2.3', repository,
     selection: 'all', selectedTargets: [...marketplaceTargets], requiredTargets: [...requiredTargets],
     contentPolicyDigest, existingReleaseID: null };
   const identity = releaseIdentity({ context, acceptance, packageReceipt });
@@ -59,7 +60,7 @@ export async function releaseFixture() {
     observations: [observed], reusedFrom: null, reason: null }; };
   const partial = target => ({ schemaVersion: 1, releaseSHA: sha, version: plan.version, target,
     identityDigest: objectDigest(identity), contentPolicyDigest, packages: identity.packages.map(delivery),
-    producer: { runID: plan.run.id, attempt: plan.run.attempt, repository: 'test/repo', job: `publish-${target}` },
+    producer: { runID: plan.run.id, attempt: plan.run.attempt, repository, job: `publish-${target}` },
     completedAt: new Date().toISOString() });
   return { plan, receipts, provenance, result, acceptance, packageReceipt, packageBytes, context, identity, observation, delivery, partial };
 }

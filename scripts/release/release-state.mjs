@@ -9,7 +9,8 @@ import { validateReleaseContext, releaseJobName } from './release-completion.mjs
 export function appendReleaseState(manifest, { phase, parent = null }) {
   assert(['prepare', 'finalize', 'cleanup'].includes(phase));
   const context = validateReleaseContext(manifest.context);
-  assert(parent || phase === 'prepare' && context.mode === 'release-tag', 'Release state needs its causal predecessor');
+  assert(parent || phase === 'prepare' && ['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+    'Release state needs its causal predecessor');
   return { ...manifest, stateChain: { schemaVersion: 1, sequence: parent ? parent.stateChain.sequence + 1 : 0,
     parentDigest: parent ? objectDigest(parent) : null, phase,
     producer: { runID: String(context.run.id), attempt: context.run.attempt, repository: context.repository,
@@ -71,7 +72,7 @@ export async function recoverReleaseState({ context, identity, assets, client, o
   assert.equal(roots.length, 1, 'Release state chain has missing or ambiguous root');
   assert.equal(roots[0].manifest.stateChain.sequence, 0);
   assert.equal(roots[0].manifest.stateChain.phase, 'prepare');
-  assert.equal(roots[0].manifest.context.mode, 'release-tag');
+  assert(['release-tag', 'incomplete-release-recovery'].includes(roots[0].manifest.context.mode));
   const children = new Map();
   for (const [stateDigest, state] of states) {
     const chain = state.manifest.stateChain;

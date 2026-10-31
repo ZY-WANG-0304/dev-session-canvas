@@ -16,7 +16,7 @@ export const releaseJobName = job => `Release ${job}`;
 
 export function validateReleaseContext(context) {
   assertRecord(context, 'release context'); assert.equal(context.schemaVersion, 1);
-  assert(['release-tag', 'channel-retry'].includes(context.mode));
+  assert(['release-tag', 'channel-retry', 'incomplete-release-recovery'].includes(context.mode));
   assertRecord(context.run, 'release run');
   assertSHA(context.releaseSHA); assertSHA(context.baseSHA); assertSHA(context.run.headSHA);
   assert.match(context.version ?? '', /^\d+\.\d+\.\d+$/u);
@@ -36,7 +36,36 @@ export function validateReleaseContext(context) {
     // run head must remain the API-reported workflow ref.
     assert.equal(context.selection, 'all');
     assert.equal(context.existingReleaseID, null);
-  } else assert(Number.isSafeInteger(context.existingReleaseID) && context.existingReleaseID > 0);
+  } else {
+    assert(Number.isSafeInteger(context.existingReleaseID) && context.existingReleaseID > 0);
+    if (context.mode === 'incomplete-release-recovery') {
+      assert.equal(context.selection, 'all', 'Incomplete recovery must include the complete delivery scope');
+      assertRecord(context.recoverySourceRun, 'recovery source run');
+      assert.match(String(context.recoverySourceRun.id), /^[1-9]\d*$/u);
+      assert(Number.isSafeInteger(context.recoverySourceRun.attempt) && context.recoverySourceRun.attempt > 0);
+      assertSHA(context.recoverySourceRun.headSHA);
+      assert.equal(context.recoverySourceRun.headSHA, context.releaseSHA);
+      assert.notEqual(String(context.recoverySourceRun.id), String(context.run.id));
+      assertRecord(context.recoveryArtifactRun, 'accepted recovery artifact run');
+      assert.match(String(context.recoveryArtifactRun.id), /^[1-9]\d*$/u);
+      assert(Number.isSafeInteger(context.recoveryArtifactRun.attempt) && context.recoveryArtifactRun.attempt > 0);
+      assertSHA(context.recoveryArtifactRun.headSHA);
+      assert.equal(context.recoveryArtifactRun.headSHA, context.run.headSHA);
+      if (context.recoveryPreviousRun) {
+        assertRecord(context.recoveryPreviousRun, 'previous recovery run');
+        assert.match(String(context.recoveryPreviousRun.id), /^[1-9]\d*$/u);
+        assert(Number.isSafeInteger(context.recoveryPreviousRun.attempt) && context.recoveryPreviousRun.attempt > 0);
+        assertSHA(context.recoveryPreviousRun.headSHA);
+        assert.equal(context.recoveryPreviousRun.headSHA, context.run.headSHA);
+        assert.notEqual(String(context.recoveryPreviousRun.id), String(context.run.id));
+        assert.equal(String(context.recoveryArtifactRun.id) === String(context.run.id), false,
+          'A resumed run must retain the accepted artifact producer from its predecessor');
+      } else {
+        assert.deepEqual(context.recoveryArtifactRun, context.run,
+          'The first recovery run is the accepted artifact producer');
+      }
+    } else assert.equal(context.recoverySourceRun, undefined);
+  }
   return context;
 }
 
@@ -241,7 +270,9 @@ export function calculateReleaseCompletion({ context, identity, github, partials
   assert.equal(github?.schemaVersion, 1); assert.equal(github.identityDigest, objectDigest(identity));
   assert.equal(github.releaseSHA, context.releaseSHA); assert.equal(github.version, context.version);
   assert(Number.isSafeInteger(github.releaseID) && github.releaseID > 0);
-  if (context.mode === 'channel-retry') assert.equal(github.releaseID, context.existingReleaseID);
+  if (['channel-retry', 'incomplete-release-recovery'].includes(context.mode)) {
+    assert.equal(github.releaseID, context.existingReleaseID);
+  }
   assert(Number.isFinite(Date.parse(github.completedAt)));
   assert.equal(github.producer.runID, String(context.run.id)); assert.equal(github.producer.attempt, context.run.attempt);
   assert.equal(github.producer.job, 'prepare-release'); assert.equal(github.producer.repository, context.repository);

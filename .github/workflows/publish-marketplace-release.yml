@@ -13,6 +13,14 @@ on:
         type: choice
         options: [all, open-vsx, visual-studio]
         default: all
+      recovery_source_run_id:
+        description: '仅恢复初始 prepare-release 失败且未运行渠道的 Release；填入原失败 run ID'
+        type: string
+        required: false
+      recovery_previous_run_id:
+        description: '恢复再次中断时填写生成当前远端部分资产的前次恢复 run ID'
+        type: string
+        required: false
 permissions:
   contents: write
   actions: read
@@ -50,11 +58,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TRIGGER: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
           RELEASE_TARGET: ${{ inputs.target || 'all' }}
+          RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id || '' }}
+          RECOVERY_PREVIOUS_RUN_ID: ${{ inputs.recovery_previous_run_id || '' }}
         run: |
           set -euo pipefail
           git fetch origin --tags
           run_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .head_sha)"
-          node scripts/release/publish-tag-release.mjs --phase resolve --trigger-tag "$RELEASE_TRIGGER" --target "$RELEASE_TARGET" --run-head "$run_head" --output release-context
+          recovery_args=()
+          if [[ -n "$RECOVERY_SOURCE_RUN_ID" ]]; then
+            recovery_args=(--recovery-source-run-id "$RECOVERY_SOURCE_RUN_ID")
+          fi
+          if [[ -n "$RECOVERY_PREVIOUS_RUN_ID" ]]; then
+            recovery_args+=(--recovery-previous-run-id "$RECOVERY_PREVIOUS_RUN_ID")
+          fi
+          node scripts/release/publish-tag-release.mjs --phase resolve --trigger-tag "$RELEASE_TRIGGER" --target "$RELEASE_TARGET" --run-head "$run_head" --output release-context "${recovery_args[@]}"
       - name: Upload frozen release context
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
@@ -92,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -140,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -180,7 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -220,7 +237,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:

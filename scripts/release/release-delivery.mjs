@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { assertSHA, digest, fileDigest, objectDigest, readJSON, verifyPackageFiles, writeJSON } from '../gates/receipts.mjs';
@@ -55,6 +56,137 @@ export async function resolveRelease({ triggerTag, selection = 'all', root = pro
   return context;
 }
 
+export async function resolveIncompleteReleaseRecovery({ triggerTag, recoverySourceRunID, recoveryPreviousRunID,
+  root = process.cwd(), client = githubClient(), deadline = Date.now() + 300000, run, env = process.env,
+  factsCollector = collectReleaseFacts }) {
+  assertFormalEnvironment(env);
+  assert.equal(run.headSHA, gitRevision(root, 'HEAD'), 'Recovery logic must run from its actual workflow checkout');
+  const version = /^publish\/v(\d+\.\d+\.\d+)$/u.exec(triggerTag ?? '')?.[1];
+  assert(version, 'Expected publish/vX.Y.Z');
+  assert.match(String(recoverySourceRunID ?? ''), /^[1-9]\d*$/u, 'Specify the original failed release run ID');
+  const finalTag = `v${version}`;
+  const sourceRun = await client.json(`actions/runs/${recoverySourceRunID}`, { deadline });
+  assert.equal(sourceRun.id, Number(recoverySourceRunID));
+  assert.equal(sourceRun.path, '.github/workflows/publish-marketplace-release.yml');
+  assert.equal(sourceRun.name, 'Publish Marketplace Release');
+  assert.equal(sourceRun.event, 'push');
+  assert.equal(sourceRun.head_branch, triggerTag);
+  assert.equal(sourceRun.conclusion, 'failure');
+  assert(Number.isSafeInteger(sourceRun.run_attempt) && sourceRun.run_attempt >= 1);
+  assert.equal(sourceRun.repository?.full_name, client.repository);
+
+  const jobs = await client.pages(`actions/runs/${sourceRun.id}/attempts/${sourceRun.run_attempt}/jobs`, 'jobs', deadline);
+  const requireJob = (suffix, conclusion) => {
+    const matches = jobs.filter(job => job.name === `Release ${suffix}`
+      || job.name.split(' / ').at(-1) === `Release ${suffix}`);
+    assert.equal(matches.length, 1, `Source run must contain exactly one Release ${suffix} job`);
+    assert.equal(matches[0].status, 'completed');
+    assert.equal(matches[0].conclusion, conclusion, `Source Release ${suffix} must be ${conclusion}`);
+    return matches[0];
+  };
+  requireJob('resolve-release', 'success');
+  requireJob('prepare-release', 'failure');
+  requireJob('publish-open-vsx', 'skipped');
+  requireJob('publish-visual-studio', 'skipped');
+  requireJob('finalize-release', 'skipped');
+
+  const lookup = await client.lookupRelease(finalTag, deadline);
+  assert.equal(lookup.observation, 'present', 'Incomplete recovery requires the original GitHub Release');
+  const triggerSHA = await client.readTag(triggerTag, deadline);
+  const finalSHA = await client.readTag(finalTag, deadline);
+  assertSHA(triggerSHA); assert.equal(finalSHA, triggerSHA, 'Final tag differs from release input');
+  assert.equal(sourceRun.head_sha, triggerSHA, 'Failed source run differs from the current release SHA');
+  assert.equal(lookup.release.tag_name, finalTag);
+  assert.equal(lookup.release.id > 0, true);
+  assert.equal(lookup.release.name, `Dev Session Canvas v${version}`);
+  assert.equal(lookup.release.target_commitish, triggerSHA);
+  assert.equal(lookup.release.draft, false);
+  assert.equal(lookup.release.prerelease, false);
+  assert.equal(lookup.release.body,
+    `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${triggerSHA}`,
+    'Release notes no longer match the untouched initial delivery state');
+  const assets = await client.pages(`releases/${lookup.release.id}/assets`, null, deadline);
+  assert(assets.every(asset => immutableReleaseFiles.includes(asset.name)),
+    'Incomplete recovery refuses manifest, state, or unrelated Release assets');
+  assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate Release assets are ambiguous');
+  assert(assets.every(asset => asset.state === 'uploaded'), 'Incomplete recovery refuses assets in an unknown state');
+
+  assert.equal(gitRevision(root, triggerSHA), triggerSHA);
+  execFileSync('git', ['merge-base', '--is-ancestor', triggerSHA, 'origin/main'], { cwd: root });
+  const baseSHA = gitRevision(root, `${triggerSHA}^1`);
+  const manifest = JSON.parse(execFileSync('git', ['show', `${triggerSHA}:package.json`], { cwd: root, encoding: 'utf8' }));
+  assert.equal(manifest.version, version, 'Tag version differs from source version');
+  try { execFileSync('git', ['cat-file', '-e', `${triggerSHA}:scripts/gates/catalog.mjs`], { cwd: root, stdio: 'pipe' }); }
+  catch { throw new Error('Release input has no supported acceptance schema'); }
+  const previousRecovery = recoveryPreviousRunID ? await validatePreviousRecoveryRun({ recoveryPreviousRunID,
+    triggerTag, sourceRun, releaseSHA: triggerSHA, releaseID: lookup.release.id, run, client, factsCollector, deadline }) : null;
+  const recoveryArtifactRun = previousRecovery?.recoveryArtifactRun ?? run;
+  const context = validateReleaseContext({ schemaVersion: 1, mode: 'incomplete-release-recovery', triggerTag,
+    finalTag, version, releaseSHA: triggerSHA, baseSHA, repository: client.repository, selection: 'all',
+    selectedTargets: [...marketplaceTargets], requiredTargets: [...requiredTargets], contentPolicyDigest,
+    existingReleaseID: lookup.release.id, recoverySourceRun: { id: String(sourceRun.id),
+      attempt: sourceRun.run_attempt, headSHA: sourceRun.head_sha }, run,
+    ...(previousRecovery ? { recoveryPreviousRun: previousRecovery.previousRun } : {}), recoveryArtifactRun });
+  return context;
+}
+
+async function validatePreviousRecoveryRun({ recoveryPreviousRunID, triggerTag, sourceRun, releaseSHA, releaseID,
+  run, client, factsCollector, deadline }) {
+  assert.match(String(recoveryPreviousRunID ?? ''), /^[1-9]\d*$/u, 'Specify the previous recovery run ID');
+  assert.notEqual(String(recoveryPreviousRunID), String(run.id), 'A recovery run cannot resume itself');
+  const previous = await client.json(`actions/runs/${recoveryPreviousRunID}`, { deadline });
+  assert.equal(previous.id, Number(recoveryPreviousRunID));
+  assert.equal(previous.path, '.github/workflows/publish-marketplace-release.yml');
+  assert.equal(previous.name, 'Publish Marketplace Release');
+  assert.equal(previous.event, 'workflow_dispatch');
+  assert.equal(previous.head_branch, 'main');
+  assert.equal(previous.conclusion, 'failure');
+  assert(Number.isSafeInteger(previous.run_attempt) && previous.run_attempt >= 1);
+  assert.equal(previous.head_sha, run.headSHA, 'Previous recovery used a different main workflow head');
+  assert.equal(previous.repository?.full_name, client.repository);
+
+  const jobs = await client.pages(`actions/runs/${previous.id}/attempts/${previous.run_attempt}/jobs`, 'jobs', deadline);
+  const requireJob = (suffix, conclusion) => {
+    const matches = jobs.filter(job => job.name === `Release ${suffix}`
+      || job.name.split(' / ').at(-1) === `Release ${suffix}`);
+    assert.equal(matches.length, 1, `Previous recovery must contain exactly one Release ${suffix} job`);
+    assert.equal(matches[0].status, 'completed');
+    assert.equal(matches[0].conclusion, conclusion, `Previous recovery Release ${suffix} must be ${conclusion}`);
+    return matches[0];
+  };
+  requireJob('resolve-release', 'success');
+  // prepare runs only when the reusable complete verifier reports accepted=true.
+  requireJob('prepare-release', 'failure');
+  requireJob('publish-open-vsx', 'skipped');
+  requireJob('publish-visual-studio', 'skipped');
+  requireJob('finalize-release', 'skipped');
+
+  const previousRun = { id: String(previous.id), attempt: previous.run_attempt, headSHA: previous.head_sha };
+  const artifactOutput = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-release-recovery-context-'));
+  try {
+    const facts = await factsCollector({ repository: client.repository, run: previousRun }, { client, output: artifactOutput, deadline,
+      allowedNames: [`release-context-${previous.id}-${previous.run_attempt}`],
+      namesForJobs: () => releaseJobName('resolve-release') });
+    assert.equal(facts.artifacts.length, 1, 'Previous recovery context must have one verified resolve artifact');
+    const artifact = facts.artifacts[0];
+    const producer = facts.jobs.find(job => job.id === artifact.jobID);
+    assert.equal(producer?.conclusion, 'success');
+    const previousContext = validateReleaseContext(await readJSON(await findUniqueFile(
+      path.join(artifactOutput, artifact.name), 'release-context.json')));
+    assert(artifact.receiptDigests.includes(objectDigest(previousContext)),
+      'Previous recovery context differs from its verified resolve artifact');
+    assert.equal(previousContext.mode, 'incomplete-release-recovery');
+    assert.equal(previousContext.triggerTag, triggerTag);
+    assert.equal(previousContext.releaseSHA, releaseSHA);
+    assert.equal(previousContext.existingReleaseID, releaseID);
+    assert.deepEqual(previousContext.recoverySourceRun, { id: String(sourceRun.id),
+      attempt: sourceRun.run_attempt, headSHA: sourceRun.head_sha },
+    'Previous recovery must bind the same original failed release run');
+    assert.deepEqual(previousContext.run, previousRun, 'Previous context must match the actual workflow run');
+    return { previousRun, recoveryArtifactRun: previousContext.recoveryArtifactRun };
+  } finally { await fs.rm(artifactOutput, { recursive: true, force: true }); }
+}
+
 export async function verifyRecoveredRelease({ context, output, client = githubClient({ repository: context.repository }),
   deadline = Date.now() + 600000, collector = collectGitHubProvenance, stateCollector = collectReleaseFacts }) {
   validateReleaseContext(context); assert.equal(context.mode, 'channel-retry');
@@ -76,7 +208,8 @@ export async function verifyRecoveredRelease({ context, output, client = githubC
   const result = await readJSON(path.join(output, 'gate-result.json'));
   const provenance = await readJSON(path.join(output, 'gate-provenance.json'));
   const originalContext = validateReleaseContext(await readJSON(path.join(output, 'original-release-context.json')));
-  assert.equal(originalContext.mode, 'release-tag'); assert.equal(originalContext.releaseSHA, context.releaseSHA);
+  assert(['release-tag', 'incomplete-release-recovery'].includes(originalContext.mode));
+  assert.equal(originalContext.releaseSHA, context.releaseSHA);
   assert.equal(originalContext.repository, context.repository);
   validateAcceptance({ plan, acceptance, result, provenance, inputSHA: context.releaseSHA });
   assert.equal(plan.mode, 'release-tag'); assert.deepEqual(plan.run, originalContext.run);
@@ -139,6 +272,10 @@ export async function prepareRelease({ context, input, output, client = githubCl
   await verifyPackageFiles(packageReceipt, plan, input);
   validateAcceptance({ plan, acceptance, result: await readJSON(path.join(input, 'gate-result.json')),
     provenance: await readJSON(path.join(input, 'gate-provenance.json')), inputSHA: context.releaseSHA });
+  if (context.mode === 'incomplete-release-recovery') {
+    assert.deepEqual(plan.run, context.recoveryArtifactRun,
+      'Incomplete recovery must use the acceptance run that produced the existing asset bytes');
+  }
   const identity = releaseIdentity({ context, acceptance, packageReceipt });
   if (context.mode === 'channel-retry') {
     const recovery = await readJSON(path.join(input, 'recovery-verification.json'));
@@ -150,8 +287,13 @@ export async function prepareRelease({ context, input, output, client = githubCl
   }
   await writeJSON(path.join(output, 'release-context.json'), context);
   await writeJSON(path.join(output, 'release-identity.json'), identity);
-  await writeJSON(path.join(output, 'original-release-context.json'), context.mode === 'release-tag' ? context
-    : await readJSON(path.join(input, 'original-release-context.json')));
+  if (['release-tag', 'incomplete-release-recovery'].includes(context.mode)) {
+    const originalContext = context.mode === 'incomplete-release-recovery'
+      ? { ...context, run: context.recoveryArtifactRun } : context;
+    delete originalContext.recoveryPreviousRun;
+    await writeJSON(path.join(output, 'original-release-context.json'), originalContext);
+  } else await fs.copyFile(path.join(input, 'original-release-context.json'),
+    path.join(output, 'original-release-context.json'));
   await writeJSON(path.join(output, 'validated-channel-history.json'), context.mode === 'channel-retry'
     ? await readJSON(path.join(input, 'validated-channel-history.json')) : {});
   let finalSHA = await client.readTag(context.finalTag, deadline);
@@ -160,6 +302,9 @@ export async function prepareRelease({ context, input, output, client = githubCl
     finalSHA = await client.readTag(context.finalTag, deadline);
   }
   assert.equal(finalSHA, context.releaseSHA);
+  if (context.mode === 'incomplete-release-recovery') {
+    assert.equal(await client.readTag(context.triggerTag, deadline), context.releaseSHA);
+  }
   let lookup = await client.lookupRelease(context.finalTag, deadline);
   if (lookup.observation === 'absent') {
     assert.equal(context.mode, 'release-tag');
@@ -170,16 +315,32 @@ export async function prepareRelease({ context, input, output, client = githubCl
     lookup = await client.lookupRelease(context.finalTag, deadline);
   }
   assert.equal(lookup.observation, 'present'); const release = lookup.release;
-  if (context.mode === 'channel-retry') assert.equal(release.id, context.existingReleaseID);
+  if (['channel-retry', 'incomplete-release-recovery'].includes(context.mode)) {
+    assert.equal(release.id, context.existingReleaseID);
+  }
   const assets = await client.pages(`releases/${release.id}/assets`, null, deadline);
+  if (context.mode === 'incomplete-release-recovery') {
+    assert.equal(release.tag_name, context.finalTag);
+    assert.equal(release.target_commitish, context.releaseSHA);
+    assert.equal(release.name, `Dev Session Canvas v${context.version}`);
+    assert.equal(release.draft, false); assert.equal(release.prerelease, false);
+    assert.equal(release.body,
+      `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${context.releaseSHA}`);
+    assert(assets.every(asset => immutableReleaseFiles.includes(asset.name)),
+      'Incomplete recovery refuses manifest, state, or unrelated Release assets');
+    assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate Release assets are ambiguous');
+    assert(assets.every(asset => asset.state === 'uploaded'), 'Incomplete recovery refuses assets in an unknown state');
+  }
   const deliveries = [];
   for (const name of immutableReleaseFiles) {
     const bytes = await fs.readFile(path.join(output, name)); const matches = assets.filter(asset => asset.name === name);
     assert(matches.length <= 1, 'Ambiguous GitHub asset'); let asset = matches[0];
     if (!asset) {
-      assert.equal(context.mode, 'release-tag', 'Original release assets are incomplete; refuse replacement');
+      assert(['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+        'Original release assets are incomplete; refuse replacement');
       asset = await client.uploadAsset(release, name, bytes, deadline);
     }
+    assert.equal(asset.state, 'uploaded');
     const remote = await client.downloadAsset(asset, deadline);
     assert.equal(digest(remote), digest(bytes), `GitHub asset ${name} differs; refuse clobber`);
     const pkg = identity.packages.find(pkg => pkg.path === name);
@@ -203,7 +364,8 @@ export async function prepareRelease({ context, input, output, client = githubCl
   } else if (manifests.length) {
     throw new Error('Existing release state requires verified channel-retry recovery; refuse a second prepare root');
   } else {
-    assert.equal(context.mode, 'release-tag', 'Original Release has no recoverable manifest');
+    assert(['release-tag', 'incomplete-release-recovery'].includes(context.mode),
+      'Original Release has no recoverable manifest');
     const pending = { schemaVersion: 1, status: 'pending', releaseSHA: context.releaseSHA, version: context.version,
       identityDigest: objectDigest(identity), requiredTargets: [...requiredTargets], github, channels: {},
       errors: marketplaceTargets.map(target => ({ target, reason: 'Channel job has not reported its result' })),
@@ -256,6 +418,18 @@ export async function collectNewReleaseInput({ context, output, client = githubC
     await fs.copyFile(path.join(path.dirname(packageFile), name), path.join(input, name));
   }
   await verifyPackageFiles(packageReceipt, plan, input); return input;
+}
+
+export async function collectIncompleteRecoveryInput({ context, output, client = githubClient({ repository: context.repository }),
+  collectInput = collectNewReleaseInput }) {
+  validateReleaseContext(context); assert.equal(context.mode, 'incomplete-release-recovery');
+  if (context.recoveryPreviousRun
+    && String(context.recoveryPreviousRun.id) !== String(context.recoveryArtifactRun.id)) {
+    await collectInput({ context: { ...context, run: context.recoveryPreviousRun },
+      output: path.join(output, 'previous-recovery-acceptance'), client });
+  }
+  return collectInput({ context: { ...context, run: context.recoveryArtifactRun },
+    output: path.join(output, 'accepted-recovery-batch'), client });
 }
 
 export async function finalizeRelease({ context, prepared, output, client = githubClient({ repository: context.repository }),

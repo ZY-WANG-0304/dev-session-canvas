@@ -99,6 +99,15 @@ test('completion refuses wrong partial provenance and original-byte substitution
     const value=structuredClone(complete);mutate(value);assert.throws(()=>calculateReleaseCompletion(value));
   }
 });
+test('incomplete-release recovery completion stays bound to the existing Release ID', async () => {
+  const f = await releaseFixture(), complete = completionFixture(f);
+  complete.context = { ...complete.context, mode: 'incomplete-release-recovery', existingReleaseID: 42,
+    recoverySourceRun: { id: '54321', attempt: 1, headSHA: complete.context.releaseSHA },
+    recoveryArtifactRun: complete.context.run };
+  assert.equal(calculateReleaseCompletion(complete).status, 'complete');
+  const wrong = structuredClone(complete); wrong.github.releaseID = 43;
+  assert.throws(() => calculateReleaseCompletion(wrong), /releaseID|equal/u);
+});
 test('missing optional partial is structural failure; valid deferred gallery does not replace required success', async () => {
   const f=await releaseFixture();const complete=completionFixture(f);
   const gallery=complete.partials[1];

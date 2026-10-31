@@ -8,13 +8,16 @@ import { githubClient, collectReleaseFacts } from './release-github.mjs';
 import { readJSON, objectDigest, writeJSON } from '../gates/receipts.mjs';
 import { findUniqueFile } from '../gates/check-acceptance.mjs';
 import { releaseJobName, validateReleaseContext } from './release-completion.mjs';
-import { resolveRelease, verifyRecoveredRelease, collectNewReleaseInput, prepareRelease, finalizeRelease } from './release-delivery.mjs';
+import { resolveRelease, resolveIncompleteReleaseRecovery, verifyRecoveredRelease, collectNewReleaseInput,
+  collectIncompleteRecoveryInput, prepareRelease, finalizeRelease } from './release-delivery.mjs';
 
 export async function runReleaseCLI(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: { phase: { type: 'string' }, context: { type: 'string' },
     'trigger-tag': { type: 'string' }, target: { type: 'string', default: 'all' }, output: { type: 'string' },
-    input: { type: 'string' }, 'run-head': { type: 'string' }, help: { type: 'boolean' } } });
-  if (values.help) { console.log('release:publish-tag -- --phase resolve|verify-recovery|prepare|finalize --context <file> --output <dir>\n新发布只消费最终 SHA 已验收双包；历史 tag 请运行其原 workflow。'); return; }
+    input: { type: 'string' }, 'run-head': { type: 'string' },
+    'recovery-source-run-id': { type: 'string' }, 'recovery-previous-run-id': { type: 'string' },
+    help: { type: 'boolean' } } });
+  if (values.help) { console.log('release:publish-tag -- --phase resolve|verify-recovery|prepare|finalize --context <file> --output <dir>\n新发布只消费最终 SHA 已验收双包；历史 tag 请运行其原 workflow。\n初始 prepare 失败且渠道未运行时，可从 main 的 workflow_dispatch 传入 --recovery-source-run-id；恢复续跑再传 --recovery-previous-run-id。'); return; }
   assert(values.output && ['resolve', 'verify-recovery', 'prepare', 'finalize'].includes(values.phase),
     'Specify an explicit release phase and output; packaging is not a delivery operation');
   const output = path.resolve(values.output); await fs.mkdir(output, { recursive: true });
@@ -24,7 +27,17 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
   let context;
   try {
     if (values.phase === 'resolve') {
-      context = await resolveRelease({ triggerTag: values['trigger-tag'], selection: values.target, run, client });
+      if (values['recovery-source-run-id'] || values['recovery-previous-run-id']) {
+        assert(values['recovery-source-run-id'], 'A previous recovery run also requires the original failed run ID');
+        assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch',
+          'Incomplete recovery is only allowed from workflow_dispatch');
+        assert.equal(process.env.GITHUB_REF, 'refs/heads/main',
+          'Incomplete recovery must be dispatched from main');
+        assert.equal(values.target, 'all', 'Incomplete recovery must select all delivery targets');
+        context = await resolveIncompleteReleaseRecovery({ triggerTag: values['trigger-tag'],
+          recoverySourceRunID: values['recovery-source-run-id'],
+          recoveryPreviousRunID: values['recovery-previous-run-id'], run, client });
+      } else context = await resolveRelease({ triggerTag: values['trigger-tag'], selection: values.target, run, client });
       await writeJSON(path.join(output, 'release-context.json'), context);
       if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT,
         `input_sha=${context.releaseSHA}\nbase_sha=${context.baseSHA}\nversion=${context.version}\nmode=${context.mode}\ntrigger_tag=${context.triggerTag}\n`);
@@ -40,8 +53,11 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
       if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, `accepted=${result.status === 'passed'}\n`);
     } else if (values.phase === 'prepare') {
       let input;
-      if (context.mode === 'release-tag') input = await collectNewReleaseInput({ context, output, client });
-      else {
+      if (context.mode === 'release-tag') {
+        input = await collectNewReleaseInput({ context, output, client });
+      } else if (context.mode === 'incomplete-release-recovery') {
+        input = await collectIncompleteRecoveryInput({ context, output, client });
+      } else {
         const artifactName = `recovered-release-${context.run.id}-${context.run.attempt}`;
         const facts = await collectReleaseFacts(context, { client, output: path.join(output, 'verified-recovery'),
           allowedNames: [artifactName], namesForJobs: () => releaseJobName('verify-recovery') });

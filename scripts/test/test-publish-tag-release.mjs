@@ -17,7 +17,7 @@ try{
   const client={repository:'test/repo',readTag:async()=>tag,
     createTag:async(_tag,sha)=>{calls.push('tag');tag=sha;},lookupRelease:async()=>({observation:release?'present':'absent',release}),
     createRelease:async()=>{calls.push('release');release={id:1};},pages:async()=>[...remote.values()].map(entry=>entry.asset),
-    uploadAsset:async(_release,name,bytes)=>{calls.push(`upload:${name}`);const asset={id:remote.size+1,name};remote.set(name,{asset,bytes});return asset;},
+    uploadAsset:async(_release,name,bytes)=>{calls.push(`upload:${name}`);const asset={id:remote.size+1,name,state:'uploaded'};remote.set(name,{asset,bytes});return asset;},
     downloadAsset:async asset=>remote.get(asset.name).bytes,
     replaceStateAsset:async (_release,name,bytes)=>{
       calls.push(`upload:${name}`);const asset={id:remote.size+1,name};remote.set(name,{asset,bytes});return asset;
