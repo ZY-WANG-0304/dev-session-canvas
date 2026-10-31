@@ -194,9 +194,14 @@ function formatTargetStatus(target) {
 function formatResidualRisks(manifest) {
   const risks = [
     '- 当前仍是公开 Preview；不承诺跨版本 workspace 状态完全兼容，关键工作区升级前仍建议备份或先在非关键环境验证。',
-    '- Marketplace 渠道发布、审核、缓存和公开可见性彼此独立；Open VSX 是当前完成门禁，Visual Studio Marketplace 当前允许延期补发，但对外宣称任一安装路径前仍需以实际 verified 状态为准。',
     '- 同版本重跑必须复用 GitHub Release 中已有的 VSIX / manifest，不应重新打包覆盖，以避免同一版本号对应不同 checksum。'
   ];
+
+  if (manifest?.releaseCompletion?.deferredTargets?.includes('visual-studio')) {
+    risks.push('- Visual Studio Marketplace 本轮为 deferred；发布记录明确本轮没有查询或提交该渠道，因此不代表市场已接收或拒绝。');
+  } else {
+    risks.push('- Marketplace 发布、审核、缓存和公开可见性彼此独立；对外宣称任一安装路径前，仍需以对应渠道实际 verified 状态为准。');
+  }
 
   const incompleteTargets = collectIncompleteTargets(manifest);
   if (incompleteTargets.length > 0) {

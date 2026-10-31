@@ -24,8 +24,13 @@ export function validateReleaseContext(context) {
   assert.equal(context.finalTag, `v${context.version}`);
   assert.deepEqual(context.requiredTargets, requiredTargets);
   assert.equal(context.contentPolicyDigest, contentPolicyDigest);
-  assert.deepEqual(context.selectedTargets, context.selection === 'all'
-    ? marketplaceTargets : [context.selection]);
+  const deferredTargets = context.deferredTargets ?? [];
+  assert(Array.isArray(deferredTargets));
+  assert.equal(new Set(deferredTargets).size, deferredTargets.length, 'Duplicate deferred channel');
+  assert(deferredTargets.every(target => target === 'visual-studio'), 'Only Visual Studio may be deferred by policy');
+  if (context.selection !== 'all') assert(!deferredTargets.includes(context.selection), 'A selected channel cannot be deferred');
+  assert.deepEqual(context.selectedTargets, (context.selection === 'all'
+    ? marketplaceTargets : [context.selection]).filter(target => !deferredTargets.includes(target)));
   assert(context.selectedTargets.every(target => marketplaceTargets.includes(target)));
   assert.match(String(context.run.id), /^(?:local-[a-zA-Z0-9-]+|[1-9]\d*)$/u);
   assert(Number.isSafeInteger(context.run.attempt) && context.run.attempt > 0);
@@ -264,7 +269,7 @@ export function validateChannelPartial(partial, identity, { context, actualJob, 
   return partial;
 }
 
-export function calculateReleaseCompletion({ context, identity, github, partials, facts }) {
+export function calculateReleaseCompletion({ context, identity, github, partials, facts, history = {} }) {
   validateReleaseContext(context); validateIdentity(identity);
   assert.equal(identity.releaseSHA, context.releaseSHA); assert.equal(identity.version, context.version);
   assert.equal(github?.schemaVersion, 1); assert.equal(github.identityDigest, objectDigest(identity));
@@ -311,14 +316,28 @@ export function calculateReleaseCompletion({ context, identity, github, partials
   }
   for (const target of marketplaceTargets) {
     const partial = channels[target];
-    if (!partial) { errors.push({ target, reason: 'Missing channel result or producer evidence' }); continue; }
+    if (!partial) {
+      const historical = context.mode === 'channel-retry' && !context.selectedTargets.includes(target)
+        ? history[target]?.partial : null;
+      if (historical) { channels[target] = historical; continue; }
+      if (context.deferredTargets?.includes(target)) {
+        const job = facts.jobs.find(item => item.name === releaseJobName(`publish-${target}`));
+        assert.equal(job?.status, 'completed', 'Deferred channel job must be present in workflow evidence');
+        assert.equal(job?.conclusion, 'skipped', 'Deferred channel job must not run');
+        assert(!facts.artifacts.some(artifact => artifact.name === `marketplace-result-${target}-${context.run.id}-${context.run.attempt}`),
+          'Deferred channel must not produce a result artifact');
+        continue;
+      }
+      errors.push({ target, reason: 'Missing channel result or producer evidence' }); continue;
+    }
     const allowReuse = context.mode === 'channel-retry' && !context.selectedTargets.includes(target);
     const complete = partial.packages.every(entry => deliveryIsComplete(entry, allowReuse));
     if (!complete && requiredTargets.includes(target)) errors.push({ target, reason: 'Required package content is not verified' });
   }
   return { schemaVersion: 1, status: errors.length ? 'failed' : 'complete', releaseSHA: context.releaseSHA,
     version: context.version, identityDigest: objectDigest(identity), requiredTargets: [...requiredTargets],
-    github, channels, errors, visualStudioBlocking: false,
+    github, channels, errors, deferredTargets: (context.deferredTargets ?? []).filter(target => !channels[target]),
+    visualStudioBlocking: false,
     producer: { runID: String(context.run.id), attempt: context.run.attempt, repository: context.repository, job: 'finalize-release' },
     completedAt: errors.length ? null : new Date().toISOString() };
 }

@@ -16,6 +16,7 @@ import { appendReleaseState, recoverReleaseState, saveReleaseState } from './rel
 export const immutableReleaseFiles = Object.freeze(['main.vsix', 'notifier.vsix', 'package-receipt.json',
   'gate-plan.json', 'gate-result.json', 'gate-provenance.json', 'acceptance-receipt.json',
   'release-identity.json', 'original-release-context.json']);
+const deferredMarketplaceTargets = env => env.VISUAL_STUDIO_MARKETPLACE_ENABLED === 'true' ? [] : ['visual-studio'];
 const gitRevision = (root, revision, optional = false) => {
   try { return execFileSync('git', ['rev-parse', '--verify', '--quiet', `${revision}^{commit}`], { cwd: root, encoding: 'utf8' }).trim(); }
   catch (error) { if (optional && error.status === 1) return null; throw error; }
@@ -24,8 +25,10 @@ const gitRevision = (root, revision, optional = false) => {
 export async function resolveRelease({ triggerTag, selection = 'all', root = process.cwd(), client = githubClient(),
   deadline = Date.now() + 300000, run, env = process.env }) {
   assertFormalEnvironment(env);
+  const deferredTargets = deferredMarketplaceTargets(env);
   const version = /^publish\/v(\d+\.\d+\.\d+)$/u.exec(triggerTag ?? '')?.[1]; assert(version, 'Expected publish/vX.Y.Z');
-  assert(['all', ...marketplaceTargets].includes(selection));
+  assert(['all', ...marketplaceTargets.filter(target => !deferredTargets.includes(target))].includes(selection),
+    'Visual Studio Marketplace is disabled until VISUAL_STUDIO_MARKETPLACE_ENABLED is true');
   const finalTag = `v${version}`;
   const lookup = await client.lookupRelease(finalTag, deadline);
   assert(['present', 'absent'].includes(lookup.observation), 'Cannot resolve unknown Release state');
@@ -46,7 +49,9 @@ export async function resolveRelease({ triggerTag, selection = 'all', root = pro
   execFileSync('git', ['merge-base', '--is-ancestor', releaseSHA, 'origin/main'], { cwd: root });
   const baseSHA = gitRevision(root, `${releaseSHA}^1`);
   const context = validateReleaseContext({ schemaVersion: 1, mode, triggerTag, finalTag, version, releaseSHA, baseSHA,
-    repository: client.repository, selection, selectedTargets: selection === 'all' ? [...marketplaceTargets] : [selection],
+    repository: client.repository, selection, deferredTargets,
+    selectedTargets: (selection === 'all' ? [...marketplaceTargets] : [selection])
+      .filter(target => !deferredTargets.includes(target)),
     requiredTargets: [...requiredTargets], contentPolicyDigest,
     existingReleaseID: lookup.release?.id ?? null, run });
   const manifest = JSON.parse(execFileSync('git', ['show', `${releaseSHA}:package.json`], { cwd: root, encoding: 'utf8' }));
@@ -121,9 +126,11 @@ export async function resolveIncompleteReleaseRecovery({ triggerTag, recoverySou
   const previousRecovery = recoveryPreviousRunID ? await validatePreviousRecoveryRun({ recoveryPreviousRunID,
     triggerTag, sourceRun, releaseSHA: triggerSHA, releaseID: lookup.release.id, run, client, factsCollector, deadline }) : null;
   const recoveryArtifactRun = previousRecovery?.recoveryArtifactRun ?? run;
+  const deferredTargets = deferredMarketplaceTargets(env);
   const context = validateReleaseContext({ schemaVersion: 1, mode: 'incomplete-release-recovery', triggerTag,
     finalTag, version, releaseSHA: triggerSHA, baseSHA, repository: client.repository, selection: 'all',
-    selectedTargets: [...marketplaceTargets], requiredTargets: [...requiredTargets], contentPolicyDigest,
+    deferredTargets, selectedTargets: marketplaceTargets.filter(target => !deferredTargets.includes(target)),
+    requiredTargets: [...requiredTargets], contentPolicyDigest,
     existingReleaseID: lookup.release.id, recoverySourceRun: { id: String(sourceRun.id),
       attempt: sourceRun.run_attempt, headSHA: sourceRun.head_sha }, run,
     ...(previousRecovery ? { recoveryPreviousRun: previousRecovery.previousRun } : {}), recoveryArtifactRun });
@@ -380,13 +387,17 @@ export async function prepareRelease({ context, input, output, client = githubCl
 function releaseManifest(context, identity, github, completion, channels, history) {
   const marketplaces = {};
   for (const target of marketplaceTargets) {
-    const partial = channels[target];
+    const partial = channels[target] ?? history[target]?.partial;
+    const deferred = !partial && context.deferredTargets?.includes(target);
     const entries = partial?.packages ?? identity.packages.map(pkg => ({ extensionID: pkg.id, version: pkg.version,
       sourcePackageHash: pkg.sha256, observation: 'unknown', submission: 'not-submitted', content: 'unknown',
-      evidenceUse: 'fresh', reason: 'Missing or invalid channel result' }));
+      evidenceUse: 'fresh', reason: deferred
+        ? 'Visual Studio Marketplace publishing is disabled; no query or submission was run.'
+        : 'Missing or invalid channel result' }));
     marketplaces[target === 'open-vsx' ? 'openVsx' : 'visualStudio'] = Object.fromEntries(entries.map(entry => [
       entry.extensionID.endsWith('-notifier') ? 'notifier' : 'main', { ...entry,
-        status: deliveryIsComplete(entry, context.mode === 'channel-retry' && !context.selectedTargets.includes(target))
+        status: deferred ? 'deferred' : deliveryIsComplete(entry,
+          context.mode === 'channel-retry' && !context.selectedTargets.includes(target))
           ? entry.evidenceUse === 'reused' ? 'reused-verified' : 'verified'
           : entry.content === 'mismatch' ? 'content-mismatch' : 'pending-verification' }]));
   }
@@ -452,11 +463,24 @@ export async function finalizeRelease({ context, prepared, output, client = gith
   assert.equal(prepareJob?.name, releaseJobName('prepare-release')); assert.equal(prepareJob.conclusion, 'success');
   assert(preparedArtifact.receiptDigests.includes(objectDigest(github)));
   assert.equal(objectDigest(await readJSON(path.join(prepared, 'release-identity.json'))), objectDigest(identity));
-  const partials = [], evidenceErrors = [...(facts.errors ?? [])];
+  const partials = [];
+  const deferredTargets = new Set(context.deferredTargets ?? []);
+  const deferredArtifact = `marketplace-result-visual-studio-${context.run.id}-${context.run.attempt}`;
+  const evidenceErrors = (facts.errors ?? []).filter(error =>
+    !(deferredTargets.has('visual-studio') && error.artifact === deferredArtifact));
   for (const target of marketplaceTargets) {
+    const artifactName = `marketplace-result-${target}-${context.run.id}-${context.run.attempt}`;
+    if (deferredTargets.has(target)) {
+      const job = facts.jobs.find(item => item.name === releaseJobName(`publish-${target}`));
+      assert.equal(job?.status, 'completed', 'Deferred channel job must appear in Actions evidence');
+      assert.equal(job?.conclusion, 'skipped', 'Deferred channel job must not execute');
+      assert(!facts.artifacts.some(artifact => artifact.name === artifactName),
+        'Deferred channel must not produce a result artifact');
+      continue;
+    }
     try {
       const partial = await readJSON(await findUniqueFile(path.join(output, 'actual-results',
-        `marketplace-result-${target}-${context.run.id}-${context.run.attempt}`), 'channel-partial.json'));
+        artifactName), 'channel-partial.json'));
       assert.equal(partial.target, target, 'Partial has the wrong target');
       assert(facts.jobs.some(job => job.name === releaseJobName(`publish-${target}`)), 'Partial has no actual producer job');
       validateChannelPartial(partial, identity, { context,
@@ -467,9 +491,9 @@ export async function finalizeRelease({ context, prepared, output, client = gith
       partials.push(partial);
     } catch (error) { evidenceErrors.push({ target, reason: error.message }); }
   }
-  const completion = calculateReleaseCompletion({ context, identity, github, partials, facts });
-  if (evidenceErrors.length) { completion.status = 'failed'; completion.completedAt = null; completion.errors.push(...evidenceErrors); }
   const history = await readJSON(path.join(actualPrepared, 'validated-channel-history.json'));
+  const completion = calculateReleaseCompletion({ context, identity, github, partials, facts, history });
+  if (evidenceErrors.length) { completion.status = 'failed'; completion.completedAt = null; completion.errors.push(...evidenceErrors); }
   for (const partial of partials) if (partial.packages.every(entry => entry.content === 'match' && entry.evidenceUse === 'fresh')) {
     history[partial.target] = { context, partial };
   }

@@ -9,9 +9,9 @@ on:
         type: string
         required: true
       target:
-        description: '渠道恢复范围；首次发布必须 all'
+        description: '渠道恢复范围；首次发布必须 all，Visual Studio Marketplace 暂停期间不可单独选择'
         type: choice
-        options: [all, open-vsx, visual-studio]
+        options: [all, open-vsx]
         default: all
       recovery_source_run_id:
         description: '仅恢复初始 prepare-release 失败且未运行渠道的 Release；填入原失败 run ID'
@@ -38,6 +38,7 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       mode: ${{ steps.resolve.outputs.mode }}
       trigger_tag: ${{ steps.resolve.outputs.trigger_tag }}
+      visual_studio_enabled: ${{ steps.resolve.outputs.visual_studio_enabled }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,6 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TRIGGER: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger_tag || github.ref_name }}
           RELEASE_TARGET: ${{ inputs.target || 'all' }}
+          VISUAL_STUDIO_MARKETPLACE_ENABLED: ${{ vars.VISUAL_STUDIO_MARKETPLACE_ENABLED || 'false' }}
           RECOVERY_SOURCE_RUN_ID: ${{ inputs.recovery_source_run_id || '' }}
           RECOVERY_PREVIOUS_RUN_ID: ${{ inputs.recovery_previous_run_id || '' }}
         run: |
@@ -191,7 +193,7 @@ jobs:
   publish-visual-studio:
     name: Release publish-visual-studio
     needs: [resolve-release, prepare-release]
-    if: ${{ needs.prepare-release.result == 'success' }}
+    if: ${{ needs.prepare-release.result == 'success' && needs.resolve-release.outputs.visual_studio_enabled == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
