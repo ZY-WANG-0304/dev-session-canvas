@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [适配与基础设施层]
 related_specs: []
-related_plans: [docs/exec-plans/active/release-product-decoupling.md]
+related_plans: [docs/exec-plans/completed/release-product-decoupling.md]
 updated_at: 2026-11-01
 ---
 
@@ -37,13 +37,13 @@ updated_at: 2026-11-01
 - `.github/workflows/release-validation.yml` 的 `channel-retry` 校验使用 `github.sha`；主 workflow 的恢复交付步骤也使用该 SHA。PR #349 修复的是这段恢复链路。
 - `scripts/release/release-delivery.mjs`、`release-completion.mjs` 与 `release-state.mjs` 承担产品身份、验收产物和渠道状态校验；后续解耦必须保留这些约束，不能只替换 checkout 后宣称完成。
 
-本次只记录正式原则和实现差距，没有改动 workflow、脚本或任何发布资产。`validation_status: 验证中` 指完整解耦尚未实施验收，不否认已有恢复路径的验证结果。此前 [发布门禁重设计](release-gate-redesign.md) 中首次发布使用产品 SHA 上脚本的规则，保留为当前实现说明，其目标边界由本文件更新。
+2026-10-31 的初始文档提交只记录正式原则和实现差距，没有改动 workflow、脚本或任何发布资产；当时完整解耦尚未实施验收。当前实现与验证进度见下方 2026-11-01 记录。此前 [发布门禁重设计](release-gate-redesign.md) 中首次发布使用产品 SHA 上脚本的规则，保留为改造前实现说明，其目标边界由本文件更新。
 
 ## 后续验证标准
 
 固定同一产品提交和已验收双包，分别使用更新前后的发布工具执行受控交付，确认版本、源码身份与 VSIX 摘要完全一致，而工具修复行为实际生效。首次发布与恢复均需覆盖，并核对各阶段真实执行来源。
 
-工具 checkout 中放置不同产品版本时，仍只能交付显式指定的原产品输入；包内容冲突、错误来源或不兼容回执必须在交付前被拒绝。重复执行和中断续跑必须保持原包及已上传不可变证据，不覆盖历史内容。上述为待执行验收标准，本次未运行这些实验。
+工具 checkout 中放置不同产品版本时，仍只能交付显式指定的原产品输入；包内容冲突、错误来源或不兼容回执必须在交付前被拒绝。重复执行和中断续跑必须保持原包及已上传不可变证据，不覆盖历史内容。上述标准在初始文档阶段尚未执行；2026-11-01 的受控验证结果见下方，实际市场交付仍未执行。
 
 ## 初始文档验证（2026-10-31）
 
@@ -55,7 +55,7 @@ updated_at: 2026-11-01
 
 交付核验历史验收的冻结任务与真实 producer，不能将当前工具的测试目录重算后要求与旧产品相同；只有构建验收阶段按该产品实际目录检查完整性。新增分支不得让普通 PR 回执冒充 release-tag 批次。批次保留 90 天，过期拒绝重新构建替换；长期来源归档为显式后续限制。
 
-两条流水线及批次校验已实现；受控回归与旧发布合同已通过，完整 PR CI 与实际发布运行分别追踪，不将本地结果当作市场交付。
+两条流水线及批次校验已实现；受控回归、旧发布合同与代码提交的完整 PR CI 已通过，实际发布运行仍未执行，不将 CI 结果当作市场交付。
 
 构建兼容旧产品的方式是在 CI resolve 的隔离 checkout 中建立本地 `publish/vX.Y.Z` 验证引用，并核对产品属于 main；已存在不同 SHA 时拒绝。该引用不推送远端，不触发发布；产品原 `resolve-plan`、测试目录和构建代码保持原样。
 
@@ -63,3 +63,7 @@ updated_at: 2026-11-01
 ## 实施验证（2026-11-01）
 
 Node v25.6.0 下，gate contracts、历史初始恢复与新批次回归合计 142/142 通过；旧交付/完成测试 38/38 通过。新批次覆盖实际 ZIP/producer 绑定、失败或 PR 来源、错误版本/attempt/包、旧冻结目录、工具与产品 SHA 不同、四个上传中断点跨工具续传、先拒绝冲突再上传，以及完整交付后的真实状态链恢复。workflow 合同另外执行实际本地 Git 引用绑定脚本，验证幂等及冲突拒绝。以上均为受控远端，未执行真实渠道发布。
+
+完整 PR CI：[run 41226378995 / attempt 1](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41226378995)，对应代码 head `000757e92fbac6d1a82cc7ea78c623b3e549fb48`，277/277 jobs 成功，包括必需检查 `Verify release contract`。正式验收 artifact 为 `gate-acceptance-41226378995-1`（ID `13052298297`，digest `sha256:b78173e86877a5bb69b4b4869053e35a210f254714dc7d4ad1be083fe1555feb`）。该结果绑定这次代码提交，后续文档提交的检查以 GitHub 对应 head 为准。
+
+`validation_status: 验证中` 现在仅保留合并后首次从 main dispatch 的实际构建/交付验证边界；实施计划已完成归档。独立 review 未发现新的确定性 blocker，历史临时 tag 状态文案与长期证据保留限制已登记到 [技术债跟踪器](../exec-plans/tech-debt-tracker.md)，不表述为已修复。

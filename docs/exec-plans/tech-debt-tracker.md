@@ -1043,4 +1043,13 @@ main 已启用活动 ruleset，目标为默认分支：要求 PR、一次审批�
 
 两条流水线把原包批次和 release-tag/交付证明保留为 90 天 Actions artifacts。下载原 Release VSIX 不等于证明其实际验收与状态 producer 永久可取：批次、原 acceptance/candidate、状态链 producer 工件过期或被删除后，恢复必须失败，不重新构建替换。当前保留期之外的长期补发尚无独立可验的归档或签名证明方案。
 
-后续需在保留产品 SHA、原包摘要、原 producer 和完整因果链的前提下设计持久来源归档，并实测 Actions 原工件失效后的恢复；不能只保存自报 JSON 或放宽真实来源校验。范围与当前受控证据见 [发布解耦设计](../design-docs/release-product-decoupling.md) 及 [ExecPlan](active/release-product-decoupling.md)。本次不引入新服务或修改既有 Release。
+后续需在保留产品 SHA、原包摘要、原 producer 和完整因果链的前提下设计持久来源归档，并实测 Actions 原工件失效后的恢复；不能只保存自报 JSON 或放宽真实来源校验。范围与当前受控证据见 [发布解耦设计](../design-docs/release-product-decoupling.md) 及 [ExecPlan](completed/release-product-decoupling.md)。本次不引入新服务或修改既有 Release。
+
+
+## 历史临时 tag 状态与最终 Release notes 不一致（2026-11-01）
+
+[PR #350 独立 review](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/350#issuecomment-6547190744) 确认：`scripts/release/release-delivery.mjs` 的 `releaseManifest` 初始将 `triggerTagStatus` 设为 `kept`，`finalizeRelease` 在清理临时 tag 前写 Release notes。`scripts/release/write-github-release-notes.mjs` 因而可能将最终已清理的临时 tag 写成“保留”；新批次流程不创建远端 `publish/` tag 时，也可能沿用该不准确描述。这是既有收尾顺序和默认状态的文案问题，本次没有修复。
+
+影响限于 Release notes 的临时 tag 状态表述，不改变正式版本 tag 指向、产品身份、VSIX 字节或渠道交付结果。当前查验临时 tag 应以 GitHub 实际 ref 和最终状态证据为准，不能只依据该行文案。本次按非阻塞历史问题登记，未将其纳入两条流水线改造的实现范围。
+
+建议在下一次发布收尾工具修复时单独处理：先获得清理后的实际状态，再生成与最终状态一致的 notes，并覆盖不存在、保留和删除失败的情况；相关入口为 `release-delivery.mjs::releaseManifest/finalizeRelease`、`write-github-release-notes.mjs` 与 `scripts/test/test-release-delivery.mjs`。设计与验收边界见 [发布解耦设计](../design-docs/release-product-decoupling.md)；此记录不表示修复已完成或已有修复 PR。
