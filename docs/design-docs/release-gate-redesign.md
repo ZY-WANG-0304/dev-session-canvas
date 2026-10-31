@@ -35,6 +35,8 @@ PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复�
 
 ## 正式方案
 
+2026-10-31 用户确认[发布工具与产品内容解耦](release-product-decoupling.md)原则，覆盖首次发布和恢复。本文下述首次 `release-tag` 从产品 SHA 执行发布脚本的规则描述当前实现，尚不满足完整解耦目标；PR #349 仅修复恢复流程的执行来源。后续迁移须保持产品输入、同批原包和验收证据不变，不能因工具更新而替换发布内容。
+
 ### GitHub Release 类别（2026-10-24 review 修正）
 
 按用户确认延续历史 `prerelease: false` 策略。`scripts/release/release-github.mjs` 的 `githubClient.createRelease` 创建普通非草稿 Release，初始正文如实标记渠道交付进行中；`release-delivery.mjs` 的 `finalizeRelease` 在发布与 `channel-retry` 两种模式下继续通过 `updateNotes` 仅更新正文，不改变发布类别。创建响应丢失时查询同 tag/SHA 的原 Release，不重复创建。此次不改历史远端 Release，不强制设置 GitHub Latest，也不改变产品 Preview 或 Marketplace 通道策略。
