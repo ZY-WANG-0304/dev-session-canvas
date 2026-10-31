@@ -8,7 +8,7 @@
 
 notifier 随主扩展进入同一份 `docs/release-contracts/vX.Y.Z.md`，发布前定稿用户说明、Marketplace 文案、文档清单与已知限制。CHANGELOG 只写用户可见行为、安装升级和限制；运行结果、SHA、渠道状态与内部待办不写入 CHANGELOG，也不在发布后回写同版本契约。
 
-正式流程由 `docs/WORKFLOW.md`、`docs/design-docs/release-gate-redesign.md` 和主扩展手册共同定义。发布 PR 的真实最新预合并 SHA 执行完整 `release-pr`；合入 main 后，最终 `publish/vX.Y.Z` 的 SHA 独立执行 `release-tag`。验证阶段的 `package-clean` 在干净源码与锁定依赖上生成同批 main / notifier VSIX，后续 packaged-host、三平台 x64 原样安装和交付消费原双包。
+正式流程由 `docs/WORKFLOW.md`、`docs/design-docs/release-gate-redesign.md` 和主扩展手册共同定义。发布 PR 的真实最新预合并 SHA 执行完整 `release-pr`；合入 main 后，从 main 启动构建验收，以显式产品 SHA 独立执行 `release-tag`，产出固定双包批次。验证阶段的 `package-clean` 在干净源码与锁定依赖上生成同批 main / notifier VSIX，后续 packaged-host、三平台 x64 原样安装和交付消费原双包。
 
 `Verify release contract` 只有独立核对真实 Actions job / 工件来源、完整必跑集合和同批产物成功后才能通过。当前 GitHub 活动 ruleset 已将它设为 `main` 的 required status check，并要求 PR 至少一次审批、分支追上最新 base；实际规则以 GitHub 当前活动 ruleset 为准。draft 跳过或本地结果不满足该门槛。最终 SHA 完整验收前可以生成候选 VSIX，不能创建正式 Release、写市场或删除临时 tag。实际交付仅复用验收过的 bytes。
 
@@ -99,19 +99,17 @@ notifier 随主扩展进入同一份 `docs/release-contracts/vX.Y.Z.md`，发布
 
 ## 发布命令
 
-主扩展与 notifier 通过同一次发布交付两个独立 VSIX。取得发布授权、发布准备 PR 正式验收并合入 main 后，按主扩展手册在最终 release commit 创建并推送 `publish/v0.27.0`；完整命令见 [主扩展发布手册](public-preview-release-playbook.md#发布命令)。
+主扩展与 notifier 使用同一产品提交、版本与验收批次。发布准备 PR 合入 main 后，先执行 `build-release-batch.yml --ref main`，传入产品 SHA/版本；完整验收和 seal 成功后，再执行 `publish-marketplace-release.yml --ref main`，传入版本与构建 run/attempt。完整命令见[主扩展发布手册](public-preview-release-playbook.md#发布命令)。
 
-`.github/workflows/publish-marketplace-release.yml` 的 resolve → verify → prepare → Open VSX → finalize 流程冻结同一个最终 SHA。新发布 verify 执行完整 `release-tag`；prepare 只消费已经验收的 main / notifier 双包，创建或确认正式 tag、GitHub Release 并上传原包与来源证据，随后 Open VSX 验真。Visual Studio Marketplace 当前已从 workflow 移除，并在 manifest 中记为 deferred。GitHub Release Assets 是下载入口，裸 tag 对象不承载这些文件。
+发布工具来自本次 main workflow SHA，主扩展、notifier、摘要及发布文案来自固定批次。工具升级不重新构建或替换 notifier。GitHub/Open VSX 双包验真后才完成，VSM 保持 deferred。
 
-渠道部分完成后的恢复入口为同一个 workflow 的 `workflow_dispatch`，参数是原 `trigger_tag` 和 `target=all|open-vsx`。Visual Studio Marketplace 暂未列为可选目标；发布链重新打通后，须经代码复审恢复 workflow job 与单渠道选项。具体命令见 [渠道恢复](public-preview-release-playbook.md#渠道恢复)。resolver 复核原 Release 双包、acceptance 和状态链后进入 `channel-retry`，包括原临时 tag 已删除的情况；不提供 `--extension notifier` 单包重发路径，也不重新打包或替换原资产。旧 `--package-only` / `--skip-package` 参数只属于历史发布实现。
-
-notifier 与主扩展在所选渠道逐包检查；提交结果未知时先查询，内容 match 才能完成。GitHub Release assets 与 Open VSX 两个必需目标都必须包含主包和 notifier，Visual Studio Marketplace 继续保留明确的 deferred 策略。最终 manifest / notes 与实际渠道状态一致，未完成目标或清理失败必须保留，不能用另一渠道通过覆盖。
+首发中断和渠道失败都使用同一批次参数发起新的发布运行；有状态链时先核验原状态。无批次的历史完整 Release 可使用版本与 target 原包恢复，详见[渠道恢复](public-preview-release-playbook.md#渠道恢复)。不提供 notifier 单包重新构建入口。
 
 ## Tag 与版本对齐约束
 
-- notifier 与主扩展共用位于 main 上的 release commit 和正式 `v<release-version>` tag，不另发 notifier 专属 tag。
-- `publish/v<release-version>` 由 finalize 在核对正式 tag、原双包、必需渠道回执和状态后清理；失败时保留现场。缺资产、缺回执或身份冲突时停止，不删除原 Release 或重打包覆盖。
-- 若 notifier 要从另一 commit 单独发布且不与主扩展同版本，须另行明确版本策略；当前同批双包流程不允许用同一版本号替换成另一组发布输入。
+- 主扩展与 notifier 共用产品 SHA 和正式 `vX.Y.Z` tag，不另发 notifier 专属 tag。
+- 新流程不需要远端 publish tag；历史临时 tag 只有在必需交付完成且身份一致时才清理。
+- 构建批次和来源证明保留 90 天；过期时拒绝恢复，不用新构建替换原双包。版本规则与主扩展相同。
 
 ## 发布后验证
 

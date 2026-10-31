@@ -1,9 +1,6 @@
 name: Release Validation
 on:
   workflow_call:
-    secrets:
-      DEEPSEEK_API_KEY:
-        required: false
     inputs:
       input_sha:
         type: string
@@ -22,26 +19,14 @@ on:
         required: true
     outputs:
       accepted:
-        value: ${{ jobs.full.outputs.accepted || jobs.recovery.outputs.accepted }}
+        value: ${{ jobs.recovery.outputs.accepted }}
 permissions:
   contents: read
   actions: read
 jobs:
-  full:
-    if: ${{ inputs.mode == 'release-tag' || inputs.mode == 'incomplete-release-recovery' }}
-    uses: ./.github/workflows/ci-validation.yml
-    secrets:
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-    with:
-      input_sha: ${{ inputs.input_sha }}
-      base_sha: ${{ inputs.base_sha }}
-      head_sha: ${{ inputs.input_sha }}
-      mode: release-tag
-      version: ${{ inputs.version }}
-      trigger_tag: ${{ inputs.trigger_tag }}
   recovery:
     name: Release verify-recovery
-    if: ${{ inputs.mode == 'channel-retry' }}
+    if: ${{ inputs.mode == 'channel-retry' || inputs.mode == 'artifact-release' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     outputs:
@@ -77,6 +62,7 @@ jobs:
           name: recovered-release-${{ github.run_id }}-${{ github.run_attempt }}
           path: recovered-release
           include-hidden-files: true
+          retention-days: 90
           if-no-files-found: error
       - name: Preserve recovery evidence
         if: ${{ always() }}
@@ -86,4 +72,5 @@ jobs:
           path: |
             recovered-release/release-failure.json
             recovery-evidence
+          retention-days: 90
           if-no-files-found: warn

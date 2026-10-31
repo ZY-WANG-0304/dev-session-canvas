@@ -39,12 +39,12 @@ export async function releaseFixture({ inputSHA = 'a'.repeat(40), baseSHA = 'b'.
   const jobs = [...new Set(receipts.map(r => r.producer.jobName))].map((name,i) => ({ id: i+1, name, status: 'completed', conclusion: 'success', steps: [] }));
   const artifacts = jobs.map(job => { const group = receipts.filter(r => r.producer.jobName === job.name); const r = group[0];
     return { id: job.id+100, name: `gate-${r.job}-${r.variant}-${plan.run.id}-${plan.run.attempt}`, jobID: job.id,
-      expired: false, runID: plan.run.id, attempt: plan.run.attempt, headSHA: sha, archiveHash: hash, receiptDigests: group.map(objectDigest) }; });
+      expired: false, runID: plan.run.id, attempt: plan.run.attempt, headSHA: plan.run.headSHA, archiveHash: hash, receiptDigests: group.map(objectDigest) }; });
   artifacts.push({ id: 999, name: `gate-transfer-candidate-${plan.run.id}-${plan.run.attempt}`, expired: false,
-    runID: plan.run.id, attempt: plan.run.attempt, headSHA: sha, archiveHash: hash,
+    runID: plan.run.id, attempt: plan.run.attempt, headSHA: plan.run.headSHA, archiveHash: hash,
     jobID: jobs.find(job => job.name === 'Gate package-clean (default)').id, receiptDigests: [objectDigest(packageReceipt)] });
   const provenance = { schemaVersion: 1, repository, runID: plan.run.id,
-    attempt: plan.run.attempt, headSHA: sha, jobs, artifacts };
+    attempt: plan.run.attempt, headSHA: plan.run.headSHA, jobs, artifacts };
   const { result, acceptance } = aggregateResults({ plan, receipts, provenance, packageReceipt });
   const context = { schemaVersion: 1, releaseSHA: sha, version: plan.version, baseSHA: plan.baseSHA, run: plan.run,
     mode: 'release-tag', triggerTag: 'publish/v1.2.3', finalTag: 'v1.2.3', repository,

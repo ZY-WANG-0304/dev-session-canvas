@@ -16,7 +16,7 @@ export const releaseJobName = job => `Release ${job}`;
 
 export function validateReleaseContext(context) {
   assertRecord(context, 'release context'); assert.equal(context.schemaVersion, 1);
-  assert(['release-tag', 'channel-retry', 'incomplete-release-recovery'].includes(context.mode));
+  assert(['release-tag', 'channel-retry', 'incomplete-release-recovery', 'artifact-release'].includes(context.mode));
   assertRecord(context.run, 'release run');
   assertSHA(context.releaseSHA); assertSHA(context.baseSHA); assertSHA(context.run.headSHA);
   assert.match(context.version ?? '', /^\d+\.\d+\.\d+$/u);
@@ -35,7 +35,19 @@ export function validateReleaseContext(context) {
   assert.match(String(context.run.id), /^(?:local-[a-zA-Z0-9-]+|[1-9]\d*)$/u);
   assert(Number.isSafeInteger(context.run.attempt) && context.run.attempt > 0);
   assert.match(context.repository ?? '', /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u);
-  if (context.mode === 'release-tag') {
+  if (context.batchSource) {
+    assert.equal(context.batchFormat, 1);
+    assert.match(String(context.batchSource.id), /^[1-9]\d*$/u);
+    assert(Number.isSafeInteger(context.batchSource.attempt) && context.batchSource.attempt > 0);
+    assertSHA(context.batchSource.headSHA);
+    assert(Number.isSafeInteger(context.batchSource.artifactID) && context.batchSource.artifactID > 0);
+    assertDigest(context.batchSource.archiveHash, 'batch archive');
+  }
+  if (context.mode === 'artifact-release') {
+    assert(context.batchSource, 'Artifact delivery requires a verified batch source');
+    assert.equal(context.selection, 'all');
+    assert(context.existingReleaseID === null || Number.isSafeInteger(context.existingReleaseID) && context.existingReleaseID > 0);
+  } else if (context.mode === 'release-tag') {
     // workflow_dispatch executes the workflow at its selected ref. The tested
     // release SHA is bound separately by the plan and acceptance; the actual
     // run head must remain the API-reported workflow ref.

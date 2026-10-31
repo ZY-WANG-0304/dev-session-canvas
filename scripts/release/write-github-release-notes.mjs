@@ -75,7 +75,9 @@ export function buildReleaseNotes({ changelog, manifest: manifestPath, version }
   const lines = [
     `# ${title}`,
     '',
-    `本 Release 使用 \`publish/v${version}\` 固定发布输入，并把同一批 VSIX 镜像到 GitHub Release Assets。`,
+    manifest?.context?.batchSource
+      ? `本 Release 交付已验收的固定产物批次，产品提交为 \`${manifest.releaseRef}\`；同一批 VSIX 镜像到 GitHub Release Assets。`
+      : `本 Release 使用 \`publish/v${version}\` 固定发布输入，并把同一批 VSIX 镜像到 GitHub Release Assets。`,
     'Marketplace 正常可用时仍优先通过 Visual Studio Marketplace / Open VSX 安装；若某个市场访问、审核或同步延迟，可使用本 Release 的 VSIX assets 手动安装。',
     '',
     '## 版本亮点',
@@ -244,7 +246,10 @@ function formatEvidence(manifest, version) {
   }
   const lines = [
     `- Release ref：\`${manifest.releaseRef || 'unknown'}\``,
-    `- Trigger tag：\`${manifest.triggerTag || `publish/v${version}`}\``,
+    ...(manifest.context?.batchSource ? [
+      `- Build batch：\`${manifest.context.batchSource.id}/${manifest.context.batchSource.attempt}\``,
+      `- Delivery tools：\`${manifest.context.run.headSHA}\``
+    ] : [`- Trigger tag：\`${manifest.triggerTag || `publish/v${version}`}\``]),
     `- Final tag：\`${manifest.finalTag || `v${version}`}\``
   ];
   for (const artifact of manifest.artifacts || []) {

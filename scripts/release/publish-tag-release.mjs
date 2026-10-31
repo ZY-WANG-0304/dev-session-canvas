@@ -11,13 +11,16 @@ import { releaseJobName, validateReleaseContext } from './release-completion.mjs
 import { resolveRelease, resolveIncompleteReleaseRecovery, verifyRecoveredRelease, collectNewReleaseInput,
   collectIncompleteRecoveryInput, prepareRelease, finalizeRelease } from './release-delivery.mjs';
 
+import { resolveBatchRelease, verifyBatchRelease } from './release-batch.mjs';
+
 export async function runReleaseCLI(args = process.argv.slice(2)) {
   const { values } = parseArgs({ args, options: { phase: { type: 'string' }, context: { type: 'string' },
     'trigger-tag': { type: 'string' }, target: { type: 'string', default: 'all' }, output: { type: 'string' },
     input: { type: 'string' }, 'run-head': { type: 'string' },
+    version: { type: 'string' }, 'batch-run-id': { type: 'string' }, 'batch-attempt': { type: 'string', default: '1' },
     'recovery-source-run-id': { type: 'string' }, 'recovery-previous-run-id': { type: 'string' },
     help: { type: 'boolean' } } });
-  if (values.help) { console.log('release:publish-tag -- --phase resolve|verify-recovery|prepare|finalize --context <file> --output <dir>\n新发布只消费最终 SHA 已验收双包；历史 tag 请运行其原 workflow。\n初始 prepare 失败且渠道未运行时，可从 main 的 workflow_dispatch 传入 --recovery-source-run-id；恢复续跑再传 --recovery-previous-run-id。'); return; }
+  if (values.help) { console.log('release:publish-tag -- --phase resolve|verify-recovery|prepare|finalize --context <file> --output <dir>\n从 main 发布已验收批次：resolve --version X.Y.Z --batch-run-id ID --batch-attempt N。\n历史完整 Release：resolve --trigger-tag publish/vX.Y.Z；新发布不再由 tag push 触发。'); return; }
   assert(values.output && ['resolve', 'verify-recovery', 'prepare', 'finalize'].includes(values.phase),
     'Specify an explicit release phase and output; packaging is not a delivery operation');
   const output = path.resolve(values.output); await fs.mkdir(output, { recursive: true });
@@ -27,7 +30,10 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
   let context;
   try {
     if (values.phase === 'resolve') {
-      if (values['recovery-source-run-id'] || values['recovery-previous-run-id']) {
+      if (values['batch-run-id']) {
+        context = await resolveBatchRelease({ source: { id: values['batch-run-id'], attempt: Number(values['batch-attempt']) },
+          version: values.version, run, output: path.join(output, 'batch'), client });
+      } else if (values['recovery-source-run-id'] || values['recovery-previous-run-id']) {
         assert(values['recovery-source-run-id'], 'A previous recovery run also requires the original failed run ID');
         assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch',
           'Incomplete recovery is only allowed from workflow_dispatch');
@@ -37,7 +43,12 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
         context = await resolveIncompleteReleaseRecovery({ triggerTag: values['trigger-tag'],
           recoverySourceRunID: values['recovery-source-run-id'],
           recoveryPreviousRunID: values['recovery-previous-run-id'], run, client });
-      } else context = await resolveRelease({ triggerTag: values['trigger-tag'], selection: values.target, run, client });
+      } else {
+        assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+        assert.equal(process.env.GITHUB_REF, 'refs/heads/main');
+        context = await resolveRelease({ triggerTag: values['trigger-tag'], selection: values.target, run, client });
+        assert.equal(context.mode, 'channel-retry', 'New releases require an accepted batch run and attempt');
+      }
       await writeJSON(path.join(output, 'release-context.json'), context);
       if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT,
         `input_sha=${context.releaseSHA}\nbase_sha=${context.baseSHA}\nversion=${context.version}\nmode=${context.mode}\ntrigger_tag=${context.triggerTag}\n`);
@@ -49,7 +60,8 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
     assert.equal(context.run.attempt, run.attempt);
     if (run.headSHA) assert.equal(context.run.headSHA, run.headSHA);
     if (values.phase === 'verify-recovery') {
-      const result = await verifyRecoveredRelease({ context, output, client });
+      const result = context.batchSource ? await verifyBatchRelease({ context, output, client })
+        : await verifyRecoveredRelease({ context, output, client });
       if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT, `accepted=${result.status === 'passed'}\n`);
     } else if (values.phase === 'prepare') {
       let input;
@@ -63,8 +75,9 @@ export async function runReleaseCLI(args = process.argv.slice(2)) {
           allowedNames: [artifactName], namesForJobs: () => releaseJobName('verify-recovery') });
         const artifact = facts.artifacts[0]; const job = facts.jobs.find(job => job.id === artifact.jobID);
         assert.equal(job?.conclusion, 'success');
-        input = path.dirname(await findUniqueFile(path.join(output, 'verified-recovery', artifactName), 'recovery-verification.json'));
-        const receipt = await readJSON(path.join(input, 'recovery-verification.json'));
+        const receiptName = context.batchSource ? 'batch-verification.json' : 'recovery-verification.json';
+        input = path.dirname(await findUniqueFile(path.join(output, 'verified-recovery', artifactName), receiptName));
+        const receipt = await readJSON(path.join(input, receiptName));
         assert(artifact.receiptDigests.includes(objectDigest(receipt)));
       }
       await prepareRelease({ context, input, output: path.join(output, 'prepared'), client });

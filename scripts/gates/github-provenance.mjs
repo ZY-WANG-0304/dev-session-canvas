@@ -33,7 +33,7 @@ export async function inspectArtifactArchive(bytes, destination) {
     await fs.writeFile(file,content,{flag:'wx',mode:(entry.unixPermissions??0o644)&0o777});
     if(name.endsWith('.task.json')||/^(?:package|source-build|browser-build|acceptance)-receipt\.json$/.test(path.basename(name))
       || ['release-context.json','release-identity.json','github-delivery.json','channel-partial.json','release-completion.json',
-        'prepared-receipt.json','recovery-verification.json'].includes(path.basename(name))
+        'prepared-receipt.json','recovery-verification.json','original-release-context.json','batch-verification.json'].includes(path.basename(name))
       || /^(?:state-[a-f0-9]{64}-)?release-manifest-\d+\.\d+\.\d+\.json$/u.test(path.basename(name)))
       receiptDigests.push(objectDigest(JSON.parse(content.toString('utf8'))));
   }

@@ -1,16 +1,16 @@
 # 公开 Preview 发布执行手册
 
-本文用于当前 `0.27.0` 公开 Preview 的发布准备与执行；上一已发布版本为 `0.26.0`。范围是最新 main 已合入的执行可靠性修复与同 root 共享画布，静态范围以 `docs/release-contracts/v0.27.0.md` 为准。旧 PR #313 已舍弃；历史0.26.0验证例外和更早发布记录保留原含义。
+本文的操作章节自 2026-11-01 起采用两条流水线；`0.27.0` 的具名内容保留为该次公开 Preview 的历史范围。范围是最新 main 已合入的执行可靠性修复与同 root 共享画布，静态范围以 `docs/release-contracts/v0.27.0.md` 为准。旧 PR #313 已舍弃；历史0.26.0验证例外和更早发布记录保留原含义。
 
 ## 后续版本标准流程
 
-`0.25.0` 及 `0.26.0` 的具名记录保留历史含义；当前流程以 `docs/WORKFLOW.md` 和 `docs/design-docs/release-gate-redesign.md` 为准。发布准备分支同步版本、两个 CHANGELOG、Marketplace 文案和 `docs/release-contracts/vX.Y.Z.md`。契约在发布前定稿，写明发布范围、用户 release notes、已复核文档、已知限制和验证范围。
+`0.25.0` 及 `0.26.0` 的具名记录保留历史含义；当前流程以 `docs/WORKFLOW.md` 和 `docs/design-docs/release-product-decoupling.md` 为准。发布准备分支同步版本、两个 CHANGELOG、Marketplace 文案和 `docs/release-contracts/vX.Y.Z.md`。契约在发布前定稿，写明发布范围、用户 release notes、已复核文档、已知限制和验证范围。
 
 CHANGELOG 只描述用户可见的功能、安装升级、回退和限制。候选 / 最终 SHA、workflow run、工件摘要、渠道状态及门禁结果分别保留在验证证据和发布后 manifest / Release 中，不回写同版本 CHANGELOG 或契约。
 
 发布 PR 每次更新由最新远端目标与 head 生成真实预合并 SHA。`Release Preflight` 调用 `ci-validation.yml`，版本或契约变化强制 `release-pr` 全部任务。`Verify release contract` 必须独立核对实际 Actions job / 工件来源、精确必跑集合和同批双包验收成功；draft 的跳过、取消、缺结果、错误输入及取证 / 清理失败都不能放行。当前 GitHub 活动 ruleset 要求合入 `main` 必须通过 PR、至少一次审批、分支追上最新 base，并通过 required check `Verify release contract`；执行时以 GitHub 当前活动 ruleset 为准。
 
-PR 经 review 合入后，在最终 main release commit 创建 `publish/vX.Y.Z`。新发布以 `release-tag` 再次执行完整任务图：验证阶段可以构建候选 VSIX，交付阶段只消费已验收的同批原包。完整验收通过前不得创建正式 Release、写入市场或删除临时 tag。渠道恢复按下文 `channel-retry` 路径复核原包、原 acceptance 与状态链。
+PR 经 review 合入后，固定产品 SHA，从 main 启动构建验收流水线。完整 `release-tag` 验收生成固定批次，再从 main 启动独立发布流水线消费原包。工具代码、产品输入分别固定；版本号、VSIX 和用户发布说明不会因工具升级改变。完整验收前不创建正式 tag/Release 或写入市场。
 
 ## 0.27.0 发布前检查
 
@@ -213,40 +213,39 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
 
 ## 发布命令
 
-以下是取得发布授权后的操作说明。发布准备 PR 必须已经完成正式验收、review 并合入 main。显式指定最终 release commit，避免把当前 shell 的其他 HEAD 当作发布输入：
+以下是取得发布授权后的操作说明，`X.Y.Z`、产品 SHA 和 run ID 均需替换为实际值。发布准备 PR 必须通过完整检查和 review 并合入 main。
+
+先构建和验收指定产品提交：
 
     git fetch origin main --tags
-    git merge-base --is-ancestor <final-release-sha> origin/main
-    git tag publish/v0.27.0 <final-release-sha>
-    git push origin publish/v0.27.0
+    git merge-base --is-ancestor <完整产品SHA> origin/main
+    gh workflow run build-release-batch.yml --ref main -f product_sha=<完整产品SHA> -f version=X.Y.Z
 
-推送临时 tag 触发 `.github/workflows/publish-marketplace-release.yml`。该 workflow 只响应 `publish/v*` push 和手动 `workflow_dispatch`，按五个外层 job 执行：
+记录本次 Build Release Batch 的 run ID 和 attempt，等待整轮 success。seal job 的 Summary 给出批次名 `release-batch-<run>-<attempt>`。该批次包含完整验收过的主扩展/notifier 原包、摘要、来源记录和产品提交内的 CHANGELOG。构建 workflow 不写远端 tag/Release；本地验证引用只用于兼容产品自身的原验收入口。
 
-1. `resolve-release` 冻结版本、最终 SHA、main 归属及交付目标，区分首次发布和原包恢复；首次发布必须选择 `all`。
-2. `verify-release` 经 `release-validation.yml` 调用 `ci-validation.yml`，在最终 SHA 以 `release-tag` 验收全部任务和同批候选双包；恢复模式则复核原 acceptance、双包来源和所选渠道。
-3. `prepare-release` 消费已验收的原双包，复算摘要 / ref / 版本及回执来源，再创建或确认正式 tag / GitHub Release、上传原 bytes 并校验远端内容。此阶段不打包。
-4. `publish-open-vsx` 消费原双包，逐扩展查询、提交并验真；提交结果未知时先查询，不能盲目重复提交。Visual Studio Marketplace 当前不在 workflow 中，manifest 将其记录为 deferred。
-5. `finalize-release` 核对实际 job 与渠道回执，并确认本次 run 没有 Visual Studio 发布 job 或结果工件后，更新 manifest / Release notes；必需目标完成后才删除临时 tag，清理失败保留独立结果。
+随后发布该批次：
 
-`release:publish-tag` 现在是 workflow 使用的显式 phase 入口：`resolve` 生成冻结 context，`verify-recovery`、`prepare`、`finalize` 消费该 context 与对应来源。旧 `--package-only`、`--skip-package`、`--dry-run`、`--no-create-final-tag` 不是当前入口，不应用旧手工命令绕过验收。历史 tag 使用其 tag 内原 workflow，不把旧例外带到 0.27.0。
+    gh workflow run publish-marketplace-release.yml --ref main -f version=X.Y.Z -f batch_run_id=<构建runID> -f batch_attempt=1
+
+`batch_attempt` 必须填写实际成功的构建 attempt，不能凭默认值猜测。发布流程只执行来源验证、prepare、Open VSX 和 finalize，不构建产品。所有发布工具从本次 main workflow SHA 读取；正式 `vX.Y.Z` 指向批次的产品 SHA，即使 main 已前进也不改变产品输入。Visual Studio Marketplace 保持 deferred。
 
 ## 渠道恢复
 
-若首次发布尚未完成验证 / 构建，修复后重跑对应输入的必要前置，仍须取得一次完整验收。如果 GitHub Release 已保存可核验的原双包、acceptance 与状态链，使用原最终 tag 对应的 workflow 发起渠道恢复。例如补发 Open VSX：
+首次上传或渠道交付中断后，修复工具并合入 main，以相同版本、批次 run 和 attempt 再执行上述发布命令。无 manifest/state 时校验全部已有资产字节，再补齐缺失文件；已有状态链时，先核对原包、实际 producer 和连通状态链，再进入 channel-retry。两种情况均使用同批原包，不需要原失败发布 run ID，也不重新构建。
 
-    gh workflow run publish-marketplace-release.yml --ref v0.27.0 -f trigger_tag=publish/v0.27.0 -f target=open-vsx
+工具修复后必须从 main 发起新的 workflow_dispatch。GitHub 的 rerun 保留原事件 SHA，不能用它代替新工具。批次 run/attempt 始终不变；未知、冲突、过期或缺失来源均停止，不删除原 Release 或覆盖资产。
 
-Visual Studio Marketplace 当前已从发布 workflow 移除，不能通过 `target` 触发。发布链重新打通后，需先通过代码复审恢复该 job 与单渠道选项；此前不得查询或提交 VSM。Open VSX 恢复仍使用 `target=open-vsx`。即使临时 publish tag 已删除，resolver 也能依据同版本正式 tag 和原 Release 识别 `channel-retry`，无需移动或重建发布输入。
+没有新批次的历史完整 Release，可使用兼容入口，例如：
 
-恢复下载原双包、原 acceptance 和连通父状态链，独立核对输入、摘要与 producer，只处理所选渠道并按规则保留未选渠道的原成功事实。缺资产、缺回执、状态分叉、内容冲突或来源不可核验时停止并保留现场，不通过删除原 Release、覆盖资产或重打包修复。当前恢复入口只选择渠道，不提供单独 `--extension notifier` 的发布分支。
+    gh workflow run publish-marketplace-release.yml --ref main -f version=0.27.0 -f target=open-vsx
+
+该入口只接受已存在的完整原包与可核验状态，不接受空 Release 首发。新批次版本恢复必须提供原批次参数。VSM 未列为可选目标；重新接通前不得查询或提交该渠道。
+
+批次和来源证明保留 90 天，需仓库允许该保留期。Release 中的包长期存在不代表 Actions 来源证明永久存在；来源过期后明确失败，不能重新构建同版本替代。长期证明归档尚未实现。
 
 ## 正式 tag 与临时 tag
 
-`publish/vX.Y.Z` 固定发布意图和输入，发布失败时保留。`vX.Y.Z` 是正式 lightweight tag 和 GitHub Release 的绑定；新发布的 prepare 只能在最终 SHA 完整验收后创建或确认它，随后开始渠道交付。单看正式 tag 或 Release 存在不足以说明发布完成。
-
-0.27.0 的必需目标是 GitHub Release assets 和 Open VSX，均包含主扩展与 notifier；Visual Studio Marketplace 独立尝试，允许按既定策略记录 deferred。finalize 必须核对原包、实际 job / 回执、最终 manifest / notes，以及 trigger / final tag 的一致身份后完成 tag 清理。删除失败标为清理失败并供幂等恢复，不抹去已经成立的渠道事实。
-
-release manifest、原 acceptance / 状态证据、主扩展与 notifier VSIX 保存在 GitHub Release assets，workflow 的 Actions 工件提供对应来源。发布后事实不提交回仓库；若版本改变，统一更新静态发布契约、版本、用户文案和发布输入。
+新流程不再通过推送 `publish/vX.Y.Z` 触发发布。正式 `vX.Y.Z` 仅在已验收批次被核对后创建或确认，并始终指向原产品 SHA。历史临时 tag 如存在，只在必需渠道完成且身份一致后清理。正式 tag/Release 存在不等于交付完成，以 manifest 的 GitHub/Open VSX 验真和最终运行结果为准。
 
 ## 发布后验证
 

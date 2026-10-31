@@ -74,6 +74,22 @@ jobs:
       with:
         node-version: 22.23.3
         architecture: x64
+    - name: Bind local product validation ref
+      if: ${{ inputs.mode == 'release-tag' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+      shell: bash
+      env:
+        PRODUCT_SHA: ${{ inputs.input_sha }}
+        PRODUCT_TAG: ${{ inputs.trigger_tag }}
+      run: |-
+        set -euo pipefail
+        [[ "$PRODUCT_SHA" =~ ^[a-f0-9]{40}$ ]]
+        [[ "$PRODUCT_TAG" =~ ^publish/v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        git merge-base --is-ancestor "$PRODUCT_SHA" origin/main
+        if git show-ref --verify --quiet "refs/tags/$PRODUCT_TAG"; then
+          [[ "$(git rev-parse "$PRODUCT_TAG^{commit}")" == "$PRODUCT_SHA" ]]
+        else
+          git update-ref "refs/tags/$PRODUCT_TAG" "$PRODUCT_SHA" ""
+        fi
     - name: Resolve immutable plan
       id: plan
       shell: bash
@@ -99,7 +115,7 @@ jobs:
         path: gate-plan
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   input-contract:
     name: Gate input-contract (${{ matrix.variant }})
     needs:
@@ -150,7 +166,7 @@ jobs:
         path: gate-artifacts/input-contract/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   regression:
     name: Gate regression (${{ matrix.variant }})
     needs:
@@ -210,7 +226,7 @@ jobs:
         path: gate-artifacts/regression/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   frontend-build:
     name: Gate frontend-build (${{ matrix.variant }})
     needs:
@@ -257,7 +273,7 @@ jobs:
         path: gate-transfer/browser-bundle
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
     - name: Collect bounded stage evidence
       if: ${{ always() }}
       run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job frontend-build --variant "${{ matrix.variant }}" --output gate-artifacts/frontend-build/${{ matrix.variant }}
@@ -270,7 +286,7 @@ jobs:
         path: gate-artifacts/frontend-build/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   webview-function:
     name: Gate webview-function (${{ matrix.variant }})
     needs:
@@ -341,7 +357,7 @@ jobs:
         path: gate-artifacts/webview-function/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   webview-visual:
     name: Gate webview-visual (${{ matrix.variant }})
     needs:
@@ -412,7 +428,7 @@ jobs:
         path: gate-artifacts/webview-visual/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   marketplace-browser:
     name: Gate marketplace-browser (${{ matrix.variant }})
     needs:
@@ -483,7 +499,7 @@ jobs:
         path: gate-artifacts/marketplace-browser/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   native-assets:
     name: Gate native-assets (${{ matrix.variant }})
     needs:
@@ -563,7 +579,7 @@ jobs:
         name: gate-native-load-${{ matrix.variant }}-${{ github.run_id }}-${{ github.run_attempt }}
         path: gate-transfer/native-load
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
     - name: Operate original native provider
       run: node scripts/gates/run-stage.mjs --plan gate-plan/gate-plan.json --job native-assets --variant "${{ matrix.variant }}" --output gate-results --assets "${{ runner.temp }}/native-assets/${{
         matrix.variant }}" --part operation
@@ -579,7 +595,7 @@ jobs:
         path: gate-artifacts/native-assets/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   source-build:
     name: Gate source-build (${{ matrix.variant }})
     needs:
@@ -634,7 +650,7 @@ jobs:
         path: gate-transfer/source-bundle
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
     - name: Collect bounded stage evidence
       if: ${{ always() }}
       run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job source-build --variant "${{ matrix.variant }}" --output gate-artifacts/source-build/${{ matrix.variant }}
@@ -647,7 +663,7 @@ jobs:
         path: gate-artifacts/source-build/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   source-host:
     name: Gate source-host (${{ matrix.variant }})
     needs:
@@ -738,7 +754,7 @@ jobs:
         path: gate-artifacts/source-host/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   marketplace-host:
     name: Gate marketplace-host (${{ matrix.variant }})
     needs:
@@ -815,7 +831,7 @@ jobs:
         path: gate-artifacts/marketplace-host/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   package-clean:
     name: Gate package-clean (${{ matrix.variant }})
     needs:
@@ -870,7 +886,7 @@ jobs:
         path: gate-transfer/release-candidate
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
     - name: Collect bounded stage evidence
       if: ${{ always() }}
       run: node scripts/gates/evidence.mjs --plan gate-plan/gate-plan.json --job package-clean --variant "${{ matrix.variant }}" --output gate-artifacts/package-clean/${{ matrix.variant }}
@@ -883,7 +899,7 @@ jobs:
         path: gate-artifacts/package-clean/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   packaged-host:
     name: Gate packaged-host (${{ matrix.variant }})
     needs:
@@ -967,7 +983,7 @@ jobs:
         path: gate-artifacts/packaged-host/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   installed-pair:
     name: Gate installed-pair (${{ matrix.variant }})
     needs:
@@ -1048,7 +1064,7 @@ jobs:
         path: gate-artifacts/installed-pair/${{ matrix.variant }}
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
   verify-result:
     name: Gate verify-result (default)
     outputs:
@@ -1125,7 +1141,7 @@ jobs:
           gate-plan
           gate-results/infrastructure
         if-no-files-found: error
-        retention-days: 14
+        retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
     - name: Expose verified acceptance
       id: acceptance
       if: ${{ success() && steps.verify.outcome == 'success' }}

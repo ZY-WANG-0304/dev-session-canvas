@@ -35,7 +35,7 @@ PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复�
 
 ## 正式方案
 
-2026-10-31 用户确认[发布工具与产品内容解耦](release-product-decoupling.md)原则，覆盖首次发布和恢复。本文下述首次 `release-tag` 从产品 SHA 执行发布脚本的规则描述当前实现，尚不满足完整解耦目标；PR #349 仅修复恢复流程的执行来源。后续迁移须保持产品输入、同批原包和验收证据不变，不能因工具更新而替换发布内容。
+2026-10-31 用户确认[发布工具与产品内容解耦](release-product-decoupling.md)原则，覆盖首次发布和恢复。2026-11-01 按该设计实现独立构建批次和 main 上的原包交付；本文下述首次发布从产品 SHA 执行发布脚本及初始恢复重验属于改造前记录。当前入口以解耦设计和 WORKFLOW 为准，产品输入、同批原包和历史证据保持不变。
 
 ### GitHub Release 类别（2026-10-24 review 修正）
 
@@ -71,7 +71,7 @@ PR336 已于 2026-10-24 合入 main（merge commit `37ff8554`），完成恢复�
 
 `channel-retry` 的 Release 输入仍固定为原始 release SHA，但恢复逻辑必须运行发起本次 workflow 的代码。run [41198214739](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41198214739) 在 `Release verify-recovery` 失败，失败回执为 `selectedTargets` 实际值 `['open-vsx']` 与校验器预期 `['open-vsx', 'visual-studio']` 不一致；其 resolver 使用 PR #348 合并后的策略，将 `visual-studio` 记录为 deferred。根因是 `.github/workflows/release-validation.yml` 的恢复 job checkout `inputs.input_sha`，也就是旧 `v0.27.0` release SHA `034c5a0`，从而执行旧版上下文校验器。该失败不是原包、Release 身份或 Open VSX 交付失败；prepare、Open VSX 和 finalize 均未执行。
 
-正式规则：`release-tag` 的验收、prepare、渠道与 finalize 使用最终发布输入 SHA；`channel-retry` 与 `incomplete-release-recovery` 的恢复校验和交付编排使用触发本次 workflow 的 `github.sha`。`release-validation.yml` 的恢复 job、主 workflow 中的 prepare/Open VSX/finalize consumer 均遵守此规则。产品验收仍读取原始 Release SHA 上的代码与双包，不因恢复脚本升级而重建或替换包。这样 resolver 与消费者对 deferredTargets 等当前恢复策略使用同一版本，同时保持发布产品输入不可变。
+2026-10-31 修复时规则（已由两条流水线替代）：`release-tag` 的验收、prepare、渠道与 finalize 使用最终发布输入 SHA；`channel-retry` 与 `incomplete-release-recovery` 的恢复校验和交付编排使用触发本次 workflow 的 `github.sha`。`release-validation.yml` 的恢复 job、主 workflow 中的 prepare/Open VSX/finalize consumer 均遵守此规则。产品验收仍读取原始 Release SHA 上的代码与双包，不因恢复脚本升级而重建或替换包。这样 resolver 与消费者对 deferredTargets 等当前恢复策略使用同一版本，同时保持发布产品输入不可变。
 
 修复后续验证需要确认：发布输入 SHA 不变；channel-retry 上下文仅选择 Open VSX 并明确 deferred VSM；恢复消费者运行 workflow SHA 上的校验器；准备、发布及 finalize job 仍消费 Release 中已接受的原双包。该修复不查询、不提交 Visual Studio Marketplace。PR 与 Actions 门禁通过后，再使用同一 `v0.27.0` 输入恢复。
 
