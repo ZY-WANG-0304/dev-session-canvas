@@ -6,7 +6,7 @@
 
 用户希望完成 `v0.27.0` 发布，同时保留已经公开创建的 `v0.27.0` Release 和两个仍一致的 tag。原恢复 run 已在原 SHA 完整验收，GitHub Release 双包和 Open VSX 已验证。用户随后明确要求：在 Visual Studio Marketplace 重新打通前，不再尝试该渠道。发布收尾应只依赖 GitHub Release assets 与 Open VSX，把 VSM 记为本轮未查询、未提交的 deferred 状态，并保留原 release SHA。
 
-本计划此前增加了范围严格的 `incomplete-release-recovery` 模式，并已经用它恢复 Release assets 与 Open VSX。PR #348 更新将从当前发布 workflow 中彻底删除 VSM job、gallery 查询和提交调用；resolver 固定把 VSM 标为 deferred，finalize 验证本次 run 没有 VSM job 或结果工件。这样可通过现有 channel-retry 使用原双包完成 GitHub/Open VSX 收尾，而不访问 VSM。最终 tag 不移动；必需渠道完成并写入状态后才按常规流程删除临时 `publish/` tag。
+本计划此前增加了范围严格的 `incomplete-release-recovery` 模式，并已经用它恢复 Release assets 与 Open VSX。PR #348 从当前发布 workflow 中彻底删除 VSM job、gallery 查询和提交调用；resolver 固定把 VSM 标为 deferred，finalize 验证本次 run 没有 VSM job 或结果工件。随后 `channel-retry` run `41198214739` 在恢复验证阶段因运行旧 release SHA 上的校验器而失败；本次修复让所有恢复阶段使用触发本次 workflow 的代码 SHA，同时仍以原 release SHA 验收并使用已接受双包。最终 tag 不移动；必需渠道完成并写入状态后才按常规流程删除临时 `publish/` tag。
 
 ## 进度
 
@@ -14,7 +14,7 @@
 - [x] (2026-10-30) 已确认修复已在 PR #346 合并至 main，合并后 Release Preflight run `41058697974` 成功。
 - [x] (2026-10-30) 已选定保留原 SHA 和 Release/tag 的受控恢复方案，并更新设计、工作流入口与本计划。
 - [x] (2026-10-30) 已实现来源 run、job、双 tag、Release 正文与资产范围校验；prepare 阶段再次核对 Release 状态并只接受相同字节的已有资产。
-- [x] (2026-10-30) 已调整发布 workflow：恢复模式的验收仍使用原 tag SHA 的完整 `release-tag` 任务图，交付阶段使用 `main` workflow checkout 中的修复脚本。
+- [x] (2026-10-30) 已调整发布 workflow：恢复模式的完整验收仍使用原 tag SHA 的 `release-tag` 任务图；`incomplete-release-recovery` 的交付阶段使用本次 workflow checkout 中的修复脚本。
 - [x] (2026-10-30) 已补充恢复模式回归与 workflow 合同测试，并同步工作流和设计文档。
 - [x] (2026-10-30) `npm run test:publish-tag-release`、`npm run test:publish-marketplace-workflow` 均通过；显式串行完整 CI gate 命令通过 158 项、0 失败；`git diff --check` 通过。
 - [x] (2026-10-30) 拉取并核对最新 `origin/main`（`58a4ec2`），提交 `06998de7`，推送 `release-incomplete-release-recovery` 并创建面向 `main` 的 PR #347。
@@ -29,8 +29,11 @@
 - [x] (2026-10-31) 用户明确要求暂停所有 Visual Studio Marketplace 查询与提交，直到发布链重新打通；此前的 `EEXIST` 失败不能当作市场拒绝证据，也不再以重试 VSM 作为收尾条件。
 - [x] 更新 PR #348：从 workflow DAG 删除 VSM 发布 job 与调用；移除市场开关变量；resolver 固定 deferred；finalize 要求当前 run 没有 VSM job 或 VSM 结果工件。
 - [x] 更新发布设计、工作流、发布手册和本 ExecPlan；同步更新 workflow 合同检查的 job DAG 断言。
-- [ ] 更新 PR 描述并提交新 head；等待 Release Preflight 与正式复审。
-- [ ] PR 合并后，通过 `channel-retry` 完成原 `v0.27.0` GitHub Release + Open VSX 收尾，确认 VSM 无查询/提交、manifest 为 deferred、临时 tag 按完成门禁收口。
+- [x] (2026-10-31) PR #348 以 `3433e35672495f3e99dca485a87d50c6116bcdb4` 合并；main 上 Preflight 重跑通过。
+- [x] (2026-10-31) `channel-retry` run `41198214739` 的 resolver 成功，恢复验证失败；失败回执显示 `selectedTargets=['open-vsx']` 与旧校验器预期 `['open-vsx','visual-studio']` 不一致，prepare、Open VSX 和 finalize 均 skipped，无渠道写入。
+- [x] 修正所有恢复模式的代码 checkout：恢复验证与交付编排使用调用 workflow 的 `github.sha`，普通 `release-tag` 继续使用不可变发布输入 SHA；同步 workflow 合同回归和根因文档。workflow YAML 解析、变更脚本语法检查和 `git diff --check` 通过；尚未在本机执行测试套件，等待 PR Release Preflight 验证。
+- [ ] 更新分支并创建 PR，等待 Release Preflight 与正式复审。
+- [ ] 修复合并后，使用同一 `v0.27.0` 输入再次 `channel-retry`，确认 GitHub/Open VSX 收尾成功、VSM deferred、临时 tag 按门禁清理。
 
 ## 意外与发现
 
@@ -51,6 +54,8 @@
   证据：`calculateReleaseCompletion` 对没有 partial 的每个渠道都加入 missing-result error；`finalizeRelease` 把缺少的 VSM artifact 当作 evidence error。
 - 观察：恢复 run `41157851285` 的 VSM job 因第二个包打开共用日志文件时报 `EEXIST`，未产出可验证渠道结果；用户随后明确要求停止任何 VSM 尝试。
   证据：Release manifest asset `694161536` 的状态为 `failed`，VSM 错误为 `Missing channel result or producer evidence`；Open VSX 两包与 GitHub 双包有独立 verified 证据。
+- 观察：channel-retry run `41198214739` 在 `Release verify-recovery` 失败，resolver 已生成 `deferredTargets=['visual-studio']`、`selectedTargets=['open-vsx']` 的上下文；恢复 job 却 checkout 原发布 SHA `034c5a0`，旧版 `validateReleaseContext` 要求 `all` 包含两个渠道。prepare、Open VSX 与 finalize 全部 skipped，因此本次没有渠道写入。
+  证据：Actions failure artifact `recovery-evidence-41198214739-1/recovered-release/release-failure.json`、resolve artifact `release-context-41198214739-1/release-context.json`、`.github/workflows/release-validation.yml` 原 checkout ref，以及 v0.27.0 的 `original-release-context.json`。
 
 ## 决策记录
 
@@ -60,9 +65,9 @@
 - 决策：用独立 `incomplete-release-recovery` 模式处理“prepare 失败、所有渠道 job 均 skipped、无 manifest/state”的初始发布失败；部分渠道写入仍只走 `channel-retry`。
   理由：初始资产缺失与部分交付后的恢复具有不同证据来源。不能把成功验收、候选 VSIX 和渠道状态拼接，也不能让 retry 任意重打包。
   日期/作者：2026-10-30 / Codex
-- 决策：恢复 run 在原 release SHA 上重新完整验收，恢复的 prepare/channel/finalize orchestration 则运行于该 workflow 的当前 `main` SHA。
-  理由：产品输入和 VSIX 必须来自正式 tag SHA；发布脚本必须包含已经合并的上传修复。所有步骤仍由同一个 Actions run 与回执链绑定。
-  日期/作者：2026-10-30 / Codex
+- 决策：恢复时，完整产品验收固定使用原 release SHA；`channel-retry` 与 `incomplete-release-recovery` 的上下文校验、prepare/channel/finalize orchestration 固定使用本次 workflow 的 `github.sha`。普通 `release-tag` 所有消费者仍使用 release SHA。
+  理由：恢复解析器和消费者必须执行同版本策略代码；历史 release SHA 上的消费者无法校验新字段或新 deferred 策略。产品包和验收来源仍绑定原 release SHA，因此切换恢复编排代码不会重建或替换已接受产物。
+  日期/作者：2026-10-31 / Codex
 - 决策：重试时允许已有固定名称资产继续存在，但只接受与本次新验收同批文件逐字节相同的资产；遇到不同内容或非白名单资产必须拒绝。
   理由：确认过的远端资产不应被覆盖或静默换包。网络中断后只能验证同内容并继续。
   日期/作者：2026-10-30 / Codex
@@ -79,7 +84,7 @@
 
 ## 结果与复盘
 
-恢复 resolver、跨 run 续跑修复和 PR #347 已合入。恢复 run `41157851285` 的 GitHub Release assets 与 Open VSX 已有完整证据；旧版 VSM job 因日志路径 `EEXIST` 退出，finalize 未完成，临时 trigger tag 保留。用户决定不再尝试 VSM，直到发布链重新打通。PR #348 现从发布 workflow 移除 VSM job 与调用，并让当前 resolver/finalize 以 VSM job 和结果工件均不存在作为 deferred 证据。最终成功标准是原 tag 身份不变、双包与 Open VSX 均 verified、VSM 明确显示本轮未查询/未提交的 deferred，且临时 trigger tag 按完成门禁收口。
+恢复 resolver、跨 run 续跑修复和 PR #347、#348 已合入。恢复 run `41157851285` 的 GitHub Release assets 与 Open VSX 已有完整证据；旧版 VSM job 因日志路径 `EEXIST` 退出，finalize 未完成，临时 trigger tag 保留。PR #348 从发布 workflow 移除了 VSM job 与调用，并让当前 resolver/finalize 以 VSM job 和结果工件均不存在作为 deferred 证据。首次 channel-retry `41198214739` 随后因恢复校验 job checkout 了旧 release SHA 上的代码而失败；当前修复把恢复逻辑切换到本次 workflow SHA，原始 Release SHA 与双包不变。最终成功标准是原 tag 身份不变、双包与 Open VSX 均 verified、VSM 明确显示本轮未查询/未提交的 deferred，且临时 trigger tag 按完成门禁收口。
 
 ## 上下文与定向
 
@@ -91,21 +96,21 @@
 
 ## 工作计划
 
-- 固定 VSM 证据：用 per-extension 日志路径重现此前 `EEXIST`，不以市场拒绝解释本地写文件异常；确认已有 Release 和双包不重新创建。
-- 修复后以真实 `runProcess` 写入两个独立临时日志文件做回归，并运行发布 CLI、发布 workflow 合同测试和代码检查。
-- 通过短生命周期修复 PR 将路径隔离合入 main，再用 `channel-retry` 消费原 GitHub Release 的 VSIX 与状态链。查询已有市场版本后才提交缺失包；若市场仍拒绝，应产生有具体原因、可被 finalize 验证的 deferred channel result。
+- 修正恢复 job 与消费者的 checkout ref，让 resolver 和恢复验证/交付代码运行于同一 workflow SHA；普通 `release-tag` 仍使用原 release SHA。
+- 更新 workflow 合同、设计决策和执行计划；不对 VSM 发起查询或提交。
+- 创建修复 PR，等待 Release Preflight、正式复审和合并；之后再用原 `v0.27.0` 输入重试 `channel-retry`。
 
 在 `scripts/release/release-delivery.mjs` 增加恢复 resolver。它解析版本和 tag，查询 source run、job、Release、两个 tag 与 assets，检查 source workflow 是从匹配 `publish/vX.Y.Z` tag push 的失败运行、`resolve-release` 成功、`prepare-release` 失败、渠道 job 与 finalize 均 skipped。续跑时还查询 `recovery_previous_run_id` 指向的 workflow run，验证它来自同一 main head、绑定同一原失败 run、resolve 成功、prepare 失败、渠道/finalize skipped，并从实际 resolve job artifact 读取原 context。它要求两个 tag 同指原 SHA、Release 的公开类别/标题/目标/SHA/初始正文匹配，资产只允许是固定不可变清单的子集且没有 manifest/state。恢复 context 的 `run` 绑定新 run 的 API head SHA，另含原 source run、前次 recovery run、固定 acceptance artifact run 和已有 Release ID。
 
 `scripts/release/release-completion.mjs` 增加新模式和来源 run 字段的强校验。`scripts/release/publish-tag-release.mjs` 接受显式 source run ID，只在指定时走恢复 resolver。`release-validation.yml` 对该模式仍运行 `ci-validation.yml` 的完整 `release-tag` 模式，固定输入是已有 tag 的 SHA。
 
-恢复 workflow 的 prepare、渠道和 finalize jobs checkout `github.sha` 来运行修复版发布逻辑；普通 tag 和 `channel-retry` jobs 保留按 release input SHA checkout。首次 prepare 从该 run 的 full verifier 回执取双包。续跑的 prepare 先受本次 full verifier 成功条件控制，再验证前次 recovery context 所指定 run 的 acceptance/candidate artifacts，并从首次生成远端 run-bound 文件的固定 artifact run 取回执和双包；不会构建 main 上的产品代码，也不会拼接不同 run 的验收文件。`prepareRelease` 重新查询 tag/Release/assets，确保它们与 resolver 冻结状态一致；已有同名资产只通过下载后摘要比对，不得 clobber。状态根写入当前 recovery context，并绑定实际成功的 recovery prepare job 工件，使之后的 `channel-retry` 能验证其 producer。
+恢复 workflow 的 verify-recovery、prepare、渠道和 finalize jobs checkout `github.sha` 来运行与当前 resolver 一致的恢复逻辑；只有普通 `release-tag` jobs 按 release input SHA checkout。`channel-retry` 与 incomplete recovery 的完整验收仍把原 release SHA 交给 `ci-validation.yml`。所有模式都只消费通过原输入验收的 VSIX，不会由恢复代码 SHA 构建产品包。首次 prepare 从该 run 的 full verifier 回执取双包。续跑的 prepare 先受本次 full verifier 成功条件控制，再验证前次 recovery context 所指定 run 的 acceptance/candidate artifacts，并从首次生成远端 run-bound 文件的固定 artifact run 取回执和双包；不会构建 main 上的产品代码，也不会拼接不同 run 的验收文件。`prepareRelease` 重新查询 tag/Release/assets，确保它们与 resolver 冻结状态一致；已有同名资产只通过下载后摘要比对，不得 clobber。状态根写入当前 recovery context，并绑定实际成功的 recovery prepare job 工件，使之后的 `channel-retry` 能验证其 producer。
 
 回归覆盖至少包括：合法 source run 可解析；tag SHA 不一致、Release 内容变动、prepare 非失败、任一渠道非 skipped、source run 非目标 workflow、非白名单/歧义资产、有 manifest/state、已存在同名但字节不同的资产都必须拒绝。跨 run 用不同 run ID 模拟恢复 prepare 在 `gate-plan.json` 上传后中断；错误前次状态和错误原始来源必须只读失败，合法续跑必须复用完全相同的 run-bound 文件与 VSIX，再补齐 manifest。workflow 合同验证模式输入下的 checkout 与 verifier mode 关系。外部副作用测试必须使用 fake GitHub client，不对真实 Release 做写入。
 
 ## 具体步骤
 
-在 `/tmp/dsc-vsce-per-package-logs` 工作树继续更新 PR #348。该分支基于最新 `origin/main` 的直接后代，保留每包日志修复，并追加 VSM 默认禁用、deferred manifest 与 release 文档变更。提交前再 fetch/rebase 最新 main；本地只做代码语法、workflow YAML 结构和 `git diff --check` 核对。推送后依靠 PR 的真实 Release Preflight 与 `Verify release contract` 复核最新 head，并等待正式 reviewer approval。
+在独立的 `fix/release-recovery-target-policy` worktree 更新恢复 checkout ref 和 workflow 合同。提交前 fetch/rebase 最新 main，核对差异；推送后依靠 PR 的真实 Release Preflight 与 `Verify release contract` 复核最新 head，并等待正式 reviewer approval。
 
 修复 PR 合并后，在 GitHub Actions 中从 `main` 手动触发 `Publish Marketplace Release`，输入 `trigger_tag=publish/v0.27.0` 和 `target=all`。触发前核对两个 tag、Release ID、不可变资产与状态链；resolver 必须把 `visual-studio` 固定为 deferred，当前 workflow 不应包含 VSM job 或调用 gallery / `vsce publish` 的步骤。验收输入与 release SHA `034c5a02894dab45fdbde9b877e787fa4f91f242` 保持不变；prepare 复用原 VSIX，Open VSX 只查询已有版本并验证原包，finalize 必须记录 VSM deferred 和 Open VSX/GitHub verified，之后才按门禁删除 `publish/v0.27.0`。
 
