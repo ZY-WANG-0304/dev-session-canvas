@@ -109,6 +109,8 @@ updated_at: 2026-11-01
 
 PR #351 第一轮定向 12 项通过，但对应完整功能门禁为 432 通过 / 4 失败；第二轮修复首次选择后的空白双击、标题缩放断言以及窄组标题内容被 resize 热区覆盖的问题。第二轮提交前的类型检查、stock 构建、diff 检查、六项定向回归、三项视觉用例和徽标 / 头像 / 侧栏节点列表检查通过。完整功能与正式 CI 结果以 [PR #351](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/351) 的对应 head 为准；真实 VS Code 中的 hover / 键盘焦点、高对比主题及宿主持久化手动验收仍待确认。
 
+第二轮代码修复后的完整功能套件在本地与 CI 均为 436 / 436 通过。CI 后置检查发现前轮新增两项回归未登记冻结目录，已补齐 `scripts/gates/browser-catalog.json`，保留全部原有条目和严格集合校验。更新目录与原 CI 的实际执行报告已核对一致；正式门禁仍由新增目录提交对应的新 head 独立执行。
+
 ## 9. 关联文档
 
 - `docs/product-specs/canvas-node-groups.md` 与 `docs/design-docs/canvas-node-groups.md` 定义普通 group 标题规则；其中“单击标题区域进入重命名”的旧触发口径由本文替换。
