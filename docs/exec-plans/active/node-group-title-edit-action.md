@@ -21,7 +21,7 @@
 - [x] (2026-10-31) fetch 最新 `origin/main` 并 rebase 到 `aa18ec56`；恢复功能与 OSC 本地改动并核对完整。
 - [x] (2026-10-31) subagent Code Review 两轮复核：修复双击候选移动提交与快速选中后拖动被拦截，最终未发现确定性 blocker。
 - [x] (2026-10-31) 统一标题编辑按钮的 hover / focus feedback；按钮跟随主标题实际显示文本，编辑态沿用原输入框宽度规则。
-- [ ] (2026-10-31) 对覆盖式展示层与原输入框宽度约束的最后调整补充静态检查；界面级验收仍待完成。
+- [x] (2026-10-31) 最新提交通过 `git diff --check origin/main...HEAD` 的只读 Code Review；界面级验收仍待完成。
 - [ ] 完成真实 Webview 的悬停、键盘和指针手势验收；界面级验证完成前保留本计划于 `active/`。
 
 ## 意外与发现
@@ -56,7 +56,7 @@
 
 ## 结果与复盘
 
-上一版实现和静态构建已完成。rebase 到 `origin/main@aa18ec56` 无冲突；主扩展 `npm run typecheck`、`git diff --check` 与 `npm run build -- --execution-profile=stock` 通过。默认构建因当前 checkout 缺少 `generated/execution-assets` 失败。subagent 两轮只读 Code Review 最终未发现确定性 blocker。最新的标题展示覆盖层和输入宽度恢复尚未运行静态检查；Webview Playwright 与真实 VS Code 手动交互也未执行。hover / focus、输入态尺寸稳定、节点与组双击聚焦、未选中拖动阻断、选中组 3px 阈值和只读投影仍需界面级验收，因此计划暂留 `active/`。
+上一版实现和静态构建已完成。rebase 到 `origin/main@aa18ec56` 无冲突；主扩展 `npm run typecheck`、`git diff --check` 与 `npm run build -- --execution-profile=stock` 通过。默认构建因当前 checkout 缺少 `generated/execution-assets` 失败。subagent 对 `700dcae7` 的只读 Code Review 执行 `git diff --check origin/main...HEAD` 并通过，未发现新的确定性 blocker。最新提交没有重新运行类型检查或构建；Webview Playwright 与真实 VS Code 手动交互也未执行。hover / focus、输入态尺寸稳定、节点与组双击聚焦、未选中拖动阻断、选中组 3px 阈值和只读投影仍需界面级验收，因此计划暂留 `active/`。
 
 ## 上下文与定向
 

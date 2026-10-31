@@ -103,7 +103,7 @@ updated_at: 2026-10-31
 
 优先在 `tests/playwright/webview-harness.spec.mjs` 覆盖 Webview 指针、键盘、事件隔离和布局；宿主标题持久化链路沿用已有 smoke / 状态测试，并确认重新加载后保留新标题。真实 VS Code smoke 用于确认 Tab 顺序和高对比主题焦点可见性。
 
-本次静态验证记录：主扩展 `npm run typecheck` 通过；默认构建因当前工作树缺少 `generated/execution-assets` 未能启动，显式运行 `npm run build -- --execution-profile=stock` 通过。Playwright 与真实 VS Code 手动交互尚未验证，因此 hover / focus、双击聚焦、分组阈值拖动与只读投影仍需界面级验收。
+此前实现版本的静态验证记录：主扩展 `npm run typecheck` 通过；默认构建因当前工作树缺少 `generated/execution-assets` 未能启动，显式运行 `npm run build -- --execution-profile=stock` 通过。最新的标题布局修改通过只读 Code Review 的 `git diff --check origin/main...HEAD`；当前提交尚未重跑类型检查或构建。Playwright 与真实 VS Code 手动交互尚未验证，因此 hover / focus、输入态尺寸稳定、双击聚焦、分组阈值拖动与只读投影仍需界面级验收。
 
 ## 9. 关联文档
 
