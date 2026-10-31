@@ -109,7 +109,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'release-tag' && needs.resolve-release.outputs.input_sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -157,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'release-tag' && needs.resolve-release.outputs.input_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -197,7 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-release.outputs.mode == 'incomplete-release-recovery' && github.sha || needs.resolve-release.outputs.input_sha }}
+          ref: ${{ needs.resolve-release.outputs.mode == 'release-tag' && needs.resolve-release.outputs.input_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
