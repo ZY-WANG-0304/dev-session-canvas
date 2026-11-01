@@ -19,7 +19,7 @@
 - [x] (2026-11-01 05:15Z) 更新快捷键设计、产品规格与设计索引，记录输入映射、Ctrl+C 不变量和 PTY 验证边界。
 - [x] (2026-11-01 05:15Z) `npm run build -- --execution-profile=stock` 与 `npm run typecheck` 成功；`git diff --check` 无错误，本轮未运行测试。
 - [x] (2026-11-01 06:35Z) 处理 PR review：只按 `KeyboardEvent.key === '/'` 识别实际输出斜杠，不再按物理 `code` 兜底；Playwright 覆盖非美式布局下由其他物理键产生 `/`，以及物理 Slash 位置输出 `-` 的反例。
-- [ ] 同步 PR 描述，并在最新 `origin/main` 上 rebase 后推送新 head。
+- [x] (2026-11-01 06:37Z) 更新 PR #355 描述，按最新 `origin/main` rebase 后推送 review 修复；新 head 为 `16c26855`。
 - [ ] 在可写且隔离的 Codex 配置下，以实际 Codex PTY 确认 `0x1f` 切换侧聊，并在真实 VS Code Agent 节点确认按键到 PTY 的整条链路。
 
 ## 意外与发现
@@ -58,4 +58,4 @@
 
 ## 结果与复盘
 
-修复通过 xterm 的用户输入 API 将实际字符 `/` 对应的 Ctrl 组合映射到传统控制字符 `0x1f`，并保留 Ctrl+C 输入处理。PR review 发现物理 Slash 位置回退会误拦非美式键盘 Ctrl+-；实现已改为按实际字符识别，并允许 Shift 参与产生 `/`。两类执行节点的布局回归通过，构建和类型检查通过。真实 Codex CLI PTY 仍未证实 `0x1f` 会触发侧聊，本计划保持 active，等待现场证据。
+修复通过 xterm 的用户输入 API 将实际字符 `/` 对应的 Ctrl 组合映射到传统控制字符 `0x1f`，并保留 Ctrl+C 输入处理。PR review 发现物理 Slash 位置回退会误拦非美式键盘 Ctrl+-；实现已改为按实际字符识别，并允许 Shift 参与产生 `/`。两类执行节点的布局回归通过，构建和类型检查通过。PR 描述已同步，review 修复推送到 PR #355 head `16c26855`。真实 Codex CLI PTY 仍未证实 `0x1f` 会触发侧聊，本计划保持 active，等待现场证据。
