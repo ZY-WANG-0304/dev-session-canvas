@@ -16,14 +16,17 @@ related_plans:
   - docs/exec-plans/completed/github-release-assets-flow.md
   - docs/exec-plans/completed/release-0-25-0-prep.md
   - docs/exec-plans/completed/release-gate-contract.md
-updated_at: 2026-10-31
+  - docs/exec-plans/active/release-0-28-0-prep.md
+updated_at: 2026-11-02
 ---
 
 # 公开平台发布准备
 
-当前准备版本为 `0.26.0`，上一已发布版本为 `0.25.0`；本版正式范围见第 9.0 节与发布契约。以下日期记录保留历史含义，不覆盖当前范围。
+当前准备版本为 `0.28.0`，上一已发布版本为 `0.27.0`；发布范围与版本判断见 `docs/design-docs/release-0-28-0.md` 和 `docs/release-contracts/v0.28.0.md`。以下历史记录保留原意，不覆盖当前范围。
 
 > 2026-10-31 当前渠道决策：用户要求在 Visual Studio Marketplace 发布链重新打通前，不再尝试该渠道。当前发布 workflow 已彻底移除 VSM job、gallery 查询和提交调用；resolver 固定在 release context 中将 `visual-studio` 记为 deferred，finalize 仅在确认本次 run 没有 VSM job 和结果工件后完成其余必需渠道。此路径不访问 VSM gallery、不提交包；GitHub Release assets 和 Open VSX 仍是本轮完成所需渠道。恢复前需确认发布链已连通，再通过代码变更和复审恢复 VSM job 与单渠道选项。此决定覆盖下方历史记录中“每轮仍尝试 VSM”的旧规则。
+
+> 2026-11-02 当前发布决策：`v0.27.0` 已正式发布；当前准备目标是 `0.28.0`，其产品范围为标题编辑入口、执行终端 `Ctrl+/` 输入映射及自动文件活动退役。真实 Codex CLI PTY 和部分真实 VS Code 人工交互仍按对应设计文档标注为未完成；发布是否可交付由本轮发布契约与最新正式门禁决定。
 
 > 2026-09-15 初始范围审计（目标版本随后于 2026-09-16 按用户更正为 `0.25.0`）：已从最新 `origin/main` 创建 `release-0-25-0-prep`，当前基线为 `44c025056f3e63019b53f528951ea1d15ce1539d`。审计开始时根 workspace、主扩展和 notifier manifest 仍为 `0.24.3`，正式发布手册与 README 也仍停留在 `0.24.3`；后续版本同步已将当前发布准备分支统一更新为 `0.25.0`。远端存在 `v0.24.5` tag（`a9e27873aa01c1d1f1e43b4303ff697ce618c8cf`），但它不是当前 `origin/main` 的祖先；两条线从 `7eb3864b855d85b7c18d0162b99d5896d13af4d6` 分叉。
 >

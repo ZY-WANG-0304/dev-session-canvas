@@ -1,6 +1,6 @@
 # 公开 Preview 发布执行手册
 
-本文的操作章节自 2026-11-01 起采用两条流水线；`0.27.0` 的具名内容保留为该次公开 Preview 的历史范围。范围是最新 main 已合入的执行可靠性修复与同 root 共享画布，静态范围以 `docs/release-contracts/v0.27.0.md` 为准。旧 PR #313 已舍弃；历史0.26.0验证例外和更早发布记录保留原含义。
+本文的操作章节自 2026-11-01 起采用两条流水线；`0.27.0` 已发布，其具名内容保留为该次公开 Preview 的历史范围。当前准备版本为 `0.28.0`，基线为 `0.27.0`；本轮静态范围以 `docs/release-contracts/v0.28.0.md` 为准。历史验证例外和更早发布记录保留原含义。
 
 ## 后续版本标准流程
 
@@ -10,9 +10,19 @@ CHANGELOG 只描述用户可见的功能、安装升级、回退和限制。候�
 
 发布 PR 每次更新由最新远端目标与 head 生成真实预合并 SHA。`Release Preflight` 调用 `ci-validation.yml`，版本或契约变化强制 `release-pr` 全部任务。`Verify release contract` 必须独立核对实际 Actions job / 工件来源、精确必跑集合和同批双包验收成功；draft 的跳过、取消、缺结果、错误输入及取证 / 清理失败都不能放行。当前 GitHub 活动 ruleset 要求合入 `main` 必须通过 PR、至少一次审批、分支追上最新 base，并通过 required check `Verify release contract`；执行时以 GitHub 当前活动 ruleset 为准。
 
-PR 经 review 合入后，固定产品 SHA，从 main 启动构建验收流水线。完整 `release-tag` 验收生成固定批次，再从 main 启动独立发布流水线消费原包。工具代码、产品输入分别固定；版本号、VSIX 和用户发布说明不会因工具升级改变。完整验收前不创建正式 tag/Release 或写入市场。
+PR 经 review 合入后，固定产品 SHA，从 main 启动构建验收流水线。完整 `release-tag` 验收生成固定批次，再从 main 启动独立发布流水线消费原包。工具代码、产品输入分别固定；版本号、VSIX 和用户发布说明不会因工具升级改变。当前 required 交付目标为 GitHub Release assets 与 Open VSX；Visual Studio Marketplace 已从当前发布 workflow 移除并保持 deferred，不查询、不提交。完整验收前不创建正式 tag/Release 或写入市场。
 
-## 0.27.0 发布前检查
+## 0.28.0 发布准备
+
+本轮以 `0.27.0` 后已合入 `main` 的标题编辑入口、`Ctrl+/` 终端输入映射和自动文件活动退役为产品范围；内部 CI / 发布工具变化不写入用户 release notes。正式范围、迁移结果、保留能力、已知限制和验证范围以 `docs/release-contracts/v0.28.0.md` 与 `docs/design-docs/release-0-28-0.md` 为准。
+
+在仓库根执行静态校验：
+
+    npm run release:preflight -- --version 0.28.0
+
+版本或发布契约变更要求真实最新预合并 SHA 执行完整 `release-pr` 任务图，并由 `Verify release contract` 核对同批产物与正式验收。合并后的最终产品 SHA 仍须独立通过 `release-tag` 批次验收，再使用固定批次发布。不得复用 `0.27.0` 的门禁结果，也不得把真实 Codex CLI PTY 或真实 VS Code 未完成的人工验证写成通过。
+
+## 0.27.0 发布前检查（历史记录）
 
 本版不继承 0.26.0 例外。在仓库根先执行纯静态检查：
 
@@ -56,18 +66,18 @@ PR 经 review 合入后，固定产品 SHA，从 main 启动构建验收流水�
 
 当前 `npm run package:vsix` 会 staging 主扩展子包，并在打包阶段显式传入 `--readme-path README.marketplace.md`，因此最终用于发布的 VSIX 已内嵌 Marketplace 专用 README；后续 `publish --packagePath` 只上传现成 VSIX，不会再替换 README。打包脚本默认会把 README 相对资源改写到当前 `HEAD` 对应的 git ref；如果在没有 `.git` 元数据的 clean checkout、导出目录或 tarball 中打包，必须显式传入 `DEV_SESSION_CANVAS_VSCE_DOC_BRANCH=<final-ref>`，否则不允许继续打包。
 
-本轮listing必须说明同root共享画布、删除/stop区别、开关在关闭或重载边界应用、非最后窗口detach与最后窗口清理接管，以及普通关闭保持会话。关闭 Runtime Persistence 时，画布保存在当前工作区对应的存储位置；工作区画布与共享画布内容不迁移，不能宣传跨设备或云同步。启动和终端交互修复按用户行为表述，45秒ready预算只属于测试，不写成自动启动恢复能力。0.26.0既有当前态导入、已结束Runtime无正文和灾后不保证恢复的边界继续沿用。
+本轮 listing 必须说明节点与普通分组标题通过尾部按钮改名、旧文件活动派生状态的清理边界，以及普通连线、终端文件链接、Note 文件关联和 Explorer 执行节点仍保留。`Ctrl+/` 只描述现有输入映射，并明确真实 Codex CLI PTY 未验证；不能扩写为已确认的 `/side` 端到端行为。Preview 支持范围、同 root 共享画布和持久化边界继续沿用。
 
 ## release notes 定稿口径
 
-当前0.27.0 release notes以双CHANGELOG和docs/release-contracts/v0.27.0.md为准，基于0.26.0之后已合并的功能；历史版本条目保持原文。主扩展顶部为0.27.0 - 执行可靠性与共享画布，notifier仅版本对齐。复核 Runtime Persistence 开关切换时的工作区画布与共享画布数据边界、启动失败反馈、删除输入和保存责任、终端交互与提醒；保留上游快速重开资源延迟、持续启动失败缺少自动反馈、平台/真实provider有限验证及跨版本回退限制。不得写入候选hash、测试通过或渠道事实。
+当前 `0.28.0` release notes 以双 CHANGELOG 和 `docs/release-contracts/v0.28.0.md` 为准，基于 `0.27.0` 后已合入 main 的产品变化；历史版本条目保持原文。主扩展顶部说明标题编辑入口、终端输入映射和自动文件活动退役，notifier 仅同步版本。CHANGELOG 和契约不得写入候选 SHA、workflow run、VSIX hash、门禁结果或发布渠道事实。
 
 ## 安装与升级说明口径
 
 当前对外统一使用以下安装与升级说明：
 
-1. 当前发布准备目标为 `0.27.0`，上一已发布版本为 `0.26.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
-2. 首次安装与从 `0.26.0` 升级到 `0.27.0` 的目标仍是通过当前宿主配置的公开扩展市场常规安装 / 升级完成。Open VSX 侧应继续同版本公开发布；官方 VS Code 的 `Visual Studio Marketplace` 仍是目标主路径，但 public gallery 是否可见必须在 release-day 重新检查；若仍不可见，允许延期补发，不阻塞本轮 `0.27.0` 以 GitHub Release assets + Open VSX verified 完成。对外宣称 VSM 安装路径前仍必须确认主扩展与 notifier 均公开可见。
+1. 当前发布准备目标为 `0.28.0`，上一已发布版本为 `0.27.0`，扩展身份保持 `devsessioncanvas.dev-session-canvas`；`0.1.0` 仍是首个公开 `Preview` 基线版本。
+2. 首次安装与从 `0.27.0` 升级到 `0.28.0` 使用当前宿主可用的公开扩展渠道。GitHub Release assets 与 Open VSX 是当前必需发布目标；Visual Studio Marketplace 处于 deferred，当前 workflow 不查询也不提交该渠道。
 3. 当前主扩展通过 `extensionPack` 自动带上 `Dev Session Canvas Notifier`；如果用户从 notifier 页面单独安装，则由 notifier 的单向 `extensionDependencies` 自动补齐主扩展。
 4. UI 语言跟随 VS Code locale；本版本不新增扩展自己的语言设置，也不会翻译用户内容、路径、终端输出、provider 原始输出或市场模板数据。
 5. 已结束的持久化 Runtime 重开只保留节点、配置与退出状态，不恢复正文或自动 start/resume；显式 provider Resume 和 provider 会话文件独立保留。
@@ -75,31 +85,32 @@ PR 经 review 合入后，固定产品 SHA，从 main 启动构建验收流水�
 7. 跨 Host 存活仍要求 `devSessionCanvas.runtimePersistence.enabled` 与可用后端；Supervisor 崩溃或机器重启不保证恢复。snapshot-only 不承诺跨 Host 存活，且不在本轮已结束 Runtime 无历史规则的改动范围内。
 8. `devSessionCanvas.canvas.forkPlacementDirection` 默认 `up`，也可设为 `down` 或 `right`；设置热生效于后续当前节点 Fork，不重排既有节点 / 连线，历史会话 Fork 继续使用通用邻近避碰。
 9. 模板市场生产入口默认为 `https://dscanvas.dev/templates`；生产环境不会把代码内 seed 模板暴露为正式内容，初始空目录属于当前受控状态，不代表扩展安装失败。
-10. 若用户此前显式配置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.27.0` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时继续使用默认 allow-list，未配置 `multiRootPresentationMode` 时继续使用默认 `rootGroups`。
+10. 若用户此前显式配置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.28.0` 后会继续沿用该明确选择；未配置 `enabledAttentionSignals` 时继续使用默认 allow-list，未配置 `multiRootPresentationMode` 时继续使用默认 `rootGroups`。
 11. 当前仍为 `Preview`，不承诺跨版本 workspace / runtime journal 状态完全兼容；若涉及关键工作区，建议升级前先停止重要会话、备份画布状态，并在非关键环境验证。
+12. 本版会清理旧自动文件活动派生状态；如需留存这些画布投影，请在升级前另行记录。磁盘文件不会删除。
 
 ## 回退口径
 
 ### 用户侧回滚
 
-若 `0.27.0` 对当前工作流形成 blocker，当前统一建议是：
+若 `0.28.0` 对当前工作流形成 blocker，当前统一建议是：
 
 1. 先禁用或卸载当前扩展，避免继续影响当前 workspace。
-2. 关注后续更高的 `0.26.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
+2. 关注后续更高的 `0.28.x` hotfix；当前默认优先通过修复版升级解决，而不是承诺平滑降级兼容。
 3. 若确需回退，先停止重要运行会话，再重新安装目标版本并重新验证工作区状态；当前不承诺 `Preview` 版本或 Supervisor journal 之间的回退兼容。
 
 ### 维护者侧回滚
 
 若发布后发现 P0 / P1 blocker，默认按以下顺序处理：
 
-1. 优先评估能否在短时间内发布后续更高的 `0.26.x` hotfix。
+1. 优先评估能否在短时间内发布后续更高的 `0.28.x` hotfix。
 2. 若短时间内无法修复，且当前版本会阻塞主路径使用或引发宿主崩溃，再考虑临时下架当前版本。
 3. 模板市场服务-only 问题优先走 `docs/workflows/SERVICE_DEPLOY.md` 的服务 deploy tag / rollback，不自动提升或回滚插件 SemVer；插件包问题才走插件发布流程。
 4. 无论选择 hotfix、服务 rollback 还是临时下架，都需要同步更新 GitHub issue、`docs/support.md` 与对外说明，避免用户只看到失真状态。
 
 ## 截图策略
 
-当前 `0.27.0` 发布不以额外截图为 blocker。当前已经具备：
+当前 `0.28.0` 发布不以额外截图为 blocker。当前已经具备：
 
 - `package.json` 中的 `icon`
 - `galleryBanner`
@@ -237,7 +248,7 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
 
 没有新批次的历史完整 Release，可使用兼容入口，例如：
 
-    gh workflow run publish-marketplace-release.yml --ref main -f version=0.27.0 -f target=open-vsx
+    gh workflow run publish-marketplace-release.yml --ref main -f version=X.Y.Z -f target=open-vsx
 
 该入口只接受已存在的完整原包与可核验状态，不接受空 Release 首发。新批次版本恢复必须提供原批次参数。VSM 未列为可选目标；重新接通前不得查询或提交该渠道。
 
@@ -251,12 +262,12 @@ Open VSX API 已分别确认主扩展与 notifier 均为 `version=0.24.2`、`ver
 
 发布完成后至少执行以下复核：
 
-1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit；若 Open VSX 已验证完成，确认远端 `publish/v0.27.0` 已删除。
+1. 确认对应版本的 lightweight tag 已存在于远端，且指向本次实际发布的 commit；若 Open VSX 已验证完成，确认远端不存在本轮残留的 `publish/vX.Y.Z` 临时 tag。
 2. 打开 Open VSX 页面，复核主扩展和 notifier 的标题、图标、banner、README 文案、CHANGELOG、版本号与 `files.*` metadata 均已同步到本轮版本；同时复核 Visual Studio Marketplace 状态，若仍不可见则确认 Release notes / manifest 明确标记为 deferred，而不是已可用。
-3. 打开 GitHub Release 页面，确认 `dev-session-canvas-0.27.0.vsix`、`dev-session-canvas-notifier-0.27.0.vsix` 与 `release-manifest-0.27.0.json` 都存在于 Assets 中。
+3. 打开 GitHub Release 页面，确认 `dev-session-canvas-X.Y.Z.vsix`、`dev-session-canvas-notifier-X.Y.Z.vsix` 与 `release-manifest-X.Y.Z.json` 都存在于 Assets 中。
 4. 下载 release manifest、原 acceptance 与关联状态证据，复核最终 SHA、双包摘要、实际 producer、必需渠道的内容验真和 tag 清理结果；manifest 的状态链须连通，不能只凭版本可见或历史 verified 宣称本轮完成。
 5. 在干净 profile 中优先从 Open VSX 安装或升级；另从 GitHub Release 下载 VSIX 手动安装一次，验证兜底包可成功激活并能打开主画布，同时验证 notifier 与主扩展的安装关系未被打包破坏。Visual Studio Marketplace 恢复后再补做该路径的干净 profile 安装 / 升级验证。
-6. 定向复核 `0.27.0` 用户可见主路径：同 root 多窗口共享与模式切换、删除处理中锁定、失联节点移除与停止未确认警告、Unix socket 入口修复；同时确认既有会话重新附着、resize、终态与 journal 主路径未回归。
-7. 复核生产服务状态时使用 `/api/v1/meta`、deploy tag、Cloudflare deployment id 和 production smoke 证据；不要把插件 `v0.27.0` tag 当成服务当前运行版本。
+6. 定向复核当前发布契约列出的用户可见主路径；不得照搬上版范围或把局部回归结果当成新版本完整验收。
+7. 复核生产服务状态时使用 `/api/v1/meta`、deploy tag、Cloudflare deployment id 和 production smoke 证据；不要把插件 `vX.Y.Z` tag 当成服务当前运行版本。
 8. 确认 issue 链接、安全邮箱与 `docs/support.md` 跳转正常。
 9. 复核 `Preview`、`Restricted Mode`、`Virtual Workspace`、本地 CLI 依赖、multi-root shared live runtime 恢复边界、模板市场 Preview、GitHub OAuth、生产空目录和 GitHub Release assets 兜底安装口径仍被正确表达，没有被误读成稳定版承诺、真实模板预置承诺或 marketplace 可用性承诺。

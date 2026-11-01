@@ -1,8 +1,8 @@
 # Notifier 公开 Preview 发布执行手册
 
-本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前发布准备目标为 `0.27.0`，上一已发布版本为 `0.26.0`；publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
+本文用于收口 `Dev Session Canvas Notifier` 的公开扩展市场发布素材、手工发布步骤、安装启用口径与发布后复核动作。当前发布准备目标为 `0.28.0`，上一已发布版本为 `0.27.0`；publisher 沿用 `devsessioncanvas`，扩展 ID 为 `devsessioncanvas.dev-session-canvas-notifier`。
 
-当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.27.0` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
+当前约定是：notifier 的版本号继续与主扩展 `Dev Session Canvas` 对齐。也就是说，只要 notifier 仍以 companion 身份随主扩展同轮迭代发布，就继续使用同一个 `0.x.y` 版本号；如果未来 notifier 需要在主扩展不发版的情况下单独迭代，则必须先重新确认是否继续沿用“版本对齐”策略，避免同一版本号对应两组不同的发布事实。本轮 `0.28.0` 需要保持两侧 manifest / changelog / 产物名同版本；notifier 本轮不引入新的通知投递行为、协议、后端选择、点击回跳语义或本地化边界变化。
 
 ## 后续版本标准流程
 
@@ -10,9 +10,19 @@ notifier 随主扩展进入同一份 `docs/release-contracts/vX.Y.Z.md`，发布
 
 正式流程由 `docs/WORKFLOW.md`、`docs/design-docs/release-gate-redesign.md` 和主扩展手册共同定义。发布 PR 的真实最新预合并 SHA 执行完整 `release-pr`；合入 main 后，从 main 启动构建验收，以显式产品 SHA 独立执行 `release-tag`，产出固定双包批次。验证阶段的 `package-clean` 在干净源码与锁定依赖上生成同批 main / notifier VSIX，后续 packaged-host、三平台 x64 原样安装和交付消费原双包。
 
-`Verify release contract` 只有独立核对真实 Actions job / 工件来源、完整必跑集合和同批产物成功后才能通过。当前 GitHub 活动 ruleset 已将它设为 `main` 的 required status check，并要求 PR 至少一次审批、分支追上最新 base；实际规则以 GitHub 当前活动 ruleset 为准。draft 跳过或本地结果不满足该门槛。最终 SHA 完整验收前可以生成候选 VSIX，不能创建正式 Release、写市场或删除临时 tag。实际交付仅复用验收过的 bytes。
+`Verify release contract` 只有独立核对真实 Actions job / 工件来源、完整必跑集合和同批产物成功后才能通过。当前 GitHub 活动 ruleset 已将它设为 `main` 的 required status check，并要求 PR 至少一次审批、分支追上最新 base；实际规则以 GitHub 当前活动 ruleset 为准。draft 跳过或本地结果不满足该门槛。最终 SHA 完整验收前可以生成候选 VSIX，不能创建正式 Release、写市场或删除临时 tag。实际交付仅复用验收过的 bytes。当前 required 交付目标为 GitHub Release assets 与 Open VSX；Visual Studio Marketplace 已从当前发布 workflow 移除并保持 deferred，不查询、不提交。
 
-## 0.27.0 发布前检查
+## 0.28.0 发布准备
+
+本轮 notifier 只与主扩展版本对齐，不新增投递行为。发布契约 `docs/release-contracts/v0.28.0.md` 固定主扩展和 notifier 的用户说明、复核文档与验证范围；notifier source / companion、英中文 locale、安装依赖、版本、README 与同批产物仍进入完整任务图。
+
+静态校验命令：
+
+    npm run release:preflight -- --version 0.28.0
+
+正式预合并验收和最终产品批次遵循主扩展手册与 `docs/WORKFLOW.md`。真实最新预合并 SHA 必须通过完整 `release-pr` 和 `Verify release contract`；合并后产品 SHA 另行通过 `release-tag`。不得以局部 notifier smoke 或旧版本验收代替。
+
+## 0.27.0 发布前检查（历史记录）
 
 本版采用 `docs/release-contracts/v0.27.0.md` 的完整任务图，不继承 0.26.0 延后 companion 的授权。notifier 类型/source、companion 回跳、英中文 locale，以及双包中的版本、README、NLS/l10n 和单向安装依赖均进入计划。notifier 自身投递后端、点击与语言契约不变，主扩展修复执行提醒接线。
 

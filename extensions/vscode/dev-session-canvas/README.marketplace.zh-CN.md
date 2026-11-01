@@ -10,7 +10,16 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 
 <video src="images/marketplace/canvas-overview.zh-CN.mp4" controls muted loop playsinline></video>
 
-## 0.27.0 版本亮点
+## 0.28.0 版本亮点
+
+`0.28.0` 是基于 `0.27.0` 的新公开 `Preview` 里程碑，聚焦更清晰的画布标题编辑入口、终端快捷键输入和自动文件活动功能退役。
+
+- `Agent`、`Terminal`、`Note` 和普通分组通过标题文字尾部的编辑图标改名；标题文字继续承担选择、拖动或聚焦行为，workspace root 标题与只读投影不可编辑
+- 聚焦的 Agent / Terminal 执行终端会在实际输入字符为 `/` 时，将 `Ctrl+/` 映射为终端控制输入；包括需要按 Shift 才能输入 `/` 的键盘布局，并保留 `Ctrl+C` 打断行为。真实 Codex CLI `/side` 端到端行为尚未验证
+- 退役 Claude 文件活动采集、自动生成的 `file` / `file-list` 节点、相关设置和专属关系。读取旧画布时会清理扩展生成的活动记录、自动文件节点 / 边及失效分组成员，但不会删除磁盘文件
+- 普通画布连线、终端文件链接、Markdown Note 文件关联和 Explorer 创建执行节点继续保留；清理后的自动文件活动状态不保证能通过降级恢复
+
+## 0.27.0 版本亮点（历史）
 
 `0.27.0` 是基于 `0.26.0` 的新公开 `Preview` 里程碑，聚焦执行可靠性、同 root 共享画布和更安全的清理反馈。
 
@@ -92,14 +101,15 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 安装与升级
 
 - 扩展 ID 为 `devsessioncanvas.dev-session-canvas`
-- 首次安装与从 `0.26.0` 升级到 `0.27.0` 应通过当前宿主配置的公开扩展市场获取；Open VSX 兼容宿主路径应同步发布并验证同版本，也是当前 marketplace 完成门禁；官方 VS Code 的 `Visual Studio Marketplace` 路径只有在 release-day visibility check 确认主扩展与 notifier 均公开可见后才对外宣称可用。若 VSM 本轮仍为 deferred，GitHub Release assets 是手动安装兜底入口
+- 首次安装与从 `0.27.0` 升级到 `0.28.0` 应通过当前宿主配置的公开扩展市场获取。GitHub Releases 与 Open VSX 是当前必需发布目标；Visual Studio Marketplace 当前 deferred，发布 workflow 不会向该渠道提交内容
+- 如需留存旧自动文件活动的画布对象，请在升级前另行记录；迁移会清理扩展生成的活动状态和画布投影，但不会删除磁盘文件
 - UI 语言跟随 VS Code locale。本版本不新增扩展自己的语言设置，也不会翻译用户内容、终端输出、provider 输出或市场模板数据
 - Supervisor 支持的 live 恢复仍取决于 `runtimePersistence.enabled` 与后端可用性；旧 live 会话沿用原 Supervisor 和协议，snapshot-only 本地进程不获得跨 Host 存活保证
 - 当前节点 Agent Fork 默认使用 `devSessionCanvas.canvas.forkPlacementDirection = up`；可改为 `down` 或 `right`，该设置只影响之后的当前节点 Fork，不重排既有 Fork 或会话历史入口的落位
 - 生产模板市场可能以空目录启动。生产环境不会把代码内 seed 模板暴露为正式内容；真实模板必须通过发布流程或受控运维流程入库
 - 窗格画廊只改变多根呈现；单根 workspace 继续显示普通画布，`rootGroups` 仍是默认多根模式和保守回退路径
 - 布局整理是一次性显式操作，不提供撤销、不持续自动重排，也不跨普通分组或跨 root 搬移节点
-- 若你此前显式设置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.27.0` 后会继续沿用该明确选择
+- 若你此前显式设置过 `devSessionCanvas.runtimePersistence.enabled`、`devSessionCanvas.notifications.attentionSignalBridge`、`devSessionCanvas.notifications.enabledAttentionSignals`、`devSessionCanvas.notifications.strongTerminalAttentionReminder`、`devSessionCanvas.notifications.agentAbnormalOutputTextNotifications`、`devSessionCanvas.canvas.linkOpenMode`、`devSessionCanvas.canvas.workspaceRootWatermarks.enabled`、`devSessionCanvas.canvas.multiRootPresentationMode` 或 `devSessionCanvas.canvas.forkPlacementDirection`，升级到 `0.28.0` 后会继续沿用该明确选择
 - 截图粘贴文件是扩展存储中的临时附件，不是 workspace 文件；它们会保留一段时间以便 Agent 上下文复用，之后由后台 TTL 维护任务清理
 - 若你在 `0.2.0` 中沿用了旧的 view layout 缓存，侧栏里的 `概览` 与 `常用操作` 可能暂时被拆成两个独立图标；这不表示重复安装了两个扩展，可手动把两个 view 移回同一 `Dev Session Canvas` 容器，或执行 `View: Reset View Locations` 恢复默认布局
 - Preview 阶段不承诺跨版本工作区状态完全兼容；如工作区包含重要画布状态，建议升级前备份或在非关键环境验证
@@ -134,7 +144,7 @@ Dev Session Canvas 是运行在 VS Code 内的多 Agent 协作 AI 工作台，�
 ## 回退建议
 
 - 若当前版本阻塞工作流，建议先禁用或卸载扩展
-- 优先等待后续更高的 `0.26.x` 修复版本，而非尝试手动降级；切换版本前先停止重要会话，因为 Supervisor journal 不承诺跨版本回退兼容
+- 优先等待后续更高的 `0.28.x` 修复版本，而非尝试手动降级；切换版本前先停止重要会话，因为 Supervisor journal 不承诺跨版本回退兼容
 - 如需回退，请重新安装目标版本并验证工作区状态；Preview 版本之间不保证回退兼容
 - 问题反馈、安全问题和支持边界说明见下方链接
 

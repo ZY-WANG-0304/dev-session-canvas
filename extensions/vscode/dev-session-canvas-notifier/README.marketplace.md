@@ -6,7 +6,7 @@ English (default) | [简体中文](README.marketplace.zh-CN.md)
 
 It is not a standalone replacement for the main extension. Canvas state, node execution, and attention detection still belong to `Dev Session Canvas`; the notifier focuses on turning those requests into visible, diagnosable desktop notifications and, where the platform supports it, a click path back into the relevant VS Code window.
 
-Version `0.27.0` accompanies the main extension update. Upgrade both extensions together. The main extension improves execution attention handling; this companion keeps its existing delivery backends, click callbacks, and localization behavior.
+Version `0.28.0` accompanies the main extension update. Upgrade both extensions together. The main extension updates canvas title editing, terminal shortcut input, and retires automatic file activity; this companion keeps its existing delivery backends, click callbacks, and localization behavior.
 
 ## When It Helps
 
