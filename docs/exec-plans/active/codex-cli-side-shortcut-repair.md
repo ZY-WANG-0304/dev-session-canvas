@@ -20,6 +20,8 @@
 - [x] (2026-11-01 05:15Z) `npm run build -- --execution-profile=stock` 与 `npm run typecheck` 成功；`git diff --check` 无错误，本轮未运行测试。
 - [x] (2026-11-01 06:35Z) 处理 PR review：只按 `KeyboardEvent.key === '/'` 识别实际输出斜杠，不再按物理 `code` 兜底；Playwright 覆盖非美式布局下由其他物理键产生 `/`，以及物理 Slash 位置输出 `-` 的反例。
 - [x] (2026-11-01 06:37Z) 更新 PR #355 描述，按最新 `origin/main` rebase 后推送 review 修复；新 head 为 `16c26855`。
+- [x] (2026-11-01 08:03Z) 按 review 反馈将两条 Ctrl+/ Playwright 用例加入冻结目录 `scripts/gates/browser-catalog.json`；Playwright list 注册集合与目录均为 441 项且 ID 完全一致。
+- [ ] 更新 PR 验证说明，按最新 `origin/main` rebase 并推送目录修复，等待最新 head 的 Release Preflight。
 - [ ] 在可写且隔离的 Codex 配置下，以实际 Codex PTY 确认 `0x1f` 切换侧聊，并在真实 VS Code Agent 节点确认按键到 PTY 的整条链路。
 
 ## 意外与发现
@@ -34,6 +36,8 @@
   证据：PR #355 review 指出具体事件形状为 `key='-'`, `code='Slash'`；修复通过仅匹配实际 `key='/'` 消除该路径。
 - 观察：浏览器事件可在非美式布局中同时有 `key='/'`、`shiftKey=true`，而 `code` 指向其他物理键。适配器现在以实际字符为准并允许此形状。
   证据：`node scripts/test/run-playwright-webview.mjs --grep 'uses the produced slash character'` 两例通过；反例 `key='-'`, `code='Slash'` 不产生 PTY 输入。
+- 观察：PR #355 head `677a0992` 的 CI 在执行完 438 个功能用例并全部通过后，因冻结目录少了新增的 Agent / Terminal 两项而失败。
+  证据：PR review 评论 `6555195964` 指向 Actions run `41281892842`；本地 Playwright `--list` 重新生成的 441 项 ID 集合与更新后的目录精确一致，缺项和多项均为零。
 
 ## 决策记录
 
@@ -58,4 +62,4 @@
 
 ## 结果与复盘
 
-修复通过 xterm 的用户输入 API 将实际字符 `/` 对应的 Ctrl 组合映射到传统控制字符 `0x1f`，并保留 Ctrl+C 输入处理。PR review 发现物理 Slash 位置回退会误拦非美式键盘 Ctrl+-；实现已改为按实际字符识别，并允许 Shift 参与产生 `/`。两类执行节点的布局回归通过，构建和类型检查通过。PR 描述已同步，review 修复推送到 PR #355 head `16c26855`。真实 Codex CLI PTY 仍未证实 `0x1f` 会触发侧聊，本计划保持 active，等待现场证据。
+修复通过 xterm 的用户输入 API 将实际字符 `/` 对应的 Ctrl 组合映射到传统控制字符 `0x1f`，并保留 Ctrl+C 输入处理。PR review 发现物理 Slash 位置回退会误拦非美式键盘 Ctrl+-；实现已改为按实际字符识别，并允许 Shift 参与产生 `/`。两类执行节点的布局回归通过，构建和类型检查通过。第二轮 review 确认无新代码 blocker；随后 CI 暴露浏览器冻结目录漏登记两条回归，现已补齐且与 441 项实际注册集合一致。PR 新 head 的 CI 尚待执行。真实 Codex CLI PTY 仍未证实 `0x1f` 会触发侧聊，本计划保持 active，等待正式门禁和现场证据。
