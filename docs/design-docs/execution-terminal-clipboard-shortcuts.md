@@ -1,12 +1,12 @@
 ---
 title: Agent / Terminal 终端复制粘贴快捷键交互
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains: [VSCode 集成域, 画布交互域, 协作对象域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层]
 related_specs: [docs/product-specs/agent-terminal-clipboard-shortcuts.md]
-related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md]
-updated_at: 2026-07-01
+related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md, docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md]
+updated_at: 2026-11-01
 ---
 
 # Agent / Terminal 终端复制粘贴快捷键交互
@@ -153,3 +153,19 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 - VSCode Terminal skipped command defaults: https://github.com/microsoft/vscode/blob/9300eb847eaf812841160885d4885ae6dd394d1c/src/vs/workbench/contrib/terminal/common/terminal.ts
 - Claude Code common workflows, Work with images: https://code.claude.com/docs/en/common-workflows
 - Claude Code interactive mode keyboard shortcuts: https://code.claude.com/docs/en/interactive-mode
+
+## 10. Codex CLI `/side` 快捷键兼容性调研
+
+截至 2026-11-01，本机安装版本为 `codex-cli 0.166.0`。官方 OpenAI Docs 的 [Developer commands](https://learn.chatgpt.com/docs/developer-commands) 将 `/side` 列为启动临时侧聊的命令，并说明 `/keymap` 可以查看和持久化 TUI 快捷键；页面的交互快捷键清单未列出 `Ctrl+/` 默认绑定。因此精确绑定来自本机 TUI，而不是官方文档。当前确认的是安装版本的快捷键状态；本轮未比较历史 CLI 版本，无法从这些材料断定该绑定具体从哪一版引入。
+
+在空目录打开该版本 TUI 并运行 `/keymap` 后，界面显示 154 个 action、0 个自定义绑定、6 个未绑定项，其中 `Global / Toggle Side Conversation` 的默认绑定是 `ctrl-/`，`Global / Leader` 是 `ctrl-x`。这确认了当前被用户提到的快捷键确实存在于该 CLI 版本，但不能推断用户实际安装版本与此相同。
+
+画布 Agent 和 Terminal 节点共用 Webview xterm 输入路径：`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 的 `terminal.attachCustomKeyEventHandler` 只处理已识别的复制/粘贴快捷键；不属于剪贴板操作的 `Ctrl+/` 会走 `action === 'passThrough'` 并返回 `true`。之后 `extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx` 的 `terminal.onData` 才能将 xterm 生成的终端数据交给现有 Host/runtime 输入链路。插件没有显式的 `Ctrl+/` 拦截或映射。
+
+`package-lock.json` 锁定 `@xterm/xterm` `6.0.0`。该版本的 `src/common/input/Keyboard.ts` 把物理斜杠键码 191 记录为 `/` 与 `?`，但 Ctrl 组合映射不包括斜杠；Ctrl 字符的特殊映射覆盖数字键的一部分、方括号/反斜杠和 `_` 等，不包含 Ctrl 加 `/`。在标准 US 键盘的 Ctrl 加斜杠事件形状下，xterm 的 `evaluateKeyboardEvent` 不会产生 `result.key`；`src/browser/CoreBrowserTerminal.ts` 随即在 `if (!result.key) return true` 提前返回，不触发 xterm data event。需要 Shift 才能输入 `/` 的键盘布局也不一定会落入 xterm 已有的控制键编码分支。
+
+因此当前最强的代码级判断是：这组按键没有被插件剪贴板 handler 吞掉，而更可能在 xterm DOM 键盘事件到终端数据的转换处丢失，Codex CLI 收不到 `Ctrl+/`。另有一个焦点相关的独立情况：若焦点在 Note 标题/正文输入框，`canvasUiSurface.tsx` 的 `handleEditableFieldKeyDown` 会阻止未列入编辑快捷键白名单的 Ctrl 组合冒泡；画布全局监听则处理删除和菜单 Escape，不处理 `Ctrl+/`。只有 Agent xterm 获得焦点时，才应检查终端输入链路。
+
+这仍是高置信代码根因，不是已完成的真实扩展端到端复现。当前没有收集用户的 CLI 版本、操作系统、键盘布局和实际焦点，也没有在 VS Code Webview 同时观察 `KeyboardEvent` 与 `terminal.onData`。在选择正式修复前，应使用实际扩展包记录按键的 `key`、`code`、`ctrlKey`、`shiftKey`，并确认终端 `onData` 是否产生输入；还要验证 Codex 能识别候选兼容输入。`/side` 命令和 `/keymap` 自定义绑定是调查期间可用的替代入口；本轮不预先指定另一组快捷键或控制序列。
+
+调研过程与命令证据见 `docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md`。本补充将整体验证状态改为“验证中”，直至真实 Webview 输入链路得到复现或排除。
