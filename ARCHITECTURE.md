@@ -307,6 +307,8 @@ docs/                           根目录正式文档知识库
 
 这是 UI-side notifier companion extension package。
 
+后续已选定向独立跨平台端侧应用与 IDE 薄适配器演进，见[Notifier 端侧设计](docs/design-docs/notifier-native-client.md)和[实施计划](docs/exec-plans/active/notifier-native-client.md)。该方案尚未实现，以下仍描述当前代码；拟新增的 `apps/notifier/` 负责本机通知生命周期，不接管画布状态，不要求 IDE 退出后继续接收事件。
+
 关键命名实体：
 
 - `extensions/vscode/dev-session-canvas-notifier/src/extension.ts`

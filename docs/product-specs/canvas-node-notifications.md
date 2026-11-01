@@ -356,3 +356,7 @@ type CanvasAgentAbnormalOutputTextNotificationMode = 'off' | 'codex';
 ## 11. 最后更新
 
 2026-05-26
+
+## 后续端侧应用演进（2026-11-01，已确认方向，未实现）
+
+用户确认独立本机通知应用与 IDE 薄适配器的分工，目标为 macOS、Windows、Linux；先在 Mac 验证原生闭环。新增收件箱、来源状态、精确回跳、去重与状态同步，沿用现有信号识别和点击只居中不确认的语义。不要求 IDE 关闭后继续提醒；离线来源可保留历史，不默认唤起 IDE。完成/等待输入/批准等事件分类不能由 BEL 猜测，需要可靠接入证据后另行扩展。现有章节仍描述当前产品，不表示新应用已交付。详细范围与分层验收见[端侧应用设计](../design-docs/notifier-native-client.md)和[ExecPlan](../exec-plans/active/notifier-native-client.md)。

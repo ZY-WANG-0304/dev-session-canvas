@@ -24,6 +24,7 @@
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `docs/design-docs/ci-validation-scope-policy.md` | 合并 CI 必跑任务、文档轻量路径、验收复用与间歇失败的非阻塞观察；两阶段已实现，真实文档/模块/复用对照与完整 CI 通过 | 执行编排域、VSCode 集成域 / 适配与基础设施层 | 已选定 | 已验证 | `docs/exec-plans/completed/ci-validation-scope-implementation.md` | 2026-11-01 |
+| `docs/design-docs/notifier-native-client.md` | 跨平台独立通知应用、IDE 薄适配器、在线来源边界与安装包验收；Tauri/Rust/TypeScript 方向已选定，未实现 | VSCode 集成域、执行编排域、项目状态域 / 宿主集成层、适配与基础设施层 | 已选定 | 未验证 | `docs/product-specs/canvas-node-notifications.md`、`docs/exec-plans/active/notifier-native-client.md` | 2026-11-01 |
 | `docs/design-docs/release-product-decoupling.md` | 发布工具与产品内容独立演进；首次发布和恢复均固定产品输入，工具更新不得换包；两条流水线已实现并通过 PR CI，实际交付待首次使用 | VSCode 集成域、执行编排域 / 适配与基础设施层 | 已选定 | 验证中 | `docs/exec-plans/completed/release-product-decoupling.md` | 2026-11-01 |
 | `docs/design-docs/release-0-27-0.md` | 0.27.0 公开 Preview 里程碑范围、版本选择、用户说明和发布验证边界 | 项目状态域、执行编排域、画布交互域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/active/release-0-27-0-prep.md` | 2026-10-30 |
 | `docs/design-docs/canvas-node-group-title-editing.md` | 节点与普通用户分组标题改为鼠标悬停 / 键盘聚焦时，在主标题文字尾部显示编辑图标，并保持选择、拖动、双击聚焦和只读投影边界 | 画布交互域、协作对象域 / 画布呈现层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/product-specs/canvas-node-groups.md`、`docs/exec-plans/active/node-group-title-edit-action.md` | 2026-11-01 |
