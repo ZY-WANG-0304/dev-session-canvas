@@ -20,8 +20,6 @@ colors:
   node-agent: "#22c55e"
   node-terminal: "#38bdf8"
   node-note: "#a78bfa"
-  node-file: "#f59e0b"
-  node-file-list: "#f97316"
   status-starting: "var(--vscode-debugIcon-startForeground, var(--vscode-focusBorder))"
   status-running: "var(--vscode-debugIcon-startForeground, var(--vscode-debugIcon-restartForeground, var(--vscode-focusBorder)))"
   status-resuming: "var(--vscode-debugIcon-restartForeground, var(--vscode-focusBorder))"
@@ -206,7 +204,7 @@ components:
 - `6px`：标题栏按钮组、状态 cluster。
 - `8px`：菜单、资源列表、连线工具条内部节奏；执行型节点的内嵌运行时 frame padding。
 - `10px`：标题栏横向 gap、紧凑内容 padding。
-- `12px`：节点正文外壳 padding、普通内容卡片 padding；卡片态 `Agent` / `Terminal` / `File` / `File List` / fallback 节点默认共享这一档。
+- `12px`：节点正文外壳 padding、普通内容卡片 padding；卡片态 `Agent` / `Terminal` / `Note` / fallback 节点默认共享这一档。
 - `14px`：画布角落控件到边缘距离。
 - `16px`：侧栏内容 section 内较大间隔；文档型正文的纵向阅读 padding。
 - `18px`：文档型正文的横向阅读 padding，仅用于 Note Markdown 预览和编辑面。
@@ -296,7 +294,6 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 - 正文区按对象类型承载内容，但不应引入多层 card-in-card。
 - 节点正文 padding 以 `12px` 为默认外壳；执行型节点在正文外壳内再用 `8px` 的运行时 frame 包住 xterm，使 `Agent` 与 `Terminal` 的终端内容拥有一致留白。
 - Note 是文档 surface：节点 body 可贴边，Markdown 预览和编辑态文本区使用 `16px 18px` 的文档页边距；行号 gutter 只占用编辑态左侧文档留白，不改变预览态节奏。
-- File 和 File List 的卡片态使用默认 `12px` 正文 padding；minimal 文件活动仍可使用更小的 badge / list row padding，因为它们表达的是文件标签密度而非完整节点正文。
 - 选中态使用 `focusBorder` 外描边表达，不重绘整块背景。
 
 具体对象行为和字段边界由 `docs/design-docs/` 中对应对象或节点设计文档定义，并从 `docs/design-docs/index.md` 查找。

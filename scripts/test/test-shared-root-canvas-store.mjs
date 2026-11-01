@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fork } from 'node:child_process';
 import os from 'node:os';
@@ -13,8 +13,7 @@ const bundle = await esbuild.build({ entryPoints: ['extensions/vscode/dev-sessio
 const modulePath = path.join(temporary, 'store.cjs');
 await writeFile(modulePath, bundle.outputFiles[0].text);
 const { SharedRootCanvasStore, mergeSharedCanvasState, sharedCanvasState } = createRequire(import.meta.url)(modulePath);
-const empty = () => ({ version: 1, updatedAt: '', nodes: [], groups: [], edges: [], nextGroupSequence: 1,
-  fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] });
+const empty = () => ({ version: 1, updatedAt: '', nodes: [], groups: [], edges: [], nextGroupSequence: 1 });
 const note = id => ({ id, kind: 'note', title: id, status: 'idle', summary: '', position: { x: 0, y: 0 },
   size: { width: 300, height: 200 }, metadata: { note: { content: id } } });
 let passed = 0;
@@ -49,17 +48,50 @@ try {
     assert.equal(shared.nodes[0].summary, '');
     assert.equal(state.nodes[0].metadata.agent.recentOutput, 'private');
   });
-  await check('geometry stays atomic while owner and file timestamps merge', () => {
-    const base = { ...empty(), nodes: [note('one')], owners: [{ nodeId: 'one', updatedAt: 'old' }],
-      fileReferences: [{ id: 'file', updatedAt: 'old' }] };
+  await check('geometry stays atomic while unrelated owner timestamps merge', () => {
+    const base = { ...empty(), nodes: [note('one')], owners: [{ nodeId: 'one', updatedAt: 'old' }] };
     const next = structuredClone(base), latest = structuredClone(base);
     next.nodes[0].position.x = 42;
     latest.nodes[0].position.y = 90;
-    next.owners[0].updatedAt = 'new'; next.fileReferences[0].updatedAt = 'new';
+    next.owners[0].updatedAt = 'new';
     const merged = mergeSharedCanvasState(base, next, latest);
     assert.deepEqual(merged.nodes[0].position, { x: 42, y: 0 });
     assert.equal(merged.owners[0].updatedAt, 'new');
-    assert.equal(merged.fileReferences[0].updatedAt, 'new');
+  });
+  await check('legacy shared snapshots discard retired file objects and keep ordinary canvas data', async () => {
+    const legacy = {
+      ...empty(),
+      nodes: [note('agent-1'), note('note-1'),
+        { ...note('file-1'), kind: 'file' }, { ...note('list-1'), kind: 'file-list' }],
+      groups: [{ id: 'group-1', title: 'group-1', position: { x: 0, y: 0 }, size: { width: 800, height: 500 } }],
+      edges: [
+        { id: 'manual', sourceNodeId: 'agent-1', targetNodeId: 'note-1', owner: 'user' },
+        { id: 'manual-to-file', sourceNodeId: 'agent-1', targetNodeId: 'file-1', owner: 'user' },
+        { id: 'automatic', sourceNodeId: 'agent-1', targetNodeId: 'list-1', owner: 'file-activity' }
+      ],
+      fileReferences: [{ id: 'old', filePath: '/repo/file.ts', owners: [] }],
+      suppressedFileActivityEdgeIds: ['automatic'],
+      suppressedAutomaticFileArtifactNodeIds: ['file-1']
+    };
+    const migrated = sharedCanvasState(legacy);
+    assert.deepEqual(migrated.nodes.map(node => node.id), ['agent-1', 'note-1']);
+    assert.deepEqual(migrated.edges.map(edge => edge.id), ['manual']);
+    assert.deepEqual(migrated.groups, legacy.groups);
+    assert.ok(!Object.hasOwn(migrated, 'fileReferences'));
+    assert.ok(!Object.hasOwn(migrated, 'suppressedFileActivityEdgeIds'));
+    assert.deepEqual(mergeSharedCanvasState(legacy, legacy, legacy), migrated);
+
+    const filename = path.join(temporary, 'legacy-root', 'canvas-state.json');
+    await mkdir(path.dirname(filename), { recursive: true });
+    await writeFile(filename, JSON.stringify({ version: 1, state: legacy, sharedRevision: 'legacy' }));
+    const store = new SharedRootCanvasStore(filename, empty(), () => {}, error => { throw error; }); stores.push(store);
+    await store.ready;
+    await store.publish(migrated);
+    await store.flush();
+    const persisted = JSON.parse(await readFile(filename, 'utf8')).state;
+    assert.deepEqual(persisted.nodes.map(node => node.id), ['agent-1', 'note-1']);
+    assert.deepEqual(persisted.edges.map(edge => edge.id), ['manual']);
+    assert.ok(!Object.hasOwn(persisted, 'fileReferences'));
   });
   await check('failed execution work commits its queued state before releasing the mutation lease', async () => {
     const filename = path.join(temporary, 'failed-mutation', 'canvas-state.json');

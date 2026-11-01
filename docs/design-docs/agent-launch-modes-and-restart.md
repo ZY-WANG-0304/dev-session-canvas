@@ -281,7 +281,7 @@ Default args 的配置边界也在同一层收口：它只能承载稳定的 run
 1. 从节点 metadata 取 `launchPreset/customLaunchCommand`
 2. 结合当前 provider 设置，重新校验并解析出“本次新会话要执行的完整命令”；若首个 token 不再属于当前 provider，或 `custom` 预设缺少有效命令，则直接拒绝启动
 3. 把首个 token 送入现有 resolver，拿到真正的可执行文件路径
-4. 将其余 token 与 provider resume/file-activity 注入逻辑拼接，生成最终 `ExecutionSessionLaunchSpec`
+4. 将其余启动 token 与 provider resume 参数拼接，生成最终 `ExecutionSessionLaunchSpec`
 
 边界如下：
 

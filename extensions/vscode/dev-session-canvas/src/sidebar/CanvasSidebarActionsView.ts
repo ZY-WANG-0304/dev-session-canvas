@@ -19,24 +19,12 @@ type SidebarActionsInboundMessage =
   | {
       type: 'sidebarActions/resetCanvas';
     }
-  | {
-      type: 'sidebarActions/updateFileFilter';
-      payload: {
-        kind: 'include' | 'exclude';
-        value: string;
-      };
-    }
-  | {
-      type: 'sidebarActions/clearFileFilter';
-      payload: {
-        kind: 'include' | 'exclude';
-      };
-    };
+;
 
 type SidebarActionsOutboundMessage = {
   type: 'sidebarActions/state';
   payload: {
-    state: Pick<CanvasSidebarState, 'canvasSurface' | 'filesFeatureEnabled' | 'fileFilters'>;
+    state: Pick<CanvasSidebarState, 'canvasSurface'>;
   };
 };
 
@@ -46,14 +34,6 @@ interface SidebarActionsCopy {
   createNode: string;
   resetToDefaultTemplate: string;
   resetCanvas: string;
-  includeFiles: string;
-  includePlaceholder: string;
-  clearIncludeFiles: string;
-  excludeFiles: string;
-  excludePlaceholder: string;
-  clearExcludeFiles: string;
-  fileFilterHint: string;
-  filesDisabled: string;
 }
 
 export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -100,12 +80,7 @@ export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vsc
     if (!view || !view.visible) return;
     const current = state ?? this.panelManager.getSidebarState();
     const displayed = {
-      canvasSurface: current.canvasSurface,
-      filesFeatureEnabled: current.filesFeatureEnabled,
-      fileFilters: {
-        includeGlobs: [...current.fileFilters.includeGlobs],
-        excludeGlobs: [...current.fileFilters.excludeGlobs]
-      }
+      canvasSurface: current.canvasSurface
     };
     const key = JSON.stringify(displayed);
     if (!force && key === this.lastPostedState) return;
@@ -151,17 +126,6 @@ export class CanvasSidebarActionsView implements vscode.WebviewViewProvider, vsc
         return;
       case 'sidebarActions/resetCanvas':
         await vscode.commands.executeCommand(COMMAND_IDS.resetCanvasState);
-        return;
-      case 'sidebarActions/updateFileFilter':
-        await vscode.commands.executeCommand(
-          parsed.payload.kind === 'include' ? COMMAND_IDS.editFileIncludeFilter : COMMAND_IDS.editFileExcludeFilter,
-          parsed.payload.value
-        );
-        return;
-      case 'sidebarActions/clearFileFilter':
-        await vscode.commands.executeCommand(
-          parsed.payload.kind === 'include' ? COMMAND_IDS.clearFileIncludeFilter : COMMAND_IDS.clearFileExcludeFilter
-        );
         return;
     }
   }
@@ -378,130 +342,16 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
         <button class="action-button is-danger" type="button" data-action="resetCanvas">${copy.resetCanvas}</button>
       </div>
 
-      <div class="fields">
-        <div class="field-group">
-          <label class="field-label" for="include-input">${copy.includeFiles}</label>
-          <div class="input-wrap">
-            <input
-              id="include-input"
-              class="field-input"
-              type="text"
-              spellcheck="false"
-              placeholder="${copy.includePlaceholder}"
-            />
-            <button class="field-clear" type="button" data-clear-kind="include" aria-label="${copy.clearIncludeFiles}">&times;</button>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label class="field-label" for="exclude-input">${copy.excludeFiles}</label>
-          <div class="input-wrap">
-            <input
-              id="exclude-input"
-              class="field-input"
-              type="text"
-              spellcheck="false"
-              placeholder="${copy.excludePlaceholder}"
-            />
-            <button class="field-clear" type="button" data-clear-kind="exclude" aria-label="${copy.clearExcludeFiles}">&times;</button>
-          </div>
-        </div>
-
-        <div class="field-hint">${copy.fileFilterHint}</div>
-      </div>
-
-      <div class="feature-disabled" hidden>${copy.filesDisabled}</div>
     </div>
 
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
       const initialState = ${initialState};
       const copy = ${serializeForInlineScript(copy)};
-      const includeInput = document.getElementById('include-input');
-      const excludeInput = document.getElementById('exclude-input');
       const openCanvasButton = document.querySelector('.action-button[data-action="openCanvas"]');
-      const fields = document.querySelector('.fields');
-      const featureDisabledMessage = document.querySelector('.feature-disabled');
-      const clearButtons = {
-        include: document.querySelector('[data-clear-kind="include"]'),
-        exclude: document.querySelector('[data-clear-kind="exclude"]')
-      };
-
-      const draft = {
-        include: '',
-        exclude: ''
-      };
-      const dirty = {
-        include: false,
-        exclude: false
-      };
-
-      function joinGlobs(globs) {
-        return Array.isArray(globs) ? globs.join(', ') : '';
-      }
-
-      function currentOpenCanvasLabel(state) {
-        return state.canvasSurface === 'closed' ? copy.openCanvas : copy.revealCanvas;
-      }
-
-      function setClearButtonVisibility(kind, value) {
-        clearButtons[kind].hidden = value.trim().length === 0;
-      }
 
       function applyState(state) {
-        const openCanvasLabel = currentOpenCanvasLabel(state);
-        openCanvasButton.textContent = openCanvasLabel;
-        fields.hidden = !state.filesFeatureEnabled;
-        featureDisabledMessage.hidden = state.filesFeatureEnabled;
-
-        const includeValue = joinGlobs(state.fileFilters.includeGlobs);
-        const excludeValue = joinGlobs(state.fileFilters.excludeGlobs);
-
-        if (!dirty.include && document.activeElement !== includeInput) {
-          draft.include = includeValue;
-          includeInput.value = includeValue;
-        }
-        if (!dirty.exclude && document.activeElement !== excludeInput) {
-          draft.exclude = excludeValue;
-          excludeInput.value = excludeValue;
-        }
-
-        setClearButtonVisibility('include', includeInput.value);
-        setClearButtonVisibility('exclude', excludeInput.value);
-      }
-
-      function submitFilter(kind) {
-        const input = kind === 'include' ? includeInput : excludeInput;
-        const nextValue = input.value;
-        draft[kind] = nextValue;
-        dirty[kind] = false;
-        setClearButtonVisibility(kind, nextValue);
-        vscode.postMessage({
-          type: 'sidebarActions/updateFileFilter',
-          payload: {
-            kind,
-            value: nextValue
-          }
-        });
-      }
-
-      function bindFilterInput(kind, input) {
-        input.addEventListener('input', () => {
-          draft[kind] = input.value;
-          dirty[kind] = true;
-          setClearButtonVisibility(kind, input.value);
-        });
-
-        input.addEventListener('blur', () => {
-          submitFilter(kind);
-        });
-
-        input.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            input.blur();
-          }
-        });
+        openCanvasButton.textContent = state.canvasSurface === 'closed' ? copy.openCanvas : copy.revealCanvas;
       }
 
       function bindActionButtons(action, messageType) {
@@ -516,24 +366,6 @@ function buildSidebarActionsHtml(webview: vscode.Webview, state: CanvasSidebarSt
       bindActionButtons('createNode', 'sidebarActions/createNode');
       bindActionButtons('resetToDefaultTemplate', 'sidebarActions/resetToDefaultTemplate');
       bindActionButtons('resetCanvas', 'sidebarActions/resetCanvas');
-
-      clearButtons.include.addEventListener('click', () => {
-        includeInput.value = '';
-        draft.include = '';
-        dirty.include = false;
-        setClearButtonVisibility('include', '');
-        vscode.postMessage({ type: 'sidebarActions/clearFileFilter', payload: { kind: 'include' } });
-      });
-      clearButtons.exclude.addEventListener('click', () => {
-        excludeInput.value = '';
-        draft.exclude = '';
-        dirty.exclude = false;
-        setClearButtonVisibility('exclude', '');
-        vscode.postMessage({ type: 'sidebarActions/clearFileFilter', payload: { kind: 'exclude' } });
-      });
-
-      bindFilterInput('include', includeInput);
-      bindFilterInput('exclude', excludeInput);
 
       window.addEventListener('message', (event) => {
         const message = event.data;
@@ -556,15 +388,7 @@ function buildSidebarActionsCopy(): SidebarActionsCopy {
     revealCanvas: vscode.l10n.t('Reveal Canvas'),
     createNode: vscode.l10n.t('Create Node'),
     resetToDefaultTemplate: vscode.l10n.t('Reset to Template'),
-    resetCanvas: vscode.l10n.t('Clear Canvas'),
-    includeFiles: vscode.l10n.t('Include files'),
-    includePlaceholder: vscode.l10n.t('e.g. src/**/*.ts, docs/**/*.md'),
-    clearIncludeFiles: vscode.l10n.t('Clear included files'),
-    excludeFiles: vscode.l10n.t('Exclude files'),
-    excludePlaceholder: vscode.l10n.t('e.g. **/dist/**, **/*.snap'),
-    clearExcludeFiles: vscode.l10n.t('Clear excluded files'),
-    fileFilterHint: vscode.l10n.t('Only affects file projections; file references are not changed.'),
-    filesDisabled: vscode.l10n.t('Files are currently disabled. After re-enabling them, reload the window for changes to take effect.')
+    resetCanvas: vscode.l10n.t('Clear Canvas')
   };
 }
 
@@ -590,30 +414,6 @@ function parseSidebarActionsMessage(value: unknown): SidebarActionsInboundMessag
       return {
         type: message.type
       };
-    case 'sidebarActions/updateFileFilter':
-      if (
-        (message.payload?.kind === 'include' || message.payload?.kind === 'exclude') &&
-        typeof message.payload.value === 'string'
-      ) {
-        return {
-          type: 'sidebarActions/updateFileFilter',
-          payload: {
-            kind: message.payload.kind,
-            value: message.payload.value
-          }
-        };
-      }
-      return undefined;
-    case 'sidebarActions/clearFileFilter':
-      if (message.payload?.kind === 'include' || message.payload?.kind === 'exclude') {
-        return {
-          type: 'sidebarActions/clearFileFilter',
-          payload: {
-            kind: message.payload.kind
-          }
-        };
-      }
-      return undefined;
     default:
       return undefined;
   }

@@ -173,9 +173,6 @@ async function verifyLocalizedWebviewRuntime(expected) {
     ],
     edges: [],
     groups: [],
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: []
   });
 
   const probe = await waitForWebviewProbe(

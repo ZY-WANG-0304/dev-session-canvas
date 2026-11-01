@@ -19,7 +19,7 @@ Dev Session Canvas is a multi-agent AI workbench inside VS Code, and the canvas 
 - Deletion shows progress and locks affected interactions, including across windows sharing the root
 - Launch failures show their underlying cause and clear the pending launch state; legacy reconnect, history cleanup, and retry/delete after preparation failure are more reliable
 - A disconnected Agent or Terminal node can be removed. A new Supervisor can repair a missing Unix socket entry; when the old background process cannot be confirmed stopped, VS Code warns that it may still be running and asks you to check it manually
-- Fixes cover resize during startup, input settlement before deletion, path drag and drop, per-line file links and file activity, and abnormal-exit reminders
+- Fixes cover resize during startup, input settlement before deletion, path drag and drop, per-line file links, and abnormal-exit reminders
 - In snapshot-only mode, an Agent interrupted by Host shutdown waits for manual Resume when a trusted recovery identity exists; reopening the page does not automatically resume it
 - Main extension and notifier use version 0.27.0 together; notifier delivery backends, click callbacks, and localization behavior remain unchanged
 

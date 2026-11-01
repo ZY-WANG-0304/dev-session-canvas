@@ -9,9 +9,8 @@ export interface CanvasLayoutAcknowledgement { nodes?: string[]; groups?: string
 const runtimeGroups = {
   terminal: ['executionMouseDiagnosticsEnabled', 'strongTerminalAttentionReminderMode', 'terminalScrollback',
     'editorMultiCursorModifier', 'terminalWordSeparators'],
-  presentation: ['overviewMode', 'overviewZoomThreshold', 'multiRootPresentationMode', 'workspaceRootWatermarksEnabled',
-    'filePresentationMode', 'fileNodeDisplayStyle', 'fileNodeDisplayMode', 'filePathDisplayMode'],
-  workspace: ['surfaceLocation', 'workspaceFolders', 'fileIconFontFaces', 'noteMarkdownImageWorkspaceRoots'],
+  presentation: ['overviewMode', 'overviewZoomThreshold', 'multiRootPresentationMode', 'workspaceRootWatermarksEnabled'],
+  workspace: ['surfaceLocation', 'workspaceFolders', 'noteMarkdownImageWorkspaceRoots'],
   launch: ['workspaceTrusted', 'defaultAgentProvider', 'agentLaunchDefaults']
 } as const satisfies Record<string, readonly (keyof CanvasRuntimeContext)[]>;
 type RuntimeGroup = keyof typeof runtimeGroups;

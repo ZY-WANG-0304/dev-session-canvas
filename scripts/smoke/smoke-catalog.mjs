@@ -303,8 +303,6 @@ const trustedSmokeCases = [
   ['execution-start/missing-cli', '缺失 CLI 的准备失败和一次结算', 'prepareIndependentEmpty', 'runIndependentMissingCLI'],
   ['execution-start/invalid-launch', '拒绝跨 provider 自定义命令', 'prepareIndependentCompletedDomBase', 'runIndependentInvalidLaunch'],
   ['canvas-protocol/missing-node', '缺失节点的准确错误和原状态保留', 'prepareIndependentCompletedDomBase', 'runIndependentMissingNode'],
-  ['execution-file-activity/views', '文件活动视图和真实 Editor 打开', 'prepareIndependentEmpty', 'verifyFileActivityViewsAndOpenFiles'],
-  ['execution-file-activity/read-exit-drain', '执行结束后的文件活动 drain', 'prepareIndependentEmpty', 'verifyReadExitFileActivityDrain'],
   ['session-history/restore', '侧栏历史恢复', 'prepareIndependentEmpty', 'verifySidebarSessionHistoryRestore'],
   ['session-history/fork-ui', '侧栏历史分叉按钮', 'prepareIndependentEmpty', 'verifySidebarSessionHistoryForkActionUi'],
   ['session-history/codex-branch', 'Codex 当前节点分支', 'prepareIndependentEmpty', 'verifyCodexAgentBranchFromCurrentNode'],

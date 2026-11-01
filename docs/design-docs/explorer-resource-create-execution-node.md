@@ -143,7 +143,7 @@ Explorer 命令的主流程为：
 执行启动路径必须从节点 metadata 读取 cwd，而不是每次调用默认 workspace root：
 
 - `startTerminalSession(...)` 使用 `ensureTerminalMetadata(terminalNode).cwd` 作为 `buildTerminalLaunchSpec(...)`、line context tracker 和 diagnostic `cwd`。
-- `startAgentSession(...)` 使用 `ensureAgentMetadata(agentNode).cwd` 作为 fresh-start、resume、CLI resolver、file activity session 和 diagnostic `cwd`。
+- `startAgentSession(...)` 使用 `ensureAgentMetadata(agentNode).cwd` 作为 fresh-start、resume、CLI resolver 和 diagnostic `cwd`。
 - `resolveAgentCli(...)`、`resolveExecutionEnvironment(...)`、`getResolvedShellEnvironmentPatch(...)` 等 cwd-sensitive helper 需要接收目标 cwd 参数；缓存 key 必须包含目标 cwd。
 - live-runtime supervisor 的 createSession request 同样使用节点 cwd；reattach snapshot 继续以 supervisor snapshot 的 cwd 为准。
 - 节点停止后点击 `Terminal` 的“重启”、Agent 的“新建”或“恢复”都继续使用该节点 metadata 中的 cwd。不要在后续启动时回退到当前 workspace 根目录。

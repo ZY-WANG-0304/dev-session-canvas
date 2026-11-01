@@ -197,10 +197,6 @@ async function cmdStart(args = []) {
       'workbench.panel.defaultLocation': 'bottom',
       'workbench.panel.opensMaximized': 'always',
       'devSessionCanvas.canvas.defaultSurface': 'panel',
-      'devSessionCanvas.files.enabled': scenario ? false : true,
-      'devSessionCanvas.files.presentationMode': 'nodes',
-      'devSessionCanvas.fileNode.displayStyle': 'minimal',
-      'devSessionCanvas.files.nodeDisplayMode': 'icon-path',
       ...(scenario
         ? {
             'workbench.startupEditor': 'none',
@@ -898,7 +894,7 @@ async function captureCanvasDomSnapshot(session) {
           nodeId: element.dataset.nodeId ?? '',
           kind: element.dataset.nodeKind ?? '',
           chromeTitle:
-            element.querySelector('.window-title strong, .node-topline strong, .file-node-copy strong, .file-list-title-text')?.textContent?.trim() ??
+            element.querySelector('.window-title strong, .node-topline strong')?.textContent?.trim() ??
             ''
         }))
       );
@@ -1726,10 +1722,7 @@ function createScenarioRootSnapshot(definition, rootPath) {
     nodes: [{ ...commonNode, metadata }],
     edges: [],
     groups: [],
-    nextGroupSequence: 1,
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: []
+    nextGroupSequence: 1
   };
   return {
     version: 1,
@@ -1737,7 +1730,6 @@ function createScenarioRootSnapshot(definition, rootPath) {
     activeSurface: 'panel',
     defaultSurface: 'panel',
     runtimePersistenceEnabled: false,
-    filesFeatureEnabled: false,
     writtenAt: now,
     stateHash: createHash('sha256').update(JSON.stringify(state)).digest('hex')
   };

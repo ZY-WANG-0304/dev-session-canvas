@@ -49,7 +49,7 @@ export async function inspectVsix(file, expectedID, version, { production = true
       'l10n/bundle.l10n.zh-cn.json', 'readme.md', 'changelog.md']
     : ['dist/extension.js', 'dist/webview.js', 'dist/webview.css', 'dist/sidebar-codicon.css',
       'dist/runtime-supervisor.js', 'dist/runtime-supervisor-launcher.js', 'dist/execution-candidate-selection.json',
-      'node_modules/node-pty/package.json', 'scripts/runtime/claude-file-event-hook.cjs', 'readme.md',
+      'node_modules/node-pty/package.json', 'readme.md',
       'package.nls.json', 'package.nls.zh-cn.json', 'l10n/bundle.l10n.zh-cn.json'];
   for (const relative of required) assert(zip.file(`extension/${relative}`), `Production VSIX is missing ${relative}`);
   const payload = [];

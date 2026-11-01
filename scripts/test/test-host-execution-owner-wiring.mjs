@@ -228,7 +228,6 @@ function fixture(options = {}) {
   ];
   Object.assign(host, {
     context: { extensionMode: 3 },
-    appliedStartupConfiguration: { filesFeatureEnabled: false },
     nonNativeExecutionOwner: owner, nonNativeHostExecutions: new Map(),
     enabledAttentionSignals: ['bel', 'osc9', 'osc777'], attentionNotificationBridgeMode: 'none',
     agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
@@ -1739,7 +1738,7 @@ async function persistenceFixture(options = {}) {
     budgets: { naturalDrainMs: 15, boundaryMs: 50, ...options.budgets }, roots: [{ path: root, name: 'root' }] });
   const updates = new Map();
   const writes = [];
-  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled: false, filesFeatureEnabled: false };
+  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled: false };
   delete f.host.persistState;
   delete f.host.writeRootLocalCanvasSnapshot;
   Object.assign(f.host, {
@@ -1753,7 +1752,7 @@ async function persistenceFixture(options = {}) {
     terminalReadRelay: { closeMatching() {}, usesClient: () => false }, runtimeSupervisorClients: new Map()
   });
   Object.assign(f.host.state, { version: 1, updatedAt: '2026-09-26T00:00:00.000Z', nextGroupSequence: 1,
-    fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] });
+ });
   for (const node of f.nodes) Object.assign(node, { title: `Original ${node.kind}`, position: { x: 10, y: 20 },
     size: { width: 640, height: 360 } });
   const write = f.host.writePersistedCanvasSnapshotToDisk.bind(f.host);
@@ -1857,7 +1856,6 @@ for (const kind of ['terminal', 'agent']) {
     const row = index => `SNAPSHOT-${String(index).padStart(5, '0')}-${'x'.repeat(46)}`;
     const lineCount = 90000;
     f.host.getTerminalScrollback = () => 100000;
-    f.host.fileFilterState = { includeGlobs: [], excludeGlobs: [] };
     f.host.context.workspaceState.get = key => f.updates.get(key);
     let record;
     let restored;
@@ -1946,11 +1944,8 @@ async function singleNodeDeleteFixture(kind) {
     return update(...args);
   };
   f.host.postMessage = message => messages.push(message);
-  f.host.reconcileCanvasFileArtifacts = state => state;
   const { record, provider } = await f.started(kind);
   const id = record.nodeId;
-  if (kind === 'agent') f.host.state.fileReferences = [{ id: 'delete-file', filePath: '/controlled/read.md',
-    updatedAt: '2026-10-11T00:00:00Z', owners: [{ nodeId: id, accessMode: 'read', updatedAt: '2026-10-11T00:00:00Z' }] }];
   async function exit() {
     provider.process();
     provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
@@ -2068,7 +2063,6 @@ for (const kind of ['agent', 'terminal']) {
           await completed(f.clock, f.record.persistence.promise, 'original delete save');
           await completed(f.clock, deleting, 'single node delete result');
           assert.equal(f.host.state.nodes.some(node => node.id === f.id), outcome !== 'saved');
-          if (kind === 'agent') assert.equal(f.host.state.fileReferences.length, outcome === 'saved' ? 0 : 1);
           if (outcome === 'failed') assert.match(f.messages.at(-1).payload.message, /persistence is failed/);
           if (outcome !== 'failed') assert.equal(f.record.persistence.result.kind, 'saved');
           assert.equal(f.providers.length, 1);
@@ -2105,10 +2099,8 @@ for (const change of ['metadata', 'record', 'owner', 'operation', 'deleted', 'ro
       if (change === 'layout') {
         assert.ok(!f.host.state.nodes.some(node => node.id === f.id));
         assert.equal(f.messages.some(message => message.type === 'host/error'), false);
-        assert.equal(f.host.state.fileReferences.length, 0);
       } else {
         assert.match(f.messages.at(-1).payload.message, /original local deletion target changed/);
-        assert.equal(f.host.state.fileReferences.length, 1, 'stale deletion must not remove references');
         if (change !== 'deleted') assert.ok(f.host.state.nodes.some(node => node.id === f.record.nodeId));
       }
     } finally { await f.cleanup(); }
@@ -2551,7 +2543,6 @@ for (const kind of ['terminal', 'agent']) {
       const f = await persistenceFixture();
       let record;
       try {
-        f.host.fileFilterState = { includeGlobs: [], excludeGlobs: [] };
         f.host.context.workspaceState.get = key => f.updates.get(key);
         const started = await f.started(kind);
         record = started.record;
@@ -2602,11 +2593,6 @@ const candidateCapabilities = [
 
 function candidateFixture(options = {}) {
   const f = localFixture({ ...options, exposeParentControl: true });
-  f.host.state.fileReferences = [];
-  f.host.state.suppressedFileActivityEdgeIds = [];
-  f.host.state.suppressedAutomaticFileArtifactNodeIds = [];
-  f.host.appliedStartupConfiguration = { filesFeatureEnabled: false };
-  f.host.fileFilterState = { includeGlobs: [], excludeGlobs: [] };
   for (const [index, node] of f.host.state.nodes.entries()) Object.assign(node, {
     position: { x: 800 * index, y: 0 }, size: { width: 640, height: 360 }
   });
@@ -2712,7 +2698,6 @@ function simulatedReloadFixture() {
     readStartupConfiguration: () => ({ ...f.host.appliedStartupConfiguration }),
     shouldPreserveLiveRuntimeAcrossHostBoundary: () => false,
     applyWorkbenchContextKeys() {}, refreshStorageRecoverySelection() {},
-    loadStoredCanvasFileFilterState: () => f.host.fileFilterState,
     loadReconciledState: () => f.host.state,
     readCanvasTemplateInitializedFlag: () => true,
     loadStoredSurface: () => 'editor',
@@ -5922,12 +5907,11 @@ function configureCanvasRecomposition(f) {
   Object.assign(f.host, {
     lastComposedWorkspaceRootPaths: f.host.getMultiRootWorkspaceFoldersForComposition().map(folder => folder.path),
     getLiveRuntimeReconnectBlockReason: () => undefined,
-    reconcileCanvasFileArtifacts: state => state,
     invalidateResolvedShellEnvironmentPatch() {}, clearAgentCliResolutionCache() {},
     resolvePreferredCanvasCenter: () => undefined,
     resolveWorkspaceRootGroupForAddedFolder: () => undefined,
     reconcileDefaultExecutionMetadataCwd() {}, refreshConfiguredTerminalShellMetadata() {},
-    refreshStorageRecoverySelection() {}, loadStoredCanvasFileFilterState: () => f.host.fileFilterState,
+    refreshStorageRecoverySelection() {},
     readCanvasTemplateInitializedFlag: () => true, loadStoredSurface: () => 'editor',
     applyWorkbenchContextKeys() {}, isInteractiveSurface: () => false,
     scheduleRestoreLiveRuntimeSessions() {}, getDebugSnapshot: () => ({ state: f.host.state })
@@ -7164,251 +7148,45 @@ for (const observer of ['diagnostics', 'page']) {
 }
 
 
-function ownedFileActivityFixture(options = {}) {
-  const f = options.fixture ?? candidateFixture(options);
-  const persist = f.host.persistState.bind(f.host);
-  f.host.persistState = async (...args) => { await persist(...args); };
-  f.host.appliedStartupConfiguration.filesFeatureEnabled = true;
-  f.host.resolveWorkspaceRelativePath = () => undefined;
-  f.host.reconcileCanvasFileArtifacts = state => state;
-  const collectors = [];
-  f.host.createConfiguredAgentFileActivitySession = () => {
-    const collector = { extraArgs: ['--settings', '/controlled/file-settings.json'],
-      extraEnv: { DSC_FILE_EVENTS: '/controlled/events.ndjson' }, disposeCount: 0,
-      start(callback) { this.emit = callback; },
-      async dispose() { this.disposeCount++; if (options.drain) await options.drain(this); }
-    };
-    collectors.push(collector);
-    return collector;
-  };
-  function event(collector = collectors[0], file = '/controlled/read.md') {
-    collector.emit({ path: file, accessMode: 'read', timestamp: '2026-10-11T00:00:00Z' });
-  }
-  async function finish(record = f.record('agent')) {
-    const provider = f.providers.at(-1);
-    provider.process();
-    provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release', result: { kind: 'released' } });
-    provider.seal(record.lastDataSequence); provider.release();
-    await until(f.clock, () => record.persistence.result !== undefined, 'file activity final persistence');
-    f.host.cancelLocalExecutionReaders('editor', 'cancelled', 'file-activity-cleanup');
-    record.business?.cancelActivityPoll?.(); record.business?.lineContextTracker.dispose(); record.tracker.dispose();
-  }
-  return { ...f, collectors, event, finish };
-}
-
-test('owned file activity injects provider settings and drains before final persistence', async () => {
-  const drain = deferred();
-  const f = ownedFileActivityFixture({ drain: async collector => {
-    collector.emit({ path: '/controlled/tail.md', accessMode: 'write', timestamp: '2026-10-11T00:00:01Z' });
-    await drain.promise;
-  } });
-  await completed(f.clock, f.start('agent'), 'file activity start');
-  const record = f.record('agent');
-  try {
-    assert.equal(f.collectors.length, 1);
-    const spec = f.providers[0].messages.find(message => message.type === 'start').spec;
-    assert.ok(spec.args.includes('/controlled/file-settings.json'));
-    assert.equal(spec.env.DSC_FILE_EVENTS, '/controlled/events.ndjson');
-    f.event();
-    assert.equal(f.host.state.fileReferences[0].owners[0].nodeId, 'agent-1');
-    const finishing = f.finish(record);
-    await until(f.clock, () => f.collectors[0].disposeCount === 1, 'collector draining');
-    assert.equal(record.persistence.submitted, false);
-    assert.equal(f.host.state.fileReferences.length, 2);
-    drain.resolve(); await finishing;
-    assert.equal(record.persistence.result.kind, 'saved', JSON.stringify(record.persistence.result));
-    assert.equal(f.collectors[0].disposeCount, 1);
-    f.event(f.collectors[0], '/controlled/late.md');
-    assert.equal(f.host.state.fileReferences.length, 2);
-  } finally { drain.resolve(); record.business?.cancelActivityPoll?.(); record.tracker.dispose(); }
-});
-
-test('owned file activity rejection waits for cleanup and does not apply unstarted events', async () => {
-  const base = startupResizeFixture('terminal', 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
-  const drain = deferred();
-  const f = ownedFileActivityFixture({ fixture: base, drain: async collector => {
-    collector.emit({ path: '/controlled/rejected.md', accessMode: 'read', timestamp: '2026-10-11T00:00:00Z' });
-    await drain.promise;
-  } });
-  let rejected;
-  try {
-    await until(f.clock, f.waiting, 'first starting slot held');
-    const starting = assert.rejects(f.start('agent'), /rejected-before-acquire/);
-    await until(f.clock, () => f.collectors[0]?.disposeCount === 1, 'rejected collector cleanup started');
-    rejected = f.record('agent');
-    assert.ok(rejected, 'Host key remains occupied until observer cleanup completes');
-    assert.equal(rejected.persistence.result, undefined);
-    assert.equal(f.providers[1].connectCount ?? 0, 0);
-    assert.equal(f.host.state.fileReferences.length, 0);
-    drain.resolve(); await starting;
-    assert.equal(rejected.persistence.result.kind, 'not-required');
-    assert.equal(f.record('agent'), undefined);
-    assert.equal(f.collectors[0].disposeCount, 1);
-  } finally { drain.resolve(); if (f.waiting()) f.release(); await f.cleanup(); }
-});
-
-for (const boundary of ['metadata', 'record', 'deleted', 'routed']) {
-  test(`owned file activity validates original binding through ${boundary}`, async () => {
-    const f = ownedFileActivityFixture();
-    await completed(f.clock, f.start('agent'), 'collector identity start');
-    const record = f.record('agent');
-    const original = record.execution.identity;
-    const state = f.host.state;
-    let node = state.nodes.find(node => node.id === 'agent-1');
-    try {
-      f.providers[0].output(1, 'ordinary output updates the metadata binding');
-      await until(f.clock, () => record.lastDataSequence === 1, 'ordinary output');
-      node = f.host.state.nodes.find(value => value.id === 'agent-1');
-      if (boundary === 'metadata') node.metadata.agent = { ...node.metadata.agent, marker: 'replacement' };
-      if (boundary === 'record') f.host.nonNativeHostExecutions.set(record.execution.key, { ...record });
-      if (boundary === 'deleted') f.host.state = { ...f.host.state, nodes: f.host.state.nodes.filter(node => node.id !== 'agent-1') };
-      if (boundary === 'routed') {
-        record.canvasRootPath = '/controlled'; record.canvasLocalNodeId = 'agent-1';
-        f.host.getMultiRootWorkspaceFoldersForComposition = () => [{ path: '/controlled', name: 'one' }, { path: '/other', name: 'two' }];
-        const next = structuredClone(f.host.state);
-        next.nodes.find(node => node.id === 'agent-1').id = namespaceCanvasObjectId('/controlled', 'agent-1');
-        f.host.state = f.host.reconcileOwnedCanvasState(next);
-      }
-      f.event();
-      assert.equal(f.host.state.fileReferences.length, boundary === 'routed' ? 1 : 0);
-      if (boundary === 'routed') {
-        assert.equal(f.host.state.fileReferences[0].owners[0].nodeId, record.nodeId);
-        assert.notEqual(record.nodeId, 'agent-1');
-      }
-      assert.strictEqual(record.execution.identity, original);
-    } finally {
-      if (boundary !== 'routed') {
-        f.host.state = state;
-        node.metadata.agent = record.persistence.metadata;
-        f.host.nonNativeHostExecutions.set(record.execution.key, record);
-      }
-      await f.finish(record);
-    }
-  });
-}
-
-for (const failure of ['prepare', 'subscribe', 'drain', 'event']) {
-  test(`owned file activity ${failure} failure preserves the original outcome`, async () => {
-    const f = ownedFileActivityFixture({
-      ...(failure === 'prepare' ? { environment: async () => { throw new Error('controlled prepare failure'); } } : {}),
-      ...(failure === 'drain' ? { drain: async () => { throw new Error('controlled drain failure'); } } : {})
-    });
-    if (failure === 'subscribe') {
-      const create = f.host.createConfiguredAgentFileActivitySession;
-      f.host.createConfiguredAgentFileActivitySession = (...args) => {
-        const collector = create(...args); collector.start = () => { throw new Error('controlled subscribe failure'); }; return collector;
-      };
-    }
-    if (failure === 'prepare' || failure === 'subscribe') {
-      await completed(f.clock, assert.rejects(f.start('agent'), new RegExp(`controlled ${failure} failure`)), 'collector preparation rejected');
-      assert.equal(f.collectors.length, failure === 'prepare' ? 0 : 1);
-      if (f.collectors[0]) assert.equal(f.collectors[0].disposeCount, 1);
-      assert.equal(f.providers.length, 0);
-      assert.equal(f.record('agent'), undefined);
-      return;
-    }
-    await completed(f.clock, f.start('agent'), 'collector error start');
-    const record = f.record('agent');
-    if (failure === 'event') {
-      f.host.handleAgentFileActivityEvent = () => { throw new Error('controlled event failure'); };
-      assert.doesNotThrow(() => f.event());
-    }
-    await f.finish(record);
-    assert.equal(record.persistence.result.kind, 'failed');
-    assert.match(record.persistence.result.reason, new RegExp(`controlled ${failure} failure`));
-    assert.equal(f.collectors[0].disposeCount, 1);
-    assert.strictEqual(f.record('agent'), record, 'failed final save retains original responsibility');
-  });
-}
-
-test('owned file activity releases watcher when failed consumption bypasses final flush', async () => {
-  const f = ownedFileActivityFixture();
-  await completed(f.clock, f.start('agent'), 'failed consumer start');
-  const record = f.record('agent');
-  f.host.consumeNonNativeHostBusinessOutput = () => { throw new Error('controlled consumption failure'); };
-  f.providers[0].output(1, 'unapplied');
-  await until(f.clock, () => Boolean(record.execution.snapshot().adapter.firstFault), 'failed output consumption');
-  // The failed frame is sealed even though Host application did not advance.
-  record.lastDataSequence = 1;
-  await f.finish(record);
-  await until(f.clock, () => record.fileActivity.disposed, 'collector released after failed consumption');
-  assert.equal(record.persistence.result.kind, 'failed');
-  assert.equal(f.collectors[0].disposeCount, 1);
-});
-
-test('owned file activity remains bound during unknown acquisition until original finalization', async () => {
-  const f = ownedFileActivityFixture();
-  const factory = f.injection.createTransport;
-  f.injection.createTransport = identity => {
-    const transport = factory(identity);
-    const provider = f.providers.at(-1);
-    const message = provider.message.bind(provider);
-    provider.message = value => message(value.type === 'operationObservation' && value.operationId === 'owner-start'
-      ? { ...value, result: { kind: 'unconfirmed', stage: 'start', reason: 'controlled unknown acquisition' } } : value);
-    return transport;
-  };
-  f.host.nonNativeExecutionOwner = new ExecutionOwnerLifecycle(f.injection);
-  await completed(f.clock, assert.rejects(f.start('agent'), /unknown acquisition/), 'uncertain original start');
-  const record = f.record('agent');
-  assert.ok(record);
-  assert.equal(f.providers[0].connectCount, 1);
-  assert.equal(f.collectors[0].disposeCount, 0);
-  assert.equal(record.persistence.result, undefined);
-  f.event();
-  assert.equal(f.host.state.fileReferences.length, 1);
-  await f.finish(record);
-  assert.equal(f.collectors[0].disposeCount, 1);
-});
-
-test('owned file activity rejected cleanup failure retains Host responsibility', async () => {
-  const base = startupResizeFixture('terminal', 'operationObservation', { admissionLimits: EXECUTION_PRODUCTION_ADMISSION, outputCredit: true });
-  const f = ownedFileActivityFixture({ fixture: base, drain: async () => { throw new Error('controlled rejected cleanup failure'); } });
-  try {
-    await until(f.clock, f.waiting, 'rejection slot held');
-    await completed(f.clock, assert.rejects(f.start('agent'), /rejected-before-acquire/), 'original rejection retained');
-    assert.equal(f.record('agent').persistence.result.kind, 'failed');
-    assert.match(f.record('agent').persistence.result.reason, /rejected cleanup failure/);
-    assert.equal(f.collectors[0].disposeCount, 1);
-    assert.equal(f.providers[1].connectCount ?? 0, 0);
-    f.event();
-    assert.equal(f.host.state.fileReferences.length, 0);
-  } finally { if (f.waiting()) f.release(); await f.cleanup(); }
-});
-
-test('owned file activity disabled creates no collector or provider injection', async () => {
-  const f = ownedFileActivityFixture();
-  f.host.appliedStartupConfiguration.filesFeatureEnabled = false;
-  await completed(f.clock, f.start('agent'), 'files disabled start');
-  assert.equal(f.collectors.length, 0);
-  const spec = f.providers[0].messages.find(message => message.type === 'start').spec;
-  assert.equal(spec.env.DSC_FILE_EVENTS, undefined);
-  assert.equal(spec.args.includes('--settings'), false);
-  await f.finish();
-});
-
 for (const stopRequested of [true, false]) {
   test(`fake resume retains storage through owned output and finalization (stop=${stopRequested})`, async () => {
-    const f = ownedFileActivityFixture();
+    const f = candidateFixture();
+    const persist = f.host.persistState.bind(f.host);
+    f.host.persistState = async (...args) => { await persist(...args); };
     const resume = { supported: true, strategy: 'fake-provider', sessionId: '36e967db-7c4d-4fa7-9c32-92fe54677ef7', storagePath: '/controlled/fake-store' };
     f.host.resolveAgentResumeContext = () => resume;
-    await completed(f.clock, f.start('agent'), 'fake original start');
-    const record = f.record('agent');
-    if (stopRequested) void record.execution.requestStop('controlled stop with Codex hint');
-    f.providers[0].output(1, `To continue this session, run codex resume ${resume.sessionId}\r\n`);
-    await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'fake stop hint consumed');
-    assert.deepEqual(record.business.agentResume, resume);
-    await f.finish(record);
-    const metadata = f.host.state.nodes.find(node => node.id === record.nodeId).metadata.agent;
-    assert.equal(metadata.resumeStrategy, 'fake-provider');
-    assert.equal(metadata.resumeStoragePath, resume.storagePath);
-    assert.equal(metadata.resumeSessionId, resume.sessionId);
-    delete f.host.resolveAgentResumeContext;
-    const context = f.host.resolveAgentResumeContext(record.nodeId, 'codex', 'resume', '/controlled/fake-agent-provider', metadata);
-    assert.deepEqual(context, resume);
-    const spec = f.host.buildAgentLaunchSpec({ provider: 'codex', command: '/controlled/fake-agent-provider' }, [],
-      '/controlled', 80, 24, {}, 'resume', context);
-    assert.deepEqual(spec.args, ['resume', resume.sessionId]);
-    assert.equal(spec.env.DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH, resume.storagePath);
+    let record;
+    try {
+      await completed(f.clock, f.start('agent'), 'fake original start');
+      record = f.record('agent');
+      if (stopRequested) void record.execution.requestStop('controlled stop with Codex hint');
+      const provider = f.providers[0];
+      provider.output(1, `To continue this session, run codex resume ${resume.sessionId}\r\n`);
+      await until(f.clock, () => record.execution.snapshot().adapter.consumedThrough === 1, 'fake stop hint consumed');
+      assert.deepEqual(record.business.agentResume, resume);
+      provider.process();
+      provider.message({ type: 'resourceResult', resourceId: 'subject', operationId: 'subject-release',
+        result: { kind: 'released' } });
+      provider.seal(1);
+      provider.release();
+      await until(f.clock, () => record.persistence.result !== undefined, 'fake resume final persistence');
+      assert.equal(record.persistence.result.kind, 'saved', record.persistence.result.reason);
+      const metadata = f.host.state.nodes.find(node => node.id === record.nodeId).metadata.agent;
+      assert.equal(metadata.resumeStrategy, 'fake-provider');
+      assert.equal(metadata.resumeStoragePath, resume.storagePath);
+      assert.equal(metadata.resumeSessionId, resume.sessionId);
+      delete f.host.resolveAgentResumeContext;
+      const context = f.host.resolveAgentResumeContext(record.nodeId, 'codex', 'resume', '/controlled/fake-agent-provider', metadata);
+      assert.deepEqual(context, resume);
+      const spec = f.host.buildAgentLaunchSpec({ provider: 'codex', command: '/controlled/fake-agent-provider' }, [],
+        '/controlled', 80, 24, {}, 'resume', context);
+      assert.deepEqual(spec.args, ['resume', resume.sessionId]);
+      assert.equal(spec.env.DEV_SESSION_CANVAS_FAKE_PROVIDER_STORAGE_PATH, resume.storagePath);
+    } finally {
+      record?.business?.cancelActivityPoll?.();
+      record?.business?.lineContextTracker.dispose();
+      record?.tracker.dispose();
+    }
   });
 }
 
@@ -7894,10 +7672,10 @@ function sharedCanvasFixture(enabled = true) {
   f.host.appliedStartupConfiguration.runtimePersistenceEnabled = enabled;
   Object.assign(f.host, { rawExtensionStoragePath: '/controlled/slot-a',
     context: { extensionMode: 3, globalStorageUri: { fsPath: '/controlled/global' } },
-    reconcileCanvasFileArtifacts: state => state, syncNoteMarkdownFileWatchers() {},
+    syncNoteMarkdownFileWatchers() {},
     scheduleRestoreLiveRuntimeSessions() {}, terminalReadRelay: { closeMatching() {} } });
   f.host.state = { version: 1, updatedAt: '', nodes: [], groups: [], edges: [], nextGroupSequence: 1,
-    fileReferences: [], suppressedFileActivityEdgeIds: [], suppressedAutomaticFileArtifactNodeIds: [] };
+  };
   return { ...f, root };
 }
 
@@ -8060,7 +7838,7 @@ test('mode switch warnings describe each direction without immediately clearing 
     for (const enabled of [true, false]) {
       f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: enabled });
       await f.host.notifyReloadRequiredConfigurationChanged({ runtimePersistenceChanged: true,
-        defaultSurfaceChanged: false, filesFeatureEnabledChanged: false });
+        defaultSurfaceChanged: false });
     }
     assert.match(messages[0], /Enabling.*sessions and content will not be retained/);
     assert.match(messages[1], /Disabling.*only when the last enabled window explicitly disables persistence/);
@@ -8074,8 +7852,7 @@ test('review PR319 deferred execution snapshot must not resurrect a remotely del
     delete f.host.isRuntimePersistenceEnabled;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
     delete f.host.flushDeferredCanvasStatePersist;
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
-      scheduleRestoreLiveRuntimeSessions() {} });
+    Object.assign(f.host, {       scheduleRestoreLiveRuntimeSessions() {} });
     const note = { id: 'deleted-note', kind: 'note', title: 'Note', status: 'idle', summary: '',
       position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { note: { content: 'body' } } };
     f.host.state = { ...f.host.state, nodes: [...f.host.state.nodes, note] };
@@ -8121,8 +7898,7 @@ test('review PR319 stop then local save must not revert remote launch configurat
   try {
     delete f.host.isRuntimePersistenceEnabled;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
-      scheduleRestoreLiveRuntimeSessions() {} });
+    Object.assign(f.host, {       scheduleRestoreLiveRuntimeSessions() {} });
     const agent = f.host.state.nodes.find(node => node.kind === 'agent');
     agent.status = 'waiting-input';
     agent.metadata.agent = { lifecycle: 'waiting-input', persistenceMode: 'live-runtime',
@@ -8158,7 +7934,7 @@ test('review PR319 deferred output save preserves peer title and Note body edits
     delete f.host.isRuntimePersistenceEnabled;
     delete f.host.flushDeferredCanvasStatePersist;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    Object.assign(f.host, { scheduleRestoreLiveRuntimeSessions() {} });
     const note = { id: 'edited-note', kind: 'note', title: 'old title', status: 'idle', summary: '',
       position: { x: 0, y: 0 }, size: { width: 300, height: 200 }, metadata: { note: { content: 'old body' } } };
     f.host.state.nodes.push(note);
@@ -8187,7 +7963,7 @@ test('review PR319 non-last cleanup preserves a peer runtime created during deta
     delete f.host.isRuntimePersistenceEnabled;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
     f.host.state = { ...f.host.state, nodes: [] };
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    Object.assign(f.host, { scheduleRestoreLiveRuntimeSessions() {} });
     await f.host.persistState();
     const store = f.host.sharedRootCanvasStores.get(f.root);
     peer = new store.constructor(f.rootFile, structuredClone(f.host.state), () => {}, error => { throw error; });
@@ -8244,7 +8020,7 @@ test('review PR319 multi-root mode switch deletes only the last-participant root
     f.host.getMultiRootWorkspaceFoldersForComposition = () => folders;
     f.host.lastLoadedRootLocalStates = rootStates;
     f.host.state = composeMultiRootCanvasState({ workspaceFolders: folders, rootStates });
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {} });
+    Object.assign(f.host, { scheduleRestoreLiveRuntimeSessions() {} });
     await f.host.persistState();
     const store = f.host.sharedRootCanvasStores.get(f.root);
     peer = new store.constructor(f.host.getRootLocalCanvasSnapshotPath(f.root), rootStates[0].state, () => {}, error => { throw error; });
@@ -8269,7 +8045,7 @@ test('review PR319 last-participant save failure retains membership and failure 
   try {
     delete f.host.isRuntimePersistenceEnabled;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+    Object.assign(f.host, { scheduleRestoreLiveRuntimeSessions() {},
       captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
     await f.host.persistState();
     const store = f.host.sharedRootCanvasStores.get(f.root);
@@ -8286,7 +8062,7 @@ test('review PR319 cleanup drains this Host admitted starts before acquiring roo
   try {
     delete f.host.isRuntimePersistenceEnabled;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+    Object.assign(f.host, { scheduleRestoreLiveRuntimeSessions() {},
       captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
     await f.host.persistState();
     const gate = deferred(), admitted = deferred();
@@ -8326,7 +8102,7 @@ test('review PR319 late page save during original process exit cannot recreate t
   try {
     delete f.host.isRuntimePersistenceEnabled;
     f.host.appliedStartupConfiguration.runtimePersistenceEnabled = true;
-    Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state, scheduleRestoreLiveRuntimeSessions() {},
+    Object.assign(f.host, { scheduleRestoreLiveRuntimeSessions() {},
       captureSharedSupervisorProcesses: async () => new Set(), prepareForHostBoundary: async () => {} });
     await f.host.persistState();
     f.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: false });
@@ -8373,8 +8149,7 @@ function enableSharedHost(f, shared = f) {
   f.host.context.globalStorageUri = shared.host.context.globalStorageUri;
   f.host.getCanvasPersistenceWorkspaceFolders = () => [{ path: shared.root, name: 'root' }];
   f.host.getMultiRootWorkspaceFoldersForComposition = f.host.getCanvasPersistenceWorkspaceFolders;
-  Object.assign(f.host, { reconcileCanvasFileArtifacts: state => state,
-    scheduleRestoreLiveRuntimeSessions() {}, postExecutionSnapshot: async () => {},
+  Object.assign(f.host, {     scheduleRestoreLiveRuntimeSessions() {}, postExecutionSnapshot: async () => {},
     scheduleExecutionTerminalProjectionRefresh() {}, clearExecutionTerminalProjectionRefreshTimers() {},
     preferredRootRuntimeBackends: new Map(), clearScheduledExecutionOutputPost() {},
     disposeAgentFileActivitySession: async () => {} });

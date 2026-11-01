@@ -58,7 +58,7 @@ export async function runHostScenario(context) {
   const updates = new Map();
   const posted = [];
   const diagnostics = [];
-  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled: false, filesFeatureEnabled: false };
+  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled: false };
   const storage = path.join(directory, 'workspace-storage');
   const nodeId = 's11-terminal';
 
@@ -84,11 +84,10 @@ export async function runHostScenario(context) {
       state: { version: 1, updatedAt: new Date().toISOString(), nextGroupSequence: 1,
         nodes: [{ id: nodeId, kind: 'terminal', title: 'S11 Terminal', status: 'idle',
           position: { x: 10, y: 20 }, size: { width: 640, height: 360 }, metadata: {} }],
-        edges: [], groups: [], fileReferences: [], suppressedFileActivityEdgeIds: [],
-        suppressedAutomaticFileArtifactNodeIds: [] },
+        edges: [], groups: [] },
       rawExtensionStoragePath: storage, storageRecoverySelection: { sourcePath: storage, writePath: storage },
       appliedStartupConfiguration: configuration, readStartupConfiguration: () => configuration,
-      fileFilterState: { includeGlobs: [], excludeGlobs: [] }, canvasTemplateInitialized: true,
+      canvasTemplateInitialized: true,
       pendingWorkspaceStateUpdate: Promise.resolve(), lastLoadedRootLocalStates: [],
       getMultiRootWorkspaceFoldersForComposition: () => [{ path: directory, name: 's11' }],
       getExecutionNodeCwd: () => spec.cwd,

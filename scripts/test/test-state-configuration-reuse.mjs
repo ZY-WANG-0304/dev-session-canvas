@@ -13,7 +13,7 @@ const filename = path.resolve('extensions/vscode/dev-session-canvas/src/panel/Ca
 const source = await readFile(filename, 'utf8');
 const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
 const declaration = ast.statements.find(n => ts.isClassDeclaration(n) && n.name?.text === 'CanvasPanelManager');
-const names = ['getRuntimeContext', 'getSidebarState', 'getCanvasFileViewConfiguration', 'getAgentCliConfig',
+const names = ['getRuntimeContext', 'getSidebarState', 'getAgentCliConfig',
   'getAgentLaunchDefaults', 'getAgentLaunchDefaultsByProvider', 'getTerminalScrollback',
   'getCanvasOverviewMode', 'getCanvasOverviewZoomThreshold', 'getCanvasMultiRootPresentationMode',
   'getWorkspaceRootWatermarksEnabled', 'getConfiguredSurface', 'getWorkspaceFoldersForDisplay',
@@ -42,8 +42,7 @@ try {
     const cloneJsonValue = value => JSON.parse(JSON.stringify(value));
     export class Harness {
       context = { extensionMode: 2 }; activeSurface = 'panel';
-      appliedStartupConfiguration = { defaultSurface: 'editor', filesFeatureEnabled: true, runtimePersistenceEnabled: true };
-      fileFilterState = { includeGlobs: ['**/*.ts'], excludeGlobs: ['**/node_modules/**'] };
+      appliedStartupConfiguration = { defaultSurface: 'editor', runtimePersistenceEnabled: true };
       state = { nodes: [{ id: 'a' }, { id: 't' }] }; agentSessions = new Map([['a', {}]]); terminalSessions = new Map([['t', {}]]);
       enabledAttentionSignals = new Set(['osc9']); attentionNotificationBridgeMode = 'system';
       strongTerminalAttentionReminderMode = 'title'; agentAbnormalOutputTextNotificationMode = 'off';
@@ -65,10 +64,6 @@ try {
     'devSessionCanvas.agent.claudeCommand': '  /fixture/claude  ',
     'devSessionCanvas.agent.codexDefaultArgs': ' --model test ',
     'devSessionCanvas.agent.claudeDefaultArgs': ' --verbose ',
-    'devSessionCanvas.files.presentationMode': 'nodes',
-    'devSessionCanvas.fileNode.displayStyle': 'card',
-    'devSessionCanvas.files.nodeDisplayMode': 'path-only',
-    'devSessionCanvas.files.pathDisplayMode': 'relative-path',
     'devSessionCanvas.canvas.overviewMode': 'off',
     'devSessionCanvas.canvas.workspaceRootWatermarks.enabled': false,
     'terminal.integrated.scrollback': 7654,
@@ -79,8 +74,6 @@ try {
   assert.equal(runtime.defaultAgentProvider, 'claude');
   assert.deepEqual(runtime.agentLaunchDefaults, { codex: { command: '/fixture/codex', defaultArgs: '--model test' },
     claude: { command: '/fixture/claude', defaultArgs: '--verbose' } });
-  assert.equal(runtime.filePresentationMode, 'nodes'); assert.equal(runtime.fileNodeDisplayStyle, 'card');
-  assert.equal(runtime.fileNodeDisplayMode, 'path-only'); assert.equal(runtime.filePathDisplayMode, 'relative-path');
   assert.equal(runtime.terminalScrollback, 7654); assert.equal(runtime.editorMultiCursorModifier, 'ctrlCmd');
   assert.equal(runtime.terminalWordSeparators, ' |;'); assert.equal(runtime.workspaceRootWatermarksEnabled, false);
   assert.deepEqual(runtime.noteMarkdownImageWorkspaceRoots, [{ name: 'fixture', webviewResourceBaseUri: 'resource:/fixture' }]);
@@ -99,18 +92,13 @@ try {
   assert.equal(sidebar.agentCodexCommand, runtime.agentLaunchDefaults.codex.command);
   assert.equal(sidebar.agentClaudeCommand, runtime.agentLaunchDefaults.claude.command);
   assert.equal(sidebar.nodeCount, 2); assert.equal(sidebar.runningExecutionCount, 2);
-  assert.equal(sidebar.filePresentationMode, runtime.filePresentationMode);
   assert.deepEqual(acquisitions, [{ section: undefined, scope: undefined }]);
-  sidebar.fileFilters.includeGlobs.push('mutated');
-  assert.deepEqual(host.fileFilterState.includeGlobs, ['**/*.ts']);
-  values = { 'devSessionCanvas.agent.codexCommand': '  ', 'devSessionCanvas.agent.defaultProvider': 'invalid',
-    'devSessionCanvas.files.presentationMode': 'invalid' };
+  values = { 'devSessionCanvas.agent.codexCommand': '  ', 'devSessionCanvas.agent.defaultProvider': 'invalid' };
   inspections = {};
   const fresh = host.getRuntimeContext();
   assert.equal(fresh.defaultAgentProvider, 'codex');
   assert.equal(fresh.agentLaunchDefaults.codex.command, 'codex');
   assert.equal(fresh.agentLaunchDefaults.claude.command, 'claude');
-  assert.equal(fresh.filePresentationMode, 'lists');
   assert.equal(fresh.noteMarkdownImageWorkspaceRoots, undefined);
   assert.equal(host.getSidebarState().terminalShellPath, '/bin/sh');
   assert.equal(runtime.agentLaunchDefaults.codex.command, '/fixture/codex', 'later calls do not mutate prior payload');

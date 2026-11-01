@@ -184,7 +184,6 @@ async function validatePackagedExtension(packagedExtensionPath) {
     path.join('dist', 'webview.css'),
     path.join('dist', 'sidebar-codicon.css'),
     path.join('images', 'icon.png'),
-    path.join('scripts', 'runtime', 'claude-file-event-hook.cjs'),
     path.join('node_modules', 'node-pty', 'package.json')
   ];
 

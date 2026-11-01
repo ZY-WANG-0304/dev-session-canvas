@@ -792,25 +792,7 @@ export function activate(context: vscode.ExtensionContext): void {
           await vscode.window.showWarningMessage(result.errorMessage);
         }
       }
-    ),
-    vscode.commands.registerCommand(COMMAND_IDS.editFileIncludeFilter, async (value?: unknown) => {
-      await updateCanvasFileFilterFromCommand(panelManager, 'include', value);
-    }),
-    vscode.commands.registerCommand(COMMAND_IDS.editFileExcludeFilter, async (value?: unknown) => {
-      await updateCanvasFileFilterFromCommand(panelManager, 'exclude', value);
-    }),
-    vscode.commands.registerCommand(COMMAND_IDS.clearFileIncludeFilter, async () => {
-      if (!(await ensureFilesFeatureEnabled(panelManager))) {
-        return;
-      }
-      panelManager.updateCanvasFileFilterState('include', []);
-    }),
-    vscode.commands.registerCommand(COMMAND_IDS.clearFileExcludeFilter, async () => {
-      if (!(await ensureFilesFeatureEnabled(panelManager))) {
-        return;
-      }
-      panelManager.updateCanvasFileFilterState('exclude', []);
-    })
+    )
   );
 
   context.subscriptions.push(
@@ -1566,9 +1548,6 @@ function formatWorkspaceRootCanvasRemovalImpact(impact: WorkspaceRootCanvasRemov
   ];
   if (impact.groupCount > 0) {
     parts.push(vscode.l10n.t('{count} groups', { count: impact.groupCount }));
-  }
-  if (impact.fileReferenceCount > 0) {
-    parts.push(vscode.l10n.t('{count} file activity records', { count: impact.fileReferenceCount }));
   }
   if (impact.executionNodeCount > 0) {
     parts.push(vscode.l10n.t('will stop {count} Agent / Terminal sessions', {
@@ -2711,7 +2690,7 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
     panelManager.getWorkspaceFoldersForDisplay()
   );
   if (items.length === 0) {
-    await vscode.window.showInformationMessage(vscode.l10n.t('The current Canvas has no locatable non-file nodes.'));
+    await vscode.window.showInformationMessage(vscode.l10n.t('The current Canvas has no locatable nodes.'));
     return;
   }
 
@@ -3284,81 +3263,6 @@ function describeNodeKind(kind: CanvasCreatableNodeKind): string {
 
 function providerLabel(provider: AgentProviderKind): string {
   return provider === 'claude' ? 'Claude Code' : 'Codex';
-}
-
-async function updateCanvasFileFilterFromCommand(
-  panelManager: CanvasPanelManager,
-  kind: 'include' | 'exclude',
-  value?: unknown
-): Promise<void> {
-  if (!(await ensureFilesFeatureEnabled(panelManager))) {
-    return;
-  }
-
-  const providedGlobs = parseCanvasFileFilterCommandValue(value);
-  if (providedGlobs) {
-    panelManager.updateCanvasFileFilterState(kind, providedGlobs);
-    return;
-  }
-
-  const currentState = panelManager.getCanvasFileFilterState();
-  const currentGlobs = kind === 'include' ? currentState.includeGlobs : currentState.excludeGlobs;
-  const input = await vscode.window.showInputBox({
-    title: vscode.l10n.t('{name}: Edit file {kind} filter', {
-      name: EXTENSION_DISPLAY_NAME,
-      kind: kind === 'include' ? 'Include' : 'Exclude'
-    }),
-    prompt:
-      kind === 'include'
-        ? vscode.l10n.t('Use VS Code Search glob syntax, separated by commas; leave empty to include everything. This filter only affects file object projection and does not modify file references.')
-        : vscode.l10n.t('Use VS Code Search glob syntax, separated by commas; leave empty to exclude nothing. This filter only affects file object projection and does not modify file references.'),
-    placeHolder: kind === 'include' ? 'e.g. src/**/*.ts, docs/**/*.md' : 'e.g. **/dist/**, **/*.snap',
-    value: currentGlobs.join(', ')
-  });
-  if (input === undefined) {
-    return;
-  }
-
-  panelManager.updateCanvasFileFilterState(kind, splitCanvasFileFilterInput(input));
-}
-
-async function ensureFilesFeatureEnabled(panelManager: CanvasPanelManager): Promise<boolean> {
-  if (panelManager.isFilesFeatureEnabled()) {
-    return true;
-  }
-
-  await vscode.window.showInformationMessage(
-    vscode.l10n.t(
-      'Files are currently disabled. Reload the window and enable `devSessionCanvas.files.enabled` before using file activity and file filters.'
-    )
-  );
-  return false;
-}
-
-function parseCanvasFileFilterCommandValue(value: unknown): string[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value === 'string') {
-    return splitCanvasFileFilterInput(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .filter((entry): entry is string => typeof entry === 'string')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-  }
-
-  return undefined;
-}
-
-function splitCanvasFileFilterInput(value: string): string[] {
-  return value
-    .split(/[,\n，；;]/)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
 }
 
 async function applyTemplateFromCommand(

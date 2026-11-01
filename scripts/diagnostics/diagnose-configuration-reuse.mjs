@@ -38,7 +38,7 @@ await fs.copyFile(fileURLToPath(new URL('./configuration-reuse/echo-cli.py', imp
 const runtime = await prepareRuntime({ debugRoot: path.join(output, 'runtime'), runtimeDirName: `dsc-cfg-${randomUUID().slice(0,8)}`,
   userSettings: { 'security.workspace.trust.enabled': false, 'workbench.startupEditor': 'none',
     'window.restoreWindows': 'none', 'extensions.autoUpdate': false, 'extensions.autoCheckUpdates': false,
-    'devSessionCanvas.runtimePersistence.enabled': true, ...(values.sidebar?{'devSessionCanvas.files.enabled':true}:{}), 'devSessionCanvas.agent.codexCommand': fixture,
+    'devSessionCanvas.runtimePersistence.enabled': true, 'devSessionCanvas.agent.codexCommand': fixture,
     'devSessionCanvas.agent.codexDefaultArgs': '', 'devSessionCanvas.canvas.overviewMode': 'off',
     'terminal.integrated.scrollback': 5000, 'workbench.editor.enablePreview': false } });
 const staged = path.join(output, 'extension'); await fs.cp(source, staged, { recursive: true });
@@ -224,17 +224,16 @@ try {
     if(values.sidebar && scene.sidebarVisible) {
       const check=await request('sidebar-check');
       assert(check.last.actions,'Actions view must actually receive its state');
-      for(const [key,value] of Object.entries(check.expectedFilters))assert.deepEqual(check.last.actions.state[key],value);
+      assert.deepEqual(check.last.actions.state,check.expectedActions);
       assert.deepEqual(check.last.nodes.items.map(i=>i.nodeId).sort(),[...ids].sort());
       const dom=await wait('sidebar DOM matches Host state',async()=>{
-        const result={nodes:[],include:undefined};
+        const result={nodes:[]};
         for(const f of page.frames()) {
-          const observed=await f.evaluate(()=>({nodes:[...document.querySelectorAll('[data-sidebar-node-item-id]')].map(e=>({id:e.getAttribute('data-sidebar-node-item-id'),text:e.textContent})),include:document.querySelector('#include-input')?.value})).catch(()=>undefined);
+          const observed=await f.evaluate(()=>({nodes:[...document.querySelectorAll('[data-sidebar-node-item-id]')].map(e=>({id:e.getAttribute('data-sidebar-node-item-id'),text:e.textContent}))})).catch(()=>undefined);
           if(observed?.nodes.length)result.nodes=observed.nodes;
-          if(observed?.include!==undefined)result.include=observed.include;
         }
         return result;
-      },v=>v.include===check.expectedFilters.fileFilters.includeGlobs.join(', ') && check.expectedNodes.every(n=>v.nodes.some(row=>row.id===`node/${n.id}` && row.text.includes(n.title))));
+      },v=>check.expectedNodes.every(n=>v.nodes.some(row=>row.id===`node/${n.id}` && row.text.includes(n.title))));
       await write(`${scene.name}-sidebar-check.json`,{...check,dom});
     }
     if(values.sidebar && scene.name==='sidebar-hidden')await request('sidebar-mutate',{nodeId:ids[0]});

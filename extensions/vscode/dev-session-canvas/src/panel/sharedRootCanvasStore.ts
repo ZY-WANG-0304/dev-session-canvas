@@ -3,6 +3,7 @@ import * as net from 'net';
 import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { CanvasPrototypeState } from '../common/protocol';
+import { stripRetiredFileActivityState } from '../common/canvasMultiRootComposition';
 import {
   SharedRootCanvasParticipants,
   type AcceptSharedRuntimeTakeover,
@@ -11,7 +12,7 @@ import {
 } from './sharedRootCanvasParticipants';
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
-const collections = new Set(['nodes', 'groups', 'edges', 'fileReferences', 'owners']);
+const collections = new Set(['nodes', 'groups', 'edges', 'owners']);
 const localExecutionFields = ['pendingLaunch', 'recentOutput', 'serializedTerminalState', 'terminalStream',
   'outputSequence', 'terminalTitle', 'lastRuntimeError'];
 
@@ -24,7 +25,17 @@ export function sharedCanvasState(state: CanvasPrototypeState): CanvasPrototypeS
     // Output summaries belong to each Host's independently consumed terminal projection.
     node.summary = '';
   }
-  return result;
+  return stripRetiredFileActivityState(result);
+}
+
+function hasRetiredFileActivityState(state: CanvasPrototypeState | undefined): boolean {
+  if (!state) return false;
+  const legacyState = state as CanvasPrototypeState & Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(legacyState, 'fileReferences') ||
+    Object.prototype.hasOwnProperty.call(legacyState, 'suppressedFileActivityEdgeIds') ||
+    Object.prototype.hasOwnProperty.call(legacyState, 'suppressedAutomaticFileArtifactNodeIds') ||
+    state.nodes.some(node => (node as { kind: string }).kind === 'file' || (node as { kind: string }).kind === 'file-list') ||
+    state.edges.some(edge => (edge as { owner: string }).owner === 'file-activity');
 }
 
 const equal = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -77,7 +88,7 @@ export function mergeSharedCanvasState(base: CanvasPrototypeState, next: CanvasP
   const groups = new Set(result.groups.map(group => group.id));
   result.edges = result.edges.filter(edge => ids.has(edge.sourceNodeId) && ids.has(edge.targetNodeId));
   result.nodes = result.nodes.map(node => node.groupId && !groups.has(node.groupId) ? { ...node, groupId: undefined } : node);
-  return result;
+  return stripRetiredFileActivityState(result);
 }
 
 interface Snapshot { version: 1; state: CanvasPrototypeState; sharedRevision?: string; [key: string]: unknown }
@@ -94,6 +105,7 @@ export class SharedRootCanvasStore {
   private failure?: Error;
   private revision?: string;
   private closed = false;
+  private needsMigrationWrite = false;
   private readonly filename: string;
   private readonly changed: () => void;
   private readonly participants: SharedRootCanvasParticipants;
@@ -105,6 +117,7 @@ export class SharedRootCanvasStore {
     fs.mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 });
     this.filename = path.join(fs.realpathSync(path.dirname(filename)), path.basename(filename));
     const snapshot = this.read();
+    this.needsMigrationWrite = hasRetiredFileActivityState(snapshot?.state);
     this.confirmed = sharedCanvasState(snapshot?.state ?? initial);
     this.local = sharedCanvasState(initial);
     this.revision = snapshot?.sharedRevision;
@@ -128,7 +141,7 @@ export class SharedRootCanvasStore {
     const next = sharedCanvasState(state);
     const base = this.local;
     this.local = next;
-    if (this.revision && equal({ ...base, updatedAt: '' }, { ...next, updatedAt: '' })) return this.flush();
+    if (this.revision && !this.needsMigrationWrite && equal({ ...base, updatedAt: '' }, { ...next, updatedAt: '' })) return this.flush();
     const item = { base, next };
     this.pending.push(item);
     const operation = this.tail.then(async () => {
@@ -148,6 +161,7 @@ export class SharedRootCanvasStore {
           fs.writeFileSync(temporary, JSON.stringify(committed), { mode: 0o600, flag: 'wx' });
           fs.renameSync(temporary, this.filename);
         } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+        this.needsMigrationWrite = false;
         this.pending.splice(this.pending.indexOf(item), 1);
         this.observe(committed, true, unseenRemoteChange);
       } finally { await new Promise<void>((resolve, reject) => lease.close(error => error ? reject(error) : resolve())); }
@@ -205,7 +219,7 @@ export class SharedRootCanvasStore {
     if (!fs.existsSync(this.filename)) return undefined;
     const snapshot = JSON.parse(fs.readFileSync(this.filename, 'utf8')) as Snapshot;
     if (snapshot.version !== 1 || snapshot.state?.version !== 1 ||
-        !['nodes', 'edges', 'groups', 'fileReferences'].every(key => Array.isArray((snapshot.state as unknown as Record<string, unknown>)[key]))) {
+        !['nodes', 'edges', 'groups'].every(key => Array.isArray((snapshot.state as unknown as Record<string, unknown>)[key]))) {
       throw new Error('Invalid shared Canvas snapshot; refusing to overwrite it.');
     }
     return snapshot;

@@ -108,7 +108,7 @@ updated_at: 2026-07-02
 - `节点` section 在 `package.json` 中使用 `images/dev-session-canvas-nodes-activitybar.svg` 作为专属 view icon；图标延续主 Dev Session Canvas activitybar glyph，并用右上角“三行节点圆点 + 文本线”badge 表达“节点列表”。这只是该 view section 在标题不可见或被用户拖到 Activity Bar 时的识别资产，不引入新的 Activity Bar 容器。
 - 它使用最小 `WebviewView`，数据直接来自 `CanvasPanelManager` 的权威 `CanvasPrototypeState.nodes`。
 - 宿主接线落在 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarNodeListView.ts` 与 `extensions/vscode/dev-session-canvas/src/extension.ts`：前者负责把 `CanvasNodeSummary` 投影成节点列表快照并渲染最小 Webview，后者负责注册 `devSessionCanvas.sidebarNodes` view 与命令入口。
-- 只投影 `agent`、`terminal`、`note` 三类节点；`file` 与 `file-list` 不进入此列表。
+- 只投影当前支持的 `agent`、`terminal`、`note` 三类节点。旧状态中的 `file` / `file-list` 由退役迁移规则清理，不属于当前列表模型。
 - 每个节点项显示：
   - 节点对应颜色的图标形圆点标记
   - 节点标题
@@ -226,7 +226,7 @@ updated_at: 2026-07-02
 至少需要完成以下验证：
 
 1. 打开 `Extension Development Host` 后，sidebar 中能看到新增的 `节点` 与 `会话历史` section。
-2. 节点列表中不出现 `file` / `file-list` 节点；点击任一项后，画布能滚动并聚焦到对应节点。
+2. 节点列表只出现当前支持的 Agent、Terminal 和 Note 节点；点击任一项后，画布能滚动并聚焦到对应节点。
 3. `节点` view 默认按分组树展示，标题右上角使用 VSCode 原生 `...` 菜单承载平铺 / 按分组树展示切换；按分组树展示时，分组和“未分组”section 可折叠/展开，折叠只影响侧栏列表可见行。
 4. attention 节点在单根平铺展示中排在普通节点前；按分组树展示中顶部出现“待处理提醒”虚拟分组，且不移除节点的原分组位置；多根 workspace 平铺展示中保留 root 分组，并让“待处理提醒”虚拟分组排在 root 分组之前。
 5. 多根 workspace 下，无论节点列表处于按分组树展示还是平铺展示，系统 workspace root 分组都按当前 VS Code workspace folder 顺序排列；root 标题字母序与画布空间位置不能改变该顺序。

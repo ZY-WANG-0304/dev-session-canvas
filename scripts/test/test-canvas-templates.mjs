@@ -560,10 +560,7 @@ try {
         owner: 'automatic'
       }
     ],
-    nextGroupSequence: 4,
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: []
+    nextGroupSequence: 4
   };
 
   const capturedDefault = captureCanvasTemplateFromState({
@@ -745,9 +742,6 @@ try {
           owner: 'user'
         }
       ],
-      fileReferences: [],
-      suppressedFileActivityEdgeIds: [],
-      suppressedAutomaticFileArtifactNodeIds: []
     },
     name: 'Captured Object Identity Template',
     templateId: 'captured-object-identity-template',
@@ -1103,7 +1097,7 @@ try {
   const legacyMultiRootResetBlockPattern = new RegExp('多根 workspace 中暂不支持' + '重置模板', 'u');
   assert.doesNotMatch(applyTemplateMethodSource, legacyMultiRootResetBlockPattern);
   assert.match(applyTemplateMethodSource, /prepareWorkspaceRootCanvasForTemplateReset/u);
-  assert.match(applyTemplateMethodSource, /options\?\.reset[\s\S]*createDefaultState\(this\.getAgentCliConfig\(\)\.defaultProvider\)[\s\S]*this\.prepareStateForWorkspaceRootLocalCreate/u);
+  assert.match(applyTemplateMethodSource, /options\?\.reset[\s\S]*createDefaultState\(\)[\s\S]*this\.prepareStateForWorkspaceRootLocalCreate/u);
   assert.match(applyTemplateMethodSource, /targetWorkspaceRootPath/u);
   const rootTemplateResetPrepareSource = sliceBetween(
     panelManagerSource,

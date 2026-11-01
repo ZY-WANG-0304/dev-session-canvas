@@ -15,11 +15,13 @@ related_specs:
   - docs/product-specs/canvas-sidebar-controls.md
 related_plans:
   - docs/exec-plans/completed/canvas-sidebar-controls-design.md
-  - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-05-29
+  - docs/exec-plans/completed/canvas-graph-links-and-file-activity.md
+updated_at: 2026-11-01
 ---
 
 # 画布外层控件侧栏化设计
+
+> 2026-11-01：本文早期关于文件功能状态、文件过滤及对应输入框的描述属于历史方案，相关能力已退役；当前侧栏不显示这些入口。其余侧栏职责仍按[当前产品规格](../product-specs/canvas-sidebar-controls.md)执行。第 7.4 节改记退役结论，不再作为当前设计。
 
 ## 1. 背景
 
@@ -169,8 +171,8 @@ updated_at: 2026-05-29
 
 - 默认在 VSCode 主侧栏提供一个 Dev Session Canvas 容器。
 - 该容器可以同时包含 `模板`、`节点`、`会话历史` 等其他 section；本文只定义外层控件迁出画布后的两个基础 section：
-  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要，并在标题行尾部提供一个设置快捷入口，直接跳转到本扩展设置；其中状态摘要已补入“通知模式”“文件功能”“文件视图”等行，让用户在不离开 sidebar 的前提下看清当前窗口的提醒表面、文件活动总开关，以及文件对象的投影类型与显示模式。`工作区信任` 固定放在概览第一行；`终端`、`Codex 命令`、`Claude Code 命令` 三个环境配置行保留在同一个概览 section 的尾部，不单独拆 section，且终端在三项中排第一。环境配置行只在行内展示当前值，路径过长时使用中间 `...` 保留首尾；完整配置值和解析信息进入 tooltip。
-  - `常用操作`：使用最小 `WebviewView` 承载四个高频操作按钮，并在文件功能开启时额外承载 `include` / `exclude` 输入框。
+  - `概览`：继续使用原生 `TreeView` 展示画布状态摘要，并在标题行尾部提供一个设置快捷入口，直接跳转到本扩展设置。本文早期加入的“文件功能”和“文件视图”摘要已随功能退役。`工作区信任` 固定放在概览第一行；`终端`、`Codex 命令`、`Claude Code 命令` 三个环境配置行保留在同一个概览 section 的尾部，不单独拆 section，且终端在三项中排第一。环境配置行只在行内展示当前值，路径过长时使用中间 `...` 保留首尾；完整配置值和解析信息进入 tooltip。
+  - `常用操作`：使用最小 `WebviewView` 承载四个高频操作按钮。曾为文件功能保留的过滤输入框已退役。
 - 这样既保留了大部分 sidebar 的原生结构，也把必须以内嵌输入框表达的交互隔离在最小范围内。
 
 ### 7.3 全局动作进入常用操作区，而不是树项大按钮或分散 toolbar
@@ -185,16 +187,9 @@ updated_at: 2026-05-29
 - 当 `Codex` / `Claude Code` 命令行点击后没有在当前执行宿主解析到对应 CLI，QuickPick 需要把“安装”作为同一修复入口中的首个动作，而不是只展示一个不可用的默认命令值。安装动作进入二级 QuickPick，固定分成 `命令行安装` 与 `安装 VS Code 插件`：前者在画布中创建并启动 Terminal 节点，然后由宿主向该 Terminal 写入 provider 官方 npm 安装命令；后者打开对应 VS Code 扩展页，只负责把用户带到安装页面，不代替用户点击 Install。
 - 这样可以避免把 TreeView 伪装成按钮墙，也避免把同一组操作拆散在 view title toolbar 与别处。
 
-### 7.4 `include` / `exclude` 以条件化最小 Webview 输入框展示
+### 7.4 已退役的文件过滤入口
 
-- 当 `devSessionCanvas.files.enabled = true` 的当前窗口会话中，`常用操作` section 内直接显示两个输入框：
-  - `包含文件`
-  - `排除文件`
-- 输入框使用 VSCode 主题 token、输入框边框和最小按钮样式，尽量贴近宿主原生控件观感，不额外包裹卡片式 chrome。
-- 输入框在 blur / Enter 时提交，右侧提供轻量清空入口。
-- 过滤仍然只影响文件对象与自动边的显示投影，不会修改 `fileReferences`。
-- 当 `devSessionCanvas.files.enabled = false` 且已 reload 后，这组输入框不再显示为可用状态；用户会在同一区域看到“文件功能当前已关闭”的说明，而不是继续保留无效入口。
-- 这是本轮唯一保留 `WebviewView` 的理由：扩展 API 没有提供可在 TreeView 中局部嵌入文本框的官方能力。
+2026-11-01 起，自动文件活动、文件节点 / 文件列表、`include` / `exclude` 过滤及其侧栏输入框全部退役。当前侧栏不再读取 `devSessionCanvas.files.enabled`，也不展示过滤器或“文件功能已关闭”提示。曾为输入框保留的最小 `WebviewView` 设计理由随之失效；当前侧栏行为以[产品规格](../product-specs/canvas-sidebar-controls.md)及[文件活动退役设计](canvas-file-activity-retirement.md)为准。
 
 ### 7.5 创建入口优先集中，而不是平铺四个常驻大按钮
 
@@ -212,9 +207,9 @@ updated_at: 2026-05-29
 - Extension Host 当前提供一个原生侧栏容器；本主题对应其中的 `概览 TreeView` 与 `常用操作 WebviewView` 两个 section，同一容器内的 `模板`、`节点`、`会话历史` section 分别由 `docs/design-docs/canvas-template-feature.md` 与 `docs/design-docs/canvas-sidebar-node-and-session-lists.md` 约束。
 - Webview 顶部的左上角 hero 与右上角 actions panel 已移除，画布中只保留底角控件和节点本体。
 - 当画布已在前台可见时，侧栏中的“创建节点”会通过 Host -> Webview 消息复用当前视口锚点；当画布尚未就绪时，宿主退回到默认锚点 + 避碰搜索。
-- `常用操作` 区域当前是一个最小 `WebviewView`：内容区始终承载四个高频按钮；文件功能开启时追加两个输入框，文件功能关闭时改为说明文案。对应的快捷 icon 按钮放在该 view 的标题行尾部，不承担状态摘要、选中详情或说明卡片。
-- `概览` 视图标题行尾部额外提供一个 gear 按钮，作为进入扩展设置的稳定捷径，不把设置入口挤进状态树项本身；视图正文则额外暴露 `通知模式`、`文件功能` 与 `文件视图` 状态，避免用户把“提醒行为变化”或“过滤入口消失”误解成渲染故障。环境配置行由 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts` 读取 `CanvasSidebarState` 中的 terminal / Agent CLI 配置快照，并通过 TreeItem `command` 接到 `extensions/vscode/dev-session-canvas/src/extension.ts` 中的选择命令；Codex / Claude Code 行通过 `contextValue` 贡献 inline tail action，分别打开 Codex `auth.json`、Codex `config.toml` 和 Claude Code `settings.json`。Codex 路径先按 Agent 实际执行环境解析 `CODEX_HOME`，再回退到当前执行宿主 home 下的 `.codex`；Claude Code 继续使用当前执行宿主 home 下的 `.claude/settings.json`。文件缺失时先弹出 modal 确认提示，再用本地文件 API 创建带最小默认内容的文件并在编辑器中打开；POSIX 上配置目录和文件会 best-effort 收紧到 `0700` / `0600`，并用不覆盖已有文件的 `wx` 语义避免 race 覆盖。Agent CLI 候选发现逻辑收口在 `extensions/vscode/dev-session-canvas/src/panel/agentCliSelection.ts`，只负责帮助用户选择当前执行宿主上的命令或路径；当候选列表没有任何可解析路径时，同一模块提供安装元数据，`extensions/vscode/dev-session-canvas/src/extension.ts` 在选择 QuickPick 顶部展示安装入口。命令行安装不改变 Agent 节点的 PTY 启动模型，而是通过 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 创建普通 Terminal 节点，并在该终端 live session 启动后写入一次性安装命令。
-- `CanvasSidebarState.creatableKinds` 现在只表达“哪些节点类型属于当前正式支持的创建入口”，不再承担 untrusted 之类运行时受限场景的隐藏语义。当前实现中它固定保留 `agent`、`terminal`、`note` 三类，使侧栏按钮、命令面板 Quick Input 与画布右键菜单在 trusted / untrusted 下都展示同一套入口；真正的限制改由宿主单独判断，并在用户点击受限项时弹 modal 解释原因。
+- `常用操作` 区域当前承载高频画布操作，不再展示文件过滤输入框或文件功能状态文案；具体入口以[当前侧栏产品规格](../product-specs/canvas-sidebar-controls.md)为准。对应的快捷 icon 按钮放在该 view 的标题行尾部，不承担状态摘要、选中详情或说明卡片。
+- `概览` 视图标题行尾部额外提供一个 gear 按钮，作为进入扩展设置的稳定捷径，不把设置入口挤进状态树项本身。环境配置行由 `extensions/vscode/dev-session-canvas/src/sidebar/CanvasSidebarView.ts` 读取 `CanvasSidebarState` 中的 terminal / Agent CLI 配置快照，并通过 TreeItem `command` 接到 `extensions/vscode/dev-session-canvas/src/extension.ts` 中的选择命令；Codex / Claude Code 行通过 `contextValue` 贡献 inline tail action，分别打开 Codex `auth.json`、Codex `config.toml` 和 Claude Code `settings.json`。Codex 路径先按 Agent 实际执行环境解析 `CODEX_HOME`，再回退到当前执行宿主 home 下的 `.codex`；Claude Code 继续使用当前执行宿主 home 下的 `.claude/settings.json`。文件缺失时先弹出 modal 确认提示，再用本地文件 API 创建带最小默认内容的文件并在编辑器中打开；POSIX 上配置目录和文件会 best-effort 收紧到 `0700` / `0600`，并用不覆盖已有文件的 `wx` 语义避免 race 覆盖。Agent CLI 候选发现逻辑收口在 `extensions/vscode/dev-session-canvas/src/panel/agentCliSelection.ts`，只负责帮助用户选择当前执行宿主上的命令或路径；当候选列表没有任何可解析路径时，同一模块提供安装元数据，`extensions/vscode/dev-session-canvas/src/extension.ts` 在选择 QuickPick 顶部展示安装入口。命令行安装不改变 Agent 节点的 PTY 启动模型，而是通过 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 创建普通 Terminal 节点，并在该终端 live session 启动后写入一次性安装命令。
+- `CanvasSidebarState.creatableKinds` 当前保留 `agent`、`terminal`、`note` 三类创建入口；trusted / untrusted 下入口保持一致，实际限制由宿主单独判断，并在用户点击受限项时解释原因。
 - 缺失文件的最小默认内容只提供代理 / gateway 配置占位，不生成真实凭证。Codex `config.toml` 面向“通过代理 / OpenAI-compatible gateway 访问 Codex”的主场景，写入 `model_provider = "openai_compatible"` 与 `[model_providers.openai_compatible]`，并直接暴露 `base_url = ""`，让用户打开文件后填写自己的代理 / gateway endpoint。`env_key = "OPENAI_API_KEY"` 只作为注释保留，因为启用它会让 Codex 强制读取进程环境变量而不是同目录 `auth.json`；默认模板让 `auth.json` 承担 API key 占位。`model`、`approval_policy`、`sandbox_mode` 保持注释，因为它们会改变模型选择或执行权限；官方 OpenAI 登录路径仅作为注释提示 `model_provider = "openai"` 与 `openai_base_url = "https://api.openai.com/v1"`。Codex 通知默认写入 `[tui] notifications = true`、`notification_method = "osc9"`、`notification_condition = "always"`，让嵌入式终端稳定输出 OSC 9 并被画板的注意力桥接捕获。Codex `auth.json` 保持合法 JSON，写入 `auth_mode: "apikey"` 与 `OPENAI_API_KEY: ""` 作为待用户替换的无密钥占位；Claude Code `settings.json` 保持合法 JSON，写入 `$schema`、`preferredNotifChannel: "iterm2"`、`hasCompletedOnboarding: true`、空 `permissions.allow` / `permissions.deny`，并在 `env` 中直接暴露 `ANTHROPIC_API_KEY` 与 `ANTHROPIC_BASE_URL` 这两个代理 / gateway 配置主路径 key，`ANTHROPIC_API_KEY` 默认为 `null`，`ANTHROPIC_BASE_URL` 默认为空字符串，避免空 base URL 被 Claude Code 解析成无效 `null/v1/messages` 地址；Claude Code 依赖内置 iTerm2 通知通道输出终端通知序列，不再在用户 settings 中写入额外 hooks。`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_CUSTOM_HEADERS`、`ANTHROPIC_MODEL` 等高级配置不放进默认模板，避免把可选 gateway / header / model override 误导成必填项。
 
 ## 8. 验证方法
@@ -225,12 +220,12 @@ updated_at: 2026-05-29
 2. 手动验证画布在移除顶角 panel 后，左上角和右上角确实回归为空白工作面，而不是被替代性浮层继续占据。
 3. 在窄编辑器宽度下对比新旧方案，确认画布顶部可用空间明显增加。
 4. 在 workspace 未受信任场景下，确认侧栏与 `创建节点` 命令仍展示执行型入口，但点击后会弹出明确说明原因的 modal，而不是把入口静默隐藏。
-5. 验证 `包含文件` / `排除文件` 输入框在文件功能开启时的输入、失焦、Enter、清空和 reload 后都保持稳定，且整体观感与 VSCode 输入控件 token 对齐；当文件功能关闭并 reload 后，确认这组入口不再显示为可用状态。
+5. 确认侧栏不再出现文件活动状态、文件视图、文件过滤输入框或关闭功能提示；其余高频动作和 Agent 配置入口仍可用。
 6. 验证当用户折叠、移动或离开侧栏时，命令入口仍能完成打开画布、创建对象、重置画板和清空画板。
 7. 验证 `概览` 中 `工作区信任` 始终位于第一行，环境配置行保留在概览尾部并按 `终端`、`Codex 命令`、`Claude Code 命令` 展示；长路径在行内使用中间 `...`，点击三行分别进入对应选择 QuickPick，Codex / Claude Code 行尾按钮能打开对应 provider 配置文件。
 8. 验证当当前执行宿主没有解析到 `codex` 或 `claude` 时，点击对应概览行会出现安装入口；选择命令行安装会在画布中新建 Terminal 并执行安装命令，选择 VS Code 插件安装会打开对应扩展详情页且不自动点击 Install。
 
-## 9. 当前验证状态
+## 9. 历史验证状态
 
 - 2026-04-20 已按最新 UX 反馈进一步收口为“概览原生 TreeView + 常用操作最小 WebviewView”的混合侧栏。
 - 2026-05-11 补齐 Codex / Claude Code CLI 缺失时的安装分流设计；本轮自动化验证覆盖安装元数据与 TypeScript 编译，真实 VS Code 插件页打开和端到端安装仍需人工验证。

@@ -16,7 +16,7 @@ import type {
 import type { NoteContentSource } from './noteMarkdownFileAssociation';
 import type { ExecutionImagePasteMimeType } from './executionTerminalClipboard';
 
-export type CanvasNodeKind = 'agent' | 'terminal' | 'note' | 'file' | 'file-list';
+export type CanvasNodeKind = 'agent' | 'terminal' | 'note';
 export type CanvasCreatableNodeKind = 'agent' | 'terminal' | 'note';
 export type CanvasGroupDeleteMode = 'delete-members' | 'keep-members';
 export type ExecutionNodeKind = 'agent' | 'terminal';
@@ -24,15 +24,10 @@ export const EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION = 10;
 export const NOTE_EMBEDDED_CONTENT_MAX_LENGTH = 8000;
 export type CanvasEdgeAnchor = 'top' | 'right' | 'bottom' | 'left';
 export type CanvasEdgeArrowMode = 'none' | 'forward' | 'both';
-export type CanvasEdgeOwner = 'user' | 'file-activity';
+export type CanvasEdgeOwner = 'user';
 export const canvasEdgePresetColors = ['1', '2', '3', '4', '5', '6'] as const;
 export type CanvasEdgePresetColor = (typeof canvasEdgePresetColors)[number];
 export type CanvasEdgeColor = CanvasEdgePresetColor | `#${string}`;
-export type CanvasFileActivityAccessMode = 'read' | 'write' | 'read-write';
-export type CanvasFilePresentationMode = 'nodes' | 'lists';
-export type CanvasFileNodeDisplayStyle = 'card' | 'minimal';
-export type CanvasFileNodeDisplayMode = 'icon-path' | 'icon-only' | 'path-only';
-export type CanvasFilePathDisplayMode = 'basename' | 'relative-path';
 export const canvasLinkOpenModes = ['editorPreview', 'externalBrowser'] as const;
 export type CanvasLinkOpenMode = (typeof canvasLinkOpenModes)[number];
 export const canvasOverviewModes = ['none', 'title'] as const;
@@ -287,59 +282,10 @@ export interface NoteNodeMetadata {
   contentSource?: NoteContentSource;
 }
 
-export interface CanvasFileIconFontFace {
-  fontFamily: string;
-  src: string;
-  format?: string;
-  fontWeight?: string;
-  fontStyle?: string;
-}
-
-export type CanvasFileIconDescriptor =
-  | {
-      kind: 'codicon';
-      id: string;
-    }
-  | {
-      kind: 'image';
-      src: string;
-    }
-  | {
-      kind: 'font';
-      fontFamily: string;
-      character: string;
-      color?: string;
-    };
-
-export interface FileNodeMetadata {
-  fileId: string;
-  filePath: string;
-  relativePath?: string;
-  icon?: CanvasFileIconDescriptor;
-  ownerNodeIds: string[];
-}
-
-export interface FileListNodeEntrySummary {
-  fileId: string;
-  filePath: string;
-  relativePath?: string;
-  accessMode: CanvasFileActivityAccessMode;
-  ownerNodeIds: string[];
-  icon?: CanvasFileIconDescriptor;
-}
-
-export interface FileListNodeMetadata {
-  scope: 'agent' | 'shared';
-  ownerNodeId?: string;
-  entries: FileListNodeEntrySummary[];
-}
-
 export interface CanvasNodeMetadata {
   agent?: AgentNodeMetadata;
   terminal?: TerminalNodeMetadata;
   note?: NoteNodeMetadata;
-  file?: FileNodeMetadata;
-  fileList?: FileListNodeMetadata;
 }
 
 export interface CanvasNodeSummary {
@@ -366,20 +312,6 @@ export interface CanvasEdgeSummary {
   label?: string;
 }
 
-export interface CanvasFileReferenceOwnerSummary {
-  nodeId: string;
-  accessMode: CanvasFileActivityAccessMode;
-  updatedAt: string;
-}
-
-export interface CanvasFileReferenceSummary {
-  id: string;
-  filePath: string;
-  relativePath?: string;
-  updatedAt: string;
-  owners: CanvasFileReferenceOwnerSummary[];
-}
-
 export interface CanvasPrototypeState {
   version: 1;
   updatedAt: string;
@@ -387,9 +319,6 @@ export interface CanvasPrototypeState {
   edges: CanvasEdgeSummary[];
   groups: CanvasGroupSummary[];
   nextGroupSequence: number;
-  fileReferences: CanvasFileReferenceSummary[];
-  suppressedFileActivityEdgeIds: string[];
-  suppressedAutomaticFileArtifactNodeIds: string[];
 }
 
 export interface AgentProviderLaunchDefaults {
@@ -455,11 +384,6 @@ export interface CanvasRuntimeContext {
   overviewZoomThreshold: number;
   multiRootPresentationMode: CanvasMultiRootPresentationMode;
   workspaceRootWatermarksEnabled: boolean;
-  filePresentationMode: CanvasFilePresentationMode;
-  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
-  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
-  filePathDisplayMode: CanvasFilePathDisplayMode;
-  fileIconFontFaces: CanvasFileIconFontFace[];
   noteMarkdownImageWorkspaceRoots?: NoteMarkdownImageWorkspaceRoot[];
 }
 
@@ -491,7 +415,6 @@ export interface WebviewProbeNodeSnapshot {
   terminalLegacyTranscript?: string;
   titleInputValue?: string;
   bodyValue?: string;
-  fileEntries?: WebviewProbeFileEntrySnapshot[];
   terminalSelectionText?: string;
   terminalCols?: number;
   terminalRows?: number;
@@ -509,16 +432,6 @@ export interface WebviewProbeNodeSnapshot {
   terminalBufferType?: 'normal' | 'alternate';
   terminalHasFocus?: boolean;
   terminalTheme?: WebviewProbeTerminalThemeSnapshot;
-}
-
-export interface WebviewProbeFileEntrySnapshot {
-  filePath: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  disabled: boolean;
-  clickable: boolean;
 }
 
 export interface WebviewProbeTerminalThemeSnapshot {
@@ -739,12 +652,6 @@ export type WebviewDomAction =
       kind: 'selectEdge';
       nodeId: string;
       edgeId: string;
-      delayMs?: number;
-    }
-  | {
-      kind: 'clickFileEntry';
-      nodeId: string;
-      filePath: string;
       delayMs?: number;
     }
   | {
@@ -1234,13 +1141,6 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
       };
     }
   | {
-      type: 'webview/openCanvasFile';
-      payload: {
-        nodeId: string;
-        filePath: string;
-      };
-    }
-  | {
       type: 'webview/openNoteLink';
       payload: {
         nodeId: string;
@@ -1528,7 +1428,7 @@ export type HostToWebviewMessage = WebviewLifecycleEnvelope & {
 
 const canvasSurfaceLocations: CanvasSurfaceLocation[] = ['editor', 'panel'];
 const canvasSurfaceModes: CanvasSurfaceMode[] = ['active', 'standby'];
-const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note', 'file', 'file-list'];
+const canvasNodeKinds: CanvasNodeKind[] = ['agent', 'terminal', 'note'];
 const canvasCreatableNodeKinds: CanvasCreatableNodeKind[] = ['agent', 'terminal', 'note'];
 const agentProviderKinds: AgentProviderKind[] = ['codex', 'claude'];
 const agentLaunchPresetKinds: AgentLaunchPresetKind[] = ['default', 'resume', 'yolo', 'sandbox', 'custom'];
@@ -2614,21 +2514,6 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
     };
   }
 
-  if (value.type === 'webview/openCanvasFile') {
-    const payload = isRecord(value.payload) ? value.payload : null;
-    if (!payload || typeof payload.nodeId !== 'string' || typeof payload.filePath !== 'string') {
-      return null;
-    }
-
-    return {
-      type: 'webview/openCanvasFile',
-      payload: {
-        nodeId: payload.nodeId,
-        filePath: payload.filePath
-      }
-    };
-  }
-
   if (value.type === 'webview/openNoteLink') {
     const payload = isRecord(value.payload) ? value.payload : null;
     if (!payload || typeof payload.nodeId !== 'string' || typeof payload.href !== 'string') {
@@ -3098,7 +2983,7 @@ function isCanvasEdgeArrowMode(value: unknown): value is CanvasEdgeArrowMode {
 }
 
 function isCanvasEdgeOwner(value: unknown): value is CanvasEdgeOwner {
-  return value === 'user' || value === 'file-activity';
+  return value === 'user';
 }
 
 function isCanvasEdgePresetColor(value: unknown): value is CanvasEdgePresetColor {
@@ -3190,10 +3075,6 @@ export function isWebviewDomAction(value: unknown): value is WebviewDomAction {
 
   if (value.kind === 'selectEdge') {
     return typeof value.edgeId === 'string';
-  }
-
-  if (value.kind === 'clickFileEntry') {
-    return typeof value.filePath === 'string';
   }
 
   if (value.kind === 'toggleNoteChecklistItem') {
@@ -3342,10 +3223,6 @@ function isWebviewProbeNodeSnapshot(value: unknown): value is WebviewProbeNodeSn
     (value.terminalLegacyTranscript === undefined || typeof value.terminalLegacyTranscript === 'string') &&
     (value.titleInputValue === undefined || typeof value.titleInputValue === 'string') &&
     (value.bodyValue === undefined || typeof value.bodyValue === 'string') &&
-    (value.fileEntries === undefined || (Array.isArray(value.fileEntries) && value.fileEntries.every(entry =>
-      isRecord(entry) && typeof entry.filePath === 'string' && entry.filePath.length > 0 &&
-      ['x', 'y', 'width', 'height'].every(key => typeof entry[key] === 'number' && Number.isFinite(entry[key])) &&
-      typeof entry.disabled === 'boolean' && typeof entry.clickable === 'boolean'))) &&
     (value.terminalSelectionText === undefined || typeof value.terminalSelectionText === 'string') &&
     (value.terminalCols === undefined ||
       (typeof value.terminalCols === 'number' &&
@@ -3503,16 +3380,6 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
         width: 380,
         height: 400
       };
-    case 'file':
-      return {
-        width: 220,
-        height: 84
-      };
-    case 'file-list':
-      return {
-        width: 320,
-        height: 220
-      };
   }
 }
 
@@ -3556,41 +3423,6 @@ export function minimumCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFoot
       return {
         width: 320,
         height: 280
-      };
-    case 'file':
-      return {
-        width: 180,
-        height: 72
-      };
-    case 'file-list':
-      return {
-        width: 260,
-        height: 180
-      };
-  }
-}
-
-export function estimateMinimalFileNodeFootprint(
-  primaryLabel: string,
-  displayMode: CanvasFileNodeDisplayMode
-): CanvasNodeFootprint {
-  const textWidth = estimateCanvasLabelWidth(primaryLabel, 12);
-
-  switch (displayMode) {
-    case 'icon-only':
-      return {
-        width: 28,
-        height: 24
-      };
-    case 'path-only':
-      return {
-        width: Math.max(32, Math.ceil(textWidth + 14)),
-        height: 22
-      };
-    default:
-      return {
-        width: Math.max(68, Math.min(480, Math.ceil(textWidth + 38))),
-        height: 24
       };
   }
 }

@@ -496,9 +496,7 @@ export function getCanvasSidebarNodeListItems(
   const nodes = Array.isArray(source) ? source : source.nodes;
   const groups = Array.isArray(source) ? [] : source.groups;
   const groupsById = new Map(groups.map((group) => [group.id, group] as const));
-  return nodes
-    .filter((node) => node.kind !== 'file' && node.kind !== 'file-list')
-    .map((node) => {
+  return nodes.map((node) => {
       const label = node.title.trim() || fallbackNodeLabel(node.kind, node.id);
       const statusLabel = localizeCanvasNodeStatus(node);
       const groupPath = resolveSidebarNodeGroupPath(node.groupId, groupsById);
@@ -647,10 +645,6 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
       return 'Terminal';
     case 'note':
       return 'Note';
-    case 'file':
-      return 'File';
-    case 'file-list':
-      return 'File List';
   }
 }
 
@@ -2194,7 +2188,7 @@ function buildSidebarNodeListCopy(): SidebarNodeListCopy {
     removeWorktreeFromWorkspace: vscode.l10n.t('Remove this worktree and remove the folder from the workspace; clears the Canvas by default'),
     terminalPendingNotification: vscode.l10n.t('Terminal has a pending notification'),
     ungrouped: vscode.l10n.t('Ungrouped'),
-    noLocatableNodes: vscode.l10n.t('The current Canvas has no locatable non-file nodes yet.')
+    noLocatableNodes: vscode.l10n.t('The current Canvas has no locatable nodes yet.')
   };
 }
 

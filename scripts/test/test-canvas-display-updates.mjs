@@ -10,8 +10,7 @@ await esbuild.build({entryPoints:['extensions/vscode/dev-session-canvas/src/comm
 const { CanvasDisplayPublisher, projectCanvasDisplayState, applyCanvasDisplayDelta } = createRequire(import.meta.url)(path.join(output,'display.cjs'));
 const node = id => ({id, kind:'agent', title:id, status:'running', summary:'Running', position:{x:10,y:20},size:{width:400,height:300},
   metadata:{agent:{outputSequence:0, lifecycle:'running',cwd:'/workspace',liveSession:true,terminalTitle:'bash',recentOutput:'hello'}}});
-const initial = () => ({state:{version:1,updatedAt:'initial',nodes:[node('a'),node('b')],edges:[],groups:[],nextGroupSequence:1,
-  fileReferences:[],suppressedFileActivityEdgeIds:[],suppressedAutomaticFileArtifactNodeIds:[]},runtime:{terminalScrollback:1000,workspaceTrusted:true,
+const initial = () => ({state:{version:1,updatedAt:'initial',nodes:[node('a'),node('b')],edges:[],groups:[],nextGroupSequence:1},runtime:{terminalScrollback:1000,workspaceTrusted:true,
   workspaceFolders:[],noteMarkdownImageWorkspaceRoots:[{name:'workspace',webviewResourceBaseUri:'base'}]}});
 const canonical = s => { const v=structuredClone(projectCanvasDisplayState(s));delete v.updatedAt;return JSON.parse(JSON.stringify(v)); };
 const wire = s => JSON.parse(JSON.stringify(s));
@@ -59,8 +58,7 @@ for (const change of [
   s=>{s.state.nodes.reverse();},
   s=>{s.state.groups=[{id:'g',position:{x:1,y:1},size:{width:800,height:800}}];s.state.nodes[0].groupId='g';},
   s=>{s.state.nodes=s.state.nodes.filter(n=>n.id!=='a');s.state.edges=[];s.state.groups=[];delete s.state.nodes[0].groupId;},
-  s=>{s.runtime.workspaceTrusted=false;delete s.runtime.noteMarkdownImageWorkspaceRoots;},
-  s=>{s.state.fileReferences=[{id:'file',filePath:'/a',owners:[]}];}
+  s=>{s.runtime.workspaceTrusted=false;delete s.runtime.noteMarkdownImageWorkspaceRoots;}
 ]) {
   const previous=displayed;change(value);message=wire(publisher.publish(value,'frame-1',false));assert.equal(message.type,'host/stateDelta');
   displayed=applyCanvasDisplayDelta(displayed,message.payload);assert(displayed);assert.deepEqual(canonical(displayed.state),canonical(value.state));

@@ -79,7 +79,7 @@ interface WeightedRelation {
   weight: number;
 }
 
-type DirectedRelationKind = 'user-edge' | 'file-activity-edge' | 'file-owner';
+type DirectedRelationKind = 'user-edge';
 type LayoutAxis = 'horizontal' | 'vertical';
 
 interface DirectedLayoutRelation {
@@ -247,47 +247,12 @@ class LayoutContext {
       const sourceItemId = itemByNodeId.get(edge.sourceNodeId);
       const targetItemId = itemByNodeId.get(edge.targetNodeId);
       if (sourceItemId && targetItemId && sourceItemId !== targetItemId) {
-        relations.addDirected(sourceItemId, targetItemId, edge.owner === 'file-activity' ? 6 : 12, {
-          kind: edge.owner === 'file-activity' ? 'file-activity-edge' : 'user-edge',
+        relations.addDirected(sourceItemId, targetItemId, 12, {
+          kind: 'user-edge',
           sourceAnchor: edge.sourceAnchor,
           targetAnchor: edge.targetAnchor,
           label: edge.label
         });
-      }
-    }
-
-    for (const node of this.nodesById.values()) {
-      const fileItemId = itemByNodeId.get(node.id);
-      if (!fileItemId || !itemIds.has(fileItemId)) {
-        continue;
-      }
-
-      for (const ownerNodeId of collectFileOwnerNodeIds(node)) {
-        const ownerItemId = itemByNodeId.get(ownerNodeId);
-        if (ownerItemId && ownerItemId !== fileItemId) {
-          relations.addDirected(ownerItemId, fileItemId, 10, {
-            kind: 'file-owner'
-          });
-        }
-      }
-    }
-
-    const filePathItemIds = this.collectFilePathItemIds(itemByNodeId);
-    for (const reference of this.state.fileReferences ?? []) {
-      const fileItemIds = filePathItemIds.get(reference.filePath) ?? [];
-      for (const owner of reference.owners ?? []) {
-        const ownerItemId = itemByNodeId.get(owner.nodeId);
-        if (!ownerItemId) {
-          continue;
-        }
-
-        for (const fileItemId of fileItemIds) {
-          if (ownerItemId !== fileItemId) {
-            relations.addDirected(ownerItemId, fileItemId, 10, {
-              kind: 'file-owner'
-            });
-          }
-        }
       }
     }
 
@@ -341,25 +306,6 @@ class LayoutContext {
     }
 
     return groupIds;
-  }
-
-  private collectFilePathItemIds(itemByNodeId: ReadonlyMap<string, string>): Map<string, string[]> {
-    const result = new Map<string, string[]>();
-    for (const node of this.nodesById.values()) {
-      const itemId = itemByNodeId.get(node.id);
-      if (!itemId) {
-        continue;
-      }
-
-      const filePaths = collectFilePaths(node);
-      for (const filePath of filePaths) {
-        const itemIds = result.get(filePath) ?? [];
-        itemIds.push(itemId);
-        result.set(filePath, itemIds);
-      }
-    }
-
-    return result;
   }
 
   private collectExecutionCwdItemIds(itemByNodeId: ReadonlyMap<string, string>): Map<string, string[]> {
@@ -783,10 +729,6 @@ function directedRelationKindWeight(kind: DirectedRelationKind): number {
   switch (kind) {
     case 'user-edge':
       return 40;
-    case 'file-activity-edge':
-      return 18;
-    case 'file-owner':
-      return 12;
   }
 }
 
@@ -1127,21 +1069,6 @@ function packComponents(
   return positions;
 }
 
-function collectFileOwnerNodeIds(node: CanvasNodeSummary): string[] {
-  return [
-    ...(node.metadata?.file?.ownerNodeIds ?? []),
-    ...(node.metadata?.fileList?.ownerNodeId ? [node.metadata.fileList.ownerNodeId] : []),
-    ...(node.metadata?.fileList?.entries ?? []).flatMap((entry) => entry.ownerNodeIds)
-  ];
-}
-
-function collectFilePaths(node: CanvasNodeSummary): string[] {
-  return [
-    ...(node.metadata?.file?.filePath ? [node.metadata.file.filePath] : []),
-    ...(node.metadata?.fileList?.entries ?? []).map((entry) => entry.filePath)
-  ].filter((filePath): filePath is string => typeof filePath === 'string' && filePath.trim().length > 0);
-}
-
 function estimateEdgeLabelWidth(label: string): number {
   let glyphUnits = 0;
 
@@ -1189,9 +1116,6 @@ function itemPriority(item: LayoutItem): number {
       return 1;
     case 'terminal':
       return 2;
-    case 'file':
-    case 'file-list':
-      return 3;
     case 'note':
       return 5;
     default:

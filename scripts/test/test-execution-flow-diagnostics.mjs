@@ -368,7 +368,7 @@ try {
   assert.deepEqual(frozen.calls, order, 'freezing diagnostics must not stop state publication');
   assert.deepEqual(frozen.actual.executionFlow.snapshot().details.map(s => s.stage), stateStages.slice(0, 2));
   const displayHost = new Harness();
-  displayHost.state = {version:1,updatedAt:'now',nodes:[],edges:[],groups:[],nextGroupSequence:1,fileReferences:[],suppressedFileActivityEdgeIds:[],suppressedAutomaticFileArtifactNodeIds:[]};
+  displayHost.state = {version:1,updatedAt:'now',nodes:[],edges:[],groups:[],nextGroupSequence:1};
   displayHost.surfaceLifecycle={panel:{bootstrapAck:false}};
   displayHost.shouldQueueUntilBootstrapAck=(_surface,m)=>m.type!=='host/bootstrap'&&!displayHost.surfaceLifecycle.panel.bootstrapAck;
   displayHost.getWebviewOptions=()=>({});

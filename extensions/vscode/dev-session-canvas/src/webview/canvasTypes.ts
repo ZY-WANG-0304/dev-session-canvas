@@ -11,9 +11,6 @@ import type {
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
   CanvasEdgeOwner,
-  CanvasFileNodeDisplayMode,
-  CanvasFileNodeDisplayStyle,
-  CanvasFilePathDisplayMode,
   CanvasGroupSummary,
   CanvasNodeFootprint,
   CanvasNodeKind,
@@ -28,9 +25,6 @@ import type {
 import type { NoteMarkdownImageWorkspaceRoot } from './noteMarkdownPreview';
 import type { PaneGalleryLocalState, PaneGalleryViewportRole } from './paneGalleryLocalState';
 
-export type FileListViewMode = 'list' | 'tree';
-export type FileListEntrySelectionTone = 'active' | 'inactive';
-
 export interface LocalUiState {
   selectedNodeId?: string;
   selectedNodeIds?: string[];
@@ -38,9 +32,6 @@ export interface LocalUiState {
   selectedGroupIds?: string[];
   viewport?: Viewport;
   paneGallery?: PaneGalleryLocalState;
-  fileListViewModes?: Record<string, FileListViewMode>;
-  selectedFileListEntries?: Record<string, string>;
-  collapsedFileListTreeBranches?: Record<string, string[]>;
 }
 
 export interface CanvasSurfaceBinding {
@@ -98,27 +89,17 @@ export interface CanvasNodeData {
   overviewInteractionsDisabled: boolean;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   size: CanvasNodeFootprint;
-  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
-  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
-  filePathDisplayMode: CanvasFilePathDisplayMode;
   noteMarkdownImageWorkspaceRoots: NoteMarkdownImageWorkspaceRoot[];
   workspaceFolders: CanvasRuntimeContext['workspaceFolders'];
-  fileListViewMode: FileListViewMode;
-  selectedFileListEntryPath?: string;
-  collapsedFileListTreeBranchKeys?: string[];
   metadata?: CanvasNodeMetadata;
   onSelectNode?: (nodeId: string) => void;
   onAcknowledgeNodeAttention?: (nodeId: string) => void;
-  onOpenCanvasFile?: (nodeId: string, filePath: string) => void;
   onOpenNoteLink?: (nodeId: string, href: string) => void;
   onSaveNoteAsMarkdownFile?: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onCreateMissingAssociatedNoteMarkdownFile?: (nodeId: string) => void;
   onCopyTextToClipboard?: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
-  onSelectFileListEntry?: (nodeId: string, filePath: string) => void;
-  onSetFileListViewMode?: (nodeId: string, viewMode: FileListViewMode) => void;
-  onToggleFileListTreeBranch?: (nodeId: string, branchKey: string) => void;
   onStartExecution?: (
     nodeId: string,
     kind: ExecutionNodeKind,

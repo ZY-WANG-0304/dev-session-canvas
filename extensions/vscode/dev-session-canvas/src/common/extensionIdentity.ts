@@ -52,15 +52,11 @@ export const COMMAND_IDS = {
   resetCanvasState: 'devSessionCanvas.resetCanvasState',
   startExecutionFlowTrace: 'devSessionCanvas.startExecutionFlowTrace',
   dumpHostDiagnostics: 'devSessionCanvas.dumpHostDiagnostics',
-  editFileIncludeFilter: 'devSessionCanvas.editFileIncludeFilter',
-  editFileExcludeFilter: 'devSessionCanvas.editFileExcludeFilter',
   focusNode: 'devSessionCanvas.__internal.focusNode',
   focusAttentionNode: 'devSessionCanvas.__internal.focusAttentionNode',
   centerAttentionNode: 'devSessionCanvas.__internal.centerAttentionNode',
   focusSidebarNode: 'devSessionCanvas.__internal.focusSidebarNode',
   restoreSidebarSessionHistoryEntry: 'devSessionCanvas.__internal.restoreSidebarSessionHistoryEntry',
-  clearFileIncludeFilter: 'devSessionCanvas.clearFileIncludeFilter',
-  clearFileExcludeFilter: 'devSessionCanvas.clearFileExcludeFilter'
 } as const;
 
 export const TEST_COMMAND_IDS = {
@@ -143,11 +139,6 @@ export const CONFIG_KEYS = {
   terminalShellPath: 'devSessionCanvas.terminal.shellPath',
   terminalInheritEnv: 'devSessionCanvas.terminal.inheritEnv',
   terminalShellArgs: 'devSessionCanvas.terminal.shellArgs',
-  filesFeatureEnabled: 'devSessionCanvas.files.enabled',
-  filesPresentationMode: 'devSessionCanvas.files.presentationMode',
-  fileNodeDisplayStyle: 'devSessionCanvas.fileNode.displayStyle',
-  filesNodeDisplayMode: 'devSessionCanvas.files.nodeDisplayMode',
-  filesPathDisplayMode: 'devSessionCanvas.files.pathDisplayMode',
   noteMarkdownStripExtensionFromDroppedFileTitle: 'devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle'
 } as const;
 
@@ -173,8 +164,6 @@ export const STORAGE_KEYS = {
   canvasLastSurface: 'devSessionCanvas.canvas.lastSurface',
   canvasDefaultSurface: 'devSessionCanvas.canvas.defaultSurface',
   canvasRuntimePersistenceEnabled: 'devSessionCanvas.canvas.runtimePersistenceEnabled',
-  canvasFilesFeatureEnabled: 'devSessionCanvas.canvas.filesFeatureEnabled',
-  canvasFileFilterState: 'devSessionCanvas.canvas.fileFilterState',
   canvasTemplateInitialized: 'devSessionCanvas.canvas.templateInitialized',
   sidebarNodeListViewMode: 'devSessionCanvas.sidebarNodeList.viewMode',
   sidebarSessionHistoryGroupByWorkspaceRoot: 'devSessionCanvas.sidebarSessionHistory.groupByWorkspaceRoot',

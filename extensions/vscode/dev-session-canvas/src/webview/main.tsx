@@ -39,9 +39,6 @@ import type {
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
   CanvasEdgeSummary,
-  CanvasFileNodeDisplayStyle,
-  CanvasFileNodeDisplayMode,
-  CanvasFilePathDisplayMode,
   CanvasNodeKind,
   CanvasNodeFootprint,
   CanvasNodePosition,
@@ -51,7 +48,6 @@ import type {
   CanvasPrototypeState,
   CanvasTemplateMenuEntry,
   ExecutionNodeKind,
-  FileListNodeEntrySummary,
   HostToWebviewMessage,
   LocalTerminalCompletion,
   LocalOutputReceipt,
@@ -62,7 +58,6 @@ import type {
   ExecutionPerformanceDiagnosticPayload,
   ExecutionTerminalClipboardDiagnosticPayload,
   WebviewProbeEdgeSnapshot,
-  WebviewProbeFileEntrySnapshot,
   WebviewProbeGroupSnapshot,
   WebviewProbeNodeSnapshot,
   WebviewProbeSnapshot,
@@ -123,12 +118,7 @@ import type {
 import { TerminalPagedProjection } from './terminalPagedProjection';
 import { createCanvasNodeChrome } from './canvasNodeChrome';
 import { createExecutionSessionNodeTypes } from './executionSessionNodes';
-import {
-  collectFileListTreeBranchKeysForEntries,
-  createFileNoteNodeTypes,
-  minimumCanvasNodeFootprintForDisplayStyle,
-  normalizeCanvasNodeFootprintForDisplayStyle
-} from './fileNoteNodes';
+import { createFileNoteNodeTypes, minimumCanvasNodeFootprintForDisplayStyle } from './fileNoteNodes';
 import {
   CODE_FILES_DATA_TRANSFER,
   RESOURCE_URLS_DATA_TRANSFER,
@@ -206,7 +196,6 @@ import type {
   CanvasViewportSize,
   ExecutionInputDispatchMetadata,
   ExecutionNodeHelpContent,
-  FileListViewMode,
   FloatingTooltipPosition,
   LocalUiState
 } from './canvasTypes';
@@ -1128,11 +1117,6 @@ let latestRuntimeContext: CanvasRuntimeContext = {
   overviewZoomThreshold: DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   multiRootPresentationMode: 'rootGroups',
   workspaceRootWatermarksEnabled: true,
-  filePresentationMode: 'nodes',
-  fileNodeDisplayStyle: 'minimal',
-  fileNodeDisplayMode: 'icon-path',
-  filePathDisplayMode: 'basename',
-  fileIconFontFaces: [],
   workspaceFolders: [],
   noteMarkdownImageWorkspaceRoots: []
 };
@@ -1148,9 +1132,6 @@ const root = createRoot(rootElement);
 function normalizeRuntimeContext(
   runtimeContext: Partial<CanvasRuntimeContext> | undefined
 ): CanvasRuntimeContext {
-  const fileIconFontFaces = runtimeContext && Array.isArray(runtimeContext.fileIconFontFaces)
-    ? runtimeContext.fileIconFontFaces
-    : [];
   const noteMarkdownImageWorkspaceRoots =
     runtimeContext && Array.isArray(runtimeContext.noteMarkdownImageWorkspaceRoots)
       ? runtimeContext.noteMarkdownImageWorkspaceRoots.filter(
@@ -1195,14 +1176,6 @@ function normalizeRuntimeContext(
     overviewZoomThreshold: normalizeCanvasOverviewZoomThreshold(runtimeContext?.overviewZoomThreshold),
     multiRootPresentationMode: normalizeCanvasMultiRootPresentationMode(runtimeContext?.multiRootPresentationMode),
     workspaceRootWatermarksEnabled: runtimeContext?.workspaceRootWatermarksEnabled !== false,
-    filePresentationMode: runtimeContext?.filePresentationMode === 'lists' ? 'lists' : 'nodes',
-    fileNodeDisplayStyle: runtimeContext?.fileNodeDisplayStyle === 'card' ? 'card' : 'minimal',
-    fileNodeDisplayMode:
-      runtimeContext?.fileNodeDisplayMode === 'icon-only' || runtimeContext?.fileNodeDisplayMode === 'path-only'
-        ? runtimeContext.fileNodeDisplayMode
-        : 'icon-path',
-    filePathDisplayMode: runtimeContext?.filePathDisplayMode === 'relative-path' ? 'relative-path' : 'basename',
-    fileIconFontFaces,
     workspaceFolders,
     noteMarkdownImageWorkspaceRoots
   };
@@ -1230,13 +1203,6 @@ function normalizeAgentLaunchDefaults(
 function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | null | undefined): CanvasPrototypeState {
   const nodes = Array.isArray(state?.nodes) ? state?.nodes ?? [] : [];
   const edges = Array.isArray(state?.edges) ? state?.edges ?? [] : [];
-  const fileReferences = Array.isArray(state?.fileReferences) ? state?.fileReferences ?? [] : [];
-  const suppressedFileActivityEdgeIds = state && Array.isArray(state.suppressedFileActivityEdgeIds)
-    ? state.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
-    : [];
-  const suppressedAutomaticFileArtifactNodeIds = state && Array.isArray(state.suppressedAutomaticFileArtifactNodeIds)
-    ? state.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
-    : [];
   const rawGroups = state?.groups;
   const groups = Array.isArray(rawGroups) ? rawGroups : [];
   const nextGroupSequence = state?.nextGroupSequence;
@@ -1250,10 +1216,7 @@ function normalizeCanvasPrototypeState(state: Partial<CanvasPrototypeState> | nu
     nextGroupSequence:
       typeof nextGroupSequence === 'number' && Number.isInteger(nextGroupSequence) && nextGroupSequence > 0
         ? nextGroupSequence
-        : 1,
-    fileReferences,
-    suppressedFileActivityEdgeIds,
-    suppressedAutomaticFileArtifactNodeIds
+        : 1
   };
 }
 
@@ -1502,11 +1465,6 @@ function App(): JSX.Element {
     overviewZoomThreshold: latestRuntimeContext.overviewZoomThreshold,
     multiRootPresentationMode: latestRuntimeContext.multiRootPresentationMode,
     workspaceRootWatermarksEnabled: latestRuntimeContext.workspaceRootWatermarksEnabled,
-    filePresentationMode: latestRuntimeContext.filePresentationMode,
-    fileNodeDisplayStyle: latestRuntimeContext.fileNodeDisplayStyle,
-    fileNodeDisplayMode: latestRuntimeContext.fileNodeDisplayMode,
-    filePathDisplayMode: latestRuntimeContext.filePathDisplayMode,
-    fileIconFontFaces: latestRuntimeContext.fileIconFontFaces,
     workspaceFolders: latestRuntimeContext.workspaceFolders,
     noteMarkdownImageWorkspaceRoots: latestRuntimeContext.noteMarkdownImageWorkspaceRoots
   });
@@ -1520,29 +1478,6 @@ function App(): JSX.Element {
       ? initialPersistedState.selectedGroupIds.filter((groupId): groupId is string => typeof groupId === 'string')
       : undefined,
     viewport: initialPersistedState.viewport,
-    fileListViewModes:
-      initialPersistedState.fileListViewModes && typeof initialPersistedState.fileListViewModes === 'object'
-        ? initialPersistedState.fileListViewModes
-        : undefined,
-    selectedFileListEntries:
-      initialPersistedState.selectedFileListEntries && typeof initialPersistedState.selectedFileListEntries === 'object'
-        ? Object.fromEntries(
-            Object.entries(initialPersistedState.selectedFileListEntries).filter(
-              (entry): entry is [string, string] => typeof entry[1] === 'string'
-            )
-          )
-        : undefined,
-    collapsedFileListTreeBranches:
-      initialPersistedState.collapsedFileListTreeBranches &&
-      typeof initialPersistedState.collapsedFileListTreeBranches === 'object'
-        ? Object.fromEntries(
-            Object.entries(initialPersistedState.collapsedFileListTreeBranches).flatMap(([nodeId, branchKeys]) =>
-              Array.isArray(branchKeys)
-                ? [[nodeId, branchKeys.filter((branchKey): branchKey is string => typeof branchKey === 'string')]]
-                : []
-            )
-          )
-        : undefined,
     paneGallery: normalizePaneGalleryLocalState(initialPersistedState.paneGallery)
   }));
   const pendingModifierNodeSelectionRef = useRef<{
@@ -1953,10 +1888,6 @@ function App(): JSX.Element {
   }, [runtimeContext]);
 
   useEffect(() => {
-    return applyFileIconFontFaces(runtimeContext.fileIconFontFaces);
-  }, [runtimeContext.fileIconFontFaces]);
-
-  useEffect(() => {
     ensureEmbeddedTerminalThemeObservers();
     scheduleEmbeddedTerminalAppearanceRefresh();
 
@@ -2111,25 +2042,6 @@ function App(): JSX.Element {
     }
 
     const validNodeIds = new Set(hostState.nodes.map((node) => node.id));
-    const validFileListNodeIds = new Set(
-      hostState.nodes.filter((node) => node.kind === 'file-list').map((node) => node.id)
-    );
-    const validFileListEntryPathsByNodeId = new Map<string, Set<string>>(
-      hostState.nodes
-        .filter((node) => node.kind === 'file-list')
-        .map((node) => [
-          node.id,
-          new Set(node.metadata?.fileList?.entries.map((entry) => entry.filePath) ?? [])
-        ])
-    );
-    const validFileListTreeBranchKeysByNodeId = new Map<string, Set<string>>(
-      hostState.nodes
-        .filter((node) => node.kind === 'file-list')
-        .map((node) => [
-          node.id,
-          collectFileListTreeBranchKeysForEntries(node.metadata?.fileList?.entries ?? [])
-        ])
-    );
     const validEdgeIds = new Set(hostState.edges.map((edge) => edge.id));
     const validGroupIds = new Set((hostState.groups ?? []).map((group) => group.id));
     setLocalUiState((current) => {
@@ -2169,62 +2081,6 @@ function App(): JSX.Element {
           nextState = {
             ...nextState,
             selectedGroupIds: selectedGroupIds.length > 0 ? selectedGroupIds : undefined
-          };
-          changed = true;
-        }
-      }
-
-      const currentViewModes = current.fileListViewModes;
-      if (currentViewModes) {
-        const filteredEntries = Object.entries(currentViewModes).filter(([nodeId]) => validFileListNodeIds.has(nodeId));
-        if (filteredEntries.length !== Object.keys(currentViewModes).length) {
-          nextState = {
-            ...nextState,
-            fileListViewModes: filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
-          };
-          changed = true;
-        }
-      }
-
-      const currentSelectedFileEntries = current.selectedFileListEntries;
-      if (currentSelectedFileEntries) {
-        const filteredEntries = Object.entries(currentSelectedFileEntries).filter(([nodeId, filePath]) =>
-          validFileListEntryPathsByNodeId.get(nodeId)?.has(filePath)
-        );
-        if (filteredEntries.length !== Object.keys(currentSelectedFileEntries).length) {
-          nextState = {
-            ...nextState,
-            selectedFileListEntries: filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
-          };
-          changed = true;
-        }
-      }
-
-      const currentCollapsedBranches = current.collapsedFileListTreeBranches;
-      if (currentCollapsedBranches) {
-        const filteredEntries: Array<[string, string[]]> = [];
-        for (const [nodeId, branchKeys] of Object.entries(currentCollapsedBranches)) {
-          const validBranchKeys = validFileListTreeBranchKeysByNodeId.get(nodeId);
-          if (!validBranchKeys || !Array.isArray(branchKeys)) {
-            continue;
-          }
-
-          const nextBranchKeys = branchKeys.filter((branchKey) => validBranchKeys.has(branchKey));
-          if (nextBranchKeys.length > 0) {
-            filteredEntries.push([nodeId, nextBranchKeys]);
-          }
-        }
-        const collapsedBranchesChanged =
-          filteredEntries.length !== Object.keys(currentCollapsedBranches).length ||
-          filteredEntries.some(
-            ([nodeId, nextBranchKeys]) =>
-              nextBranchKeys.length !== (Array.isArray(currentCollapsedBranches[nodeId]) ? currentCollapsedBranches[nodeId].length : 0)
-          );
-        if (collapsedBranchesChanged) {
-          nextState = {
-            ...nextState,
-            collapsedFileListTreeBranches:
-              filteredEntries.length > 0 ? Object.fromEntries(filteredEntries) : undefined
           };
           changed = true;
         }
@@ -2984,11 +2840,7 @@ function App(): JSX.Element {
       selectedNodeId: nodeId,
       selectedNodeIds: [nodeId],
       selectedGroupId: undefined,
-      selectedGroupIds: undefined,
-      selectedFileListEntries:
-        current.selectedFileListEntries && nodeId in current.selectedFileListEntries
-          ? { [nodeId]: current.selectedFileListEntries[nodeId] }
-          : undefined
+      selectedGroupIds: undefined
     }));
   };
 
@@ -3013,80 +2865,10 @@ function App(): JSX.Element {
         selectedNodeId: nextSelectedNodeIds.at(-1),
         selectedNodeIds: nextSelectedNodeIds.length > 0 ? nextSelectedNodeIds : undefined,
         selectedGroupId: undefined,
-        selectedGroupIds: undefined,
-        selectedFileListEntries: undefined
+        selectedGroupIds: undefined
       };
       localUiStateRef.current = nextState;
       return nextState;
-    });
-  };
-
-  const setFileListViewMode = (nodeId: string, viewMode: FileListViewMode): void => {
-    setLocalUiState((current) => {
-      const currentViewMode = current.fileListViewModes?.[nodeId] ?? 'list';
-      if (currentViewMode === viewMode) {
-        return current;
-      }
-
-      return {
-        ...current,
-        fileListViewModes: {
-          ...(current.fileListViewModes ?? {}),
-          [nodeId]: viewMode
-        }
-      };
-    });
-  };
-
-  const toggleFileListTreeBranch = (nodeId: string, branchKey: string): void => {
-    closeEdgeMenus();
-    setSelectedEdgeId(undefined);
-    setLocalUiState((current) => {
-      const nextNodeBranchKeys = new Set(current.collapsedFileListTreeBranches?.[nodeId] ?? []);
-      if (nextNodeBranchKeys.has(branchKey)) {
-        nextNodeBranchKeys.delete(branchKey);
-      } else {
-        nextNodeBranchKeys.add(branchKey);
-      }
-
-      const nextCollapsedBranches = { ...(current.collapsedFileListTreeBranches ?? {}) };
-      if (nextNodeBranchKeys.size > 0) {
-        nextCollapsedBranches[nodeId] = Array.from(nextNodeBranchKeys).sort();
-      } else {
-        delete nextCollapsedBranches[nodeId];
-      }
-
-      return {
-        ...current,
-        selectedNodeId: nodeId,
-        selectedNodeIds: [nodeId],
-        selectedGroupId: undefined,
-        selectedGroupIds: undefined,
-        collapsedFileListTreeBranches:
-          Object.keys(nextCollapsedBranches).length > 0 ? nextCollapsedBranches : undefined
-      };
-    });
-  };
-
-  const selectFileListEntry = (nodeId: string, filePath: string): void => {
-    closeEdgeMenus();
-    setSelectedEdgeId(undefined);
-    setLocalUiState((current) => {
-      if (current.selectedNodeId === nodeId && current.selectedFileListEntries?.[nodeId] === filePath) {
-        return current;
-      }
-
-      return {
-        ...current,
-        selectedNodeId: nodeId,
-        selectedNodeIds: [nodeId],
-        selectedGroupId: undefined,
-        selectedGroupIds: undefined,
-        selectedFileListEntries: {
-          ...(current.selectedFileListEntries ?? {}),
-          [nodeId]: filePath
-        }
-      };
     });
   };
 
@@ -3228,25 +3010,11 @@ function App(): JSX.Element {
     workspaceTrusted,
     overviewInteractionsDisabled: canvasOverviewMode,
     strongTerminalAttentionReminderMode: runtimeContext.strongTerminalAttentionReminderMode,
-    fileNodeDisplayStyle: runtimeContext.fileNodeDisplayStyle,
-    fileNodeDisplayMode: runtimeContext.fileNodeDisplayMode,
-    filePathDisplayMode: runtimeContext.filePathDisplayMode,
     noteMarkdownImageWorkspaceRoots: runtimeContext.noteMarkdownImageWorkspaceRoots ?? [],
     workspaceFolders: runtimeContext.workspaceFolders ?? [],
-    fileListViewModes: localUiState.fileListViewModes,
-    selectedFileListEntries: localUiState.selectedFileListEntries,
-    collapsedFileListTreeBranches: localUiState.collapsedFileListTreeBranches,
     nodeResizeDrafts,
     onSelectNode: selectNode,
     onAcknowledgeNodeAttention: acknowledgeNodeAttention,
-    onOpenCanvasFile: (nodeId, filePath) =>
-      postMessage({
-        type: 'webview/openCanvasFile',
-        payload: {
-          nodeId,
-          filePath
-        }
-      }),
     onOpenNoteLink: (nodeId, href) =>
       postMessage({
         type: 'webview/openNoteLink',
@@ -3292,9 +3060,6 @@ function App(): JSX.Element {
           nodeId
         }
       }),
-    onSelectFileListEntry: selectFileListEntry,
-    onSetFileListViewMode: setFileListViewMode,
-    onToggleFileListTreeBranch: toggleFileListTreeBranch,
     onStartExecution: (nodeId, kind, cols, rows, provider, resume) =>
       postMessage({
         type: 'webview/startExecutionSession',
@@ -5703,8 +5468,6 @@ const nodeTypes = {
   agent: React.memo(executionNodeTypes.agent),
   terminal: React.memo(executionNodeTypes.terminal),
   note: React.memo(fileNoteNodeTypes.note),
-  file: React.memo(fileNoteNodeTypes.file),
-  'file-list': React.memo(fileNoteNodeTypes['file-list']),
   card: React.memo(CompactCanvasCardNode)
 };
 
@@ -6567,27 +6330,17 @@ function toFlowNodes(params: {
   workspaceTrusted: boolean;
   overviewInteractionsDisabled: boolean;
   strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
-  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
-  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
-  filePathDisplayMode: CanvasFilePathDisplayMode;
   noteMarkdownImageWorkspaceRoots: readonly NoteMarkdownImageWorkspaceRoot[];
   workspaceFolders: CanvasRuntimeContext['workspaceFolders'];
-  fileListViewModes: Record<string, FileListViewMode> | undefined;
-  selectedFileListEntries: Record<string, string> | undefined;
-  collapsedFileListTreeBranches: Record<string, string[]> | undefined;
   nodeResizeDrafts: Record<string, CanvasNodeResizeDraft>;
   onSelectNode: (nodeId: string) => void;
   onAcknowledgeNodeAttention: (nodeId: string) => void;
-  onOpenCanvasFile: (nodeId: string, filePath: string) => void;
   onOpenNoteLink: (nodeId: string, href: string) => void;
   onSaveNoteAsMarkdownFile: (nodeId: string) => void;
   onOpenAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onReloadAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onCreateMissingAssociatedNoteMarkdownFile: (nodeId: string) => void;
   onCopyTextToClipboard: (text: string, source: WebviewClipboardTextSource, nodeId?: string) => void;
-  onSelectFileListEntry: (nodeId: string, filePath: string) => void;
-  onSetFileListViewMode: (nodeId: string, viewMode: FileListViewMode) => void;
-  onToggleFileListTreeBranch: (nodeId: string, branchKey: string) => void;
   onUpdateNodeTitle: (nodeId: string, title: string) => void;
   onStartExecution: (
     nodeId: string,
@@ -6668,20 +6421,13 @@ function toFlowNodes(params: {
   const selectedNodeIds = new Set(params.selectedNodeIds ?? (params.selectedNodeId ? [params.selectedNodeId] : []));
   return params.nodes.map((node) => {
     const deletionPending = params.pendingNodeDeletionIds.has(node.id);
-    const size = normalizeCanvasNodeFootprintForDisplayStyle(
-      node.kind,
-      params.fileNodeDisplayStyle,
-      node.size,
-      node.metadata?.file,
-      params.fileNodeDisplayMode,
-      params.filePathDisplayMode
-    );
+    const size = normalizeCanvasNodeFootprint(node.kind, node.size);
     const resizeDraft = params.nodeResizeDrafts[node.id];
     const renderedSize = resizeDraft?.size ?? size;
 
     return {
       id: node.id,
-      type: node.kind === 'agent' || node.kind === 'terminal' || node.kind === 'note' || node.kind === 'file' || node.kind === 'file-list' ? node.kind : 'card',
+      type: node.kind,
       position: node.position,
       draggable: !deletionPending,
       selectable: !deletionPending,
@@ -6706,27 +6452,17 @@ function toFlowNodes(params: {
         overviewInteractionsDisabled: params.overviewInteractionsDisabled,
         strongTerminalAttentionReminderMode: params.strongTerminalAttentionReminderMode,
         size: renderedSize,
-        fileNodeDisplayStyle: params.fileNodeDisplayStyle,
-        fileNodeDisplayMode: params.fileNodeDisplayMode,
-        filePathDisplayMode: params.filePathDisplayMode,
         noteMarkdownImageWorkspaceRoots: params.noteMarkdownImageWorkspaceRoots as NoteMarkdownImageWorkspaceRoot[],
         workspaceFolders: params.workspaceFolders,
-        fileListViewMode: params.fileListViewModes?.[node.id] === 'tree' ? 'tree' : 'list',
-        selectedFileListEntryPath: params.selectedFileListEntries?.[node.id],
-        collapsedFileListTreeBranchKeys: params.collapsedFileListTreeBranches?.[node.id],
         metadata: node.metadata,
         onSelectNode: params.onSelectNode,
         onAcknowledgeNodeAttention: params.onAcknowledgeNodeAttention,
-        onOpenCanvasFile: params.onOpenCanvasFile,
         onOpenNoteLink: params.onOpenNoteLink,
         onSaveNoteAsMarkdownFile: params.onSaveNoteAsMarkdownFile,
         onOpenAssociatedNoteMarkdownFile: params.onOpenAssociatedNoteMarkdownFile,
         onReloadAssociatedNoteMarkdownFile: params.onReloadAssociatedNoteMarkdownFile,
         onCreateMissingAssociatedNoteMarkdownFile: params.onCreateMissingAssociatedNoteMarkdownFile,
         onCopyTextToClipboard: params.onCopyTextToClipboard,
-        onSelectFileListEntry: params.onSelectFileListEntry,
-        onSetFileListViewMode: params.onSetFileListViewMode,
-        onToggleFileListTreeBranch: params.onToggleFileListTreeBranch,
         onUpdateNodeTitle: params.onUpdateNodeTitle,
         onStartExecution: params.onStartExecution,
         onBranchAgentSession: params.onBranchAgentSession,
@@ -7051,16 +6787,12 @@ function collectCanvasNodeLayoutDrafts(
       };
     }
 
-    const normalizedNextSize = normalizeCanvasNodeFootprintForDisplayStyle(
+    const normalizedNextSize = normalizeCanvasNodeFootprint(
       node.data.kind,
-      node.data.fileNodeDisplayStyle,
       {
         width: Number(node.style?.width ?? node.data.size.width),
         height: Number(node.style?.height ?? node.data.size.height)
-      },
-      node.data.metadata?.file,
-      node.data.fileNodeDisplayMode,
-      node.data.filePathDisplayMode
+      }
     );
 
     if (!footprintsEqual(normalizedNextSize, baseNode.data.size)) {
@@ -7159,10 +6891,6 @@ function humanizeNodeKind(kind: CanvasNodeKind): string {
       return t('nodeKind.terminal');
     case 'note':
       return t('nodeKind.note');
-    case 'file':
-      return t('nodeKind.file');
-    case 'file-list':
-      return t('nodeKind.fileList');
   }
 }
 
@@ -7174,10 +6902,6 @@ function describeContextMenuKind(kind: CanvasNodeKind): string {
       return t('contextMenu.kind.terminal.description');
     case 'note':
       return t('contextMenu.kind.note.description');
-    case 'file':
-      return t('contextMenu.kind.file.description');
-    case 'file-list':
-      return t('contextMenu.kind.fileList.description');
   }
 }
 
@@ -9303,13 +9027,13 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     kind: nodeKind,
     chromeTitle:
       readProbeText(
-        element.querySelector('.window-title strong, .node-topline strong, .file-node-copy strong, .file-list-title-text')
+        element.querySelector('.window-title strong, .node-topline strong')
       ) ??
       readProbeFieldValue(element, 'title') ??
       null,
     chromeContext: readProbeText(element.querySelector('.window-title-context, .node-topline .node-context')),
     chromeSubtitle: readProbeText(
-      element.querySelector('.window-title-subtitle, .node-topline span, .file-node-copy span')
+      element.querySelector('.window-title-subtitle, .node-topline span')
     ),
     statusText: readProbeText(element.querySelector('.status-pill, .node-status')),
     attentionIndicatorVisible: Boolean(element.querySelector('[data-attention-indicator="true"]')),
@@ -9326,7 +9050,6 @@ function readWebviewProbeNodeSnapshot(element: HTMLElement): WebviewProbeNodeSna
     terminalLegacyTranscript: readProbeTextOrUndefined(element.querySelector('.terminal-legacy-transcript')),
     titleInputValue: readProbeFieldValue(element, 'title'),
     bodyValue: readProbeFieldValue(element, 'body'),
-    fileEntries: Array.from(element.querySelectorAll<HTMLElement>('[data-file-entry-path]')).map(readFileEntryClickObservation),
     ...readProbeExecutionTerminalState(nodeId)
   };
 }
@@ -9343,7 +9066,7 @@ function readWebviewProbeEdgeSnapshot(element: HTMLElement): WebviewProbeEdgeSna
     !sourceNodeId ||
     !targetNodeId ||
     (arrowMode !== 'none' && arrowMode !== 'forward' && arrowMode !== 'both') ||
-    (owner !== 'user' && owner !== 'file-activity')
+    owner !== 'user'
   ) {
     return null;
   }
@@ -9771,16 +9494,6 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         await waitForDomActionFlush();
         break;
       }
-      case 'clickFileEntry': {
-        const target = queryFileEntryButton(action.nodeId, action.filePath);
-        const observation = readFileEntryClickObservation(target);
-        if (!observation.clickable) {
-          throw new Error(`File click requires a visible, enabled hit target: ${JSON.stringify(observation)}`);
-        }
-        dispatchSyntheticMouseClick(target, undefined, true);
-        await waitForDomActionFlush();
-        break;
-      }
       case 'toggleNoteChecklistItem': {
         const checkbox = queryNoteChecklistInput(action.nodeId, action.lineNumber);
         checkbox.focus();
@@ -9915,29 +9628,6 @@ function queryEdgeSelectionTarget(edgeId: string): Element {
   }
 
   return edge;
-}
-
-function queryFileEntryButton(nodeId: string, filePath: string): HTMLElement {
-  const nodeRoot = queryNodeRoot(nodeId);
-  const target = Array.from(nodeRoot.querySelectorAll<HTMLElement>('[data-file-entry-path]')).find(
-    (candidate) => candidate.dataset.fileEntryPath === filePath
-  );
-  if (!target) {
-    throw new Error(`Could not find file entry ${filePath} on node ${nodeId}.`);
-  }
-
-  return target;
-}
-
-function readFileEntryClickObservation(target: HTMLElement): WebviewProbeFileEntrySnapshot {
-  const box = target.getBoundingClientRect(), x = box.x + box.width / 2, y = box.y + box.height / 2;
-  const canvas = target.closest('.canvas-shell')?.getBoundingClientRect();
-  const hit = target.ownerDocument.elementFromPoint(x, y);
-  const disabled = target instanceof HTMLButtonElement && target.disabled;
-  return { filePath: target.dataset.fileEntryPath ?? '', x: box.x, y: box.y, width: box.width, height: box.height, disabled,
-    clickable: !disabled && box.width > 0 && box.height > 0 && x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight
-      && Boolean(canvas && x >= canvas.left && x < canvas.right && y >= canvas.top && y < canvas.bottom)
-      && Boolean(hit && (hit === target || target.contains(hit))) };
 }
 
 function queryNoteChecklistInput(nodeId: string, lineNumber: number): HTMLInputElement {
@@ -10241,31 +9931,6 @@ function applyEmbeddedTerminalRuntimeContext(runtimeContext: CanvasRuntimeContex
   for (const { terminal } of executionTerminalRegistry.values()) {
     terminal.options.scrollback = scrollback;
   }
-}
-
-function applyFileIconFontFaces(fontFaces: CanvasRuntimeContext['fileIconFontFaces']): () => void {
-  const styleId = 'dev-session-canvas-file-icon-font-faces';
-  const existing = document.head.querySelector<HTMLStyleElement>(`#${styleId}`);
-  if (!fontFaces.length) {
-    existing?.remove();
-    return () => {};
-  }
-
-  const styleElement = existing ?? document.createElement('style');
-  styleElement.id = styleId;
-  styleElement.textContent = fontFaces
-    .map(
-      (fontFace) =>
-        `@font-face { font-family: '${fontFace.fontFamily}'; src: url('${fontFace.src}') format('${fontFace.format ?? 'woff'}'); font-weight: ${fontFace.fontWeight ?? 'normal'}; font-style: ${fontFace.fontStyle ?? 'normal'}; }`
-    )
-    .join('\n');
-  if (!styleElement.parentElement) {
-    document.head.appendChild(styleElement);
-  }
-
-  return () => {
-    styleElement.remove();
-  };
 }
 
 function readEmbeddedTerminalAppearance(): {

@@ -866,53 +866,6 @@
           "scope": "machine-overridable",
           "markdownDescription": "%configuration.terminal.shellArgs.description%"
         },
-        "devSessionCanvas.files.enabled": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "markdownDescription": "%configuration.files.enabled.description%"
-        },
-        "devSessionCanvas.files.presentationMode": {
-          "type": "string",
-          "enum": [
-            "nodes",
-            "lists"
-          ],
-          "default": "lists",
-          "scope": "window",
-          "markdownDescription": "%configuration.files.presentationMode.description%"
-        },
-        "devSessionCanvas.fileNode.displayStyle": {
-          "type": "string",
-          "enum": [
-            "card",
-            "minimal"
-          ],
-          "default": "minimal",
-          "scope": "window",
-          "markdownDescription": "%configuration.fileNode.displayStyle.description%"
-        },
-        "devSessionCanvas.files.nodeDisplayMode": {
-          "type": "string",
-          "enum": [
-            "icon-path",
-            "icon-only",
-            "path-only"
-          ],
-          "default": "icon-path",
-          "scope": "window",
-          "markdownDescription": "%configuration.files.nodeDisplayMode.description%"
-        },
-        "devSessionCanvas.files.pathDisplayMode": {
-          "type": "string",
-          "enum": [
-            "basename",
-            "relative-path"
-          ],
-          "default": "basename",
-          "scope": "window",
-          "markdownDescription": "%configuration.files.pathDisplayMode.description%"
-        },
         "devSessionCanvas.noteMarkdown.stripExtensionFromDroppedFileTitle": {
           "type": "boolean",
           "default": false,

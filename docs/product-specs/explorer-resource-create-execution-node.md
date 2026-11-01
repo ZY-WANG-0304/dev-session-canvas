@@ -7,7 +7,7 @@
 开发者在 VSCode File Explorer 中浏览项目目录或文件时，常常已经明确知道下一条终端或 Agent 会话应该从哪个代码上下文开始工作。当前创建 `Terminal` / `Agent` 的入口默认使用 workspace 根目录，用户需要创建后再手动 `cd` 到目录或文件所在目录，这会带来三类摩擦：
 
 - 资源上下文已经在 Explorer 右键动作中表达，却没有传递到画布节点。
-- `Agent` 的启动 cwd 会影响项目配置、工具权限、文件活动和会话恢复，启动后再 `cd` 太晚。
+  - `Agent` 的启动 cwd 会影响项目配置、工具权限和会话恢复，启动后再 `cd` 太晚。
 - 多根 workspace 或较深目录结构中，用户难以从画布上看出某个 Agent 实际负责哪个目录上下文。
 
 ## 2. 目标用户
@@ -45,7 +45,7 @@
 - Agent 创建：
   - 创建前 provider、preset 和 custom command 选择复用现有 Agent Quick Input 与校验规则。
   - 新 Agent 节点的 `metadata.agent.cwd` 写入目标 cwd。
-  - 首次自动启动、后续新建会话、恢复原会话、Agent CLI resolver、文件活动和 diagnostic 都以该 cwd 为准。
+  - 首次自动启动、后续新建会话、恢复原会话、Agent CLI resolver 和 diagnostic 都以该 cwd 为准。
   - Agent 标题栏把 `cwdLabel` 与启动命令拆成两行：`cwdLabel` 位于标题上方，启动命令仍位于标题下方副标题；完整 cwd 与完整启动命令分别跟随各自文本的 hover title。
   - 侧栏节点列表中的 Agent 第二行显示 `cwdLabel · provider · 状态`；Terminal / Note 等其他节点不增加 cwdLabel。
 - 落点与画布打开：

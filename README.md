@@ -94,7 +94,6 @@ This README keeps the comparison user-facing and brief. The full technical check
 | Fork | ✅ Native | ✅ Native |
 | Session history | ✅ Workspace | ✅ Workspace |
 | Notifications | ✅ Signals + errors | ✅ Signals + exits |
-| File activity | — | ✅ Hooks |
 | Notable limit | Windows history scroll | - |
 
 ## Project Status
@@ -158,14 +157,14 @@ For more complete instructions on source development, `Remote SSH` debugging, an
 - `Virtual Workspace` is not supported.
 - The public `Preview` distribution path is intended to consolidate around `Visual Studio Marketplace` with same-version `Open VSX` mirroring. `0.26.0` remains the last published baseline while Visual Studio Marketplace visibility remains deferred; `0.27.0` keeps the same release-day completion gate unless VSM visibility recovers, and future release-day publication still requires manual execution and review.
 - Persistent recovery depends on the setting and backend. Supervisor crashes, machine restarts, and power loss do not guarantee recovery of the original process or terminal history. Existing live sessions retain their original binding. Snapshot-only processes do not survive Host lifecycle boundaries, and cross-version data rollback is not guaranteed.
-- Directed current-node Fork placement has automated geometry and interaction coverage, but final visual review of layer spacing and `fork` labels across panel and editor surfaces is still pending. Automatic File nodes still select positions from an estimated footprint that may be narrower than their rendered path label.
+- Directed current-node Fork placement has automated geometry and interaction coverage, but final visual review of layer spacing and `fork` labels across panel and editor surfaces is still pending.
 - PNG execution links have real VS Code Host coverage, while GIF / MP4 use the same native opener without separate real-host fixtures. A resolved `vscode.open` command only confirms editor-service acceptance, not final model load success.
 - Resize coalescing has Webview regression and trusted Host smoke evidence, but still needs manual journal review with real Codex / Claude TUI processes. Multi-touch across different nodes or Pane Gallery surfaces is not currently supported.
 - Declared 90,000-line exit completion and real Agent reload paths have targeted validation, without arbitrary-concurrency or output-volume guarantees. Resources scale with active sessions, terminal size, and scrollback; there is no fixed total memory/disk cap or zero-latency recovery.
 - Template Marketplace remains a Preview capability. It may require network access to `https://dscanvas.dev`, GitHub authentication for write actions, and production catalog data created through the marketplace or a controlled operations flow.
 - The `Remote SSH` main path is validated and usable, and it remains the most strongly validated recommended path. Linux, macOS, and Windows local main paths also have functional validation now, but Windows still has a known limitation where embedded `Codex` history cannot page upward.
 - `Note` Markdown preview does not support raw HTML passthrough, arbitrary link schemes, file links outside the current workspace, directory targets, or rich-text block editing.
-- Templates currently save static layout and configuration only; they do not save running sessions, terminal output, file activity, thumbnails, cloud sync, or template history.
+- Templates currently save static layout and configuration only; they do not save running sessions, terminal output, thumbnails, cloud sync, or template history.
 - The first execution-terminal copy / paste shortcut release does not read custom user keybindings, and it does not cover Linux selection clipboard, right-click copyPaste, or HTML rich-text copying.
 - The sidebar `Session History` list only shows `Codex` / `Claude Code` records that can be explicitly attributed to the current workspace; older sessions without working-directory metadata are skipped conservatively.
 - If the machine does not have a usable `codex` or `claude` CLI, `Agent` nodes cannot provide the full experience.

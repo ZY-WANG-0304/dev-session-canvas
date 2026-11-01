@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 const mainWebviewStyles = await readText('extensions/vscode/dev-session-canvas/src/webview/styles.css');
 const mainWebviewSource = await readText('extensions/vscode/dev-session-canvas/src/webview/main.tsx');
 const statusComponentSources = await Promise.all(
-  ['canvasNodeChrome', 'fileNoteNodes', 'paneGallerySurface'].map(async (name) => ({
+  ['canvasNodeChrome', 'paneGallerySurface'].map(async (name) => ({
     name,
     source: await readText(`extensions/vscode/dev-session-canvas/src/webview/${name}.tsx`)
   }))
@@ -232,23 +232,6 @@ assert.match(
   noteStatusFunction,
   /node\.status === 'ready'[\s\S]*?localizedCanvasStatusLabel\('status\.notePlain'\)/u,
   'Embedded ready notes should use the plain Note label id.'
-);
-
-const fileAccessStyles = extractCssRange(mainWebviewStyles, '.file-access-badge', '.file-list-tree');
-assert.match(
-  fileAccessStyles,
-  /--file-access-fg:\s*var\(--vscode-editor-foreground\);/u,
-  'File access badges should use theme foreground as their default readable text color.'
-);
-assert.match(
-  fileAccessStyles,
-  /--file-access-accent:\s*var\(--vscode-notificationsInfoIcon-foreground,\s*var\(--vscode-focusBorder\)\);/u,
-  'Read access badge should derive its accent from VS Code info/focus tokens.'
-);
-assert.doesNotMatch(
-  fileAccessStyles,
-  /#[0-9A-Fa-f]{3,8}/u,
-  'File access badges and indicators should not use fixed hex colors.'
 );
 
 const agentRunningTitlelineKeyframes = extractCssRange(

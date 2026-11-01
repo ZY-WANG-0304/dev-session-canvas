@@ -61,7 +61,7 @@ export async function createLifecycleHost(context, { label, runtimePersistenceEn
   const posted = [];
   const diagnostics = [];
   const workspaceState = new Map();
-  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled, filesFeatureEnabled: false };
+  const configuration = { defaultSurface: 'editor', runtimePersistenceEnabled };
   const storage = path.join(directory, 'workspace-storage');
   const nodeId = 's12-terminal';
   // Keep the actual business methods; only VS Code services and launch configuration are controlled.
@@ -81,17 +81,16 @@ export async function createLifecycleHost(context, { label, runtimePersistenceEn
     executionPerformanceDiagnostics: [],
     pendingTerminalInitialInputs: new Map(), pendingTerminalInitialInputDispatches: new Map(),
     pendingTerminalProjectionRefreshes: new Map(), scheduledExecutionOutputPosts: new Map(),
-    agentFileActivitySessions: new Map(), terminalReadRelay: new RuntimeTerminalReadRelay(),
+    terminalReadRelay: new RuntimeTerminalReadRelay(),
     terminalProjectionRefreshScheduler: new TerminalProjectionRefreshScheduler({ intervalMs: 10000, spreadMs: 2000 }),
     activeSurface: undefined, surfaceLifecycle: {},
     state: { version: 1, updatedAt: new Date().toISOString(), nextGroupSequence: 1,
       nodes: [{ id: nodeId, kind: 'terminal', title: 'S12 Terminal', status: 'idle',
         position: { x: 10, y: 20 }, size: { width: 640, height: 360 }, metadata: {} }],
-      edges: [], groups: [], fileReferences: [], suppressedFileActivityEdgeIds: [],
-      suppressedAutomaticFileArtifactNodeIds: [] },
+      edges: [], groups: [] },
     rawExtensionStoragePath: storage, storageRecoverySelection: { sourcePath: storage, writePath: storage },
     appliedStartupConfiguration: configuration, readStartupConfiguration: () => configuration,
-    fileFilterState: { includeGlobs: [], excludeGlobs: [] }, canvasTemplateInitialized: true,
+    canvasTemplateInitialized: true,
     pendingWorkspaceStateUpdate: Promise.resolve(), lastLoadedRootLocalStates: [],
     getMultiRootWorkspaceFoldersForComposition: () => [{ path: directory, name: 's12' }],
     getExecutionNodeCwd: () => spec.cwd,
