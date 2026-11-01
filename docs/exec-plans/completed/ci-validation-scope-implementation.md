@@ -1,0 +1,96 @@
+# 实现合并 CI 的范围选择、验收复用与非阻塞观察
+
+本 ExecPlan 按 `docs/PLANS.md` 维护；工作目录 `/tmp/dsc-ci-validation-scope`，分支 `docs-ci-validation-scope`，在 PR #352 中完成两个阶段。基线 `main@ee4d367c`，此前设计与用户对低概率缺陷的处理决定见 `docs/design-docs/ci-validation-scope-policy.md`。
+
+## 目标与全局图景
+
+普通文档只运行轻量门禁；已验收代码仅补文档时验证原来源后复用结果；产品改动通过模块输入和任务依赖决定矩阵；具名间歇检查继续观察但不等待其成功才能合并。正式 release-pr / release-tag 保留完整精确输入验收。两个阶段一并交付，不将模块分级留到下一次。
+
+## 进度
+
+- [x] (2026-11-01) 用户授权同时实施两个阶段，确认最新 main 与既有草稿。
+- [x] (2026-11-01) 实现模块影响分类、文档消费者清单、任务依赖闭包和文档验证。
+- [x] (2026-11-01) 实现普通 PR 的验收复用证明与稳定门禁接线。
+- [x] (2026-11-01) 实现具名观察策略、独立运行及首败/统计报告。
+- [x] (2026-11-01) 完成 20 项定向反例、现有合同与工作流检查；完整本地合同 202/203，原进程期限错误类型首败作为非阻塞后续问题登记。
+- [x] (2026-11-01) 同一 PR 的完整 CI 277/277 通过；纯文档、模块选测与代码后补文档三个真实 Actions 对照通过，临时 PR/分支/worktree 已清理。
+
+## 意外与发现
+
+当前 task.required=false 仍会被整体 failed/notRun 聚合阻断；仅设置 continue-on-error 无效。源码和候选构建目前消费六平台 native 资产，任务裁剪必须补齐依赖，不能只关闭 matrix。已有 gate plan 与 provenance 强绑定真实 run/input；复用需要新证明类型，旧执行回执保持原样。
+
+## 决策记录
+
+2026-11-01：沿现有可重用 ci-validation 的任务执行和来源核验增加受控选择模式，保留旧计划兼容及发布完整模式。新增普通合并控制层处理纯文档与复用，独立观察流程不进入 required 的等待链。模块路径未知或选测策略本身变化回退全范围；选择任务后求实际依赖闭包，后续测试验证未遗漏消费者。
+
+## 结果与复盘
+
+三个主实现与模块选择已完成，20 项定向反例和 workflow 检查通过。早期完整合同 198/198；补齐五项测试后的完整运行 202/203，原进程退出期限反例的 AbortError 文本不匹配已登记非阻塞跟踪，未删除首败。纯文档、市场模块与文档追加复用三个真实对照均通过；正式 PR 基于 main e0527132 的完整 CI 277/277 通过，远端完整合同 203/203。全局 CSS 的消费者包含插件 Host，已保守保留而非按 suite 名称猜测裁剪。
+
+## 上下文与定向
+
+`resolve-plan.mjs` 冻结输入及任务；`catalog.mjs` 保留完整目录；新增范围模块负责路径到模块/任务选择。`ci-validation.yml` 根据非空矩阵调度。新增合并控制脚本与 `release-preflight.yml` 负责最新输入、文档路径和历史验收复用；现有 `check-acceptance.mjs` 保留旧 SHA 来源检查。观察策略按具体 suite 和失败证据登记，独立 workflow 使用相同执行器保留报告。
+
+## 工作计划与里程碑
+
+首先落地范围分类与消费者映射，用代表性源代码、文档、未知路径、依赖和发布模式证明任务集合及闭包正确。接着实现轻量文档与复用流程，真实验证失败/过期/错来源不能复用。然后接入观察执行与报告，验证 required 任务不会等待它、首败不会被重跑掩盖。最后运行现有门禁/发布合同和新增反例，更新正式设计并在同 PR 中完成 CI。
+
+## 具体步骤
+
+在工作目录执行新增定向 Node 测试、`npm run test:ci-gates` 及 release/workflow 合同，使用已锁定依赖；actionlint 验证所有改动 workflow。正式推送前 fetch/rebase 最新 origin/main。测试日志保存到 `/tmp/dsc-ci-scope-*.log`，重要结论同步到仓库文档。
+
+## 验证与验收
+
+纯文档无产品矩阵，目标/base 变化或原失败拒绝复用，改分类器不能自选轻量路径，路径重命名/类型变化与文档消费者不被排除；选择任务包含生产与工件依赖。所有完整发布 task 保留。观察失败显示真实状态且独立于 required 结果；具体低概率产品缺陷可登记后续修复，不将示例写成实际故障。实际 CI 必须针对最新 head，不用旧结果冒充；文档复用另记录原 run。
+
+## 幂等性与恢复
+
+隔离工作树不触碰用户未跟踪内容。不修改分支保护、不发布产品、不自动合并。新增策略失效时回退完整所需验证，原 artifact/回执不改写。文档检查和受控测试不产生对外发布资产。
+
+## 证据与备注
+
+旧两轮 277 jobs 的对照保留于 `docs/references/ci-validation-scope/`，实施证据随进展更新。
+
+## 接口与依赖
+
+沿用 Node、GitHub REST、既有 ZIP/来源校验；文档分类与快速检查优先仅用 Node 内置模块。复用证据是普通合并结果，不可封装为正式 release-tag 批次。观察任务策略必须具名、有证据和维护责任，不做整组通配忽略。
+
+修订记录：2026-11-01 根据用户一次完成两阶段的授权创建实施计划。
+
+修订记录：2026-11-01 新增真实 Git 原完整运行后仅补文档的复用例外；新选测策略仍不能给自身减少任务。完整合同 198/198、最终定向 20/20 和 workflow/preflight 检查通过，准备远端对照。
+
+修订记录：2026-11-01 补齐只改索引时对受影响设计状态的校验，以及删除设计必须清理索引的反例；不扫描未改动的历史索引条目。定向 20/20 通过。
+
+修订记录：2026-11-01 目标 main 合入 PR #351（`e052713255825d4ba62dc4fe1c51ca6d13880b96`），rebase 时保留双方 core-beliefs 内容。最后一次完整本地合同为 202/203，原进程退出期限反例收到 AbortError 而非预期错误文本，原失败作为非阻塞后续问题登记技术债，未重跑刷绿。纯文档实跑 41269707882 仅两个 job；市场模块 41269710672 为 19 个实际 job（15 业务 + 4 控制），随后仅补文档的 41270501557 为两个 job，63 秒运行跨度，并在独立核验后明确引用原 acceptance 工件 13068583921。
+
+## 真实 Actions 对照原始身份
+
+固定基线 `4da60dc969d35217e535f6c3c3957e360c662bda`，临时 PR #353/#354 不合并。以下 merge-verification 从真实 ZIP 下载，先比对 GitHub API digest，再读取内容。所有运行均 attempt 1，status passed；计数只含实际启动的 job，非 skipped 占位。
+
+docs：run `41269707882`；head `253aa17a666d192deec61a298eb474a80872596a`；input `62b8f260e8ab97062c55d512a0b5b30c359ddb91`；checked-acceptance artifact `13068428687`，ZIP SHA256 `3cea173a17fbeae11e394289988c263b1bf9ee909819380155cb9fbebcfcd670`。实际 2 jobs，首个启动至最后完成 46 秒，累计 job 时间 37 秒；execution `not-applicable`。
+
+code：run `41269710672`；head `dca8337c3c30119d8c8b13e84fc9059d5b076909`；input `becdeed77ee449e05136cbaee0206d51136e09ad`；checked-acceptance artifact `13069201673`，ZIP SHA256 `3fa0c73592902a509deeb60b14f84e1d59fcd8f853f43939ccc048440eacc719`。实际 19 jobs，首个启动至最后完成 591 秒，累计 job 时间 1158 秒；execution `executed`。
+
+reuse：run `41270501557`；head `1f1b8fbb70ff9e08351935ac0c2c659c7606955d`；input `b5c4c808c07d25db21539b7408d1b623b89873ce`；checked-acceptance artifact `13068404133`，ZIP SHA256 `0675fbb243ac4e9b14c7e59467abcac42f190b2ac6ff0371aebb384f9f51bdd8`。实际 2 jobs，首个启动至最后完成 63 秒，累计 job 时间 61 秒；execution `reused`。
+
+复用结果 sourceRun 为 41269710672/attempt 1，原 acceptance artifact 13068583921（原 ZIP SHA256 `6531e969bfa58690ddff3d5a9d9123ce2fa827c8fd4007017e27922986645435`）；有效输入摘要 `ed18a89225a78e3f5be00fc22c5fe1b109af0d4adfd92211c4b5ac343dbc3987`。未改原 acceptance 或 VSIX 的 SHA。2026-11-01 对照结束后关闭 PR 并按核验过的 head 删除源分支与基线分支，移除干净临时 worktree。
+
+## 正式 PR 验收及交付结果
+
+2026-11-01：PR #352 完整运行 41270750500/attempt 1 成功，277 个实际 job 全部成功，362 tasks，最后的 Verify release contract job 124749990012 通过。base `e052713255825d4ba62dc4fe1c51ca6d13880b96`，head `24a78a779c5f8bf2d454ec0ad6b3979f5ac22ab4`，预合并 input `c331f75ced959a2472cc9604ceee9a42823ab3d8`。checked-acceptance artifact 13069674393 的 ZIP SHA256 为 `22cea1f2103621ab95c222419093777d6b64fd5e7714eca458857edcc4500764`，下载后比对通过；内部 merge-verification 明确 execution executed、tasks 362。原 gate-acceptance artifact 13069099950 的 API ZIP digest 为 `8f91a857bc1ac0a1682088242e21e8ce6e9d1c881941fd51448a99b26eecc23d`。
+
+regression shard-1 job 124743016743 日志确认最新输入完整合同 tests 203 / pass 203 / fail 0；原本地 202/203 的 AbortError 首败仍在技术债中保留，没有修改原测试、扩大超时或以此宣称根因修复。20 项定向反例在 rebase 后通过；三份 workflow actionlint 和发布 preflight/workflow 合同通过。观察独立报告和首败保留通过受控测试；本轮真实独立观察只完成分类，尚未形成上线后的连续历史样本。
+
+两个阶段全部完成，设计、工作流、评审口径及剩余问题已同步。PR #352 保持开放供评审，未获本 PR 合并授权，未执行合并。文档收口提交后的当前 head 状态以该 PR Checks 中的独立门禁为准；reuse 必须引用上述原始完整运行，不能冒称业务任务在新文档 SHA 执行。
+
+修订记录：2026-11-01 完整远端验收通过后归档实施计划，记录实测收益、来源身份、观察样本限制及本地首败后续责任。
+
+### Review 发现的消费者遗漏修复（2026-11-01）
+
+独立 review 在 head e5dd8f83 确认两项确定性遗漏：`docs/UI.md` 缺少 `test:sidebar-list-colors` 消费者，notifier 侧栏源码缺少 `test:theme-color-tokens` 消费者。已在 `scope-policy.mjs` 补齐；notifier 业务 job 数仍为 27，新增合同进入已有 regression 分片。
+
+新增两个真实输入隔离反例：删除 UI 文档的 sidebar list token 契约时主题测试通过、侧栏颜色测试拒绝；将 notifier 侧栏背景替换为固定白色时主题测试拒绝。测试同时断言对应失败消费者必须被选中。两例在旧策略下分别因消费者漏选失败，修复后定向 22/22 通过。此前的完整 CI 与文档复用结果仍属于旧策略输入，修复 head 必须重新执行所需验收。
+
+修订记录：2026-11-01 按独立 review 补齐两个直接消费者，以真实输入变异证明旧策略漏检及修复后的选测覆盖。
+
+本轮完整本地合同为 204/205：`test-gate-contracts.mjs:1698` 的 snapshot Host 反例预期 `/exit/`，实际从 `host-evidence.mjs:17` 收到 AbortError，cause TimeoutError；这是既有进程退出期限错误契约问题的新受影响断言，未改本轮两项消费者修复的结论。原日志 `/tmp/dsc-ci-consumer-contracts.log` 保留，未重跑刷绿。定向 22/22；原独立 reviewer 复核两项 finding 均解决、未发现本次修复新增确定性问题。修复后的远端 CI 需针对新 head 单独核验，旧 277/277 不代证。

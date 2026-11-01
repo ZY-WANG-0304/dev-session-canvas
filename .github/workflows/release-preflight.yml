@@ -20,11 +20,13 @@ jobs:
     name: Resolve validation input
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     outputs:
       input_sha: ${{ steps.input.outputs.input_sha }}
       base_sha: ${{ steps.input.outputs.base_sha }}
       head_sha: ${{ steps.input.outputs.head_sha }}
+      route: ${{ steps.control.outputs.route }}
+      selection: ${{ steps.control.outputs.selection }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,9 +58,43 @@ jobs:
             echo "head_sha=$head_sha"
           } >> "$GITHUB_OUTPUT"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+      - name: Inspect merge scope
+        id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_INPUT: ${{ steps.input.outputs.input_sha }}
+          GATE_BASE: ${{ steps.input.outputs.base_sha }}
+          GATE_HEAD: ${{ steps.input.outputs.head_sha }}
+        run: node scripts/gates/merge-control.mjs --command inspect --input "$GATE_INPUT" --base "$GATE_BASE" --head "$GATE_HEAD" --output merge-control
+      - name: Install verifier only for business validation
+        if: ${{ steps.inspect.outputs.dependencies == 'true' }}
+        run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output gate-results -- npm ci --no-audit --no-fund
+      - name: Plan execution or verified reuse
+        id: control
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_INPUT: ${{ steps.input.outputs.input_sha }}
+          GATE_BASE: ${{ steps.input.outputs.base_sha }}
+          GATE_HEAD: ${{ steps.input.outputs.head_sha }}
+          GATE_PR: ${{ github.event.pull_request.number }}
+        run: |
+          args=(--command prepare --input "$GATE_INPUT" --base "$GATE_BASE" --head "$GATE_HEAD" --output merge-control)
+          if [[ -n "$GATE_PR" ]]; then args+=(--pr "$GATE_PR"); fi
+          node scripts/gates/merge-control.mjs "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merge-control-${{ github.run_id }}-${{ github.run_attempt }}
+          path: merge-control/merge-control.json
+          if-no-files-found: error
+          retention-days: 14
+
   validation:
     name: Validate immutable input
     needs: resolve-input
+    if: ${{ needs.resolve-input.outputs.route == 'execute' }}
     uses: ./.github/workflows/ci-validation.yml
     secrets:
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -67,25 +103,31 @@ jobs:
       base_sha: ${{ needs.resolve-input.outputs.base_sha }}
       head_sha: ${{ needs.resolve-input.outputs.head_sha }}
       mode: pr
+      selection: ${{ needs.resolve-input.outputs.selection }}
 
   verify-release-contract:
     name: Verify release contract
     needs: [resolve-input, validation]
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.resolve-input.outputs.input_sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.3
-          cache: npm
-          cache-dependency-path: package-lock.json
+          # The documentation path installs no workspace dependencies.
       - name: Install acceptance verifier
+        if: ${{ needs.resolve-input.outputs.route != 'documentation' }}
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output gate-results -- npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: merge-control-${{ github.run_id }}-${{ github.run_attempt }}
+          path: merge-control
       - name: Require independently verified complete acceptance
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,8 +138,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$RESOLVE_RESULT" = success
-          run_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .head_sha)"
-          node scripts/gates/check-acceptance.mjs --sha "$GATE_INPUT" --base "$GATE_BASE" --head "$GATE_HEAD" --run-head "$run_head" --output checked-acceptance
+          node scripts/gates/merge-control.mjs --command verify --control merge-control/merge-control.json --output checked-acceptance
       - name: Preserve independent acceptance check
         if: ${{ always() }}
         uses: actions/upload-artifact@v4

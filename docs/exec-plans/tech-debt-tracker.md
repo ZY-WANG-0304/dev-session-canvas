@@ -1053,3 +1053,35 @@ main 已启用活动 ruleset，目标为默认分支：要求 PR、一次审批�
 影响限于 Release notes 的临时 tag 状态表述，不改变正式版本 tag 指向、产品身份、VSIX 字节或渠道交付结果。当前查验临时 tag 应以 GitHub 实际 ref 和最终状态证据为准，不能只依据该行文案。本次按非阻塞历史问题登记，未将其纳入两条流水线改造的实现范围。
 
 建议在下一次发布收尾工具修复时单独处理：先获得清理后的实际状态，再生成与最终状态一致的 notes，并覆盖不存在、保留和删除失败的情况；相关入口为 `release-delivery.mjs::releaseManifest/finalizeRelease`、`write-github-release-notes.mjs` 与 `scripts/test/test-release-delivery.mjs`。设计与验收边界见 [发布解耦设计](../design-docs/release-product-decoupling.md)；此记录不表示修复已完成或已有修复 PR。
+
+
+## 合并 CI 文档路径过重与缺少显式验证复用（2026-11-01）
+
+PR #350 的代码 CI 通过后仅补四份文档，第二轮 run `41229901129` 仍执行 277 jobs、观察跨度约 29.18 分钟。当前按完整 PR diff 分类是正确的安全边界，但缺少相同有效输入的复用证明；此外 `taskCatalog` 对纯文档仍无条件安排 90 tasks / 8 个业务 jobs，包括前端功能和视觉验证，增加不必要的等待与 runner 消耗。
+
+建议下一轮 CI 优化先实施普通文档轻量检查和同 base、原完整成功运行的显式复用验证，保持稳定必需检查、未知输入回退及发布完整验收。不能只比较最后一个 commit，或删除 input SHA / producer 断言。`docs/` 内存在测试和门禁真实输入，白名单需完整消费者审计；构建会写来源 SHA，原结果复用不等于新 SHA 的包已构建验收。当前运行策略未修改，不能依据本记录手动省掉 required jobs。
+
+范围、任务矩阵、实际证据与反例要求见 [设计](../design-docs/ci-validation-scope-policy.md) 和 [已完成的设计计划](completed/ci-validation-scope-policy.md)。该计划完成的是研究，轻量路径、证明格式和模块依赖裁剪均尚未实施。
+
+
+### 合并 CI 的间歇失败观察机制（2026-11-01 补充）
+
+用户明确要求概率性通过/失败的问题应持续体现、默认不阻塞普通合并。当前 review 规则已有非阻塞登记原则，但 `verify-result.mjs` 仍统一聚合绝大多数失败，尚无具名间歇检查独立执行与报告的机制；单设 required=false 无法解决。既有 Host ready、依赖网络及平台观察差异等记录保留原证据和未归因状态，不在本次统一宣称已确认为测试偶现或已修复。
+
+下一轮 CI 优化应实现 required/observation 分离、具体任务/平台/失败特征映射、首败与首轮失败率报告及责任跟踪。观察检查不进入合并等待链，不靠复跑刷绿，新的失败范围须具名归类，不能通配豁免同 job 其他失败或必需证据缺失。具名项的负责人、复核时间与恢复条件需随实际迁移登记；此设计记录不等于已降级现有任务。完整边界和验收反例见 [任务范围设计](../design-docs/ci-validation-scope-policy.md)。
+
+2026-11-01 用户补充决定：包括讨论中已确认的低概率保存竞态/数据丢失，也允许登记后先合入、后续专门定位修复；不因“已确认”或“当前 PR 引入”自动阻塞。实际发生时记录缺陷证据、影响、负责人与后续任务，不将其伪装为测试噪音。本次仅讨论处理原则，没有新发现或登记一项实际数据丢失事故。设计及 CODE_REVIEW 已同步。
+
+### 两阶段实现接续（2026-11-01）
+
+PR #352 已实现普通文档两控制 job、同 base 原完整验收复用、模块消费者和依赖闭包选测，以及三个具名 Host 间歇用例的独立观察与首败报告；前文“尚未实施”为设计阶段状态。远端完整合同 203/203、定向 20/20 与 workflow/preflight 检查通过；正式 run 41270750500 为 277/277 jobs，三个临时 Actions 对照通过。纯文档为两个门禁 job，市场代码为 19，代码后补文档复用为两个，详见实施计划。本地一次 202/203 的首败仍按下节跟踪。全局 CSS 保留所有插件 Host 消费者，六平台 native 输入按实际构建依赖保留；未知路径不做猜测裁剪。首次修改 gate 的 PR 必须完整执行，之后仅补文档可复用相同完整结果。三个观察项由 repository-maintainers 跟进，复核日期 2026-11-15，原具体问题仍未修复。实现计划见 `docs/exec-plans/completed/ci-validation-scope-implementation.md`。
+
+### 进程退出期限合同的错误类型不稳定（2026-11-01）
+
+PR #352 本地完整合同在 head `d8d463c09d0b4f026161233119687208fdf8eb30`、Linux / Node v25.6.0 下为 202/203；`scripts/test/test-gate-contracts.mjs:116` 的原进程仍存活反例期望 `deadline exhausted|unconfirmed`，实际从 `host-evidence.mjs:17` 的带期限 `/proc/<pid>/stat` 读取收到 `AbortError: The operation was aborted`，cause 为 TimeoutError。该例此前完整合同通过；本次原失败保留，不以另一次绿色覆盖。当前证据证明拒绝错误文本与断言不一致，没有证明进程误判为已退出或产品数据丢失；具体触发时序与跨 Node 版本范围待定位。
+
+按用户决定登记为后续专门处理的非阻塞问题。负责人 repository-maintainers，复核日期 2026-11-15；后续任务是受控覆盖截止到达和 I/O 取消的两种拒绝路径，统一错误契约并保留原期限与实际进程存活/退出断言。完整本地日志 `/tmp/dsc-ci-scope-contracts-final.log`；原关键错误及远端结果随 [实施计划](completed/ci-validation-scope-implementation.md) 收口。本次不修改该测试或将整个回归分片设为可忽略。
+
+远端后续证据：run 41270750500 的 regression shard-1 job 124743016743 在 CI 的 Node 22.23.3 环境完整合同 203/203 通过，该具名反例本轮通过。此证据只限定本轮结果，不证明 Node 版本是根因，不关闭上述时序/错误契约后续任务。
+
+2026-11-01 消费者映射 review 修复验证补充：完整本地合同 204/205；同一 `processIdentity` 期限取消路径在 `test-gate-contracts.mjs:1698` 的 snapshot Host 反例再次返回 AbortError/TimeoutError，而断言预期 `/exit/`。新增两项选测反例均通过（定向 22/22）。扩大本条后续任务到该断言，仍由 repository-maintainers 于 2026-11-15 复核；未据该文本差异推断退出误判或产品数据丢失。原始日志 `/tmp/dsc-ci-consumer-contracts.log`，不重跑覆盖本轮首败。

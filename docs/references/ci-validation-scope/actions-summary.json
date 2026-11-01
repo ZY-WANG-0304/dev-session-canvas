@@ -1,0 +1,307 @@
+{
+  "measurement": "API created_at to updated_at is observed wall span; sum of job started_at to completed_at is elapsed job time, not billing or predicted savings.",
+  "runs": [
+    {
+      "runID": 41226378995,
+      "attempt": 1,
+      "headSHA": "000757e92fbac6d1a82cc7ea78c623b3e549fb48",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41226378995",
+      "createdAt": "2026-10-31T17:49:24Z",
+      "updatedAt": "2026-10-31T18:16:06Z",
+      "observedRunWallSeconds": 1602.0,
+      "jobs": 277,
+      "elapsedJobSeconds": 18952.0,
+      "groups": {
+        "Resolve validation input": {
+          "jobs": 1,
+          "elapsedJobSeconds": 10.0,
+          "maxJobSeconds": 10.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "resolve": {
+          "jobs": 1,
+          "elapsedJobSeconds": 14.0,
+          "maxJobSeconds": 14.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "frontend-build": {
+          "jobs": 1,
+          "elapsedJobSeconds": 29.0,
+          "maxJobSeconds": 29.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "regression": {
+          "jobs": 3,
+          "elapsedJobSeconds": 572.0,
+          "maxJobSeconds": 325.0,
+          "conclusions": {
+            "success": 3
+          }
+        },
+        "input-contract": {
+          "jobs": 1,
+          "elapsedJobSeconds": 21.0,
+          "maxJobSeconds": 21.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "native-assets": {
+          "jobs": 6,
+          "elapsedJobSeconds": 715.0,
+          "maxJobSeconds": 342.0,
+          "conclusions": {
+            "success": 6
+          }
+        },
+        "marketplace-browser": {
+          "jobs": 1,
+          "elapsedJobSeconds": 56.0,
+          "maxJobSeconds": 56.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "webview-visual": {
+          "jobs": 1,
+          "elapsedJobSeconds": 41.0,
+          "maxJobSeconds": 41.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "webview-function": {
+          "jobs": 1,
+          "elapsedJobSeconds": 578.0,
+          "maxJobSeconds": 578.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "package-clean": {
+          "jobs": 1,
+          "elapsedJobSeconds": 66.0,
+          "maxJobSeconds": 66.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "source-build": {
+          "jobs": 1,
+          "elapsedJobSeconds": 28.0,
+          "maxJobSeconds": 28.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "marketplace-host": {
+          "jobs": 2,
+          "elapsedJobSeconds": 120.0,
+          "maxJobSeconds": 67.0,
+          "conclusions": {
+            "success": 2
+          }
+        },
+        "source-host": {
+          "jobs": 133,
+          "elapsedJobSeconds": 9244.0,
+          "maxJobSeconds": 131.0,
+          "conclusions": {
+            "success": 133
+          }
+        },
+        "installed-pair": {
+          "jobs": 3,
+          "elapsedJobSeconds": 455.0,
+          "maxJobSeconds": 284.0,
+          "conclusions": {
+            "success": 3
+          }
+        },
+        "packaged-host": {
+          "jobs": 119,
+          "elapsedJobSeconds": 6792.0,
+          "maxJobSeconds": 87.0,
+          "conclusions": {
+            "success": 119
+          }
+        },
+        "verify-result": {
+          "jobs": 1,
+          "elapsedJobSeconds": 178.0,
+          "maxJobSeconds": 178.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "Verify release contract": {
+          "jobs": 1,
+          "elapsedJobSeconds": 33.0,
+          "maxJobSeconds": 33.0,
+          "conclusions": {
+            "success": 1
+          }
+        }
+      }
+    },
+    {
+      "runID": 41229901129,
+      "attempt": 1,
+      "headSHA": "6667623658c0bbfaa41c7e79476c675912929bc8",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41229901129",
+      "createdAt": "2026-10-31T18:32:20Z",
+      "updatedAt": "2026-10-31T19:01:31Z",
+      "observedRunWallSeconds": 1751.0,
+      "jobs": 277,
+      "elapsedJobSeconds": 19239.0,
+      "groups": {
+        "Resolve validation input": {
+          "jobs": 1,
+          "elapsedJobSeconds": 9.0,
+          "maxJobSeconds": 9.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "resolve": {
+          "jobs": 1,
+          "elapsedJobSeconds": 16.0,
+          "maxJobSeconds": 16.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "regression": {
+          "jobs": 3,
+          "elapsedJobSeconds": 543.0,
+          "maxJobSeconds": 334.0,
+          "conclusions": {
+            "success": 3
+          }
+        },
+        "frontend-build": {
+          "jobs": 1,
+          "elapsedJobSeconds": 33.0,
+          "maxJobSeconds": 33.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "input-contract": {
+          "jobs": 1,
+          "elapsedJobSeconds": 28.0,
+          "maxJobSeconds": 28.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "native-assets": {
+          "jobs": 6,
+          "elapsedJobSeconds": 735.0,
+          "maxJobSeconds": 298.0,
+          "conclusions": {
+            "success": 6
+          }
+        },
+        "webview-function": {
+          "jobs": 1,
+          "elapsedJobSeconds": 602.0,
+          "maxJobSeconds": 602.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "marketplace-browser": {
+          "jobs": 1,
+          "elapsedJobSeconds": 55.0,
+          "maxJobSeconds": 55.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "webview-visual": {
+          "jobs": 1,
+          "elapsedJobSeconds": 52.0,
+          "maxJobSeconds": 52.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "package-clean": {
+          "jobs": 1,
+          "elapsedJobSeconds": 73.0,
+          "maxJobSeconds": 73.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "source-build": {
+          "jobs": 1,
+          "elapsedJobSeconds": 39.0,
+          "maxJobSeconds": 39.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "marketplace-host": {
+          "jobs": 2,
+          "elapsedJobSeconds": 148.0,
+          "maxJobSeconds": 88.0,
+          "conclusions": {
+            "success": 2
+          }
+        },
+        "source-host": {
+          "jobs": 133,
+          "elapsedJobSeconds": 9479.0,
+          "maxJobSeconds": 140.0,
+          "conclusions": {
+            "success": 133
+          }
+        },
+        "installed-pair": {
+          "jobs": 3,
+          "elapsedJobSeconds": 341.0,
+          "maxJobSeconds": 179.0,
+          "conclusions": {
+            "success": 3
+          }
+        },
+        "packaged-host": {
+          "jobs": 119,
+          "elapsedJobSeconds": 6872.0,
+          "maxJobSeconds": 212.0,
+          "conclusions": {
+            "success": 119
+          }
+        },
+        "verify-result": {
+          "jobs": 1,
+          "elapsedJobSeconds": 179.0,
+          "maxJobSeconds": 179.0,
+          "conclusions": {
+            "success": 1
+          }
+        },
+        "Verify release contract": {
+          "jobs": 1,
+          "elapsedJobSeconds": 35.0,
+          "maxJobSeconds": 35.0,
+          "conclusions": {
+            "success": 1
+          }
+        }
+      }
+    }
+  ]
+}
