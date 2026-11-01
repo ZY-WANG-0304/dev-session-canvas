@@ -31,8 +31,7 @@ export async function prepareNotifierSmokeHostExtensions(options) {
       'l10n',
       'dist',
       'images',
-      'resources',
-      'scripts'
+      'resources'
     ]
   });
   await copyPathRecursive(path.join(options.projectRoot, 'node_modules'), path.join(mainSmokeHostRoot, 'node_modules'));

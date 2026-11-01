@@ -393,11 +393,6 @@
       "title": "agent treats CJK punctuation as a file-link boundary in Chinese prose"
     },
     {
-      "id": "a03daaf9564243b49609-2b8917cee96edf9b1c2e",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal file nodes keep a content-fitting minimum size when manually resized"
-    },
-    {
       "id": "a03daaf9564243b49609-2c6672d0833acfd8bf57",
       "file": "webview-harness.spec.mjs",
       "title": "terminal hydrates checkpoint and journal before applying ordered live terminal events"
@@ -441,11 +436,6 @@
       "id": "a03daaf9564243b49609-36884a81282a683afea9",
       "file": "webview-harness.spec.mjs",
       "title": "agent schedules delayed refresh after stale negative refresh is invalidated"
-    },
-    {
-      "id": "a03daaf9564243b49609-36d6f41640041100ca75",
-      "file": "webview-harness.spec.mjs",
-      "title": "file list nodes render entries and open clicked file entries through the host message"
     },
     {
       "id": "a03daaf9564243b49609-370b3bcb79679c6b1355",
@@ -563,11 +553,6 @@
       "title": "double-clicking note preview display math falls back to the math markdown source end"
     },
     {
-      "id": "a03daaf9564243b49609-444e62af4a6444c60c76",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal file nodes render only the primary label and open the target file through the host message"
-    },
-    {
       "id": "a03daaf9564243b49609-448eef5eaa5d9412fbeb",
       "file": "webview-harness.spec.mjs",
       "title": "canvas group title and action buttons only counter-scale while zooming out"
@@ -581,11 +566,6 @@
       "id": "a03daaf9564243b49609-46d07a073d03eb5282ab",
       "file": "webview-harness.spec.mjs",
       "title": "double-clicking triple emphasis maps after all delimiters"
-    },
-    {
-      "id": "a03daaf9564243b49609-47170bb51255be53034e",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal file list tree view supports explorer-style ordering and collapsible folders"
     },
     {
       "id": "a03daaf9564243b49609-4791c1638024b8ccaa8c",
@@ -683,11 +663,6 @@
       "title": "terminal delays coalesced negative file link refreshes after live output"
     },
     {
-      "id": "a03daaf9564243b49609-51c5bf039ef4197ac7b9",
-      "file": "webview-harness.spec.mjs",
-      "title": "file list nodes expose a delete button that posts deleteNode"
-    },
-    {
       "id": "a03daaf9564243b49609-51d6e0d4a83e06458a4b",
       "file": "webview-harness.spec.mjs",
       "title": "double-clicking group title input keeps the current viewport unchanged"
@@ -741,11 +716,6 @@
       "id": "a03daaf9564243b49609-5aa583cad8bde75a5a7f",
       "file": "webview-harness.spec.mjs",
       "title": "agent local output credit follows actual writes and cancels when the page unmounts"
-    },
-    {
-      "id": "a03daaf9564243b49609-5acf6b2db652ddf39e43",
-      "file": "webview-harness.spec.mjs",
-      "title": "smoke file clicks preserve repeated opens and public dragging in card view"
     },
     {
       "id": "a03daaf9564243b49609-5aec25cc2d42a6aec0bd",
@@ -888,11 +858,6 @@
       "title": "terminal keeps file-like words clickable across CJK punctuation boundaries"
     },
     {
-      "id": "a03daaf9564243b49609-6f1a91a0edfa854fe924",
-      "file": "webview-harness.spec.mjs",
-      "title": "selected file list nodes scroll their file list without zooming the canvas"
-    },
-    {
       "id": "a03daaf9564243b49609-6fd26bfd24c4d2c4acc2",
       "file": "webview-harness.spec.mjs",
       "title": "IME confirmation Enter does not submit or duplicate the title before explicit commit"
@@ -936,11 +901,6 @@
       "id": "a03daaf9564243b49609-72511049bc2e7c51d023",
       "file": "webview-harness.spec.mjs",
       "title": "double-clicking a scrolled note preview preserves the edit viewport around the target text"
-    },
-    {
-      "id": "a03daaf9564243b49609-737681facf19f216a4d7",
-      "file": "webview-harness.spec.mjs",
-      "title": "file activity edges expose the same toolbar actions as manual edges"
     },
     {
       "id": "a03daaf9564243b49609-738ea366aeeba3decb47",
@@ -1108,11 +1068,6 @@
       "title": "pane gallery overflowing thumbnail rails keep first and last roots reachable"
     },
     {
-      "id": "a03daaf9564243b49609-87ab475bb3de0bbdc9e9",
-      "file": "webview-harness.spec.mjs",
-      "title": "smoke file clicks reject invisible disabled and obstructed targets and emit one complete primary pointer click"
-    },
-    {
       "id": "a03daaf9564243b49609-88476bd0547ea392ad1a",
       "file": "webview-harness.spec.mjs",
       "title": "pane gallery keeps panes scrollable without fixed zoom floor and targets markdown drops"
@@ -1198,11 +1153,6 @@
       "title": "forked Agent nodes keep title actions readable before and after launch"
     },
     {
-      "id": "a03daaf9564243b49609-93af4a6c8b07f9173d10",
-      "file": "webview-harness.spec.mjs",
-      "title": "file list entries follow VS Code list hover, active selection, and inactive selection colors"
-    },
-    {
       "id": "a03daaf9564243b49609-9461a6d80f9ce6ea4cc2",
       "file": "webview-harness.spec.mjs",
       "title": "agent unstyled hard-wrapped file fragments are not guessed as one link"
@@ -1266,11 +1216,6 @@
       "id": "a03daaf9564243b49609-9aa4799d821fef255468",
       "file": "webview-harness.spec.mjs",
       "title": "terminal input flushes snapshot restore clipboard diagnostic suppression"
-    },
-    {
-      "id": "a03daaf9564243b49609-9ae02dc621ac6264d505",
-      "file": "webview-harness.spec.mjs",
-      "title": "file nodes do not add a hover overlay to their clickable surface"
     },
     {
       "id": "a03daaf9564243b49609-9b1946f53a117956c0e5",
@@ -1483,11 +1428,6 @@
       "title": "double-clicking multiple display math blocks falls back to each math markdown source end"
     },
     {
-      "id": "a03daaf9564243b49609-ab9b867828e494994852",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal path-only file nodes fit the label without reserving an empty trailing grid column"
-    },
-    {
       "id": "a03daaf9564243b49609-ac6b50e0d7fc93be72a6",
       "file": "webview-harness.spec.mjs",
       "title": "agent local sequence probe waits for the original projection and rejects a stale session or expired deadline"
@@ -1551,11 +1491,6 @@
       "id": "a03daaf9564243b49609-b4dec42c370c551bfa86",
       "file": "webview-harness.spec.mjs",
       "title": "canvas shell spans panel horizontal edges for single-root and multi-root layouts"
-    },
-    {
-      "id": "a03daaf9564243b49609-b55ff6c0850155158552",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal file nodes keep a compact, tight border around the rendered content"
     },
     {
       "id": "a03daaf9564243b49609-b5cefa1f2db186feb281",
@@ -1688,11 +1623,6 @@
       "title": "double-clicking malformed display math falls back to the math markdown source end"
     },
     {
-      "id": "a03daaf9564243b49609-c6d8bcdec93d513a1ef2",
-      "file": "webview-harness.spec.mjs",
-      "title": "multi-root relative paths stay split by workspace folder in tree view"
-    },
-    {
       "id": "a03daaf9564243b49609-c7738a12a6f26f7ba57a",
       "file": "webview-harness.spec.mjs",
       "title": "right-click custom agent launch input ignores IME Enter before composition commits"
@@ -1766,11 +1696,6 @@
       "id": "a03daaf9564243b49609-cdce128bc4135eb9397a",
       "file": "webview-harness.spec.mjs",
       "title": "terminal hard-wrapped styled path boundary rejects same-style-outside-window after 4 lines"
-    },
-    {
-      "id": "a03daaf9564243b49609-cf41e7e5c3be2a7d314e",
-      "file": "webview-harness.spec.mjs",
-      "title": "smoke file clicks preserve repeated opens and public dragging in minimal view"
     },
     {
       "id": "a03daaf9564243b49609-cf55b875aaf728cf934a",
@@ -1883,11 +1808,6 @@
       "title": "pressing Enter in the title input commits exactly one update and keeps the rendered title aligned"
     },
     {
-      "id": "a03daaf9564243b49609-da266d044b0d7e5d0f13",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal icon-path file nodes fit short numeric basenames without premature ellipsis"
-    },
-    {
       "id": "a03daaf9564243b49609-dacf526dce402bcbb0f8",
       "file": "webview-harness.spec.mjs",
       "title": "terminal drag scroll waits for the visual edge under zoomed React Flow"
@@ -1968,11 +1888,6 @@
       "title": "terminal restores split ANSI OSC CJK and emoji journal boundaries without raw-tail fallback"
     },
     {
-      "id": "a03daaf9564243b49609-e37685dc8ce415fcc3de",
-      "file": "webview-harness.spec.mjs",
-      "title": "card file nodes do not fall back to owner counts when no secondary path label exists"
-    },
-    {
       "id": "a03daaf9564243b49609-e399201ec8801570b62a",
       "file": "webview-harness.spec.mjs",
       "title": "agent current-state bootstrap survives page rebuild without historical replay and preserves live parser tail"
@@ -2008,11 +1923,6 @@
       "title": "minimap viewport outline remains visible after fitting distant nodes"
     },
     {
-      "id": "a03daaf9564243b49609-e866aef77cc231ab7bc1",
-      "file": "webview-harness.spec.mjs",
-      "title": "selected file nodes can be deleted with the Delete key"
-    },
-    {
       "id": "a03daaf9564243b49609-e8d5434aa7f9edfb54de",
       "file": "webview-harness.spec.mjs",
       "title": "fit view includes empty user groups alongside nodes"
@@ -2021,11 +1931,6 @@
       "id": "a03daaf9564243b49609-e9ee68f0f294504ef3f6",
       "file": "webview-harness.spec.mjs",
       "title": "terminal multiline line-number links prefer file links when shell echo repeats the text"
-    },
-    {
-      "id": "a03daaf9564243b49609-eaea3df74bf5fc987f62",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal icon-path file nodes keep a tight right edge around the icon and basename"
     },
     {
       "id": "a03daaf9564243b49609-eb2b7270ff91ed1fe170",
@@ -2051,11 +1956,6 @@
       "id": "a03daaf9564243b49609-ed288af80ef1c282d5e6",
       "file": "webview-harness.spec.mjs",
       "title": "terminal styled hard-wrapped file fragments are not joined through prose"
-    },
-    {
-      "id": "a03daaf9564243b49609-edb2f8257afcafbb76f7",
-      "file": "webview-harness.spec.mjs",
-      "title": "file nodes can be dragged without triggering open file"
     },
     {
       "id": "a03daaf9564243b49609-edd4b3e1d9b2e5ec1cd6",
@@ -2176,11 +2076,6 @@
       "id": "a03daaf9564243b49609-fa19b06fa4df6eb1ea26",
       "file": "webview-harness.spec.mjs",
       "title": "terminal multiline links do not reuse stale previous-path cache in a new projection"
-    },
-    {
-      "id": "a03daaf9564243b49609-fb7a7e43f1958f8e7f01",
-      "file": "webview-harness.spec.mjs",
-      "title": "minimal file list nodes can switch between list and tree views"
     },
     {
       "id": "a03daaf9564243b49609-fba7b4eb9c94eb054e67",

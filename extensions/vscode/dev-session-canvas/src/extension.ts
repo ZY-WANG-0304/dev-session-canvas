@@ -2690,7 +2690,7 @@ async function showSidebarNodeListQuickPick(panelManager: CanvasPanelManager): P
     panelManager.getWorkspaceFoldersForDisplay()
   );
   if (items.length === 0) {
-    await vscode.window.showInformationMessage(vscode.l10n.t('The current Canvas has no locatable non-file nodes.'));
+    await vscode.window.showInformationMessage(vscode.l10n.t('The current Canvas has no locatable nodes.'));
     return;
   }
 

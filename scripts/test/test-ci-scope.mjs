@@ -106,7 +106,7 @@ test('release modes retain every task, observation failure cannot reduce release
     const selected = planFor(['docs/workflows/COMMIT.md'], { mode });
     const original = planFor(['docs/workflows/COMMIT.md'], { mode, selection: undefined });
     assert.deepEqual(selected.tasks, original.tasks);
-    assert.equal(selected.tasks.length, 362); assert(selected.tasks.every(task => task.required));
+    assert.equal(selected.tasks.length, 358); assert(selected.tasks.every(task => task.required));
     assert.equal(selected.selectionResult, undefined);
   }
 });
@@ -258,7 +258,7 @@ test('literal documentation consumers in contract tests cannot silently enter th
 test('a gate-changing PR may reuse its prior full execution only after unchanged-code documentation follow-up', async t => {
   const f=await fixture(t,{policyChange:true});
   assert.equal(policyUnchanged(f.root,f.base,f.input),false);
-  assert.equal(f.previous.tasks.length,362);
+  assert.equal(f.previous.tasks.length,358);
   assert.doesNotThrow(()=>validateReuseCandidate(f));
   assert.throws(()=>validateReuseCandidate({...f,previous:{...f.previous,selection:'affected'}}),/full execution/);
 });

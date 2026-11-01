@@ -2188,7 +2188,7 @@ function buildSidebarNodeListCopy(): SidebarNodeListCopy {
     removeWorktreeFromWorkspace: vscode.l10n.t('Remove this worktree and remove the folder from the workspace; clears the Canvas by default'),
     terminalPendingNotification: vscode.l10n.t('Terminal has a pending notification'),
     ungrouped: vscode.l10n.t('Ungrouped'),
-    noLocatableNodes: vscode.l10n.t('The current Canvas has no locatable non-file nodes yet.')
+    noLocatableNodes: vscode.l10n.t('The current Canvas has no locatable nodes yet.')
   };
 }
 
