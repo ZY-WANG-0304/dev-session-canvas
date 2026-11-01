@@ -16,19 +16,20 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/agent-launch-modes-and-restart.md
   - docs/product-specs/canvas-sidebar-node-and-session-lists.md
-  - docs/product-specs/canvas-graph-links-and-file-activity.md
   - docs/product-specs/canvas-node-notifications.md
   - docs/product-specs/agent-terminal-clipboard-shortcuts.md
 related_plans:
   - docs/exec-plans/active/agent-screenshot-paste-input.md
-updated_at: 2026-07-11
+updated_at: 2026-11-01
 ---
 
 # Agent Provider 能力对照表
 
+> 2026-11-01：Agent 自动文件活动已退役。本文涉及文件活动的旧能力、接入建议和实现路径只作为历史记录；新增 provider 不再接入文件活动能力。
+
 ## 1. 背景
 
-当前仓库已经把 `Agent` provider 正式收口为 `Codex` 与 `Claude Code` 两条主路径，并在创建、启动、恢复、分叉、历史会话、通知、文件活动等位置形成了 provider-specific 分支。后续若继续扩展其他 provider，仅把 `AgentProviderKind` 加一个枚举值并不足够；新 provider 必须逐项回答自己能不能满足现有产品语义。
+当前仓库已经把 `Agent` provider 正式收口为 `Codex` 与 `Claude Code` 两条主路径，并在创建、启动、恢复、分叉、历史会话和通知等位置形成 provider-specific 分支。文件活动是历史能力，已于 2026-11-01 退役。后续若继续扩展其他 provider，仅把 `AgentProviderKind` 加一个枚举值并不足够；新 provider 必须逐项回答自己能不能满足现有产品语义。
 
 本文把当前已支持 provider 的能力整理成一张清单，并把它提升为后续接入 provider 的 check 表。它不是替代 `agent-launch-modes-and-restart.md`、`agent-cli-launch-context-and-resume.md`、`canvas-sidebar-node-and-session-lists.md` 或 `canvas-file-activity-view.md`，而是把这些文档中的 provider 差异集中索引出来。
 
@@ -39,7 +40,7 @@ updated_at: 2026-07-11
 1. 它是否能作为画布 `Agent` 节点运行，并能否被宿主稳定解析 CLI。
 2. 它是否有明确的新会话、resume、fork、停止和恢复语义。
 3. 它是否能提供可信任的 session identity，供节点重启、历史恢复和分叉使用。
-4. 它是否能进入侧栏会话历史、通知 attention、文件活动等 provider-aware 能力。
+4. 它是否能进入侧栏会话历史、通知 attention 等当前 provider-aware 能力。
 5. 如果某项只能靠私有文件、启发式或尚未验证的输出文本实现，应如何标记，避免被误写成正式 provider capability。
 
 ## 3. 目标
@@ -53,7 +54,7 @@ updated_at: 2026-07-11
 
 - 不在本文新增第三个真实 provider。
 - 不把 provider 私有 session 文件格式声明为稳定公开 API。
-- 不承诺所有 provider 都必须支持历史会话、fork、文件活动或结构化通知；缺口可以存在，但必须显式降级。
+- 不承诺所有 provider 都必须支持历史会话、fork 或结构化通知；缺口可以存在，但必须显式降级。
 - 不把测试夹具 `fake-agent-provider`、`fake-codex-provider`、`fake-claude-provider` 当作面向用户的 provider。
 
 ## 5. 候选方案
@@ -67,7 +68,7 @@ updated_at: 2026-07-11
 不选原因：
 
 - 新增 provider 时很难知道需要改哪些模块和补哪些验证。
-- Review 容易只看到局部启动命令，漏掉历史、恢复、通知、文件活动、设置文件等边界。
+- Review 容易只看到局部启动命令，漏掉历史、恢复、通知和设置文件等边界。
 
 ### 5.2 用独立能力对照表作为 provider 接入 checklist
 
@@ -90,7 +91,7 @@ updated_at: 2026-07-11
   原因：详细语义仍应留在对应专项设计文档；本文只做 provider 维度的索引和检查。
 
 - 风险：表格会随代码变化过期。
-  当前缓解：新增 provider、修改 provider 命令语义、恢复策略、历史来源、文件活动 adapter 或通知规则时，必须同步更新本文。
+  当前缓解：新增 provider、修改 provider 命令语义、恢复策略、历史来源或通知规则时，必须同步更新本文。
 
 - 风险：`Codex` / `Claude Code` 的部分能力依赖 provider 私有文件格式。
   当前缓解：表格用“启发式 / 私有文件 / 技术债”明确标识，不把这些能力写成 provider 官方稳定接口。
@@ -148,11 +149,11 @@ updated_at: 2026-07-11
 | Agent 异常退出提醒 | 支持：已运行后非用户主动非 0 退出可触发 `agentAbnormalExit` | 支持：已运行后非用户主动非 0 退出可触发 `agentAbnormalExit` | 新 provider 默认可复用，但需确认启动失败、用户停止、正常退出不触发 |
 | 输出文本异常提醒 | 部分支持：默认关闭；用户设置 `agentAbnormalOutputTextNotifications=codex` 且启用 `codexAbnormalOutputText` 后识别高置信 Codex 最终失败文本 | 不支持：没有真实输出样本或结构化 StopFailure 前，不做 Claude 文本正则 | 不应复制 Codex 正则；应优先结构化错误事件，没有证据就不支持 |
 | Provider 结构化通知事件 | 不支持：当前未直接接入 Codex app-server / protocol 事件 | 不支持：当前未直接接入 Claude hooks notification 事件到 attention | 若 provider 提供结构化 turn complete / approval / input request，应作为新增能力单独设计和验证 |
-| 文件活动 | 不支持：adapter 当前 no-op，未确认 Codex 结构化文件事件接口 | 支持：通过临时 `claude --settings <file>` hooks 监听 `Read` / `Edit` / `Write`，写入 session 事件流 | 必须有 provider 原生结构化文件事件；不得从 PTY 文本推断文件活动 |
+| 自动文件活动 | 已退役 | 已退役 | 当前不提供该能力；旧画布数据按退役迁移规则清理 |
 | Runtime supervisor / live-runtime | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 支持：本地 PTY 与 runtime supervisor 两条路径都传递 provider、resumeStrategy、session id | 必须让 supervisor 创建、输出、停止、resume hint 解析与 snapshot 序列化都认识该 provider |
 | Restricted Mode | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 支持受限：可浏览历史和画布，不能创建 / 恢复 / 分叉执行节点 | 新 provider 不得绕过 `workspace.isTrusted` 执行限制 |
 | Virtual Workspace | 不支持 | 不支持 | 除非整体产品边界改变，否则新 provider 也不应声明支持 Virtual Workspace |
-| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript；文件活动依赖 Claude hooks 临时 settings 注入 | 新 provider 的私有文件、hook、protocol 假设必须登记退出条件 |
+| 当前主要技术债 | session id 与历史依赖 `~/.codex/sessions` 私有文件和时间窗匹配；Windows Codex 执行节点内历史不能向上翻页 | 会话历史依赖 `~/.claude/projects` 私有 transcript | 新 provider 的私有文件、hook、protocol 假设必须登记退出条件 |
 
 ### 7.3 最小接入门槛
 
@@ -180,10 +181,9 @@ updated_at: 2026-07-11
 1. 显式 session id 获取和恢复策略，并在 `AgentResumeStrategy` 中建模。
 2. 会话历史扫描或 provider 官方 history API，且能 fail closed 地确认 workspace cwd。
 3. Provider 原生 fork 命令；没有原生 fork 时不提供 Fork UI。
-4. Provider 原生结构化文件活动事件；没有结构化事件时 `agentFileActivity` adapter 必须 no-op。
-5. Provider 原生结构化 notification / error / approval 事件；在接入前只能使用通用 terminal signal 和异常退出 fallback。
-6. 与 runtime supervisor snapshot / attach / stop-time hint 的双路径验证。
-7. README / 支持边界 / 发布说明中明确 CLI 安装和已知限制。
+4. Provider 原生结构化 notification / error / approval 事件；在接入前只能使用通用 terminal signal 和异常退出 fallback。
+5. 与 runtime supervisor snapshot / attach / stop-time hint 的双路径验证。
+6. README / 支持边界 / 发布说明中明确 CLI 安装和已知限制。
 
 ### 7.5 主要实现落点
 
@@ -195,7 +195,6 @@ updated_at: 2026-07-11
 - `extensions/vscode/dev-session-canvas/src/common/codexSessionIdLocator.ts`：当前名称历史遗留，承载 Codex / Claude session id 发现；新增 provider 时应考虑重命名或拆分，而不是继续扩大误导性命名。
 - `extensions/vscode/dev-session-canvas/src/panel/agentCliSelection.ts`、`extensions/vscode/dev-session-canvas/src/panel/agentCliResolver.ts`：CLI 发现、安装补救和错误提示。
 - `extensions/vscode/dev-session-canvas/src/panel/agentSettingsFiles.ts`：provider 配置文件入口。
-- `extensions/vscode/dev-session-canvas/src/panel/agentFileActivity.ts`：文件活动 adapter。
 - `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts`：Host 权威状态、启动 / 停止 / 恢复 / 分叉 / 通知 / runtime supervisor 接线。
 - `extensions/vscode/dev-session-canvas/src/supervisor/runtimeSupervisorMain.ts`：live-runtime 创建、输入阻断、resume hint、snapshot。
 - `extensions/vscode/dev-session-canvas/src/webview/main.tsx`：创建菜单、节点标题栏动作、provider 图标 / 文案。
@@ -215,10 +214,10 @@ updated_at: 2026-07-11
 5. `npm run test:execution-attention-signals`：若接入通知 / 异常文本，覆盖 allow-list、冷却和 stale buffer 抑制。
 6. `npm run test:webview` focused provider 入口：覆盖创建菜单、标题栏动作、Fork 可见性和受限工作区提示。
 7. `npm run typecheck` 与 `npm run build`。
-8. 至少一次真实 Extension Development Host 人工验证：CLI 可解析、能启动、能停止，若声明支持 resume / fork / history / file activity，也要逐项验证真实 provider 行为。
+8. 至少一次真实 Extension Development Host 人工验证：CLI 可解析、能启动、能停止，若声明支持 resume / fork / history，也要逐项验证真实 provider 行为。
 
 ## 9. 当前验证状态
 
 - 2026-06-19：本文首次整理当前 `Codex` / `Claude Code` provider 能力矩阵。能力事实来自当前设计文档与代码路径复核；本次为文档整理，不新增运行时代码。
 - 2026-06-25：补充图片输入 / Agent 截图粘贴能力。Codex 与 Claude Code 均有官方图片输入或图片路径入口；当前画布选择保存临时图片并回填路径文本作为跨 provider bridge，验证记录见 `docs/exec-plans/active/agent-screenshot-paste-input.md` 和 `docs/design-docs/execution-terminal-clipboard-shortcuts.md`。
-- 当前整体状态保持 `验证中`：`Codex` session id / history 仍依赖私有文件和启发式匹配，`Claude Code` history 仍依赖私有 transcript，provider 级真实 fork 仍建议在安装对应 CLI 的 Development Host 中人工确认。
+- 当前整体状态保持 `验证中`：`Codex` session id / history 仍依赖私有文件和启发式匹配，`Claude Code` history 仍依赖私有 transcript，provider 级真实 fork 仍建议在安装对应 CLI 的 Development Host 中人工确认。自动文件活动已于 2026-11-01 退役，不再属于 provider 接入清单。

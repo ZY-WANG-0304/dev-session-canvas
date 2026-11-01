@@ -1,15 +1,17 @@
 ---
 title: 文件条目 smoke 原生鼠标输入
-decision_status: 已选定
+decision_status: 已废弃
 validation_status: 已验证
 domains: [VSCode 集成域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: []
 related_plans: [docs/exec-plans/completed/file-entry-native-smoke.md]
-updated_at: 2026-10-24
+updated_at: 2026-11-01
 ---
 
 # 文件条目 smoke 原生鼠标输入
+
+> 历史 smoke 设计：自动文件活动、文件节点 / 文件列表已于 2026-11-01 退役。本设计里的 `clickFileEntry`、CDP 文件条目驱动和 native-file-click 辅助器随该功能一并删除，不再约束当前 smoke；历史验证留作当时交付证据。
 
 ## 背景与证据边界
 

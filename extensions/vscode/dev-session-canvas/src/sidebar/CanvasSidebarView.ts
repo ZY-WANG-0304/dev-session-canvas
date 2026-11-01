@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-
 import {
   strongTerminalAttentionReminderPulsesMinimap,
   strongTerminalAttentionReminderShowsTitleBar
@@ -112,12 +111,6 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
       label: vscode.l10n.t('Notification Mode'),
       description: formatNotificationModeSummary(state),
       tooltip: buildNotificationModeTooltip(state)
-    },
-    {
-      id: 'summary/files-feature',
-      label: vscode.l10n.t('Files'),
-      description: formatFilesFeatureSummary(state),
-      tooltip: buildFileViewTooltip(state)
     },
     {
       id: 'summary/node-count',
@@ -359,46 +352,4 @@ function formatAgentAbnormalOutputTextModeLabel(state: CanvasSidebarState): stri
   return state.agentAbnormalOutputTextNotificationMode === 'codex'
     ? vscode.l10n.t('Codex abnormal text')
     : vscode.l10n.t('Text abnormal alerts off');
-}
-
-function formatFileViewSummary(state: CanvasSidebarState): string {
-  return `${formatFilePresentationLabel(state)} · ${formatFileDisplayModeLabel(state)}`;
-}
-
-function formatFilesFeatureSummary(state: CanvasSidebarState): string {
-  return `${state.filesFeatureEnabled ? vscode.l10n.t('Enabled') : vscode.l10n.t('Disabled')} · ${formatFileViewSummary(state)}`;
-}
-
-function buildFileViewTooltip(state: CanvasSidebarState): string {
-  return [
-    state.filesFeatureEnabled
-      ? vscode.l10n.t('Files are enabled. The settings below directly affect file object projections in the current window.')
-      : vscode.l10n.t('Files are disabled. The settings below take effect after files are re-enabled and the window reloads.'),
-    vscode.l10n.t('File node type: {type}.', { type: formatFilePresentationLabel(state) }),
-    vscode.l10n.t('Display mode: {mode}.', { mode: formatFileDisplayModeLabel(state) }),
-    vscode.l10n.t('Display style: {style}.', { style: formatFileNodeDisplayStyleLabel(state.fileNodeDisplayStyle) })
-  ].join('\n');
-}
-
-function formatFilePresentationLabel(state: CanvasSidebarState): string {
-  return state.filePresentationMode === 'lists' ? vscode.l10n.t('List nodes') : vscode.l10n.t('Standalone nodes');
-}
-
-function formatFileDisplayModeLabel(state: CanvasSidebarState): string {
-  switch (state.fileNodeDisplayMode) {
-    case 'icon-only':
-      return vscode.l10n.t('Icon only');
-    case 'path-only':
-      return state.filePathDisplayMode === 'relative-path'
-        ? vscode.l10n.t('Relative path only')
-        : vscode.l10n.t('File name only');
-    case 'icon-path':
-      return state.filePathDisplayMode === 'relative-path'
-        ? vscode.l10n.t('Icon + relative path')
-        : vscode.l10n.t('Icon + file name');
-  }
-}
-
-function formatFileNodeDisplayStyleLabel(style: CanvasSidebarState['fileNodeDisplayStyle']): string {
-  return style === 'card' ? vscode.l10n.t('Card') : vscode.l10n.t('Minimal');
 }

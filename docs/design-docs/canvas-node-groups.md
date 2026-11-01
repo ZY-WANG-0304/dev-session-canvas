@@ -15,14 +15,16 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-node-groups-design.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-10-30
+updated_at: 2026-11-01
 ---
 
 # 画布节点分组设计
 
+> 2026-11-01：自动文件节点及其分组规则已退役，见[退役设计](canvas-file-activity-retirement.md)。本文只约束当前 `agent`、`terminal`、`note` 节点与普通分组。
+
+
 ## 1. 背景
 
-当前 DevSessionCanvas 已经支持 `Agent`、`Terminal`、`Note`、文件活动节点和通用关系连线。连线可以表达节点之间的关系，但当画布开始承载多个并行 Agent、辅助终端和说明 Note 时，用户还需要一种更粗粒度的空间组织方式，把多个不同类型节点收束到同一个可命名区域里。
 
 这个能力直接服务产品主张中的“多 Agent 协作全局视角”：分组应帮助用户看清哪些节点属于同一个任务阶段、同一个子问题或同一个上下文簇，而不是引入独立白板产品里的复杂对象系统。
 
@@ -34,7 +36,6 @@ updated_at: 2026-10-30
 2. 分组成员关系应显式持久化，还是只通过空间覆盖关系临时推断。
 3. 分组移动、成员移动、取消分组和删除分组应如何避免误删正在运行的执行节点。
 4. 拖拽入组 / 移出、分组移动和 resize 如何先抽象为基础法则，再由宿主稳定推导归属、扩容、挤走和最终合法状态。
-5. 分组如何与现有宿主权威状态、React Flow 渲染、节点绝对坐标、连线、模板和文件活动节点共存。
 6. 首版应限制哪些复杂能力，避免一次性引入交叉分组、折叠、自动布局和执行节点隐藏带来的风险。
 
 ## 3. 目标
@@ -53,7 +54,6 @@ updated_at: 2026-10-30
 - 不把分组做成新的执行节点类型。
 - 不在首版支持分组交叉、折叠隐藏、泳道、自动布局或批量运行；后续版本也没有计划支持折叠分组。
 - 不允许关系线直接连接分组框；关系线仍连接具体节点。
-- 不把自动文件活动节点作为首版稳定分组成员。
 - 不把分组当作权限、分享、跨 workspace 同步或发布单位。
 - 不在首版提供分组颜色自定义；分组视觉只使用统一的 VSCode theme token 表达。
 - 不采用外浮胶囊标题或独立营销式标签；标题区域应贴合分组框顶部，并使用类似 VSCode Panel 顶部 tab 的形态。
@@ -64,7 +64,6 @@ updated_at: 2026-10-30
 
 React Flow 官方把 sub flow 描述为“节点里的 flow”，也明确说明该能力可以用于节点分组。成熟机制包括：父节点必须先于子节点出现在 `nodes` 数组中；子节点通过 `parentId` 挂到父节点；子节点坐标相对父节点；`extent: 'parent'` 可以限制子节点不能移出父节点；内置 `group` 节点类型没有 handles，适合作为纯容器。
 
-这说明 React Flow 已经提供成熟的父子渲染与拖拽模型，但它的默认心智是“子节点坐标相对父节点”。当前仓库的宿主权威状态和连线锚点都以节点绝对坐标为基础，如果直接把持久状态切到 React Flow 父子坐标，会牵动 `moveNode`、`resizeNode`、边锚点、模板落位和文件活动重建等多处逻辑。
 
 参考：<https://reactflow.dev/learn/layouting/sub-flows>
 
@@ -123,8 +122,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 风险：
 
-- 当前 `CanvasNodeSummary.position` 是宿主权威绝对坐标，直接改成相对坐标会牵动持久化、边锚点、模板、文件活动节点和节点避碰。
-- 把 group 放进 `CanvasNodeKind` 容易污染“节点就是协作对象或文件活动对象”的语义；group 没有状态、summary、execution metadata，也不应出现在执行节点列表里。
 - React Flow 的 parent-child 渲染要求父节点先于子节点排序，现有状态同步和 template 物化需要额外排序不变量。
 
 当前判断：暂不作为首版推荐，除非后续验证证明自定义 group frame 交互成本明显高于坐标迁移成本。
@@ -136,7 +133,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 优点：
 
 - 保留当前宿主权威状态和绝对坐标模型，避免一次性重写边锚点和节点移动语义。
-- group 不进入 `CanvasNodeKind`，不会被误认为执行对象、文件活动对象或普通 Node 列表项。
 - 显式成员关系能稳定支持 reload、模板保存 / 应用和批量移动。
 - 首版通过 `parentGroupId` 支持分组嵌套；未来若要升级到 React Flow parent-child，协议中 `groups`、`parentGroupId` 与 `groupId` 仍能作为迁移输入。
 
@@ -184,10 +180,8 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
   原因：DevSessionCanvas 的分组主要服务空间理解和区域命名，而不是临时选择集合。
 
 - 取舍：首版使用独立 `CanvasGroupSummary`，不把 group 加进 `CanvasNodeKind`。
-  原因：当前节点类型均代表用户可操作的协作对象或文件活动对象；group 是组织结构，不应承担节点状态、执行会话或文件活动语义。
 
 - 取舍：首版保留成员节点绝对坐标。
-  原因：现有 `CanvasPanelManager`、边锚点、模板和文件活动都基于绝对坐标；先保持坐标模型稳定能显著降低回归面。
 
 - 风险：分组框 body 可能遮挡节点选择、连线选择或画布 pan。
   缓解：分组主交互热区优先放在标题栏和边框；body 默认低优先级，不覆盖成员节点命中。
@@ -207,8 +201,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - 风险：删除分组新增“一并删除成员节点与子分组”选项后，可能误删正在运行的执行节点。
   缓解：删除非空分组必须弹出宿主确认对话框，明确列出将递归删除的节点数量、子分组数量和执行节点风险；按产品确认，“一并删除内部所有节点与子分组”是危险选项，也是默认按钮。删除没有直接成员节点且没有直接子分组的空分组无需确认，直接删除该空分组。
 
-- 风险：分组和文件活动自动节点共存时，自动节点可能被重建导致成员关系悬空或落到与 owner Agent 不一致的分组。
-  缓解：`file` / `file-list` 是自动分组成员，但其 `groupId` 由 owner Agent 推导，不由拖拽落点或历史 `groupId` 决定；normalize 保留合法自动文件节点成员关系，文件活动重建时重新按 owner Agent 最近公共父分组收口。
 
 ## 8. 正式方案
 
@@ -218,7 +210,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 
 根据 2026-05-20 至 2026-05-21 的产品调整，首版从分组状态和交互中移除颜色配置；取消分组固定保留成员节点和内部子分组；删除非空分组改为宿主确认对话框中的二选一动作，且“一并删除内部所有节点与子分组”是危险选项也是默认按钮；删除空分组无需确认；拖拽节点或分组进入分组区域成为首版入组主路径之一；分组支持嵌套但禁止交叉；侧栏节点列表默认按分组树展示，并通过 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单提供显示模式切换；侧栏内的分组 section 可折叠/展开；不支持且不计划支持折叠画布上的分组。拖入、拖出、分组移动和 resize 不再按场景逐项罗列，而是按第 8.2.1 节基础法则推导：合法状态是硬约束，拖拽以鼠标释放位置表达归属，resize 以释放边界表达归属，用户直接结果优先，系统只做最小合法修复，最终由宿主在释放鼠标后以一次事务提交。
 
-根据 2026-06-08 的文件活动分组口径，`file` / `file-list` 是由文件活动 owner Agent 推导归属的自动成员，用来辅助判断 Agent 之间的信息处理关系。单 owner 时归属到该 Agent 所在的最内层 group；多 owner 时归属到这些 Agent 的最近公共父 group；没有公共用户 group 时归到画布根，multi-root 下归到对应 `workspace-root`。用户拖动 `file` / `file-list` 只改变位置，不能把它们拖进与 owner Agent 不一致的 group；Agent 移动后，未被抑制的自动文件节点 / 文件列表节点会在下一次文件活动重建时重新归属。所属 group 必须完整容纳这类自动节点，若当前位置或尺寸越界，宿主按 resize-like 收口扩张 group 并复用同级避让和父级扩容；`file-list` 尺寸使用当前节点尺寸，不额外限制用户手动放大的尺寸。模板保存继续只捕获 `agent`、`terminal`、`note` 及其用户分组 / 用户边，`file`、`file-list` 和自动文件活动边不作为模板成员保存。
 
 ### 8.1 状态模型
 
@@ -251,14 +242,10 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
       edges: CanvasEdgeSummary[];
       groups: CanvasGroupSummary[];
       nextGroupSequence: number;
-      fileReferences: CanvasFileReferenceSummary[];
-      suppressedFileActivityEdgeIds: string[];
-      suppressedAutomaticFileArtifactNodeIds: string[];
     }
 
 核心不变量：
 
-- `groupId` 允许出现在 `agent`、`terminal`、`note` 以及自动文件活动 `file` / `file-list` 节点上；其中 `agent`、`terminal`、`note` 的归属来自用户意图，`file` / `file-list` 的归属来自 owner Agent 最近公共父分组推导。
 - 同一个节点最多直接属于一个最小 group；如果节点处在嵌套分组内，外层归属由 group 父链推导。
 - 同一个 group 最多直接属于一个父 group；`parentGroupId` 不能形成环。
 - 任意两个 group 不能交叉：它们只能互不相交，或一方完全包含另一方；拖拽和 resize 过程中的临时交叉不能进入宿主持久化状态。
@@ -266,7 +253,7 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - 分组默认标题编号使用独立的分组序号队列；实现应沿用现有手工节点序号逻辑，但读取分组自己的序号来源，不读取节点序号队列，也不读取可编辑标题文本。`nextGroupSequence` 保存下一次创建分组应使用的编号；旧状态缺失时根据现有 `group-*` ID 前缀安全推导，后续删除或重命名都不降低该序号。
 - 节点坐标保持画布绝对坐标，不改成相对 group 坐标。
 - 用户普通点击节点只产生单选和原有节点交互；只有按住 Ctrl / Cmd 点击节点时才进入多选增删，再次 Ctrl / Cmd 点击已选节点会取消该节点选择。Shift 不作为首版分组多选入口。
-- normalize 时清理不存在 group、不允许入组的节点、父子环、交叉 group 或重复非法状态；正常交互路径应在提交前调用基础法则收口流程恢复合法状态，包括同级 group 不交叉、直接成员节点与直接子 group 不交叉、成员 / 子 group 被所属 group 完整容纳，以及必要时在同父兄弟集合内做最小合法修复和逐层级联。
+- normalize 时清理不存在 group、不允许入组的节点、父子环、交叉 group 或重复非法状态；读取旧状态时，文件活动退役迁移还会先移除旧 `file` / `file-list` 节点及其相关关系，具体规则由[退役设计](canvas-file-activity-retirement.md)拥有。正常交互路径应在提交前调用基础法则收口流程恢复合法状态，包括同级 group 不交叉、直接成员节点与直接子 group 不交叉、成员 / 子 group 被所属 group 完整容纳，以及必要时在同父兄弟集合内做最小合法修复和逐层级联。
 - `groups` 缺失的旧状态归一为空数组，不提升 `CanvasPrototypeState.version`。
 
 ### 8.2 宿主权威行为
@@ -298,7 +285,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - `deleteGroup(groupId, mode)`：删除 group；空 group 没有直接成员节点且没有直接子分组，删除时无需确认并直接删除当前 group；非空 group 需要确认，`mode = 'keep-members'` 时只删除当前 group、保留内部节点并提升子分组，`mode = 'delete-members'` 时递归删除内部子分组并按现有节点删除语义逐个删除内部所有成员节点，执行节点必须走当前会话终止与清理路径；删除确认对话框中 `delete-members` 是危险选项，也是默认按钮。
 - `deleteCanvasNode`：删除节点时自然清理该节点，不删除 group；若 group 变空，仍保留空 group。
 - `deleteCanvasGroup`：删除分组时清理子树关系；保留内部对象时提升内部子分组，递归删除时先处理内部执行节点清理。
-- `resetCanvasState`：清空 nodes、edges、groups 和文件活动域状态。
 
 ### 8.3 Webview 交互
 
@@ -321,7 +307,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - `CanvasEdgeSummary` 不引用 group，连线仍连接具体节点。
 - 分组移动后，由于成员节点绝对坐标随之变化，连线端点自然跟随；不需要引入组级边锚点。
 - `extensions/vscode/dev-session-canvas/src/common/canvasTemplates.ts` 保存模板时，应保存由模板兼容节点组成的 group 树，并在应用时重建 group id、`parentGroupId` 与成员 `groupId` 映射。
-- 自动文件活动节点按 owner Agent 推导 `groupId`，但保存模板时不保存 `file` / `file-list` 节点、自动文件活动边，也不把只由这类自动节点支撑的 group 成员关系作为模板事实。
 - 侧栏节点列表默认按分组树展示，且不在 Webview 内容区自绘更多按钮；显示模式切换使用 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单。按分组树展示时，分组和“未分组”在侧栏中呈现为可折叠 section；该折叠状态只改变侧栏列表呈现，不改变画布分组状态，也不表示画布分组支持折叠。
 
 ### 8.5 视觉语言
@@ -354,7 +339,6 @@ DevSessionCanvas 的首版分组应采用“可见 frame + 显式成员关系”
 - 直接成员节点与直接子 group 不交叉是硬不变量；同级 group 不交叉、直接子 group 之间不交叉、成员 / 子 group 被所属 group 完整容纳也都是最终合法状态要求。普通直接成员节点之间允许重叠。
 - 用户结果优先；被拖动对象的释放位置、被 resize 分组的释放边界、新建分组的位置和范围优先保留，系统只做恢复合法状态所需的最小修复。
 - 拖动过程中只有被拖动节点或被拖动 group 子树跟随鼠标移动，其他节点和 group 不动；释放鼠标后，宿主一次性处理其他 group 和节点并提交最终结果。
-- `file` / `file-list` 自动文件活动节点按 owner Agent 推导分组归属；单 owner 跟随该 Agent 的最内层 group，多 owner 使用最近公共父 group；用户拖动只改变位置，不改变到与 owner Agent 不一致的 group；Agent 被删除或 owner 为空后，对应自动节点消失或保持 suppression，不留下孤儿节点影响分组边界；模板不保存 `file` / `file-list`。
 - 侧栏节点列表默认按分组树展示，显示模式切换使用 `节点` view 标题右上角的 VSCode 原生 `...` 更多菜单；按分组树展示时，侧栏里的分组 section 可折叠/展开，但不改变画布分组状态。
 - 不支持折叠分组，后续版本也没有计划支持折叠分组。
 - 不支持给 group 绑定专用说明 Note；分组只通过标题表达区域语义，说明内容使用普通 `Note` 节点承载。

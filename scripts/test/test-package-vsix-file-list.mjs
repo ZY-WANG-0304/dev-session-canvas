@@ -50,6 +50,7 @@ try {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const files = result.stdout.split(/\r?\n/u).map(line => line.trim().replace(/\\/g, '/')).filter(Boolean);
     assertRuntimeFileList(files, { production: Boolean(receipt) });
+    assert(!files.some(file => file.endsWith('claude-file-event-hook.cjs')), 'Retired Claude file activity hook must not be packaged');
     if (inspected) {
       const stagedFiles = await treeHashes(stageRoot);
       for (const relative of ['package.nls.json', 'package.nls.zh-cn.json', 'l10n/bundle.l10n.zh-cn.json']) {

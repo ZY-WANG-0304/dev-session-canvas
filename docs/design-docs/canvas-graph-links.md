@@ -13,11 +13,13 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/canvas-graph-links-and-file-activity.md
 related_plans:
-  - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-04-20
+  - docs/exec-plans/completed/canvas-graph-links-and-file-activity.md
+updated_at: 2026-11-01
 ---
 
 # 画布关系连线设计
+
+> 2026-11-01：自动文件活动边、文件活动来源及其覆盖逻辑已退役；当前只保留手工关系连线。第 7.4 节之后的旧自动边规则与测试记录仅为历史方案。旧画布清理边界见[退役设计](canvas-file-activity-retirement.md)，通用连线当前口径见[关系连线产品规格](../product-specs/canvas-graph-links-and-file-activity.md)。
 
 ## 1. 背景
 
@@ -97,12 +99,10 @@ updated_at: 2026-04-20
 - 源锚点 / 目标锚点
 - 箭头模式
 - 标签文本
-- 是否为自动维护边
 
 其中的核心规则是：
 
 - 手工边进入持久化状态。
-- 自动边复用同一结构，但事实来源不是用户编辑，而是宿主派生逻辑。
 - Webview 不能把本地 edge 当作真相，所有变更都必须回传宿主。
 
 ### 7.2 `CanvasPanelManager` 是连线权威入口
@@ -112,12 +112,7 @@ updated_at: 2026-04-20
 - 接收 Webview 回传的手工连线创建、更新和删除消息。
 - 把手工连线并入 workspace 绑定画布状态并持久化。
 - 在节点删除、reset 或恢复时清理失效边。
-- 合并手工边与自动边后，再把完整边集合回传 Webview。
-
-这里的关键边界是：
-
-- 宿主保存的是手工边和文件活动权威状态。
-- 自动边由宿主根据文件活动引用重建，不直接信任旧自动边快照。
+- 把当前手工边集合回传 Webview。
 
 ### 7.3 Webview 只负责交互与呈现
 
@@ -147,9 +142,9 @@ updated_at: 2026-04-20
 - 选中连线后，React Flow 的端点 updater handles 会出现在连线两端，允许用户像 Obsidian Canvas 一样重新调整连线关系。
 - 连线允许创建和保留自环；当源节点与目标节点相同时，Webview 需要用可见的自环 path，而不是退化成零长度曲线。
 
-### 7.4 自动边与手工边分层共存
+### 7.4 已退役的自动边方案（历史）
 
-文件活动视图仍会生成 `Agent -> 文件` 自动边，但这类边在用户侧不再暴露为“另一种只读边”。系统内部遵守以下规则：
+下列规则描述旧版文件活动方案，不代表当前产品行为。2026-11-01 起，系统不再生成 `Agent -> 文件` 自动边：
 
 - 自动边的存在与否只由文件活动引用决定。
 - 用户一旦修改某条自动边，宿主会把当前结果持久化为覆盖边，并同步记录对原自动边的屏蔽状态。
@@ -158,7 +153,7 @@ updated_at: 2026-04-20
 
 这让“关系表达”与“文件活动投影”共享一套图模型，同时保持事实来源分离，而用户侧不需要学习两套连线规则。
 
-### 7.5 生命周期规则
+### 7.5 旧自动边生命周期规则（历史）
 
 - reload 后只恢复宿主持久化的手工边，再根据当前 `fileReferences` 补齐自动边。
 - 删除节点时，同时清理与之关联的手工边；自动边则由宿主重建逻辑自然消失。
@@ -174,6 +169,5 @@ updated_at: 2026-04-20
 - VSCode smoke：
   - 手工连线在 reload 后保持。
   - 删除节点后，相关失效边被正确清理。
-  - 文件活动派生边在被用户编辑或删除后，reload 与后续文件视图重建不会立刻丢失覆盖结果。
 
-截至 2026-04-20，本方案已通过 `npm run typecheck`、`npm run test:webview` 与 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=trusted node scripts/smoke/run-vscode-smoke.mjs` 验证；其中 Playwright 已覆盖手工边创建、编辑、删除、自环和端点重接，trusted smoke 已覆盖宿主持久化、reload 恢复以及自动边覆盖结果的保留。
+截至 2026-04-20，手工连线实现曾通过 `npm run typecheck`、`npm run test:webview` 与 trusted smoke 验证；其中 Playwright 覆盖手工边创建、编辑、删除、自环和端点重接，smoke 覆盖宿主持久化及 reload 恢复。旧文件活动部分的验证只说明历史实现状态；其退役和兼容迁移以 2026-11-01 的新验证记录为准。

@@ -3,7 +3,6 @@ import * as path from 'path';
 
 import type {
   CanvasEdgeSummary,
-  CanvasFileReferenceSummary,
   CanvasGroupSummary,
   CanvasNodeFootprint,
   CanvasNodePosition,
@@ -166,11 +165,12 @@ export function composeRootLocalCanvasStateIntoComposed(
   rootLocalState: CanvasPrototypeState,
   rootGroup: CanvasGroupSummary
 ): CanvasPrototypeState {
+  composedState = stripRetiredFileActivityState(composedState);
   const rootPath = resolveWorkspaceRootPathForGroup(rootGroup);
   if (!rootPath) {
     return cloneState(composedState);
   }
-  const safeRootLocalState = sanitizeRootLocalCanvasState(rootPath, rootLocalState);
+  const safeRootLocalState = stripRetiredFileActivityState(sanitizeRootLocalCanvasState(rootPath, rootLocalState));
 
   const namespacedNodes = safeRootLocalState.nodes.map((node) => ({
     ...node,
@@ -196,26 +196,13 @@ export function composeRootLocalCanvasStateIntoComposed(
       sourceNodeId: namespaceCanvasObjectId(rootPath, edge.sourceNodeId),
       targetNodeId: namespaceCanvasObjectId(rootPath, edge.targetNodeId)
     }));
-  const namespacedFileReferences = (safeRootLocalState.fileReferences ?? [])
-    .map((reference) => ({
-      ...reference,
-      id: namespaceCanvasObjectId(rootPath, reference.id),
-      owners: reference.owners
-        .filter((owner) => rootNodeIds.has(owner.nodeId))
-        .map((owner) => ({
-          ...owner,
-          nodeId: namespaceCanvasObjectId(rootPath, owner.nodeId)
-        }))
-    }))
-    .filter((reference) => reference.owners.length > 0);
-
   const currentRootNodeIds = collectWorkspaceRootOwnedNodeIds(
     composedState,
     rootPath,
     rootGroup.id
   );
 
-  return {
+  const nextState: CanvasPrototypeState = {
     ...composedState,
     updatedAt: safeRootLocalState.updatedAt,
     nodes: [
@@ -236,26 +223,9 @@ export function composeRootLocalCanvasStateIntoComposed(
       ),
       ...namespacedEdges
     ],
-    nextGroupSequence: Math.max(composedState.nextGroupSequence ?? 1, safeRootLocalState.nextGroupSequence ?? 1),
-    fileReferences: [
-      ...(composedState.fileReferences ?? []).filter((reference) =>
-        !reference.owners.some((owner) => currentRootNodeIds.has(owner.nodeId))
-      ),
-      ...namespacedFileReferences
-    ],
-    suppressedFileActivityEdgeIds: uniqueStrings([
-      ...(composedState.suppressedFileActivityEdgeIds ?? []).filter(
-        (edgeId) => !isFileActivityArtifactObjectOwnedByWorkspaceRoot(rootPath, rootGroup.id, edgeId)
-      ),
-      ...(safeRootLocalState.suppressedFileActivityEdgeIds ?? []).map((edgeId) => namespaceCanvasObjectId(rootPath, edgeId))
-    ]),
-    suppressedAutomaticFileArtifactNodeIds: uniqueStrings([
-      ...(composedState.suppressedAutomaticFileArtifactNodeIds ?? []).filter(
-        (nodeId) => !isFileActivityArtifactObjectOwnedByWorkspaceRoot(rootPath, rootGroup.id, nodeId)
-      ),
-      ...(safeRootLocalState.suppressedAutomaticFileArtifactNodeIds ?? []).map((nodeId) => namespaceCanvasObjectId(rootPath, nodeId))
-    ])
+    nextGroupSequence: Math.max(composedState.nextGroupSequence ?? 1, safeRootLocalState.nextGroupSequence ?? 1)
   };
+  return stripRetiredFileActivityState(nextState);
 }
 
 export function decomposeComposedCanvasStateForWorkspaceRoot(
@@ -263,6 +233,7 @@ export function decomposeComposedCanvasStateForWorkspaceRoot(
   rootGroup: CanvasGroupSummary,
   now = new Date().toISOString()
 ): CanvasPrototypeState {
+  composedState = stripRetiredFileActivityState(composedState);
   const rootPath = resolveWorkspaceRootPathForGroup(rootGroup);
   if (!rootPath) {
     return cloneState(composedState);
@@ -336,10 +307,9 @@ export function composeMultiRootCanvasState(options: ComposeMultiRootCanvasState
     ...contexts.flatMap((context) => composeRootGroups(context, overlayGroups, options.overlay))
   ];
   const edges = contexts.flatMap((context) => composeRootEdges(context));
-  const fileReferences = contexts.flatMap((context) => composeRootFileReferences(context));
   const updatedAt = maxStateUpdatedAt(contexts.map((context) => context.state), options.now);
 
-  return {
+  const nextState: CanvasPrototypeState = {
     version: 1,
     updatedAt,
     nodes,
@@ -348,25 +318,23 @@ export function composeMultiRootCanvasState(options: ComposeMultiRootCanvasState
     nextGroupSequence: Math.max(
       readNextGroupSequence(overlayGroups),
       ...contexts.map((context) => context.state.nextGroupSequence ?? 1)
-    ),
-    fileReferences,
-    suppressedFileActivityEdgeIds: uniqueStrings(
-      contexts.flatMap((context) =>
-        (context.state.suppressedFileActivityEdgeIds ?? []).map((edgeId) => namespaceCanvasObjectId(context.folder.path, edgeId))
-      )
-    ),
-    suppressedAutomaticFileArtifactNodeIds: uniqueStrings(
-      contexts.flatMap((context) =>
-        (context.state.suppressedAutomaticFileArtifactNodeIds ?? []).map((nodeId) => namespaceCanvasObjectId(context.folder.path, nodeId))
-      )
     )
   };
+  return stripRetiredFileActivityState(nextState);
 }
 
 export function decomposeMultiRootCanvasState(
   options: DecomposeMultiRootCanvasStateOptions
 ): DecomposeMultiRootCanvasStateResult {
   const now = options.now ?? new Date().toISOString();
+  options = {
+    ...options,
+    composedState: stripRetiredFileActivityState(options.composedState),
+    previousRootStates: options.previousRootStates.map((entry) => ({
+      ...entry,
+      state: stripRetiredFileActivityState(entry.state)
+    }))
+  };
   const folders = normalizeWorkspaceFolders(options.workspaceFolders);
   const previousStatesByRootPath = new Map<string, CanvasPrototypeState>();
   for (const entry of options.previousRootStates) {
@@ -465,10 +433,7 @@ export function createEmptyCanvasState(now = new Date().toISOString()): CanvasPr
     nodes: [],
     edges: [],
     groups: [],
-    nextGroupSequence: 1,
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: []
+    nextGroupSequence: 1
   };
 }
 
@@ -478,6 +443,7 @@ export function sanitizeRootLocalCanvasState(
   now = state.updatedAt
 ): CanvasPrototypeState {
   const normalizedRootPath = normalizeRootPath(rootPath);
+  state = stripRetiredFileActivityState(state);
   if (!normalizedRootPath) {
     return cloneState(state);
   }
@@ -571,20 +537,6 @@ function composeRootEdges(context: RootCompositionContext): CanvasEdgeSummary[] 
     }));
 }
 
-function composeRootFileReferences(context: RootCompositionContext): CanvasFileReferenceSummary[] {
-  const nodeIds = new Set(context.state.nodes.map((node) => node.id));
-  return (context.state.fileReferences ?? []).map((reference) => ({
-    ...reference,
-    id: namespaceCanvasObjectId(context.folder.path, reference.id),
-    owners: reference.owners
-      .filter((owner) => nodeIds.has(owner.nodeId))
-      .map((owner) => ({
-        ...owner,
-        nodeId: namespaceCanvasObjectId(context.folder.path, owner.nodeId)
-      }))
-  })).filter((reference) => reference.owners.length > 0);
-}
-
 function decomposeRootState(options: {
   composedState: CanvasPrototypeState;
   folder: CanvasMultiRootWorkspaceFolder;
@@ -669,15 +621,6 @@ function decomposeRootState(options: {
     ];
   });
 
-  const fileReferences = (composedState.fileReferences ?? []).flatMap((reference): CanvasFileReferenceSummary[] => {
-    const localId = denamespaceCanvasObjectId(folder.path, reference.id) ?? reference.id;
-    const owners = reference.owners.flatMap((owner) => {
-      const nodeId = denamespaceCanvasObjectId(folder.path, owner.nodeId);
-      return nodeId && localNodeIds.has(nodeId) ? [{ ...owner, nodeId }] : [];
-    });
-    return owners.length > 0 ? [{ ...reference, id: localId, owners }] : [];
-  });
-
   const nextGroupSequence = Math.max(previousState.nextGroupSequence ?? 1, readNextGroupSequence(groups));
   return {
     ...previousState,
@@ -687,17 +630,6 @@ function decomposeRootState(options: {
     edges,
     groups,
     nextGroupSequence,
-    fileReferences,
-    suppressedFileActivityEdgeIds: (composedState.suppressedFileActivityEdgeIds ?? [])
-      .flatMap((edgeId) => {
-        const localEdgeId = denamespaceCanvasObjectId(folder.path, edgeId);
-        return localEdgeId ? [localEdgeId] : [];
-      }),
-    suppressedAutomaticFileArtifactNodeIds: (composedState.suppressedAutomaticFileArtifactNodeIds ?? [])
-      .flatMap((nodeId) => {
-        const localNodeId = denamespaceCanvasObjectId(folder.path, nodeId);
-        return localNodeId ? [localNodeId] : [];
-      })
   };
 }
 
@@ -754,112 +686,27 @@ export function collectWorkspaceRootOwnedNodeIds(
       .filter((node) => isNodeOwnedByWorkspaceRoot(node, groups, rootPath, rootGroupId))
       .map((node) => node.id)
   );
-  for (const node of state.nodes) {
-    if (
-      (node.kind === 'file' || node.kind === 'file-list') &&
-      isFileActivityArtifactObjectOwnedByWorkspaceRoot(rootPath, rootGroupId, node.id)
-    ) {
-      nodeIds.add(node.id);
-    }
-  }
-  for (const reference of state.fileReferences ?? []) {
-    const rootOwnerNodeIds = reference.owners
-      .map((owner) => owner.nodeId)
-      .filter((nodeId) => nodeIds.has(nodeId));
-    if (rootOwnerNodeIds.length === 0) {
-      continue;
-    }
-
-    nodeIds.add(buildAutomaticFileNodeIdForReferenceId(reference.id));
-    nodeIds.add(buildLegacyAutomaticFileNodeIdForReferenceId(reference.id));
-    if (rootOwnerNodeIds.length > 1) {
-      nodeIds.add(buildSharedFileListNodeIdForReferenceOwnerIds(rootOwnerNodeIds));
-      nodeIds.add('file-list-shared');
-      continue;
-    }
-
-    const [ownerNodeId] = rootOwnerNodeIds;
-    if (ownerNodeId) {
-      nodeIds.add(buildAgentFileListNodeIdForOwnerId(ownerNodeId));
-      nodeIds.add(buildLegacyAgentFileListNodeIdForOwnerId(ownerNodeId));
-    }
-  }
   return nodeIds;
 }
 
-function buildAutomaticFileNodeIdForReferenceId(referenceId: string): string {
-  const namespacedId = splitNamespacedCanvasObjectId(referenceId);
-  return namespacedId
-    ? `${namespacedId.namespaceId}:file-${namespacedId.localId}`
-    : `file-${referenceId}`;
-}
-
-function buildLegacyAutomaticFileNodeIdForReferenceId(referenceId: string): string {
-  return `file-${referenceId}`;
-}
-
-function buildAgentFileListNodeIdForOwnerId(ownerNodeId: string): string {
-  const namespacedId = splitNamespacedCanvasObjectId(ownerNodeId);
-  return namespacedId
-    ? `${namespacedId.namespaceId}:file-list-agent-${namespacedId.localId}`
-    : `file-list-agent-${ownerNodeId}`;
-}
-
-function buildLegacyAgentFileListNodeIdForOwnerId(ownerNodeId: string): string {
-  return `file-list-agent-${ownerNodeId}`;
-}
-
-function buildSharedFileListNodeIdForReferenceOwnerIds(ownerNodeIds: readonly string[]): string {
-  const namespaceId = resolveSingleCanvasNamespaceId(ownerNodeIds);
-  return namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared';
-}
-
-function isFileActivityArtifactObjectOwnedByWorkspaceRoot(
-  rootPath: string,
-  rootGroupId: string,
-  objectId: string
-): boolean {
-  return (
-    denamespaceCanvasObjectId(rootPath, objectId) !== undefined ||
-    resolveLegacyAutomaticFileArtifactNamespaceId(objectId) === rootGroupId ||
-    objectId === 'file-list-shared'
+export function stripRetiredFileActivityState(state: CanvasPrototypeState): CanvasPrototypeState {
+  const migratedState = { ...state } as CanvasPrototypeState & Record<string, unknown>;
+  delete migratedState.fileReferences;
+  delete migratedState.suppressedFileActivityEdgeIds;
+  delete migratedState.suppressedAutomaticFileArtifactNodeIds;
+  const nodes = (state.nodes ?? []).filter((node) =>
+    (node as { kind: string }).kind !== 'file' && (node as { kind: string }).kind !== 'file-list'
   );
-}
-
-function resolveLegacyAutomaticFileArtifactNamespaceId(objectId: string): string | undefined {
-  for (const prefix of ['file-', 'file-list-agent-']) {
-    if (!objectId.startsWith(prefix)) {
-      continue;
-    }
-    const remainder = objectId.slice(prefix.length);
-    const separatorIndex = remainder.indexOf(':');
-    if (separatorIndex <= 0) {
-      continue;
-    }
-    const namespaceId = remainder.slice(0, separatorIndex);
-    if (namespaceId.startsWith(`${ROOT_NAMESPACE_PREFIX}-`)) {
-      return namespaceId;
-    }
-  }
-  return undefined;
-}
-
-function resolveSingleCanvasNamespaceId(objectIds: readonly string[]): string | undefined {
-  let namespaceId: string | undefined;
-  for (const objectId of objectIds) {
-    const parts = splitNamespacedCanvasObjectId(objectId);
-    if (!parts) {
-      return undefined;
-    }
-    if (!namespaceId) {
-      namespaceId = parts.namespaceId;
-      continue;
-    }
-    if (namespaceId !== parts.namespaceId) {
-      return undefined;
-    }
-  }
-  return namespaceId;
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const edges = (state.edges ?? []).filter((edge) =>
+    (edge as { owner: string }).owner !== 'file-activity' && nodeIds.has(edge.sourceNodeId) && nodeIds.has(edge.targetNodeId)
+  );
+  return {
+    ...migratedState,
+    nodes,
+    edges,
+    groups: state.groups ?? []
+  };
 }
 
 function isGroupOwnedByWorkspaceRoot(

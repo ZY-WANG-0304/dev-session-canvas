@@ -31,7 +31,6 @@ exports.instrument = function(manager, vscode, views) {
       return true;
     }
     if(action==='sidebar-mutate') {
-      manager.updateCanvasFileFilterState('include',['sidebar-probe/**']);
       const surface=manager.activeSurface;
       manager.handleWebviewMessage(surface,{type:'webview/updateNodeTitle',lifecycle:manager.getSurfaceLifecycleIdentity(surface),
         payload:{nodeId:args.nodeId,title:'Renamed while hidden'}},manager.getActiveWebview());
@@ -43,7 +42,7 @@ exports.instrument = function(manager, vscode, views) {
       const state=get();
       return {summary:views.summary.getChildren().map(({id,label,description,tooltip})=>({id,label,description,tooltip})),
         expectedNodes:manager.state.nodes.filter(n=>n.kind==='agent').map(n=>({id:n.id,title:n.title})),
-        expectedFilters:{canvasSurface:state.canvasSurface,filesFeatureEnabled:state.filesFeatureEnabled,fileFilters:state.fileFilters},last};
+        expectedActions:{canvasSurface:state.canvasSurface},last};
     }
     throw Error('Unknown sidebar action');
   };

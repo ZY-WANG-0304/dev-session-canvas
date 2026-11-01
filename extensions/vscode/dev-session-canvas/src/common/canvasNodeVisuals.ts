@@ -8,9 +8,5 @@ export function colorForCanvasNodeKind(kind: CanvasNodeKind): string {
       return '#38bdf8';
     case 'note':
       return '#a78bfa';
-    case 'file':
-      return '#f59e0b';
-    case 'file-list':
-      return '#f97316';
   }
 }

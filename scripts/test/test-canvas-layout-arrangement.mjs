@@ -95,20 +95,6 @@ try {
     };
   }
 
-  function fileNode(id, position, ownerNodeIds, extra = {}) {
-    return {
-      id,
-      kind: 'file',
-      title: id,
-      status: 'linked',
-      summary: '',
-      position,
-      size: { width: 140, height: 72 },
-      metadata: { file: { fileId: id, filePath: `src/${id}.ts`, ownerNodeIds } },
-      ...extra
-    };
-  }
-
   function group(id, position, size = { width: 360, height: 240 }, extra = {}) {
     return {
       id,
@@ -140,9 +126,6 @@ try {
       edges: [],
       groups: [],
       nextGroupSequence: 1,
-      fileReferences: [],
-      suppressedFileActivityEdgeIds: [],
-      suppressedAutomaticFileArtifactNodeIds: [],
       ...overrides
     };
   }
@@ -211,24 +194,16 @@ try {
     const arranged = arrangeCanvasLayout(state({
       nodes: [
         agent('agent-a', { x: 0, y: 0 }),
-        fileNode('file-a', { x: 12, y: 8 }, ['agent-a']),
+        note('related', { x: 12, y: 8 }),
         note('unrelated', { x: 24, y: 16 })
       ],
-      edges: [edge('edge-agent-file', 'agent-a', 'file-a')],
-      fileReferences: [
-        {
-          id: 'ref-file-a',
-          filePath: 'src/file-a.ts',
-          updatedAt: '2026-06-17T00:00:00.000Z',
-          owners: [{ nodeId: 'agent-a', accessMode: 'read', updatedAt: '2026-06-17T00:00:00.000Z' }]
-        }
-      ]
+      edges: [edge('edge-agent-related', 'agent-a', 'related')]
     }));
 
     assert.ok(
-      distance(byId(arranged.nodes, 'agent-a'), byId(arranged.nodes, 'file-a')) <
+      distance(byId(arranged.nodes, 'agent-a'), byId(arranged.nodes, 'related')) <
         distance(byId(arranged.nodes, 'agent-a'), byId(arranged.nodes, 'unrelated')),
-      'Agent 与关联文件节点应比无关节点更靠近。'
+      '有手工连线的节点应比无关节点更靠近。'
     );
   }
 
@@ -446,19 +421,19 @@ try {
       nodes: [
         agent('chain-agent', { x: 0, y: 0 }),
         terminal('chain-terminal', { x: 10, y: 10 }),
-        fileNode('chain-file', { x: 20, y: 20 }, ['chain-agent'])
+        note('chain-note', { x: 20, y: 20 })
       ],
       edges: [
         edge('edge-chain-agent-terminal', 'chain-agent', 'chain-terminal'),
-        edge('edge-chain-terminal-file', 'chain-terminal', 'chain-file')
+        edge('edge-chain-terminal-note', 'chain-terminal', 'chain-note')
       ]
     }));
 
     const arrangedAgent = byId(arranged.nodes, 'chain-agent');
     const arrangedTerminal = byId(arranged.nodes, 'chain-terminal');
-    const arrangedFile = byId(arranged.nodes, 'chain-file');
+    const arrangedNote = byId(arranged.nodes, 'chain-note');
     assert.ok(
-      arrangedAgent.position.x < arrangedTerminal.position.x && arrangedTerminal.position.x < arrangedFile.position.x,
+      arrangedAgent.position.x < arrangedTerminal.position.x && arrangedTerminal.position.x < arrangedNote.position.x,
       '用户连线链路应按 source -> target 顺序展开，避免链路端点跨越多个节点。'
     );
   }
@@ -487,7 +462,7 @@ try {
       nodes: [
         agent('agent-a', { x: 0, y: 0 }, { groupId: 'group-a' }),
         terminal('terminal-a', { x: 20, y: 20 }, { groupId: 'group-a' }),
-        fileNode('file-a', { x: 30, y: 30 }, ['agent-a'], { groupId: 'group-a' })
+        note('note-b', { x: 30, y: 30 }, { groupId: 'group-a' })
       ],
       edges: [edge('edge-a', 'agent-a', 'terminal-a')],
       groups: [group('group-a', { x: -24, y: -52 })]
@@ -501,7 +476,6 @@ try {
       assert.deepEqual(arrangedNode.metadata, originalNode.metadata);
     }
     assert.deepEqual(arranged.edges, original.edges, '整理不应改变连线端点或属性。');
-    assert.deepEqual(arranged.fileReferences, original.fileReferences, '整理不应改变文件活动引用。');
   }
 
   console.log('canvas layout arrangement tests passed');

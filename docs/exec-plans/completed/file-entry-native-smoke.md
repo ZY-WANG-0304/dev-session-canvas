@@ -1,5 +1,7 @@
 # 文件条目 smoke 使用原生点击
 
+历史执行计划：本文记录已退役文件活动节点的点击 smoke 实现与当时验证。`clickFileEntry`、CDP 文件输入 helper `native-file-click.cjs` 和对应 smoke 合同已随文件节点功能于 2026-11-01 删除；后续不得按本文恢复当前测试入口。
+
 本计划按 `docs/PLANS.md` 持续维护。
 
 ## 目标与全局图景

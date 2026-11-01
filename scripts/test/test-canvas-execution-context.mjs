@@ -160,9 +160,6 @@ try {
     nodes: [],
     edges: [],
     groups: [],
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: [],
     nextGroupSequence: 1
   };
 
@@ -638,7 +635,7 @@ try {
   function makePreferenceHost(nodes, enabled = false) {
     return Object.assign(Object.create(CanvasPanelManager.prototype), {
       state: { ...emptyState, nodes },
-      appliedStartupConfiguration: { runtimePersistenceEnabled: enabled, filesFeatureEnabled: true, defaultSurface: 'panel' },
+      appliedStartupConfiguration: { runtimePersistenceEnabled: enabled, defaultSurface: 'panel' },
       agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
       preferredRootRuntimeBackends: new Map(), runtimeSupervisorClients: new Map(), nonNativeHostExecutions: new Map(),
       storageRecoverySelection: { sourcePath: currentWorkspaceSlot, writePath: currentWorkspaceSlot },
@@ -646,7 +643,6 @@ try {
         globalStorageUri: { fsPath: path.join(tempDir, 'preference-global-storage') } },
       getExtensionStoragePath: () => currentWorkspaceSlot,
       recordDiagnosticEvent() {}, getAgentCliConfig: () => ({ defaultProvider: 'codex' }),
-      reconcileCanvasFileArtifacts: state => state,
       materializeNoteMarkdownRecoverableDraftFiles: state => state
     });
   }

@@ -22,7 +22,7 @@ related_plans:
   - docs/exec-plans/completed/template-marketplace-phase3.md
   - docs/exec-plans/active/template-marketplace-phase4-governance.md
   - docs/exec-plans/active/template-package-repository-research.md
-updated_at: 2026-06-27
+updated_at: 2026-11-01
 ---
 
 # 模板市场技术选型
@@ -175,7 +175,7 @@ Worker API 按产品规格中的端点分组，以版本前缀组织：
 - `GET /api/v1/templates/:id/package?version=`：当前已实现的完整包下载临时接口；迁移后应作为 `/download` 的隐藏兼容别名或下线，不再作为正式 API contract 推广。
 - `GET /api/v1/templates/:id/thumbnail?version=`：返回指定版本缩略图；preview / production 有 R2 binding 时读取 R2 PNG，本地无 R2 时返回显式 seed SVG 降级图。
 - `GET /api/v1/auth/github/start`、`GET /api/v1/auth/github/callback`、`GET /api/v1/auth/me`、`POST /api/v1/auth/logout`：浏览器 GitHub OAuth 登录、callback、当前用户读取和退出登录；callback 使用 `state` 与 PKCE，Worker 只把市场 session 写入 HttpOnly cookie，不持久化 GitHub access token。`start` / `logout` 可接收 `return_to`，但只允许回到 `/templates` 下的同源路径，避免开放重定向。
-- `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 继续兼容 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都可转换到这一个 contract。Worker 会把 JSON 请求组装成 canonical `package.zip`，同时写入兼容 `template.json`、`thumbnail.png` 和 `manifest.json`。`CanvasTemplateDocument` 继续只允许 Agent / Terminal / Note 模板节点；主线新增的 file / file-list 画布节点不进入模板市场包。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
+- `POST /api/v1/templates`：发布新模板，需要认证；当前 Worker contract 继续兼容 JSON 请求体，包含市场元数据、`CanvasTemplateDocument` 和可选 PNG 缩略图 base64，Web 表单和 VSCode 宿主发布入口都可转换到这一个 contract。Worker 会把 JSON 请求组装成 canonical `package.zip`，同时写入兼容 `template.json`、`thumbnail.png` 和 `manifest.json`。`CanvasTemplateDocument` 只允许当前受支持的 Agent / Terminal / Note 模板节点；已退役的自动 `file` / `file-list` 节点不属于当前画布或模板输入。关联 Markdown Note 使用本地模板模型中的 `metadata.note.templateContentMode` 与 `metadata.note.relativePath`，市场 schema 必须接受 `embedded-snapshot`、`workspace-file-path-only` 和 `workspace-file-with-content`，并拒绝绝对路径、URI scheme、空段和 `..` 越界路径。没有自定义截图时，浏览器和 VSCode 端都使用共享布局 renderer 生成 PNG 缩略图；renderer 的 Agent / Terminal / Note accent 色分别对齐插件画布节点主题色 #22c55e、#38bdf8、#a78bfa。
 - `POST /api/v1/templates/package`：发布完整 `package.zip`，需要认证；浏览器发布页高级入口用 `multipart/form-data` 的 `package` 字段提交 zip。若用户上传包后在表单中继续编辑公开字段、README、CHANGELOG、Template JSON Preview 或缩略图，前端会提交已重建的 zip，Worker 仍必须以服务端规范化结果作为最终事实：保留原包未覆盖的 `media/` / `assets/` 资源，但用服务端校验后的 manifest、README、CHANGELOG、`template.json`、缩略图和 `template.json` hash 重新生成并写入 R2 `package.zip`、兼容 `template.json`、`thumbnail.png`、`manifest.json` 与 D1 派生字段，不能保存上传瞬间的旧 zip。
 - `POST /api/v1/templates/:id/versions`：发布新版本，需要作者权限；Web 作者入口位于 `/templates/publish/version?template=<slug>`，VSCode 详情页入口复用插件内发布表单的 version mode，首版只提交模板 JSON、CHANGELOG 和缩略图，名称、Slug、README、描述和标签沿用当前市场模板。
 - `GET /api/v1/templates/:id/like`：读取当前登录用户对单个模板的点赞状态，需要认证；详情页必须用它读取当前模板状态，不能依赖 `GET /api/v1/me/likes` 的列表第一页推断。
@@ -257,7 +257,7 @@ template-package/
 
 包大小采用分层限制，而不是把早期 5MB 模板 JSON 限制整体放大。正式口径为：`template.json` 继续保持 5MB hard limit；`template-package.json` 64KB hard limit；`README.md` 512KB soft warning、1MB hard limit；`CHANGELOG.md` 256KB hard limit；`media/thumbnail.png` 1MB hard limit；单张图片 5MB hard limit；单个视频 30MB hard limit、最多 2 个；包内媒体总量 45MB hard limit；压缩包 50MB hard limit；解压后 100MB hard limit；文件总数 100 个 hard limit，媒体文件建议最多 20 个。官方精选模板若确实需要更大视频，后续通过管理员 override 单独设计，不作为普通发布默认能力。
 
-包内 `template.json` 仍然是当前本地模板的 `CanvasTemplateDocument`，只描述可复用的画布模板主体：Agent / Terminal / Note 节点、边、静态配置和用户创建的画布分组树。市场 schema 必须保留 `template.groups`、`template.nodes[].groupIndex` 和 `template.groups[].parentGroupIndex`，并拒绝节点引用不存在分组、父分组越界、自引用或循环父子关系；发布、包上传规范化、安装解析和缩略图生成都不得静默裁掉这些字段。主线新增的 `file` / `file-list` 节点以及多根 workspace root 分组仍不进入模板市场主体，因为它们表达的是当前工作区文件结构，不是可分发的模板行为。远端下载量、点赞、举报、发布者、安装来源和市场版本号都不写进 `template.json`。`README.md` 是详情页主内容，`CHANGELOG.md` 是版本变更记录，`media/thumbnail.png` 是卡片和详情页缩略图；自动生成缩略图应把分组框纳入布局 bounds 并在节点背后绘制，帮助消费者看出模板的组织结构。后续若要支持多张预览图、示例配置或附件，只能放入 `media/` 或 `assets/`，并通过 `template-package.json` 引用，不能临时新增散落字段。
+包内 `template.json` 仍然是当前本地模板的 `CanvasTemplateDocument`，只描述可复用的画布模板主体：Agent / Terminal / Note 节点、边、静态配置和用户创建的画布分组树。市场 schema 必须保留 `template.groups`、`template.nodes[].groupIndex` 和 `template.groups[].parentGroupIndex`，并拒绝节点引用不存在分组、父分组越界、自引用或循环父子关系；发布、包上传规范化、安装解析和缩略图生成都不得静默裁掉这些字段。已退役的自动 `file` / `file-list` 节点不属于当前模板模型；多根 workspace root 分组仍不进入模板市场主体，因为它们表达的是当前工作区组织结构，不是可分发的模板行为。远端下载量、点赞、举报、发布者、安装来源和市场版本号都不写进 `template.json`。`README.md` 是详情页主内容，`CHANGELOG.md` 是版本变更记录，`media/thumbnail.png` 是卡片和详情页缩略图；自动生成缩略图应把分组框纳入布局 bounds 并在节点背后绘制，帮助消费者看出模板的组织结构。后续若要支持多张预览图、示例配置或附件，只能放入 `media/` 或 `assets/`，并通过 `template-package.json` 引用，不能临时新增散落字段。
 
 README 媒体只支持受控 Markdown 和包内相对资源。图片引用使用 `![说明](./media/screenshot.png)`；视频不允许作者写任意 HTML embed，先通过 `media.gallery` 声明，渲染时由市场前端生成受控 video card。相对路径只能指向包内 `media/` 或 `assets/`，禁止 `..`、绝对路径、`file:`、`data:`、`javascript:`、iframe、事件属性、脚本和不受控 style。外部 `https://` 图片或视频默认只显示为普通链接，不内嵌渲染，避免第三方追踪、CSP 例外和内容治理外溢。视频默认不 autoplay，使用 `preload="metadata"`，由用户点击后加载。浏览器端和 VSCode Webview 必须使用同一套 Markdown sanitizer 与资源 URL 映射规则。
 

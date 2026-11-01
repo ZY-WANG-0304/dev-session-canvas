@@ -31,10 +31,9 @@ function view() {
 }
 const state = {canvasSurface:'visible',surfaceLocation:'panel',configuredSurface:'panel',workspaceTrusted:true,
   runtimePersistenceEnabled:true,notificationBridgeMode:'system',enabledAttentionSignals:['osc9'],notificationStrongReminderMode:'both',
-  agentAbnormalOutputTextNotificationMode:'off',filesFeatureEnabled:true,filePresentationMode:'lists',fileNodeDisplayStyle:'minimal',
-  fileNodeDisplayMode:'icon-path',filePathDisplayMode:'basename',nodeCount:1,runningExecutionCount:1,
+  agentAbnormalOutputTextNotificationMode:'off',nodeCount:1,runningExecutionCount:1,
   terminalShellPath:'/bin/bash',terminalShellConfiguredValue:'bash',agentCodexCommand:'codex',agentClaudeCommand:'claude',
-  creatableKinds:['agent','terminal','note'],fileFilters:{includeGlobs:['**/*.ts'],excludeGlobs:[]}};
+  creatableKinds:['agent','terminal','note']};
 const events=new EventEmitter();let current=structuredClone(state),reads=0;
 let snapshot={nodes:[{id:'n1',kind:'agent',title:'Agent',status:'running',summary:'Hello',position:{x:0,y:0},size:{width:400,height:300},
   metadata:{agent:{provider:'codex',cwd:'/workspace',outputSequence:1}}}],groups:[]};
@@ -51,7 +50,7 @@ try {
   for(let i=0;i<50;i++){emit({creatableKinds:['agent']});summary.getChildren();}
   assert.equal(reads,1);assert.equal(changes,0,'unconsumed fields must not refresh the summary');
   for(const patch of [{nodeCount:2},{runningExecutionCount:0},{workspaceTrusted:false},{agentCodexCommand:'/new/codex'},
-    {terminalShellPath:'/bin/zsh'},{configuredSurface:'editor'},{filesFeatureEnabled:false}]) {
+    {terminalShellPath:'/bin/zsh'},{configuredSurface:'editor'}]) {
     const before=changes;emit(patch);assert.equal(changes,before+1);assert.deepEqual(summary.getChildren().map(({id,label,description,tooltip,command,contextValue})=>({id,label,description,tooltip,...(command?{command}:{}),...(contextValue?{contextValue}:{})})),getCanvasSidebarSummaryItems(current));
   }
   summary.dispose();
@@ -59,14 +58,13 @@ try {
   filters.received.fire({type:'sidebarActions/ready'});await tick();filters.messages.length=0;const beforeReads=reads;
   emit({});await tick();assert.equal(filters.messages.length,0);assert.equal(reads,beforeReads);
   emit({nodeCount:3,agentCodexCommand:'/irrelevant'});await tick();assert.equal(filters.messages.length,0);
-  emit({fileFilters:{includeGlobs:['src/**'],excludeGlobs:['vendor/**']}});await tick();assert.equal(filters.messages.length,1);
-  assert.equal(reads,beforeReads);const old=filters.messages[0];emit({fileFilters:{includeGlobs:[],excludeGlobs:[]}});await tick();assert.deepEqual(old.payload.state.fileFilters.includeGlobs,['src/**']);
-  filters.show(false);emit({filesFeatureEnabled:true});await tick();const hiddenCount=filters.messages.length;
-  filters.show(true);await tick();assert.equal(filters.messages.length,hiddenCount+1);assert.equal(filters.messages.at(-1).payload.state.filesFeatureEnabled,true);
+  assert(!filters.webview.html.includes('Include files'));assert(!filters.webview.html.includes('Exclude files'));
+  filters.show(false);emit({canvasSurface:'closed'});await tick();const hiddenCount=filters.messages.length;
+  filters.show(true);await tick();assert.equal(filters.messages.length,hiddenCount+1);assert.equal(filters.messages.at(-1).payload.state.canvasSurface,'closed');
   const normalPost=filters.webview.postMessage;let failed=true;
   filters.webview.postMessage=async m=>{if(failed){failed=false;return false;}return normalPost(m);};
-  emit({canvasSurface:'closed'});await tick();const failedCount=filters.messages.length;emit({});await tick();assert.equal(filters.messages.length,failedCount+1);
-  filters.webview.postMessage=async()=>{throw Error('closed view');};emit({canvasSurface:'visible'});await tick();filters.webview.postMessage=normalPost;emit({});await tick();assert.equal(filters.messages.at(-1).payload.state.canvasSurface,'visible');
+  emit({canvasSurface:'visible'});await tick();const failedCount=filters.messages.length;emit({});await tick();assert.equal(filters.messages.length,failedCount+1);
+  filters.webview.postMessage=async()=>{throw Error('closed view');};emit({canvasSurface:'closed'});await tick();filters.webview.postMessage=normalPost;emit({});await tick();assert.equal(filters.messages.at(-1).payload.state.canvasSurface,'closed');
   filters.disposed.fire();const reopened=view();actions.resolveWebviewView(reopened);reopened.received.fire({type:'sidebarActions/ready'});await tick();assert.equal(reopened.messages.length,1);actions.dispose();
   const list=new CanvasSidebarNodeListView(manager,uri(process.cwd()));const nodes=view();list.resolveWebviewView(nodes);nodes.received.fire({type:'sidebarNodeList/ready'});await list.refresh();nodes.messages.length=0;
   snapshot.nodes[0].metadata.agent.outputSequence++;emit({});await pause(110);assert.equal(nodes.messages.length,0,'output revision is not displayed');

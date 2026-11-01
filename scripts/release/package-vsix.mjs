@@ -405,7 +405,6 @@ function assertMainPackageInputsExist() {
     path.join(mainExtensionRoot, 'package.nls.zh-cn.json'),
     path.join(mainExtensionRoot, 'l10n', 'bundle.l10n.zh-cn.json'),
     path.join(mainExtensionRoot, 'images', 'icon.png'),
-    path.join(mainExtensionRoot, 'scripts', 'runtime', 'claude-file-event-hook.cjs'),
     path.join(projectRoot, 'node_modules', 'node-pty', 'package.json')
   ];
 

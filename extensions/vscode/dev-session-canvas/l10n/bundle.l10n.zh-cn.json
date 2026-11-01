@@ -124,7 +124,6 @@
   "Failed to reset to template": "重置为模板失败",
   "Failed to save template": "保存模板失败",
   "Failed to set default template": "设置默认模板失败",
-  "Files are currently disabled. Reload the window and enable `devSessionCanvas.files.enabled` before using file activity and file filters.": "文件功能当前已关闭；重新加载窗口并启用 `devSessionCanvas.files.enabled` 后才能使用文件活动与文件过滤。",
   "Fork": "分叉",
   "Has traceable clues": "有可追踪线索",
   "Healthy": "健康",

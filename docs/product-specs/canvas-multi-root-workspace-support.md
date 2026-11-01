@@ -1,7 +1,7 @@
 ---
 title: 画布多根 workspace 组合视图规格
 status: 已确认
-updated_at: 2026-10-08
+updated_at: 2026-11-01
 related_designs:
   - docs/design-docs/canvas-multi-root-workspace-support.md
   - docs/design-docs/webview-host-supervisor-architecture-review.md
@@ -17,6 +17,8 @@ related_plans:
 ---
 
 # 画布多根 workspace 组合视图规格
+
+> 2026-11-01：自动文件活动、文件节点和文件列表已退役；当前多根状态只包含仍受支持的节点、普通连线和分组。旧状态兼容边界见[退役设计](../design-docs/canvas-file-activity-retirement.md)。本文件验证记录中关于文件活动 namespace 的内容为历史实现证据。
 
 ## 背景
 
@@ -55,8 +57,6 @@ related_plans:
 11. 执行节点的 `metadata.cwd` 继续作为执行目录权威；拖拽到其他 root 分组不静默改写 cwd。
 12. 多根组合视图内部使用命名空间避免不同 root 下的节点 ID、分组 ID 或连线 ID 冲突。
 13. 多根组合视图中，用户创建或重连连线时，两个端点必须属于同一个 root 分组；跨 root 连线被拒绝。
-14. 文件活动自动节点、file-activity edge 和 suppression id 在多根组合视图中按 root 命名空间重建，不跨 root 共享；`file` / `file-list` 在各自 root 内按 owner Agent 最近公共父分组归属，没有公共用户分组时归属对应 `workspace-root`。
-15. 多根组合视图中的 live 文件活动记录按 owner 节点所属 root 生成 root-namespaced `fileReferences.id`；旧的未命名空间化引用在重建时按 root scope 迁移或补 namespace。
 16. 单根与多根的 `Agent` / `Terminal` 新建应由同一执行环境、用户存储范围、画板 root 身份和 Supervisor generation 确定稳定归属，不依赖创建窗口 slot；具体方案见 `docs/design-docs/runtime-root-ownership.md`，本条有限交付已完成，验收限于 §7、§8 的具名输入与证据复用。恢复时 display node id 只服务渲染、选择、连线、布局和拆回 root-local；已有 session 仍以 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 为权威。旧 session 必须保留原具体 VS Code `workspaceStorage` slot，新 session 保存新 root owner 的完整地址，不通过重写地址迁移旧进程。
 17. 多根窗口不能用当前 multi-root workspace storage path 猜 runtime；同一个 root 的多个 storage slot 也不能互相替代，必须使用 root-local metadata 中保存的完整 `runtimeStoragePath`。旧 snapshot 缺少 `runtimeStoragePath` 时必须迁移或显式降级为历史恢复，并记录诊断。
 18. 全局 fit view、初始自动 fit、动态最小缩放和 MiniMap 把所有系统 root 分组作为一等空间对象纳入；multi-root 下全局 fit view 默认包含所有 root 分组。
@@ -70,7 +70,7 @@ related_plans:
 26. `rootGroups` 和 `paneGallery` 中的右键“整理画布布局”采用 root-first 语义：当入口位于 workspace-root section body、title/border chrome、其内部用户分组或 `paneGallery` 可交互 root pane 时，主菜单项默认只整理该 workspace-root 的 root-local 节点和内部用户分组，不移动其他 root 分组，也不重排整个 multi-root overlay；同一菜单项右侧 `>` 打开二级菜单，二级菜单同时提供“整理当前 root 内的节点”和“整理整个 workspace 的画布”，其中全 workspace 选项才按全局组合画布整理所有 root 分组与外层对象。入口位于所有 root section 外部或单根 workspace 时，维持原有直接整理当前可交互画布的行为。
 27. `rootGroups` 和 `paneGallery` 中的右键“清空画板”复用整理画布的作用域入口，但所有清空动作都必须先通过 VS Code 原生 modal 确认。入口位于 workspace-root section、`paneGallery` 可交互 root pane 或 thumbnail 模式 active root 主画板时，主菜单默认清空当前 root 的 root-local 子画布并保留 root section；入口位于 root 内普通用户分组时，主菜单默认清空该分组内部节点和子分组并保留当前分组框。右侧 `>` 二级菜单同时提供清空当前范围和清空整个 workspace 的画板；全 workspace 选项沿用全局清空语义，清空每个当前 root 的 root-local 内容并保留系统 root section。清空 root 或 group 会终止对应范围内运行中的 `Agent` / `Terminal`，但不删除 workspace folder、磁盘文件或 git worktree。
 28. 模板功能在支持跨 root 模板前只对单个目标 root 生效：多根中应用模板会追加到目标 root-local state；重置为模板会清空目标 root-local 画布并终止该 root 内执行会话后套用模板，不清空其他 root，也不把 multi-root overlay 当作模板内容。`rootGroups` 中如果用户在所有 root section 外部触发重置为模板，Webview 必须提示用户在目标 root section 内重置且不发送 reset 请求；`paneGallery` 中目标 root 由可交互 root pane 或 thumbnail 模式 active root 主画板决定。
-29. `paneGallery` 不改变 root-local storage、runtime binding、文件活动或 cross-root 限制；它只是多根呈现层。每个 root 窗格左上角只保留轻量 root 标签，显示 root 名称并在 tooltip 中保留完整路径；不在标签 subtitle 中常驻 nodes / waiting / attention 等汇总信息。界面不提供整条 paneGallery 顶部 toolbar，也不提供常驻 filter roots 搜索框，但保留主线画布右上角的使用提示入口。
+29. `paneGallery` 不改变 root-local storage、runtime binding 或 cross-root 限制；它只是多根呈现层。每个 root 窗格左上角只保留轻量 root 标签，显示 root 名称并在 tooltip 中保留完整路径；不在标签 subtitle 中常驻 nodes / waiting / attention 等汇总信息。界面不提供整条 paneGallery 顶部 toolbar，也不提供常驻 filter roots 搜索框，但保留主线画布右上角的使用提示入口。
 30. `paneGallery` 包含四个运行时布局状态：`dynamic` 把所有 root 窗格按可用区域弹性排列并允许不同窗格尺寸不一致但铺满画布区域，`grid` 使用规则宫格排列，二者都用于全览、状态观察和在任一 root 窗格内直接处理；`topThumbnails` 与 `sideThumbnails` 保留一个 active root 主画板，并分别把所有 root 的缩略槽位放到顶部或右侧缩略图 rail，其中 active root 在自身 workspace 顺序槽位显示等尺寸占位卡片而不是第二个真实画板缩略图。默认粗状态是 `dynamic` 与 `sideThumbnails`，四种布局以及上次使用的全览/缩略图具体模式都属于 Webview 局部 UI 状态，不写入 root-local state。
 31. `paneGallery` 的 `dynamic` / `grid` 窗格是可交互 root pane，支持在对应 root 内创建节点、拖拽节点、输入终端、拖入 Markdown、应用模板和重置为模板；每个交互动作的目标 root 由所在窗格身份确定。thumbnail 模式中的非 active root 缩略图仍是对应 root 的画板 fit view，而不是复用 MiniMap 或 SVG 预览；缩略图可以完整挂载对应 root 的子画板并进行 execution snapshot / live 状态 hydrate，以保证缩略图内容与切换为主画板时的连续性。这里的“不可交互 / 不承载终端输入”仅指缩略图不接受由缩略图内用户交互触发的 terminal input、节点拖拽、编辑、创建、drop 或 start / stop 等操作/消息；snapshot hydrate、attach 和正常执行生命周期同步不在禁用范围内。单击缩略图不切换主画板，双击非 active root 缩略图才把对应 root 变成 active root 主画板；active root 占位卡片不响应单击或双击切换。
 32. `paneGallery` 的每个可交互 root pane 拥有独立 viewport。首次进入或 pane 尺寸变化时，默认按该 root 的子图做 fit-to-pane，缩放比例与概览触发都遵循主线单一画板的 fit/overview 语义，不在 paneGallery 中额外设置下限，也不因为进入 paneGallery 就强制所有节点进入概览状态；root 内容过大时 pane 允许内部 pan/zoom。四种布局下的 pane viewport 属于 Webview local UI state，不写入 root-local state 或 multi-root overlay。
@@ -107,15 +107,13 @@ related_plans:
 - 在 multi-root workspace 中把某个 root 内 Note 拖到 root 边界外后，root 分组自动扩张；单独打开该 root 可以看到 Note 的 root-local 位置变化。
 - 在 multi-root workspace 中两个同父 root 分组不会重叠；选中多个同父 root 分组创建普通分组后，外层分组可以包含这些 root。
 - 在 multi-root workspace 的某个 root 分组、`paneGallery` 的 `dynamic` / `grid` root pane 或 thumbnail 模式 active root 主画板内创建 Note / Agent / Terminal / 模板内容 / 关联 Markdown Note 后，单独打开该 root 可以看到对应对象。
-- 在 multi-root workspace 中执行全局“清空画板”后，所有 root-local 节点、用户分组、root 内连线和文件活动记录被清空，当前 workspace 的系统 workspace-root section 仍按 overlay 位置可见；其他 root 内执行会话被终止，但 workspace folder、磁盘目录和 worktree 不被删除。
+- 在 multi-root workspace 中执行全局“清空画板”后，所有 root-local 节点、用户分组和 root 内连线被清空，当前 workspace 的系统 workspace-root section 仍按 overlay 位置可见；其他 root 内执行会话被终止，但 workspace folder、磁盘目录和 worktree 不被删除。
 - 在 multi-root workspace 的某个 workspace-root section、`paneGallery` 可交互 root pane 或 thumbnail 模式 active root 主画板内右键清空画板时，默认只清空当前 root 的 root-local 子画布并保留该 root section；在普通用户分组内右键清空画板时，默认只清空该分组内容并保留当前分组框；二级菜单仍可选择清空整个 workspace。上述清空动作都必须先显示 VS Code 原生 modal 确认。
 - 在 multi-root workspace 的某个 root 分组、`paneGallery` 的 `dynamic` / `grid` root pane 或 thumbnail 模式 active root 主画板内执行"重置为模板"后，只清空并替换该 root 的 root-local 画布；其他 root 的节点、分组和执行会话保持不变。
 - 在 `rootGroups` 中，从所有 root section 外部触发"重置为模板"时，Webview 展示提示并且不发送 reset 请求；在 root section body 内触发时，请求携带该 workspace-root group id；在 root 内部用户分组触发时，请求可携带该用户分组 id，但 Host 必须解析到所属 root 并只重置该 root。
 - 在 `paneGallery` 中，从可交互 root pane 或 active root 主画板触发"重置为模板"时，请求携带该 pane 对应的 workspace-root group id；缩略图仍不发送 reset 请求。
 - 两个 root 中都存在 `note-1` 或 `agent-1` 时，多根组合视图和 `paneGallery` 都不会发生节点 ID 冲突。
 - 在 multi-root workspace 中，跨 root 画线或把既有连线重连到另一个 root 的节点不会创建或更新连线。
-- 两个 root 都有文件活动时，自动 `file` / `file-list` 节点和 file-activity edge 均保留在各自 root 分组内，按各自 root 内 owner Agent 最近公共父分组归属，且 ID 不冲突；当前版本不把跨 root owner 合并成同一个自动文件 artifact。
-- 在 multi-root workspace 中运行 Agent 产生新的文件活动时，新写入的 `fileReferences.id` 带所属 root namespace；删除该自动文件节点后的 suppression 在重载后仍生效。
 - 一个 root-local live runtime 节点在 multi-root 重启后按原 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind` 重新附着，离线期间输出可见。
 - 同一个 root 被多个 VS Code slot 打开时，旧 runtime 仍按原完整 `runtimeStoragePath` 区分；没有 `runtimeStoragePath` 的旧 live-runtime root-local snapshot 不会被同 root 当前 slot 或新 root owner 隐式接管。
 - 新建归属验收：同 root 在单根与不同多根窗口分别新建 Agent/Terminal 时归属同 owner；不同 root 隔离，旧 live 原绑定与新 owner 并存。完整有限矩阵见 `docs/design-docs/runtime-root-ownership.md` §7，当前分层结果见 §8，既有跨窗口 attach 验证不代证它。

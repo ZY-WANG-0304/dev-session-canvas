@@ -1874,26 +1874,24 @@
       "scenario": "execution-file-activity",
       "case": "views",
       "title": "文件活动view与打开",
-      "status": "existing-to-migrate",
-      "currentRoutes": [
-        "trusted"
-      ],
-      "proposedSourceDefault": true,
-      "proposedPackagedDefault": true,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "status": "retired",
+      "currentRoutes": [],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "retirementReason": "画布 Agent 文件活动与自动文件节点功能已于 2026-11-01 退役。"
     },
     {
       "id": "execution-file-activity/read-exit-drain",
       "scenario": "execution-file-activity",
       "case": "read-exit-drain",
       "title": "read-exit末尾文件活动drain",
-      "status": "existing-to-migrate",
-      "currentRoutes": [
-        "trusted"
-      ],
-      "proposedSourceDefault": true,
-      "proposedPackagedDefault": true,
-      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
+      "status": "retired",
+      "currentRoutes": [],
+      "proposedSourceDefault": false,
+      "proposedPackagedDefault": false,
+      "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份",
+      "retirementReason": "画布 Agent 文件活动与自动文件节点功能已于 2026-11-01 退役。"
     },
     {
       "id": "runtime-mode/reload-clear",
@@ -2264,8 +2262,6 @@
         "execution-exit/natural-zero",
         "execution-exit/nonzero",
         "execution-exit/resumed-nonzero",
-        "execution-file-activity/read-exit-drain",
-        "execution-file-activity/views",
         "execution-io/agent-line",
         "execution-io/agent-partial",
         "execution-io/bounded-burst",

@@ -2111,33 +2111,13 @@
     },
     {
       "id": "execution-file-activity/views",
-      "status": "implemented-unverified",
-      "destinations": [
-        {
-          "suite": "execution-file-activity/views",
-          "step": "business",
-          "helper": "verifyFileActivityViewsAndOpenFiles",
-          "file": "tests/vscode-smoke/extension-tests.cjs",
-          "source": true,
-          "packaged": true,
-          "diagnosticOnly": false
-        }
-      ]
+      "status": "retired",
+      "destinations": []
     },
     {
       "id": "execution-file-activity/read-exit-drain",
-      "status": "implemented-unverified",
-      "destinations": [
-        {
-          "suite": "execution-file-activity/read-exit-drain",
-          "step": "business",
-          "helper": "verifyReadExitFileActivityDrain",
-          "file": "tests/vscode-smoke/extension-tests.cjs",
-          "source": true,
-          "packaged": true,
-          "diagnosticOnly": false
-        }
-      ]
+      "status": "retired",
+      "destinations": []
     },
     {
       "id": "runtime-mode/reload-clear",
@@ -2519,8 +2499,6 @@
         "execution-config/workspace-shell",
         "execution-exit/natural-zero",
         "execution-exit/nonzero",
-        "execution-file-activity/read-exit-drain",
-        "execution-file-activity/views",
         "execution-io/agent-line",
         "execution-io/agent-partial",
         "execution-io/bounded-burst",

@@ -928,6 +928,8 @@ async function makeRootHost() {
   Object.assign(f.host, {
     activeSurface: undefined,
     executionSessionOperationTokens: new Map(),
+    pendingNodeDeletionOperations: new Map(),
+    remotePendingNodeDeletionOperations: new Map(),
     pendingTerminalInitialInputDispatches: new Map(),
     activeAssociatedNoteMarkdownEdits: new Map(),
     getMultiRootWorkspaceFoldersForComposition: () => [
@@ -939,7 +941,6 @@ async function makeRootHost() {
     getRuntimeSupervisorScriptPath: () => '/controlled/supervisor.js',
     getRuntimeSupervisorLauncherScriptPath: () => '/controlled/launcher.js',
     writeRootLocalCanvasSnapshot: (rootPath, state) => snapshots.push({ rootPath, state }),
-    reconcileCanvasFileArtifacts: state => state,
     notifySidebarStateChanged() {},
     bridgeExecutionAttentionSignals: async () => undefined,
     queueExecutionStateSync() {},
@@ -1254,9 +1255,7 @@ async function testAgentCompletedSuccessCannotDisposeReplacement() {
   );
   const successorBinding = { kind: 'agent', nodeId: f.node.id, runtimeSessionId: 'agent-successor' };
   f.host.runtimeSessionBindings.set(successorBindingKey, successorBinding);
-  let fileActivityDisposals = 0;
   let exits = 0;
-  f.host.disposeAgentFileActivitySession = async () => { fileActivityDisposals += 1; };
   f.host.postExecutionExitWithFinalSnapshot = async () => { exits += 1; };
   completedPersistence.resolve();
   await f.host.waitForPendingRuntimeSupervisorStateCallbacks();
@@ -1265,7 +1264,6 @@ async function testAgentCompletedSuccessCannotDisposeReplacement() {
   assert.strictEqual(f.host.agentSessions.get(f.node.id), successor);
   assert.strictEqual(f.host.runtimeSessionBindings.get(successorBindingKey), successorBinding);
   assert.equal(successor.stopRequested, false);
-  assert.equal(fileActivityDisposals, 0, 'stale Agent completion cannot dispose successor file activity');
   assert.equal(exits, 0, 'stale Agent completion cannot post an exit for its replacement');
   assert.equal(f.deletes.includes('agent-successor'), false);
 }

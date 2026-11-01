@@ -150,7 +150,7 @@ npm run build
 - 模板市场仍是 Preview 能力，可能需要访问 `https://dscanvas.dev`、在写操作中完成 GitHub 认证，并依赖通过市场发布流程或受控运维流程写入的生产目录数据。
 - `Remote SSH` 主路径已验证可用，且仍是验证最充分的推荐路径；Linux、macOS、Windows 本地主路径也已完成功能可用性验证，但 Windows 下使用 `Codex` 时仍存在执行节点内历史无法向上翻页的已知问题。
 - `Note` Markdown 预览不支持原始 HTML 透传、任意 scheme 链接、越出 workspace 的文件链接、目录目标或富文本块编辑。
-- 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、文件活动、缩略图、云同步或模板历史。
+- 模板当前只保存静态布局与配置，不保存运行中会话、终端输出、缩略图、云同步或模板历史。
 - 执行终端复制粘贴快捷键第一版不读取用户自定义 keybindings，也不覆盖 Linux selection clipboard、右键 copyPaste 或 HTML 富文本复制。
 - 侧栏 `会话历史` 当前只显示可明确归属到当前 workspace 的 `Codex` / `Claude Code` 记录；缺少工作目录信息的旧会话会被保守跳过。
 - 若本机没有可用的 `codex` 或 `claude` CLI，`Agent` 节点无法提供完整体验。

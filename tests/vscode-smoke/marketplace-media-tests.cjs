@@ -169,11 +169,6 @@ async function configureWorkbench(spec) {
   await configuration.update('devSessionCanvas.agent.codexCommand', codexCommand, vscode.ConfigurationTarget.Global);
   await configuration.update('devSessionCanvas.agent.claudeCommand', claudeCommand, vscode.ConfigurationTarget.Global);
   await configuration.update('devSessionCanvas.terminal.shellPath', terminalCommand, vscode.ConfigurationTarget.Global);
-  await configuration.update('devSessionCanvas.files.enabled', true, vscode.ConfigurationTarget.Global);
-  await configuration.update('devSessionCanvas.files.presentationMode', 'nodes', vscode.ConfigurationTarget.Global);
-  await configuration.update('devSessionCanvas.fileNode.displayStyle', 'minimal', vscode.ConfigurationTarget.Global);
-  await configuration.update('devSessionCanvas.files.nodeDisplayMode', 'icon-path', vscode.ConfigurationTarget.Global);
-  await configuration.update('devSessionCanvas.files.pathDisplayMode', 'relative-path', vscode.ConfigurationTarget.Global);
 }
 
 async function runExecutionSession(session, surface) {

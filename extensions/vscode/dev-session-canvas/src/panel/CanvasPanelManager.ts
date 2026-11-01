@@ -87,25 +87,14 @@ import {
   type CanvasEdgeArrowMode,
   type CanvasEdgeColor,
   type CanvasEdgeSummary,
-  type CanvasFileActivityAccessMode,
   type CanvasAttentionNotificationBridgeMode,
   type CanvasAgentAbnormalOutputTextNotificationMode,
   type CanvasSurfaceLocation,
   type CanvasSurfaceMode,
-  type CanvasFileNodeDisplayStyle,
-  type CanvasFileNodeDisplayMode,
-  type CanvasFilePathDisplayMode,
-  type CanvasFilePresentationMode,
   type CanvasLinkOpenMode,
-  type CanvasFileIconDescriptor,
   type CanvasMultiRootPresentationMode,
   type CanvasOverviewMode,
   type CanvasStrongTerminalAttentionReminderMode,
-  type CanvasFileReferenceOwnerSummary,
-  type CanvasFileReferenceSummary,
-  type CanvasFileIconFontFace,
-  type FileNodeMetadata,
-  type FileListNodeEntrySummary,
   type CanvasNodeFootprint,
   type CanvasNodeKind,
   type CanvasNodeMetadata,
@@ -137,7 +126,6 @@ import {
   DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD,
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
   NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
-  estimateMinimalFileNodeFootprint,
   estimatedCanvasNodeFootprint,
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
@@ -369,12 +357,6 @@ import {
   type ResolvedExecutionFileLink
 } from './executionTerminalNativeHelpers';
 import { ExecutionTerminalLineContextTracker } from './executionTerminalLineContextTracker';
-import {
-  createAgentFileActivitySession,
-  looksLikeFakeAgentProviderCommand,
-  type AgentFileActivityEvent,
-  type AgentFileActivitySession
-} from './agentFileActivity';
 import type {
   ConfiguredTerminalShell,
   InspectedConfiguredTerminalShell,
@@ -511,7 +493,6 @@ export interface WorkspaceRootCanvasRemovalImpact {
   nodeCount: number;
   groupCount: number;
   edgeCount: number;
-  fileReferenceCount: number;
   executionNodeCount: number;
 }
 
@@ -617,13 +598,6 @@ interface NonNativeHostExecution {
   cols: number;
   rows: number;
   business?: NonNativeHostBusiness;
-  fileActivity?: {
-    session: AgentFileActivitySession;
-    closed: boolean;
-    disposed: boolean;
-    disposal?: Promise<void>;
-    error?: string;
-  };
   mutationError?: string;
   resizeObservation?: InteractionObservation;
   resizeTaskPending?: boolean;
@@ -910,11 +884,6 @@ interface CanvasHostDiagnosticsDumpResult {
   webviewLifecyclePanelRestoreLikelyAffected: boolean;
 }
 
-interface CanvasFileFilterState {
-  includeGlobs: string[];
-  excludeGlobs: string[];
-}
-
 interface ExecutionFileLinkResolveCandidateDiagnostic {
   text: string;
   path: string;
@@ -1081,11 +1050,6 @@ export interface CanvasSidebarState {
   enabledAttentionSignals: ExecutionAttentionSignalKind[];
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
   agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
-  filesFeatureEnabled: boolean;
-  filePresentationMode: CanvasFilePresentationMode;
-  fileNodeDisplayStyle: CanvasFileNodeDisplayStyle;
-  fileNodeDisplayMode: CanvasFileNodeDisplayMode;
-  filePathDisplayMode: CanvasFilePathDisplayMode;
   terminalShellConfiguredValue: string;
   terminalShellPath: string;
   agentCodexCommand: string;
@@ -1094,7 +1058,6 @@ export interface CanvasSidebarState {
   runningExecutionCount: number;
   workspaceTrusted: boolean;
   creatableKinds: CanvasCreatableNodeKind[];
-  fileFilters: CanvasFileFilterState;
 }
 
 type CreateNodeBlockReason = 'workspace-untrusted';
@@ -1144,27 +1107,14 @@ interface PersistedCanvasSnapshot {
   stateHash?: string;
   state?: unknown;
   multiRootOverlay?: unknown;
-  fileFilterState?: unknown;
   activeSurface?: CanvasSurfaceLocation;
   defaultSurface?: CanvasSurfaceLocation;
   runtimePersistenceEnabled?: boolean;
-  filesFeatureEnabled?: boolean;
 }
 
 interface CanvasStartupConfiguration {
   defaultSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
-  filesFeatureEnabled: boolean;
-}
-
-interface CanvasFileViewConfiguration {
-  enabled: boolean;
-  presentationMode: CanvasFilePresentationMode;
-  includeGlobs: string[];
-  excludeGlobs: string[];
-  displayStyle: CanvasFileNodeDisplayStyle;
-  nodeDisplayMode: CanvasFileNodeDisplayMode;
-  pathDisplayMode: CanvasFilePathDisplayMode;
 }
 
 interface PersistedCanvasStateFlushResult {
@@ -1424,7 +1374,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private enabledAttentionSignals: ExecutionAttentionSignalKind[];
   private strongTerminalAttentionReminderMode: CanvasStrongTerminalAttentionReminderMode;
   private agentAbnormalOutputTextNotificationMode: CanvasAgentAbnormalOutputTextNotificationMode;
-  private fileFilterState: CanvasFileFilterState;
   private canvasTemplateInitialized: boolean;
   private state: CanvasPrototypeState;
   private activeSurface: CanvasSurfaceLocation | undefined;
@@ -1563,7 +1512,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private runtimeExecutionEnvironmentPromise?: Promise<RuntimeExecutionEnvironment>;
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
-  private readonly agentFileActivitySessions = new Map<string, AgentFileActivitySession>();
   private readonly noteMarkdownFileWatchers = new Map<string, NoteMarkdownFileWatcher>();
   private readonly noteMarkdownFileRefreshTimers = new Map<string, NodeJS.Timeout>();
   private readonly activeAssociatedNoteMarkdownEdits = new Map<string, ActiveAssociatedNoteMarkdownEdit>();
@@ -1603,7 +1551,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
     this.refreshStorageRecoverySelection();
-    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.lastComposedWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
@@ -1710,11 +1657,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const canvasWorkspaceRootWatermarksChanged = event.affectsConfiguration(
           CONFIG_KEYS.canvasWorkspaceRootWatermarksEnabled
         );
-        const filesFeatureEnabledChanged = event.affectsConfiguration(CONFIG_KEYS.filesFeatureEnabled);
-        const filesPresentationModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPresentationMode);
-        const fileNodeDisplayStyleChanged = event.affectsConfiguration(CONFIG_KEYS.fileNodeDisplayStyle);
-        const filesNodeDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesNodeDisplayMode);
-        const filesPathDisplayModeChanged = event.affectsConfiguration(CONFIG_KEYS.filesPathDisplayMode);
         const attentionNotificationBridgeChanged =
           event.affectsConfiguration(CONFIG_KEYS.notificationAttentionSignalBridge) ||
           event.affectsConfiguration(CONFIG_KEYS.legacyNotificationBridgeTerminalAttentionSignals) ||
@@ -1737,15 +1679,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const terminalWordSeparatorsChanged = event.affectsConfiguration(
           'terminal.integrated.wordSeparators'
         );
-        const workbenchIconThemeChanged = event.affectsConfiguration('workbench.iconTheme');
         const sidebarStateChanged =
           defaultSurfaceChanged ||
           runtimePersistenceChanged ||
-          filesFeatureEnabledChanged ||
-          filesPresentationModeChanged ||
-          fileNodeDisplayStyleChanged ||
-          filesNodeDisplayModeChanged ||
-          filesPathDisplayModeChanged ||
           agentCodexCommandChanged ||
           agentClaudeCommandChanged ||
           terminalShellChanged ||
@@ -1755,11 +1691,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           strongTerminalAttentionReminderChanged ||
           agentAbnormalOutputTextNotificationsChanged;
 
-        if (defaultSurfaceChanged || runtimePersistenceChanged || filesFeatureEnabledChanged) {
+        if (defaultSurfaceChanged || runtimePersistenceChanged) {
           void this.notifyReloadRequiredConfigurationChanged({
             defaultSurfaceChanged,
-            runtimePersistenceChanged,
-            filesFeatureEnabledChanged
+            runtimePersistenceChanged
           });
         }
 
@@ -1774,10 +1709,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !canvasMultiRootPresentationModeChanged &&
           !canvasLinkOpenModeChanged &&
           !canvasWorkspaceRootWatermarksChanged &&
-          !filesPresentationModeChanged &&
-          !fileNodeDisplayStyleChanged &&
-          !filesNodeDisplayModeChanged &&
-          !filesPathDisplayModeChanged &&
           !attentionNotificationBridgeChanged &&
           !enabledAttentionSignalsChanged &&
           !strongTerminalAttentionReminderChanged &&
@@ -1788,8 +1719,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           !terminalShellArgsChanged &&
           !terminalScrollbackChanged &&
           !multiCursorModifierChanged &&
-          !terminalWordSeparatorsChanged &&
-          !workbenchIconThemeChanged
+          !terminalWordSeparatorsChanged
         ) {
           if (sidebarStateChanged) {
             this.notifySidebarStateChanged();
@@ -1809,10 +1739,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             canvasMultiRootPresentationModeChanged,
             canvasLinkOpenModeChanged,
             canvasWorkspaceRootWatermarksChanged,
-            filesPresentationModeChanged,
-            fileNodeDisplayStyleChanged,
-            filesNodeDisplayModeChanged,
-            filesPathDisplayModeChanged,
             attentionNotificationBridgeChanged,
             enabledAttentionSignalsChanged,
             strongTerminalAttentionReminderChanged,
@@ -1823,8 +1749,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             terminalShellArgsChanged,
             terminalScrollbackChanged,
             multiCursorModifierChanged,
-            terminalWordSeparatorsChanged,
-            workbenchIconThemeChanged
+            terminalWordSeparatorsChanged
           })
           .finally(() => {
             if (sidebarStateChanged) {
@@ -1880,7 +1805,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const configuredSurface = this.getConfiguredSurface();
     const canvasSurface = this.activeSurface ? this.getSurfaceVisibility(this.activeSurface) : 'closed';
     const surfaceLocation = canvasSurface === 'closed' ? configuredSurface : this.activeSurface ?? configuredSurface;
-    const fileConfiguration = this.getCanvasFileViewConfiguration(configuration);
     const terminalShell = getConfiguredTerminalShell(configuration);
     const agentCliConfig = this.getAgentCliConfig(configuration);
 
@@ -1893,11 +1817,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       enabledAttentionSignals: [...this.enabledAttentionSignals],
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
       agentAbnormalOutputTextNotificationMode: this.agentAbnormalOutputTextNotificationMode,
-      filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
-      filePresentationMode: fileConfiguration.presentationMode,
-      fileNodeDisplayStyle: fileConfiguration.displayStyle,
-      fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
-      filePathDisplayMode: fileConfiguration.pathDisplayMode,
       terminalShellConfiguredValue: terminalShell.configuredPath || terminalShell.configuredShell,
       terminalShellPath: this.resolveTerminalShellPathForConfigurationCwd(terminalShell.resolvedPath),
       agentCodexCommand: agentCliConfig.codexCommand,
@@ -1905,8 +1824,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeCount: this.state.nodes.length,
       runningExecutionCount: this.agentSessions.size + this.terminalSessions.size,
       workspaceTrusted: vscode.workspace.isTrusted,
-      creatableKinds: ['agent', 'terminal', 'note'],
-      fileFilters: cloneJsonValue(this.fileFilterState)
+      creatableKinds: ['agent', 'terminal', 'note']
     };
   }
 
@@ -1923,10 +1841,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     await vscode.window.showWarningMessage(message, { modal: true });
     return true;
-  }
-
-  public isFilesFeatureEnabled(): boolean {
-    return this.appliedStartupConfiguration.filesFeatureEnabled;
   }
 
   public getCanvasNodes(): CanvasNodeSummary[] {
@@ -1977,10 +1891,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       ];
     });
-  }
-
-  public getCanvasFileFilterState(): CanvasFileFilterState {
-    return cloneJsonValue(this.fileFilterState);
   }
 
   public getUserCanvasTemplateDirectoryPath(): string {
@@ -2661,7 +2571,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         agentClaudeCommand: agentCliConfig.claudeCommand,
         ...this.buildDebugConfigurationSnapshot(shellEnvironmentPatch),
         runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
-        filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
         preferredRuntimeHostBackendKind: this.preferredRuntimeHostBackendKind,
         preferredRuntimeHostBackendFallbackReason: this.preferredRuntimeHostBackendFallbackReason
       },
@@ -3884,7 +3793,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.flushDeferredCanvasStatePersist('test-reload');
     await this.waitForPendingWorkspaceStateUpdates();
     this.refreshStorageRecoverySelection();
-    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
@@ -3961,7 +3869,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.applyStartupConfiguration(nextStartupConfiguration);
     this.modeSwitchCleanup = undefined;
     this.refreshStorageRecoverySelection();
-    this.fileFilterState = this.loadStoredCanvasFileFilterState();
     this.state = this.loadReconciledState();
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
     this.activeSurface = this.loadStoredSurface();
@@ -4705,10 +4612,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.state = this.composeEmptyMultiRootCanvasState(workspaceFolders);
       this.lastLoadedRootLocalStates = workspaceFolders.map((folder) => ({
         rootPath: folder.path,
-        state: createDefaultState(this.getAgentCliConfig().defaultProvider)
+        state: createDefaultState()
       }));
     } else {
-      this.state = createDefaultState(this.getAgentCliConfig().defaultProvider);
+      this.state = createDefaultState();
     }
     this.canvasTemplateInitialized = true;
     try {
@@ -4926,7 +4833,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const stateBeforeClear = this.state;
-    this.state = this.reconcileCanvasFileArtifacts(nextState);
+    this.state = finalizeCanvasGroupState(nextState);
     this.canvasTemplateInitialized = true;
     try {
       await this.persistState({ reason: options.reason ?? 'workspace-root-canvas-cleared' });
@@ -4974,7 +4881,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       nodeCount: nodes.length,
       groupCount: (rootState.groups ?? []).length,
       edgeCount: (rootState.edges ?? []).length,
-      fileReferenceCount: (rootState.fileReferences ?? []).length,
       executionNodeCount: nodes.filter((node) => isExecutionNodeKind(node.kind)).length
     };
   }
@@ -6312,7 +6218,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       targetWorkspaceRootPath
     });
     const nextBaseState = options?.reset
-      ? createDefaultState(this.getAgentCliConfig().defaultProvider)
+      ? createDefaultState()
       : this.state;
     const rawPreferredCenter = this.resolvePreferredTemplatePlacementCenter(options?.visibleCenter);
     const preferredCenterInComposedState = targetGroup && isWorkspaceRootGroup(targetGroup)
@@ -6320,7 +6226,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : rawPreferredCenter;
     const applyBaseState = targetRootGroup
       ? options?.reset
-        ? createDefaultState(this.getAgentCliConfig().defaultProvider)
+        ? createDefaultState()
         : this.prepareStateForWorkspaceRootLocalCreate(targetRootGroup)
       : nextBaseState;
     const preferredCenter = preferredCenterInComposedState && targetRootGroup
@@ -6394,7 +6300,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const stateBeforeApply = this.state;
     const rootsBeforeApply = this.lastLoadedRootLocalStates;
     const overlayBeforeApply = this.multiRootOverlay;
-    this.state = this.reconcileCanvasFileArtifacts(appliedState);
+    this.state = finalizeCanvasGroupState(appliedState);
     this.canvasTemplateInitialized = true;
     if (options?.reset) {
       try {
@@ -6740,26 +6646,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         lastError: params.lastError,
         recoverableDraft: params.recoverableDraft
       }
-    };
-  }
-
-  private loadStoredCanvasFileFilterState(): CanvasFileFilterState {
-    const snapshot = this.loadPersistedCanvasSnapshot();
-    if (
-      !this.appliedStartupConfiguration.filesFeatureEnabled ||
-      this.shouldResetFileDomainDueToFilesFeatureModeChange(snapshot)
-    ) {
-      return createEmptyCanvasFileFilterState();
-    }
-    const storedFilterState =
-      snapshot?.fileFilterState ?? this.getStoredValue<CanvasFileFilterState | undefined>(STORAGE_KEYS.canvasFileFilterState);
-    if (storedFilterState !== undefined) {
-      return normalizeCanvasFileFilterState(storedFilterState);
-    }
-
-    return {
-      includeGlobs: readLegacyCanvasFileFilterGlobs('include'),
-      excludeGlobs: readLegacyCanvasFileFilterGlobs('exclude')
     };
   }
 
@@ -7265,9 +7151,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       ? decomposeMultiRootCanvasState({ composedState: this.state, workspaceFolders: folders,
           previousRootStates: this.lastLoadedRootLocalStates }).rootStates
       : [{ rootPath, state: this.state }];
-    const nextRoots = rootStates.map(root => root.rootPath === rootPath ? { rootPath, state: rootState } : root);
+    const nextRoots = rootStates.map(root => ({ rootPath: root.rootPath,
+      state: clearFileDomainState(root.rootPath === rootPath ? rootState : root.state) }));
     let next = folders.length > 1 ? composeMultiRootCanvasState({ workspaceFolders: folders,
-      rootStates: nextRoots, overlay: this.multiRootOverlay }) : rootState;
+      rootStates: nextRoots, overlay: this.multiRootOverlay }) : clearFileDomainState(rootState);
     const previous = new Map(this.state.nodes.map(node => [node.id, node]));
     next = { ...next, nodes: next.nodes.map(node => {
       const old = previous.get(node.id);
@@ -7315,7 +7202,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       }
     }
-    this.state = this.reconcileCanvasFileArtifacts(reconcileRuntimeNodes(next, this.agentSessions, this.terminalSessions, {
+    this.state = finalizeCanvasGroupState(reconcileRuntimeNodes(next, this.agentSessions, this.terminalSessions, {
       allowLiveRuntimeReconnect: vscode.workspace.isTrusted,
       liveRuntimeReconnectBlockReason: vscode.workspace.isTrusted ? undefined : 'workspace-untrusted'
     }));
@@ -7615,14 +7502,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         snapshotWithMetadata.runtimePersistenceEnabled
       );
       await this.context.workspaceState.update(
-        STORAGE_KEYS.canvasFilesFeatureEnabled,
-        snapshotWithMetadata.filesFeatureEnabled
-      );
-      await this.context.workspaceState.update(
-        STORAGE_KEYS.canvasFileFilterState,
-        normalizeCanvasFileFilterState(snapshotWithMetadata.fileFilterState)
-      );
-      await this.context.workspaceState.update(
         STORAGE_KEYS.canvasTemplateInitialized,
         this.canvasTemplateInitialized
       );
@@ -7680,18 +7559,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private buildPersistedCanvasSnapshot(snapshot: PersistedCanvasSnapshot): PersistedCanvasSnapshot {
-    const persistedFileFilterState = this.appliedStartupConfiguration.filesFeatureEnabled
-      ? normalizeCanvasFileFilterState(this.fileFilterState)
-      : createEmptyCanvasFileFilterState();
     const state = stripNoteMarkdownRecoverableDraftContentFromCanvasState(snapshot.state);
     return {
       ...snapshot,
       state,
       multiRootOverlay: normalizeCanvasMultiRootOverlay(snapshot.multiRootOverlay),
-      fileFilterState: persistedFileFilterState,
       defaultSurface: this.appliedStartupConfiguration.defaultSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
-      filesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       writtenAt: new Date().toISOString(),
       stateHash: buildDiagnosticStateHash(state)
     };
@@ -7715,12 +7589,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasRuntimePersistenceEnabled);
   }
 
-  private loadStoredFilesFeatureEnabled(snapshot?: PersistedCanvasSnapshot): boolean | undefined {
-    return typeof snapshot?.filesFeatureEnabled === 'boolean'
-      ? snapshot.filesFeatureEnabled
-      : this.getStoredValue<boolean | undefined>(STORAGE_KEYS.canvasFilesFeatureEnabled);
-  }
-
   private shouldResetStateDueToRuntimePersistenceModeChange(snapshot?: PersistedCanvasSnapshot): boolean {
     const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
     return (
@@ -7729,32 +7597,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private shouldResetFileDomainDueToFilesFeatureModeChange(snapshot?: PersistedCanvasSnapshot): boolean {
-    const storedFilesFeatureEnabled = this.loadStoredFilesFeatureEnabled(snapshot);
-    return (
-      typeof storedFilesFeatureEnabled === 'boolean' &&
-      storedFilesFeatureEnabled !== this.appliedStartupConfiguration.filesFeatureEnabled
-    );
-  }
-
   private loadState(): CanvasPrototypeState {
-    const fileView = this.getCanvasFileViewConfiguration();
     const snapshot = this.loadPersistedCanvasSnapshot();
     const workspaceState = this.getStoredValue<unknown>(STORAGE_KEYS.canvasState);
     const workspaceFolders = this.getMultiRootWorkspaceFoldersForComposition();
     const isMultiRootWorkspace = workspaceFolders.length > 1;
     const storedRuntimePersistenceEnabled = this.loadStoredRuntimePersistenceEnabled(snapshot);
-    const storedFilesFeatureEnabled = this.loadStoredFilesFeatureEnabled(snapshot);
     const resetDueToRuntimePersistenceModeChange =
       this.shouldResetStateDueToRuntimePersistenceModeChange(snapshot);
-    const resetDueToFilesFeatureModeChange = this.shouldResetFileDomainDueToFilesFeatureModeChange(snapshot);
     if (workspaceFolders.length === 1 && (!resetDueToRuntimePersistenceModeChange || this.isRuntimePersistenceEnabled())) {
       const rootLocalSnapshot = this.loadPersistedRootLocalCanvasSnapshot(workspaceFolders[0].path);
       if (rootLocalSnapshot?.state !== undefined) {
         const rootPath = workspaceFolders[0].path;
         const rootLocalSnapshotPath = this.getRootLocalCanvasSnapshotPath(rootPath);
-        const rootState = this.loadRootLocalState(rootPath, fileView);
-        const sanitizedRootState = resetDueToFilesFeatureModeChange ? clearFileDomainState(rootState) : rootState;
+        const rootState = this.loadRootLocalState(rootPath);
+        const sanitizedRootState = clearFileDomainState(rootState);
         const runtimeSafeRootState = this.downgradeRootLocalLiveRuntimeNodesMissingRuntimeStoragePath(
           rootPath,
           sanitizedRootState
@@ -7770,8 +7627,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           storagePath: this.getExtensionStoragePath(),
           snapshotAvailable: true,
           workspaceStateAvailable: workspaceState !== undefined,
-          resetDueToFilesFeatureModeChange,
-          fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
           snapshotWrittenAt: rootLocalSnapshot.writtenAt,
           snapshotStateHash: rootLocalSnapshot.stateHash ?? rootLocalSnapshotSummary.stateHash,
           loadedStateHash: rootLocalLoadedStateSummary.stateHash,
@@ -7785,7 +7640,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         rootPath: folder.path,
         state: this.downgradeRootLocalLiveRuntimeNodesMissingRuntimeStoragePath(
           folder.path,
-          this.loadRootLocalState(folder.path, fileView)
+          this.loadRootLocalState(folder.path)
         )
       }));
       this.lastLoadedRootLocalStates = cloneJsonValue(rootStates);
@@ -7803,16 +7658,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         storagePath: this.getExtensionStoragePath(),
         snapshotAvailable: snapshot !== undefined,
         workspaceStateAvailable: workspaceState !== undefined,
-        resetDueToFilesFeatureModeChange,
-        fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
         newRootPlacementCount: this.pendingWorkspaceRootPlacement?.rootPaths.length,
         ...summarizeCanvasStateForDiagnostics(composedState)
       });
-      return this.materializeNoteMarkdownRecoverableDraftFiles(
-        this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
-          ? composedState
-          : clearFileDomainState(composedState)
-      );
+      return this.materializeNoteMarkdownRecoverableDraftFiles(clearFileDomainState(composedState));
     }
 
     const rawState = resetDueToRuntimePersistenceModeChange ? createEmptyCanvasState(new Date().toISOString()) : snapshot?.state ?? workspaceState;
@@ -7837,11 +7686,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       activeSurface: snapshot?.activeSurface,
       storedRuntimePersistenceEnabled,
       appliedRuntimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
-      storedFilesFeatureEnabled,
-      appliedFilesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled,
       resetDueToRuntimePersistenceModeChange,
-      resetDueToFilesFeatureModeChange,
-      fileDomainDisabled: !this.appliedStartupConfiguration.filesFeatureEnabled,
       snapshotWrittenAt: snapshot?.writtenAt,
       snapshotStateHash: snapshot?.stateHash,
       ...summarizeCanvasStateForDiagnostics(rawState)
@@ -7852,21 +7697,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         appliedRuntimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled
       });
     }
-    if (resetDueToFilesFeatureModeChange) {
-      this.recordDiagnosticEvent('state/filesFeatureReset', {
-        storedFilesFeatureEnabled,
-        appliedFilesFeatureEnabled: this.appliedStartupConfiguration.filesFeatureEnabled
-      });
-    }
-    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView);
+    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
     const singleRootFolder = workspaceFolders[0];
     const rootScopedState = singleRootFolder
       ? sanitizeRootLocalCanvasState(singleRootFolder.path, normalizedState)
       : normalizedState;
-    const sanitizedState =
-      this.appliedStartupConfiguration.filesFeatureEnabled && !resetDueToFilesFeatureModeChange
-        ? rootScopedState
-        : clearFileDomainState(rootScopedState);
+    const sanitizedState = clearFileDomainState(rootScopedState);
     if (singleRootFolder) {
       this.lastLoadedRootLocalStates = [{
         rootPath: singleRootFolder.path,
@@ -7882,18 +7718,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     );
   }
 
-  private loadRootLocalState(
-    rootPath: string,
-    fileView?: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
-  ): CanvasPrototypeState {
+  private loadRootLocalState(rootPath: string): CanvasPrototypeState {
     const rootLocalSnapshot = this.loadPersistedRootLocalCanvasSnapshot(rootPath);
     const normalizedState = sanitizeRootLocalCanvasState(
       rootPath,
-      normalizeState(rootLocalSnapshot?.state, this.getAgentCliConfig().defaultProvider, fileView)
+      normalizeState(rootLocalSnapshot?.state, this.getAgentCliConfig().defaultProvider)
     );
-    return this.appliedStartupConfiguration.filesFeatureEnabled
-      ? normalizedState
-      : clearFileDomainState(normalizedState);
+    return clearFileDomainState(normalizedState);
   }
 
   private downgradeRootLocalLiveRuntimeNodesMissingRuntimeStoragePath(
@@ -8031,7 +7862,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private loadReconciledState(): CanvasPrototypeState {
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
-    return this.reconcileOwnedCanvasState(this.reconcileCanvasFileArtifacts(
+    return this.reconcileOwnedCanvasState(finalizeCanvasGroupState(
       reconcileRuntimeNodes(this.detachSharedBindingsInSnapshotMode(this.loadState()), this.agentSessions, this.terminalSessions, {
         allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
         liveRuntimeReconnectBlockReason
@@ -8055,18 +7886,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private reconcileSeededStateForTest(rawState: unknown): CanvasPrototypeState {
-    const fileView = this.getCanvasFileViewConfiguration();
-    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider, fileView);
-    const sanitizedState = this.appliedStartupConfiguration.filesFeatureEnabled
-      ? normalizedState
-      : clearFileDomainState(normalizedState);
+    const normalizedState = normalizeState(rawState, this.getAgentCliConfig().defaultProvider);
+    const sanitizedState = clearFileDomainState(normalizedState);
     const hydratedState = hydrateRuntimeStoragePaths(
       this.materializeNoteMarkdownRecoverableDraftFiles(sanitizedState),
       this.storageRecoverySelection.sourcePath
     );
     const liveRuntimeReconnectBlockReason = this.getLiveRuntimeReconnectBlockReason();
 
-    return this.reconcileOwnedCanvasState(this.reconcileCanvasFileArtifacts(
+    return this.reconcileOwnedCanvasState(finalizeCanvasGroupState(
       reconcileRuntimeNodes(hydratedState, this.agentSessions, this.terminalSessions, {
         allowLiveRuntimeReconnect: liveRuntimeReconnectBlockReason === undefined,
         liveRuntimeReconnectBlockReason
@@ -8176,19 +8004,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const durable = operation.then(() => this.flushSharedRootCanvasStores());
     void durable.catch(() => undefined);
     return durable;
-  }
-
-  private reconcileCanvasFileArtifacts(
-    state: CanvasPrototypeState,
-    options: {
-      geometryRepairOptions?: CanvasGroupGeometryRepairOptions;
-    } = {}
-  ): CanvasPrototypeState {
-    return rebuildCanvasFileArtifacts(state, {
-      view: this.getCanvasFileViewConfiguration(),
-      preserveAutomaticFileNodeSizes: true,
-      geometryRepairOptions: options.geometryRepairOptions
-    });
   }
 
   private readonly pendingCanvasDisplayCatchup = new Set<CanvasSurfaceLocation>();
@@ -8440,7 +8255,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
   private getRuntimeContext(webview: vscode.Webview | undefined = this.getActiveWebview()): CanvasRuntimeContext {
     const configuration = vscode.workspace.getConfiguration();
-    const fileConfiguration = this.getCanvasFileViewConfiguration(configuration);
     const agentCliConfig = this.getAgentCliConfig(configuration);
     return {
       executionMouseDiagnosticsEnabled: this.context.extensionMode === vscode.ExtensionMode.Development,
@@ -8463,11 +8277,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       overviewZoomThreshold: this.getCanvasOverviewZoomThreshold(configuration),
       multiRootPresentationMode: this.getCanvasMultiRootPresentationMode(configuration),
       workspaceRootWatermarksEnabled: this.getWorkspaceRootWatermarksEnabled(configuration),
-      filePresentationMode: fileConfiguration.presentationMode,
-      fileNodeDisplayStyle: fileConfiguration.displayStyle,
-      fileNodeDisplayMode: fileConfiguration.nodeDisplayMode,
-      filePathDisplayMode: fileConfiguration.pathDisplayMode,
-      fileIconFontFaces: [],
       noteMarkdownImageWorkspaceRoots: this.getNoteMarkdownImageWorkspaceRoots(webview)
     };
   }
@@ -8525,66 +8334,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     return getConfigurationValue<boolean>('canvasWorkspaceRootWatermarksEnabled', true, configuration);
   }
 
-  private getCanvasFileViewConfiguration(configuration?: vscode.WorkspaceConfiguration): CanvasFileViewConfiguration {
-    const presentationMode = getConfigurationValue<CanvasFilePresentationMode>('filesPresentationMode', 'lists', configuration);
-    const displayStyle = getConfigurationValue<CanvasFileNodeDisplayStyle>('fileNodeDisplayStyle', 'minimal', configuration);
-    const nodeDisplayMode = getConfigurationValue<CanvasFileNodeDisplayMode>('filesNodeDisplayMode', 'icon-path', configuration);
-    const pathDisplayMode = getConfigurationValue<CanvasFilePathDisplayMode>('filesPathDisplayMode', 'basename', configuration);
-
-    return {
-      enabled: this.appliedStartupConfiguration.filesFeatureEnabled,
-      presentationMode: presentationMode === 'nodes' ? 'nodes' : 'lists',
-      includeGlobs: this.fileFilterState.includeGlobs,
-      excludeGlobs: this.fileFilterState.excludeGlobs,
-      displayStyle: displayStyle === 'card' ? 'card' : 'minimal',
-      nodeDisplayMode:
-        nodeDisplayMode === 'icon-only' || nodeDisplayMode === 'path-only' ? nodeDisplayMode : 'icon-path',
-      pathDisplayMode: pathDisplayMode === 'relative-path' ? 'relative-path' : 'basename'
-    };
-  }
-
-  public updateCanvasFileFilterState(kind: 'include' | 'exclude', globs: readonly string[]): void {
-    if (!this.isFilesFeatureEnabled()) {
-      return;
-    }
-
-    const normalizedGlobs = normalizeCanvasFileFilterGlobs(globs);
-    const nextState: CanvasFileFilterState =
-      kind === 'include'
-        ? {
-            ...this.fileFilterState,
-            includeGlobs: normalizedGlobs
-          }
-        : {
-            ...this.fileFilterState,
-            excludeGlobs: normalizedGlobs
-          };
-
-    if (
-      areStringArraysEqual(nextState.includeGlobs, this.fileFilterState.includeGlobs) &&
-      areStringArraysEqual(nextState.excludeGlobs, this.fileFilterState.excludeGlobs)
-    ) {
-      return;
-    }
-
-    this.fileFilterState = nextState;
-    this.recordDiagnosticEvent('fileView/filterUpdated', {
-      kind,
-      includeGlobs: nextState.includeGlobs,
-      excludeGlobs: nextState.excludeGlobs
-    });
-    this.state = this.reconcileCanvasFileArtifacts(this.state);
-    this.persistState({ reason: 'file-filter-updated' });
-    this.postState('host/stateUpdated');
-    this.notifySidebarStateChanged();
-  }
-
   private readStartupConfiguration(): CanvasStartupConfiguration {
     return {
       defaultSurface:
         getConfigurationValue<'editor' | 'panel'>('canvasDefaultSurface', 'panel') === 'panel' ? 'panel' : 'editor',
-      runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false),
-      filesFeatureEnabled: getConfigurationValue<boolean>('filesFeatureEnabled', false)
+      runtimePersistenceEnabled: getConfigurationValue<boolean>('runtimePersistenceEnabled', false)
     };
   }
 
@@ -8689,17 +8443,15 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   private async notifyReloadRequiredConfigurationChanged(options: {
     defaultSurfaceChanged: boolean;
     runtimePersistenceChanged: boolean;
-    filesFeatureEnabledChanged: boolean;
   }): Promise<void> {
     if (isTestHarnessMode(this.context.extensionMode)) {
       return;
     }
 
-    if (options.runtimePersistenceChanged || options.filesFeatureEnabledChanged) {
+    if (options.runtimePersistenceChanged) {
       const changedSettings = [
         options.defaultSurfaceChanged ? vscode.l10n.t('Default Surface') : undefined,
-        options.runtimePersistenceChanged ? vscode.l10n.t('Runtime persistence') : undefined,
-        options.filesFeatureEnabledChanged ? vscode.l10n.t('Files feature switch') : undefined
+        options.runtimePersistenceChanged ? vscode.l10n.t('Runtime persistence') : undefined
       ].filter((label): label is string => Boolean(label));
       const changeSummary = formatLocalizedList(changedSettings);
       const followUps = [
@@ -8707,11 +8459,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           ? this.readStartupConfiguration().runtimePersistenceEnabled
             ? vscode.l10n.t('Enabling runtime persistence takes effect after restarting the Canvas. Current Canvas sessions and content will not be retained.')
             : vscode.l10n.t('Disabling runtime persistence takes effect after restarting the Canvas. This window will leave the shared Canvas and will not retain its sessions or content. Shared sessions and content are cleared, and the Supervisor exits, only when the last enabled window explicitly disables persistence.')
-          : undefined,
-        options.filesFeatureEnabledChanged
-          ? vscode.l10n.t(
-              'Changing the files feature switch will clear file activity state, file objects, automatic file relationships, and file filter state on the next load.'
-            )
           : undefined
       ].filter((message): message is string => Boolean(message));
       const message = vscode.l10n.t('{settings} changes will take effect after reloading the window. {followUps}', {
@@ -8791,10 +8538,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     canvasMultiRootPresentationModeChanged: boolean;
     canvasLinkOpenModeChanged: boolean;
     canvasWorkspaceRootWatermarksChanged: boolean;
-    filesPresentationModeChanged: boolean;
-    fileNodeDisplayStyleChanged: boolean;
-    filesNodeDisplayModeChanged: boolean;
-    filesPathDisplayModeChanged: boolean;
     attentionNotificationBridgeChanged: boolean;
     enabledAttentionSignalsChanged: boolean;
     strongTerminalAttentionReminderChanged: boolean;
@@ -8806,7 +8549,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     terminalScrollbackChanged: boolean;
     multiCursorModifierChanged: boolean;
     terminalWordSeparatorsChanged: boolean;
-    workbenchIconThemeChanged: boolean;
   }): Promise<void> {
     if (options.canvasLinkOpenModeChanged) {
       this.recordDiagnosticEvent('canvas/linkOpenModeConfigChanged', {
@@ -8889,20 +8631,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (
-      options.filesPresentationModeChanged ||
-      options.fileNodeDisplayStyleChanged ||
-      options.filesNodeDisplayModeChanged ||
-      options.filesPathDisplayModeChanged ||
-      options.workbenchIconThemeChanged
-    ) {
-      this.state = rebuildCanvasFileArtifacts(this.state, {
-        view: this.getCanvasFileViewConfiguration(),
-        preserveAutomaticFileNodeSizes: false
-      });
-      this.persistState();
-    }
-
-    if (
       options.defaultAgentProviderChanged ||
       options.agentCodexCommandChanged ||
       options.agentClaudeCommandChanged ||
@@ -8912,11 +8640,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       options.canvasOverviewZoomThresholdChanged ||
       options.canvasMultiRootPresentationModeChanged ||
       options.canvasLinkOpenModeChanged ||
-      options.canvasWorkspaceRootWatermarksChanged ||
-      options.filesPresentationModeChanged ||
-      options.fileNodeDisplayStyleChanged ||
-      options.filesNodeDisplayModeChanged ||
-      options.filesPathDisplayModeChanged ||
       options.terminalShellChanged ||
       options.terminalShellPathChanged ||
       options.terminalInheritEnvChanged ||
@@ -8926,8 +8649,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       terminalShellMetadataChanged ||
       options.terminalScrollbackChanged ||
       options.multiCursorModifierChanged ||
-      options.terminalWordSeparatorsChanged ||
-      options.workbenchIconThemeChanged
+      options.terminalWordSeparatorsChanged
     ) {
       this.postState('host/stateUpdated');
     }
@@ -9685,11 +9407,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     sourceSurface: CanvasSurfaceLocation,
     selection?: NoteMarkdownFileSelection
   ): Promise<void> {
-    const normalizedPath = normalizeTrackedFilePath(filePath);
-    if (!normalizedPath) {
+    const trimmedPath = filePath.trim();
+    if (!trimmedPath) {
       return;
     }
 
+    const normalizedPath = path.normalize(trimmedPath);
     const uri = vscode.Uri.file(normalizedPath);
     const document = await vscode.workspace.openTextDocument(uri);
     const initialSelection = toNoteMarkdownDocumentSelection(document, selection);
@@ -10920,86 +10643,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         restoreFocus: options?.restoreWebviewFocus
       });
     }
-  }
-
-  private bindAgentFileActivitySession(nodeId: string, session: AgentFileActivitySession): void {
-    this.agentFileActivitySessions.set(nodeId, session);
-    session.start((event) => {
-      // Ignore drained events from a session that has already been replaced or disposed.
-      if (this.agentFileActivitySessions.get(nodeId) !== session) {
-        return;
-      }
-      this.handleAgentFileActivityEvent(nodeId, event);
-    });
-  }
-
-  private async disposeAgentFileActivitySession(nodeId: string): Promise<void> {
-    const existing = this.agentFileActivitySessions.get(nodeId);
-    if (!existing) {
-      return;
-    }
-
-    await existing.dispose();
-    if (this.agentFileActivitySessions.get(nodeId) === existing) {
-      this.agentFileActivitySessions.delete(nodeId);
-    }
-  }
-
-  private handleAgentFileActivityEvent(nodeId: string, event: AgentFileActivityEvent): void {
-    if (!this.isFilesFeatureEnabled()) {
-      return;
-    }
-
-    const relativePath = this.resolveWorkspaceRelativePath(event.path);
-    const nextState = recordAgentFileActivity(this.state, {
-      ...event,
-      nodeId,
-      relativePath
-    });
-    this.state = this.reconcileCanvasFileArtifacts(nextState);
-    this.persistState();
-    this.postState('host/stateUpdated');
-  }
-
-  private resolveWorkspaceRelativePath(filePath: string): string | undefined {
-    const normalizedPath = normalizeTrackedFilePath(filePath);
-    if (!normalizedPath) {
-      return undefined;
-    }
-
-    const candidateUri = vscode.Uri.file(normalizedPath);
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(candidateUri);
-    if (!workspaceFolder) {
-      return undefined;
-    }
-
-    return resolveContainedWorkspaceRelativePath({
-      filePath: normalizedPath,
-      workspaceFolderPath: workspaceFolder.uri.fsPath,
-      workspaceFolderName: workspaceFolder.name,
-      includeWorkspaceFolderPrefix: (vscode.workspace.workspaceFolders?.length ?? 0) > 1
-    });
-  }
-
-  private createConfiguredAgentFileActivitySession(
-    provider: AgentProviderKind,
-    command: string
-  ): AgentFileActivitySession {
-    if (!this.isFilesFeatureEnabled()) {
-      return {
-        extraArgs: [],
-        extraEnv: {},
-        start: () => {},
-        dispose: async () => {}
-      };
-    }
-
-    return createAgentFileActivitySession({
-      provider,
-      command,
-      extensionRootPath: this.context.extensionUri.fsPath,
-      storageRootPath: path.join(this.getExtensionStoragePath(), 'agent-file-activity')
-    });
   }
 
   private getExecutionTerminalPathContext(kind: ExecutionNodeKind, nodeId: string): ExecutionTerminalPathContext {
@@ -14045,9 +13688,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
     completionRetired = true;
-    if (kind === 'agent') {
-      void this.disposeAgentFileActivitySession(nodeId);
-    }
     this.postState('host/stateUpdated');
     try {
       await this.deleteRuntimeSupervisorSessionStrict(
@@ -14094,9 +13734,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     this.clearExecutionTerminalProjectionRefreshTimers(kind, nodeId);
     this.disposeManagedExecutionSession(existingSession);
     this.getExecutionSessions(kind).delete(nodeId);
-    if (kind === 'agent') {
-      void this.disposeAgentFileActivitySession(nodeId);
-    }
 
     const lifecycle =
       snapshot?.lifecycle ??
@@ -15063,13 +14700,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         const arrangedState = arrangeCanvasLayout(this.state, undefined, {
           targetGroupId: targetGroupId ?? undefined
         });
-        this.state = this.reconcileCanvasFileArtifacts(
-          targetGroupId ? arrangedState : finalizeCanvasGroupState(arrangedState),
+        this.state = finalizeCanvasGroupState(
+          arrangedState,
           targetGroupId
             ? {
-                geometryRepairOptions: {
-                  repairTargetGroupIds: [targetGroupId]
-                }
+                repairTargetGroupIds: [targetGroupId]
               }
             : undefined
         );
@@ -15113,7 +14748,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated');
         return;
       case 'webview/createGroupFromSelection':
-        this.state = this.reconcileCanvasFileArtifacts(
+        this.state = finalizeCanvasGroupState(
           createGroupFromSelection(
             this.state,
             parsedMessage.payload.nodeIds,
@@ -15145,7 +14780,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               pointerPosition: parsedMessage.payload.pointerPosition
             }
           });
-          this.state = this.reconcileCanvasFileArtifacts(
+          this.state = finalizeCanvasGroupState(
             moveGroup(
               this.state,
               groupId,
@@ -15173,7 +14808,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
               size: parsedMessage.payload.size
             }
           });
-          this.state = this.reconcileCanvasFileArtifacts(
+          this.state = finalizeCanvasGroupState(
             resizeGroup(
               this.state,
               groupId,
@@ -15203,7 +14838,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
         return;
       case 'webview/ungroup':
-        this.state = this.reconcileCanvasFileArtifacts(ungroupCanvasGroup(this.state, parsedMessage.payload.groupId));
+        this.state = finalizeCanvasGroupState(ungroupCanvasGroup(this.state, parsedMessage.payload.groupId));
         this.persistState();
         this.postState('host/stateUpdated');
         return;
@@ -15213,7 +14848,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         });
         return;
       case 'webview/moveNode':
-        this.state = this.reconcileCanvasFileArtifacts(
+        this.state = finalizeCanvasGroupState(
           moveNode(
             this.state,
             parsedMessage.payload.id,
@@ -15226,13 +14861,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.postState('host/stateUpdated', { layoutAck: { nodes: [parsedMessage.payload.id, ...(parsedMessage.payload.selectedMoves?.map(move => move.id) ?? [])] } });
         return;
       case 'webview/resizeNode':
-        this.state = this.reconcileCanvasFileArtifacts(
+        this.state = finalizeCanvasGroupState(
           resizeNode(
             this.state,
             parsedMessage.payload.nodeId,
             parsedMessage.payload.position,
-            parsedMessage.payload.size,
-            this.getCanvasFileViewConfiguration()
+            parsedMessage.payload.size
           )
         );
         this.persistState();
@@ -15494,9 +15128,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.state = deleteCanvasEdge(this.state, parsedMessage.payload.edgeId);
         this.persistState();
         this.postState('host/stateUpdated');
-        return;
-      case 'webview/openCanvasFile':
-        void this.openCanvasFile(parsedMessage.payload.filePath, sourceSurface);
         return;
       case 'webview/openNoteLink':
         void this.openNoteLink(parsedMessage.payload.nodeId, parsedMessage.payload.href, sourceSurface);
@@ -16841,8 +16472,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const cwd = this.getExecutionNodeCwd(existingNode, 'agent');
     const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
     assertRootCurrent();
-    await this.disposeAgentFileActivitySession(nodeId);
-    assertRootCurrent();
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const executionProfile = this.getExecutionCandidateProfile();
     const historyRetirement = executionProfile
@@ -16860,9 +16489,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
     const viewport = currentViewport?.();
     if (viewport) { normalizedCols = viewport.cols; normalizedRows = viewport.rows; }
-    const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
     if (!client.supportsTerminalSessionStream()) {
-      await fileActivitySession.dispose();
       this.recordDiagnosticEvent('runtime/legacySupervisorCreateRejected', {
         kind: 'agent',
         nodeId,
@@ -16969,8 +16596,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       normalizedRows,
       executionEnv,
       launchMode,
-      resumeContext,
-      fileActivitySession
+      resumeContext
     );
     let snapshot: RuntimeSupervisorSessionSnapshot;
     try {
@@ -16992,19 +16618,16 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         launchSpec: serializeExecutionSessionLaunchSpec(launchSpec)
       });
     } catch (error) {
-      await fileActivitySession.dispose();
       throw error;
     }
     if (executionProfile) this.settleExecutionCandidateStart('agent', nodeId, candidateSessionId!, snapshot);
     if (!this.shouldApplyRuntimeCreateResult('agent', nodeId, operationToken, backend.kind, target)) {
       this.recordIgnoredExecutionSessionOperation('agent', nodeId, 'create', snapshot.sessionId);
-      await fileActivitySession.dispose();
       await this.deleteRuntimeSupervisorSessionBestEffort(client, snapshot.sessionId);
       return;
     }
 
     this.bindRuntimeSession(nodeId, 'agent', snapshot.sessionId, runtimeStoragePath, backend.kind);
-    this.bindAgentFileActivitySession(nodeId, fileActivitySession);
     this.recordDiagnosticEvent('execution/started', {
       kind: 'agent',
       nodeId,
@@ -17611,11 +17234,9 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const sessionId = createExecutionSessionId(nodeId, 'agent');
     const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
-    await this.disposeAgentFileActivitySession(nodeId);
 
     try {
       cliSpec = await this.resolveAgentCli(provider, freshLaunch?.requestedCommand, cwd);
-      const fileActivitySession = this.createConfiguredAgentFileActivitySession(provider, cliSpec.command);
       const launchSpec = this.buildAgentLaunchSpec(
         cliSpec,
         freshLaunch?.launchArgs ?? [],
@@ -17624,8 +17245,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         normalizedRows,
         executionEnv,
         launchMode,
-        resumeContext,
-        fileActivitySession
+        resumeContext
       );
       const process = createExecutionSessionProcess(launchSpec);
 
@@ -17669,7 +17289,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         exitSubscription: undefined
       };
       activeSessions.set(nodeId, session);
-      this.bindAgentFileActivitySession(nodeId, fileActivitySession);
 
       const handleSessionChunk = (text: string): void => {
         const startedAt = Date.now();
@@ -17753,7 +17372,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         activeSession.outputSubscription?.dispose();
         activeSession.exitSubscription?.dispose();
         this.flushExecutionOutputImmediately('agent', nodeId);
-        await this.disposeAgentFileActivitySession(nodeId);
 
         const cleanedOutput = stripTerminalControlSequences(activeSession.buffer);
         const recentOutput = extractRecentTerminalOutput(cleanedOutput);
@@ -17940,8 +17558,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       });
       void this.maybeDiscoverAgentResumeContextFromFiles(nodeId, session, 'startup');
     } catch (error) {
-      await this.disposeAgentFileActivitySession(nodeId);
-      const message =
+        const message =
         launchMode === 'resume'
           ? describeAgentResumeSpawnError(cliSpec, error)
           : describeAgentSessionSpawnError(cliSpec, error);
@@ -18608,7 +18225,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 
   private retireNonNativeHostExecution(record: NonNativeHostExecution): void {
-    if (record.fileActivity && !record.fileActivity.disposed) return;
     const snapshot = record.execution.snapshot();
     const persistence = record.persistence;
     if (persistence && !persistence.result && snapshot.settled && snapshot.adapter?.parentCleanup === 'unstarted'
@@ -18832,27 +18448,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       this.assertExecutionCandidateAdmission('snapshot-only', undefined, record);
       assertRuntimeUnbound();
-      if (kind === 'agent' && agent && this.isFilesFeatureEnabled()) {
-        try {
-          const session = this.createConfiguredAgentFileActivitySession(agent.provider, prepared.file);
-          const activity: NonNullable<NonNativeHostExecution['fileActivity']> = { session, closed: false, disposed: false };
-          record.fileActivity = activity;
-          prepared = { ...prepared, args: [...(prepared.args ?? []), ...session.extraArgs],
-            env: { ...prepared.env, ...session.extraEnv } };
-          const original = record;
-          session.start(event => {
-            const node = this.state.nodes.find(value => value.id === original.nodeId && value.kind === 'agent');
-            if (activity.closed || !this.isNonNativeHostRecordCurrent(original) || !node ||
-              original.persistence?.submitted || original.persistence?.result ||
-              (original.persistence && node.metadata?.agent !== original.persistence.metadata)) return;
-            try { this.handleAgentFileActivityEvent(original.nodeId, event); }
-            catch (error) { activity.error ??= formatUnknownError(error); }
-          });
-        } catch (error) {
-          this.projectNonNativeHostPreparationFailure(record, error, agent.launchMode);
-          throw error;
-        }
-      }
       const spec: LaunchSpec = {
         file: prepared.file, args: prepared.args ?? [], cwd: prepared.cwd,
         ...(owner.options.profile ? { cols, rows, stopStrategy: kind === 'agent' && agent?.provider !== 'claude'
@@ -18904,7 +18499,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return active.terminalChain;
         },
         flushFinal: async seal => {
-          if (active.fileActivity) await this.disposeNonNativeHostFileActivity(active);
           let finalRevision: number | undefined;
           active.terminalChain = active.terminalChain.then(async () => {
             const terminal = await active.tracker.flush();
@@ -18923,18 +18517,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           return finalRevision!;
         },
         finalized: result => {
-          if (active.fileActivity && !active.fileActivity.disposed) {
-            // Failed output consumption can bypass flushFinal. Stop the observer
-            // without presenting drained events as a successfully saved result.
-            active.fileActivity.closed = true;
-            void this.disposeNonNativeHostFileActivity(active).catch(error => {
-              try {
-                this.recordDiagnosticEvent('execution/fileActivityCleanupFailed', {
-                  kind, nodeId: active.nodeId, reason: formatUnknownError(error)
-                });
-              } catch { /* Diagnostics cannot change the original failed finalization. */ }
-            }).finally(() => this.retireNonNativeHostExecution(active));
-          }
           active.business?.cancelActivityPoll?.();
           if (active.business) active.business.cancelActivityPoll = undefined;
           const finalizedSource = execution.snapshot().adapter?.seal?.source;
@@ -19013,11 +18595,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       if (kind === 'terminal' && record) this.dropPendingTerminalInitialInput(record.nodeId, formatUnknownError(error));
       if (!execution.snapshot().adapter || rejectedBeforeAcquire) {
         let cleanupError: string | undefined;
-        if (record?.fileActivity) {
-          record.fileActivity.closed = true;
-          try { await this.disposeNonNativeHostFileActivity(record); }
-          catch (failure) { cleanupError = formatUnknownError(failure); }
-        }
         if (record?.persistence) this.settleNonNativeHostPersistence(record,
           cleanupError ? { kind: 'failed', reason: cleanupError } : { kind: 'not-required' });
         if (record?.localReaders) {
@@ -19034,15 +18611,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
       throw error;
     }
-  }
-
-  private disposeNonNativeHostFileActivity(record: NonNativeHostExecution): Promise<void> {
-    const activity = record.fileActivity;
-    if (!activity) return Promise.resolve();
-    activity.disposal ??= Promise.resolve().then(() => activity.session.dispose()).then(() => {
-      if (activity.error) throw new Error(activity.error);
-    }).finally(() => { activity.closed = true; activity.disposed = true; });
-    return activity.disposal;
   }
 
   private executionStartRejectionMessage(kind: ExecutionNodeKind): string {
@@ -19514,8 +19082,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     rows: number,
     env: NodeJS.ProcessEnv,
     launchMode: PendingExecutionLaunch,
-    resumeContext: AgentResumeContext,
-    fileActivitySession?: AgentFileActivitySession
+    resumeContext: AgentResumeContext
   ): ExecutionSessionLaunchSpec {
     const hasExplicitLaunchArgs = launchArgs.length > 0;
     const args: string[] = hasExplicitLaunchArgs || launchMode === 'start' ? [...launchArgs] : [];
@@ -19551,11 +19118,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         throw new Error(vscode.l10n.t('Missing resumable Codex session ID.'));
       }
       args.push('resume', resumeContext.sessionId);
-    }
-
-    if (fileActivitySession) {
-      args.push(...fileActivitySession.extraArgs);
-      Object.assign(env, fileActivitySession.extraEnv);
     }
 
     return {
@@ -21701,7 +21263,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (isEmptyCanvasGroup(this.state, groupId)) {
-      this.state = this.reconcileCanvasFileArtifacts(deleteCanvasGroupKeepMembers(this.state, groupId));
+      this.state = finalizeCanvasGroupState(deleteCanvasGroupKeepMembers(this.state, groupId));
       this.persistState();
       this.postState('host/stateUpdated');
       return;
@@ -21729,7 +21291,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
-      this.state = this.reconcileCanvasFileArtifacts(deleteCanvasGroupKeepMembers(this.state, groupId));
+      this.state = finalizeCanvasGroupState(deleteCanvasGroupKeepMembers(this.state, groupId));
       this.persistState();
       this.postState('host/stateUpdated');
       return;
@@ -21758,7 +21320,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     const mode: CanvasGroupDeleteMode = selection.title === keepMembersAction.title ? 'keep-members' : 'delete-members';
     if (mode === 'keep-members') {
-      this.state = this.reconcileCanvasFileArtifacts(deleteCanvasGroupKeepMembers(this.state, groupId));
+      this.state = finalizeCanvasGroupState(deleteCanvasGroupKeepMembers(this.state, groupId));
       this.persistState();
       this.postState('host/stateUpdated');
       return;
@@ -21810,23 +21372,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       groups: (this.state.groups ?? []).filter((currentGroup) => !groupIdsToDelete.has(currentGroup.id))
     };
 
-    for (const nodeId of nodeIdsToDelete) {
-      const deletedNode = this.state.nodes.find((node) => node.id === nodeId);
-      if (deletedNode?.kind === 'agent') {
-        nextState = removeAgentFileReferences(nextState, nodeId);
-      } else if (deletedNode?.kind === 'file' || deletedNode?.kind === 'file-list') {
-        nextState = {
-          ...nextState,
-          suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
-            nextState.suppressedAutomaticFileArtifactNodeIds,
-            nodeId
-          )
-        };
-      }
-    }
+
 
     const stateBeforeDelete = this.state;
-    this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState));
+    this.state = finalizeCanvasGroupState(nextState);
     try {
       await this.persistState();
     } catch (error) {
@@ -21902,20 +21451,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       groups: (this.state.groups ?? []).filter((currentGroup) => !childGroupIdsToDelete.has(currentGroup.id))
     };
 
-    for (const nodeId of nodeIdsToDelete) {
-      const deletedNode = this.state.nodes.find((node) => node.id === nodeId);
-      if (deletedNode?.kind === 'agent') {
-        nextState = removeAgentFileReferences(nextState, nodeId);
-      } else if (deletedNode?.kind === 'file' || deletedNode?.kind === 'file-list') {
-        nextState = {
-          ...nextState,
-          suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
-            nextState.suppressedAutomaticFileArtifactNodeIds,
-            nodeId
-          )
-        };
-      }
-    }
+
 
     const repairTargetGroupIds = [
       groupId,
@@ -21927,9 +21463,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         }
       : undefined;
     const stateBeforeClear = this.state;
-    this.state = this.reconcileCanvasFileArtifacts(finalizeCanvasGroupState(nextState, geometryRepairOptions), {
-      geometryRepairOptions
-    });
+    this.state = finalizeCanvasGroupState(nextState, geometryRepairOptions);
     this.canvasTemplateInitialized = true;
     try {
       await this.persistState({ reason: options.reason ?? 'canvas-group-cleared' });
@@ -22044,19 +21578,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     const stateBeforeDelete = this.state;
-    const nextState =
-      node.kind === 'agent'
-        ? removeAgentFileReferences(deleteCanvasNode(this.state, nodeId), nodeId)
-        : node.kind === 'file' || node.kind === 'file-list'
-          ? {
-              ...deleteCanvasNode(this.state, nodeId),
-              suppressedAutomaticFileArtifactNodeIds: ensureSuppressedAutomaticFileArtifactNodeId(
-                this.state.suppressedAutomaticFileArtifactNodeIds,
-                nodeId
-              )
-            }
-        : deleteCanvasNode(this.state, nodeId);
-    this.state = this.reconcileCanvasFileArtifacts(nextState);
+    const nextState = deleteCanvasNode(this.state, nodeId);
+    this.state = finalizeCanvasGroupState(nextState);
     try {
       await this.persistState({ reason: 'node-deleted', requireRootLocalDurability: true });
     } catch (error) {
@@ -22117,9 +21640,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     session.exitSubscription?.dispose();
     sessionMap.delete(nodeId);
     this.recordDiagnosticEvent('execution/sessionDisposed', { kind, nodeId, sessionId: session.sessionId, owner: session.owner });
-    if (kind === 'agent') {
-      void this.disposeAgentFileActivitySession(nodeId);
-    }
     this.disposeManagedExecutionSession(session);
 
     if (session.owner === 'supervisor') {
@@ -24127,7 +23647,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   }
 }
 
-function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): CanvasPrototypeState {
+function looksLikeFakeAgentProviderCommand(command: string): boolean {
+  const basename = path.basename(command).toLowerCase();
+  return basename.includes('fake-agent-provider') || basename.includes('fake-codex-provider') || basename.includes('fake-claude-provider');
+}
+
+function createDefaultState(): CanvasPrototypeState {
   return {
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -24135,31 +23660,27 @@ function createDefaultState(defaultAgentProvider: AgentProviderKind = 'codex'): 
     edges: [],
     groups: [],
     nextGroupSequence: 1,
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: []
   };
 }
 
 function clearFileDomainState(state: CanvasPrototypeState): CanvasPrototypeState {
-  const retainedNodes = state.nodes.filter((node) => node.kind !== 'file' && node.kind !== 'file-list');
-  const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
-  const retainedEdges = state.edges.filter(
-    (edge) =>
-      edge.owner !== 'file-activity' &&
-      retainedNodeIds.has(edge.sourceNodeId) &&
-      retainedNodeIds.has(edge.targetNodeId)
+  const nodes = state.nodes.filter((node) =>
+    (node as { kind: string }).kind !== 'file' && (node as { kind: string }).kind !== 'file-list'
   );
-
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const migratedState = { ...state } as CanvasPrototypeState & Record<string, unknown>;
+  delete migratedState.fileReferences;
+  delete migratedState.suppressedFileActivityEdgeIds;
+  delete migratedState.suppressedAutomaticFileArtifactNodeIds;
   return {
-    ...state,
-    nodes: retainedNodes,
-    edges: retainedEdges,
+    ...migratedState,
+    nodes,
+    edges: state.edges.filter((edge) =>
+      (edge as { owner: string }).owner !== 'file-activity' &&
+      nodeIds.has(edge.sourceNodeId) && nodeIds.has(edge.targetNodeId)
+    ),
     groups: state.groups ?? [],
-    nextGroupSequence: state.nextGroupSequence ?? readNextGroupSequence(state),
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: []
+    nextGroupSequence: state.nextGroupSequence ?? readNextGroupSequence(state)
   };
 }
 
@@ -24399,6 +23920,28 @@ function resolveEffectiveCanvasTemplateId(
   );
 }
 
+function resolveGroupAncestorChain(
+  groups: readonly CanvasGroupSummary[],
+  groupId: string | undefined,
+  fallbackGroupId: string | undefined
+): string[] {
+  const groupIds = new Set(groups.map((group) => group.id));
+  const chain: string[] = [];
+  const visited = new Set<string>();
+  let currentGroupId = groupId && groupIds.has(groupId) ? groupId : undefined;
+  while (currentGroupId && !visited.has(currentGroupId)) {
+    chain.push(currentGroupId);
+    visited.add(currentGroupId);
+    currentGroupId = groups.find((group) => group.id === currentGroupId)?.parentGroupId;
+  }
+
+  if (fallbackGroupId && groupIds.has(fallbackGroupId) && !chain.includes(fallbackGroupId)) {
+    chain.push(fallbackGroupId);
+  }
+
+  return chain;
+}
+
 function buildCanvasTemplateMenuEntries(
   templates: readonly CanvasStoredTemplate[],
   defaultTemplateId: string | undefined
@@ -24463,7 +24006,6 @@ function summarizeCanvasGroupGeometryForDiagnostics(
 
   const directNodes = state.nodes.filter((node) => node.groupId === group.id);
   const directStableNodes = directNodes.filter((node) => isStableCanvasGroupMemberKind(node.kind));
-  const directAutomaticNodes = directNodes.filter((node) => isAutomaticFileArtifactNodeKind(node.kind));
   const directChildGroups = (state.groups ?? []).filter((candidate) => candidate.parentGroupId === group.id);
   const memberInsets = memberInsetsForCanvasGroup(group);
   const memberRects = [...directNodes.map((node) => rectForNode(node)), ...directChildGroups.map((child) => rectForGroup(child))];
@@ -24482,7 +24024,6 @@ function summarizeCanvasGroupGeometryForDiagnostics(
     rect: groupRect,
     directMemberInsets: memberInsets,
     directStableNodes: summarizeCanvasGroupMemberRectsForDiagnostics(directStableNodes),
-    directAutomaticNodes: summarizeCanvasGroupMemberRectsForDiagnostics(directAutomaticNodes),
     directChildGroups: summarizeCanvasGroupMemberRectsForDiagnostics(directChildGroups),
     directMemberBounds: memberBounds,
     directMemberRequiredRect: requiredRect,
@@ -24693,10 +24234,6 @@ function defaultSummaryForKind(kind: CanvasNodeKind): string {
       return vscode.l10n.t('No embedded Terminal has been started yet.');
     case 'note':
       return vscode.l10n.t('Waiting for note content.');
-    case 'file':
-      return vscode.l10n.t('Files recently accessed by Agents.');
-    case 'file-list':
-      return vscode.l10n.t('File activity list grouped by Agent.');
   }
 }
 
@@ -24708,10 +24245,6 @@ function defaultStatusForKind(kind: CanvasNodeKind): string {
       return 'idle';
     case 'note':
       return 'ready';
-    case 'file':
-      return 'linked';
-    case 'file-list':
-      return 'linked';
   }
 }
 
@@ -24725,9 +24258,7 @@ function createNode(
   const titlePrefix = {
     agent: 'Agent',
     terminal: 'Terminal',
-    note: 'Note',
-    file: 'File',
-    'file-list': 'File List'
+    note: 'Note'
   } satisfies Record<CanvasNodeKind, string>;
 
   const id = createCanvasNodeObjectId(kind, sequence);
@@ -25247,79 +24778,30 @@ function moveNode(
       position: normalizedPosition,
       groupId: isStableCanvasGroupMemberKind(node.kind)
         ? resolveDroppedObjectGroupId(previousState, node.id, 'node', resolvedPointerPosition)
-        : isAutomaticFileArtifactNodeKind(node.kind)
-          ? node.groupId
-          : undefined
+        : undefined
     };
   });
 
-  const stateWithMovedNodes = applyOwnerDerivedAutomaticFileArtifactGroupIds({
+  const movedState = {
     ...previousState,
     updatedAt: new Date().toISOString(),
     nodes
-  });
-  const movedState = adjustMovedNodesAfterGroupDrop(previousState, stateWithMovedNodes, movedNodeIds);
+  };
+  const stateAfterGroupDrop = adjustMovedNodesAfterGroupDrop(previousState, movedState, movedNodeIds);
   const movedWorkspaceRootGroupIds = new Set(
-    movedState.nodes
+    stateAfterGroupDrop.nodes
       .filter((node) => movedNodeIds.has(node.id) && node.groupId)
       .flatMap((node) => {
-        const rootGroupId = resolveContainingWorkspaceRootGroupId(movedState.groups ?? [], node.groupId);
+        const rootGroupId = resolveContainingWorkspaceRootGroupId(stateAfterGroupDrop.groups ?? [], node.groupId);
         return rootGroupId ? [rootGroupId] : [];
       })
   );
-  const movedAutomaticFileArtifactGroupIds = new Set(
-    movedState.nodes
-      .filter((node) => movedNodeIds.has(node.id) && isAutomaticFileArtifactNodeKind(node.kind) && node.groupId)
-      .map((node) => node.groupId as string)
-  );
 
-  return finalizeCanvasGroupState(movedState, {
+  return finalizeCanvasGroupState(stateAfterGroupDrop, {
     pinnedGroupIds: [
-      ...movedAutomaticFileArtifactGroupIds,
       ...(movedWorkspaceRootGroupIds.size === 1 ? [...movedWorkspaceRootGroupIds] : [])
     ]
   });
-}
-
-function applyOwnerDerivedAutomaticFileArtifactGroupIds(
-  state: CanvasPrototypeState
-): CanvasPrototypeState {
-  if (!state.nodes.some((node) => isAutomaticFileArtifactNodeKind(node.kind))) {
-    return state;
-  }
-
-  const groups = state.groups ?? [];
-  const ownerNodesById = new Map(
-    state.nodes
-      .filter((node) => !isAutomaticFileArtifactNodeKind(node.kind))
-      .map((node) => [node.id, node] as const)
-  );
-  let didChange = false;
-  const nodes = state.nodes.map((node) => {
-    if (!isAutomaticFileArtifactNodeKind(node.kind)) {
-      return node;
-    }
-
-    const nextGroupId = resolveAutomaticFileArtifactGroupId(
-      node,
-      ownerNodesById,
-      groups,
-      resolveContainingWorkspaceRootGroupId(groups, node.groupId)
-    );
-    if (nextGroupId === node.groupId) {
-      return node;
-    }
-
-    didChange = true;
-    return withCanvasNodeGroupId(node, nextGroupId);
-  });
-
-  return didChange
-    ? {
-        ...state,
-        nodes
-      }
-    : state;
 }
 
 function normalizeCanvasNodeMoveIntents(intents: readonly CanvasNodeMoveIntent[]): CanvasNodeMoveIntent[] {
@@ -25473,15 +24955,14 @@ function resizeNode(
   previousState: CanvasPrototypeState,
   nodeId: string,
   position: CanvasNodePosition,
-  size: CanvasNodeFootprint,
-  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+  size: CanvasNodeFootprint
 ): CanvasPrototypeState {
   const targetNode = previousState.nodes.find((node) => node.id === nodeId);
   if (!targetNode) {
     return previousState;
   }
 
-  const normalizedSize = normalizeCanvasNodeFootprintForPersistence(targetNode, size, view);
+  const normalizedSize = normalizeCanvasNodeFootprint(targetNode.kind, size);
   const normalizedPosition = {
     x: Math.round(position.x),
     y: Math.round(position.y)
@@ -25861,25 +25342,10 @@ function resizeGroup(
 
     return node;
   });
-  const boundaryIntentNodesById = new Map(nodesAfterBoundaryIntent.map((node) => [node.id, node] as const));
-  const nodesAfterAutomaticGroupIntent = nodesAfterBoundaryIntent.map((node) =>
-    isAutomaticFileArtifactNodeKind(node.kind)
-      ? withCanvasNodeGroupId(
-          node,
-          resolveAutomaticFileArtifactGroupId(
-            node,
-            boundaryIntentNodesById,
-            groupsAfterBoundaryIntent,
-            resolveContainingWorkspaceRootGroupId(groupsAfterBoundaryIntent, node.groupId)
-          )
-        )
-      : node
-  );
-
   return finalizeCanvasGroupState({
     ...previousState,
     updatedAt: new Date().toISOString(),
-    nodes: nodesAfterAutomaticGroupIntent,
+    nodes: nodesAfterBoundaryIntent,
     groups: groupsAfterBoundaryIntent
   }, { pinnedGroupId: groupId });
 }
@@ -26862,12 +26328,8 @@ function isStableCanvasGroupMemberKind(kind: CanvasNodeKind): boolean {
   return kind === 'agent' || kind === 'terminal' || kind === 'note';
 }
 
-function isAutomaticFileArtifactNodeKind(kind: CanvasNodeKind): boolean {
-  return kind === 'file' || kind === 'file-list';
-}
-
 function isAllowedCanvasGroupMemberKind(kind: CanvasNodeKind): boolean {
-  return isStableCanvasGroupMemberKind(kind) || isAutomaticFileArtifactNodeKind(kind);
+  return isStableCanvasGroupMemberKind(kind);
 }
 
 function wouldCreateGroupCycle(groups: readonly CanvasGroupSummary[], groupId: string, parentGroupId: string): boolean {
@@ -27070,1254 +26532,6 @@ function groupsEqualCollectionGeometry(
   });
 }
 
-function normalizeCanvasNodeFootprintForPersistence(
-  node: Pick<CanvasNodeSummary, 'kind' | 'metadata'>,
-  value: unknown,
-  view?: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
-): CanvasNodeFootprint {
-  if (node.kind !== 'file' || view?.displayStyle !== 'minimal') {
-    return normalizeCanvasNodeFootprint(node.kind, value);
-  }
-
-  const fallback = resolveMinimalFileNodeFootprint(node.metadata?.file, view);
-  if (
-    !isRecord(value) ||
-    typeof value.width !== 'number' ||
-    !Number.isFinite(value.width) ||
-    typeof value.height !== 'number' ||
-    !Number.isFinite(value.height)
-  ) {
-    return fallback;
-  }
-
-  const minimum = resolveMinimalFileNodeFootprint(node.metadata?.file, view);
-  return {
-    width: Math.max(minimum.width, Math.round(value.width)),
-    height: Math.max(minimum.height, Math.round(value.height))
-  };
-}
-
-function rebuildCanvasFileArtifacts(
-  state: CanvasPrototypeState,
-  options: {
-    view: CanvasFileViewConfiguration;
-    preserveAutomaticFileNodeSizes: boolean;
-    geometryRepairOptions?: CanvasGroupGeometryRepairOptions;
-  }
-): CanvasPrototypeState {
-  const workspaceRootGroups = state.groups.filter(isWorkspaceRootGroup);
-  const rebuiltState = workspaceRootGroups.length > 0
-    ? rebuildMultiRootCanvasFileArtifacts(state, options, workspaceRootGroups)
-    : rebuildCanvasFileArtifactsForNodeScope(
-        state,
-        options,
-        state.nodes.filter((node) => !isAutomaticFileArtifactNodeKind(node.kind)),
-        {
-          allowedGroupId: undefined,
-          namespaceId: undefined
-        }
-      );
-  return finalizeCanvasGroupState(rebuiltState, options.geometryRepairOptions);
-}
-
-function rebuildMultiRootCanvasFileArtifacts(
-  state: CanvasPrototypeState,
-  options: {
-    view: CanvasFileViewConfiguration;
-    preserveAutomaticFileNodeSizes: boolean;
-  },
-  workspaceRootGroups: CanvasGroupSummary[]
-): CanvasPrototypeState {
-  let nextState = state;
-  for (const rootGroup of workspaceRootGroups) {
-    const rootPath = resolveWorkspaceRootPathForGroup(rootGroup);
-    if (!rootPath) {
-      continue;
-    }
-
-    const rootManualNodes = state.nodes.filter(
-      (node) =>
-        !isAutomaticFileArtifactNodeKind(node.kind) &&
-        isCanvasNodeInWorkspaceRootScope(state.groups ?? [], node, rootGroup.id)
-    );
-    nextState = rebuildCanvasFileArtifactsForNodeScope(nextState, options, rootManualNodes, {
-      allowedGroupId: rootGroup.id,
-      namespaceId: rootGroup.id
-    });
-  }
-
-  const rootScopedNodeIds = new Set(nextState.nodes.flatMap((node) =>
-    isCanvasNodeInAnyWorkspaceRootScope(nextState.groups ?? [], node) ? [node.id] : []
-  ));
-  const workspaceLevelAutomaticNodes = nextState.nodes.filter(
-    (node) =>
-      isAutomaticFileArtifactNodeKind(node.kind) &&
-      splitNamespacedCanvasObjectId(node.id) === undefined &&
-      !rootScopedNodeIds.has(node.id)
-  );
-  if (workspaceLevelAutomaticNodes.length === 0) {
-    return nextState;
-  }
-
-  const workspaceLevelAutomaticNodeIds = new Set(workspaceLevelAutomaticNodes.map((node) => node.id));
-  return {
-    ...nextState,
-    nodes: nextState.nodes.filter((node) => !workspaceLevelAutomaticNodeIds.has(node.id)),
-    edges: nextState.edges.filter(
-      (edge) =>
-        !workspaceLevelAutomaticNodeIds.has(edge.sourceNodeId) &&
-        !workspaceLevelAutomaticNodeIds.has(edge.targetNodeId)
-    )
-  };
-}
-
-function rebuildCanvasFileArtifactsForNodeScope(
-  state: CanvasPrototypeState,
-  options: {
-    view: CanvasFileViewConfiguration;
-    preserveAutomaticFileNodeSizes: boolean;
-  },
-  manualNodes: CanvasNodeSummary[],
-  scope: {
-    allowedGroupId: string | undefined;
-    namespaceId: string | undefined;
-  }
-): CanvasPrototypeState {
-  const existingAutoNodes = new Map(
-    state.nodes
-      .filter((node) => isAutomaticFileArtifactNodeKind(node.kind))
-      .map((node) => [node.id, node] as const)
-  );
-  const manualNodeIds = new Set(manualNodes.map((node) => node.id));
-  const manualNodesById = new Map(manualNodes.map((node) => [node.id, node] as const));
-  const agentNodesById = new Map(
-    manualNodes.filter((node) => node.kind === 'agent').map((node) => [node.id, node] as const)
-  );
-  const authoritativeFileReferences = state.fileReferences
-    .filter((reference) => !isCanvasObjectIdOutsideWorkspaceRootNamespace(reference.id, scope.namespaceId))
-    .map((reference) => ({
-      ...reference,
-      owners: reference.owners.filter((owner) => manualNodeIds.has(owner.nodeId))
-    }))
-    .filter((reference) => reference.owners.length > 0)
-    .map((reference) => namespaceFileReferenceForScope(reference, scope.namespaceId));
-  const scopedAuthoritativeFileReferences = mergeCanvasFileReferences(authoritativeFileReferences);
-  const scopedAutomaticNodeIds = new Set(
-    state.nodes
-      .filter((node) =>
-        isAutomaticFileArtifactNodeKind(node.kind) &&
-        isAutomaticFileArtifactNodeInScope(node, scope, state.groups ?? [])
-      )
-      .map((node) => node.id)
-  );
-  if (!options.view.enabled) {
-    const userEdges = state.edges.filter(
-      (edge) =>
-        edge.owner === 'user' &&
-        manualNodeIds.has(edge.sourceNodeId) &&
-        manualNodeIds.has(edge.targetNodeId)
-    );
-    const retainedNodes = state.nodes.filter(
-      (node) => !manualNodeIds.has(node.id) && !scopedAutomaticNodeIds.has(node.id)
-    );
-    const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
-    const retainedEdges = state.edges.filter(
-      (edge) =>
-        !manualNodeIds.has(edge.sourceNodeId) &&
-        !manualNodeIds.has(edge.targetNodeId) &&
-        !scopedAutomaticNodeIds.has(edge.sourceNodeId) &&
-        !scopedAutomaticNodeIds.has(edge.targetNodeId) &&
-        retainedNodeIds.has(edge.sourceNodeId) &&
-        retainedNodeIds.has(edge.targetNodeId)
-    );
-
-    return {
-      ...state,
-      nodes: [...retainedNodes, ...manualNodes],
-      edges: [...retainedEdges, ...userEdges],
-      fileReferences: removeFileReferenceOwnersForNodeIds(state.fileReferences, manualNodeIds),
-      suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
-        state.suppressedFileActivityEdgeIds,
-        new Set(),
-        userEdges,
-        scope.namespaceId
-      ),
-      suppressedAutomaticFileArtifactNodeIds: filterSuppressedAutomaticFileArtifactNodeIdsForScope(
-        state.suppressedAutomaticFileArtifactNodeIds,
-        new Set(),
-        scope.namespaceId
-      )
-    };
-  }
-  const projectedFileReferences = scopedAuthoritativeFileReferences.filter((reference) =>
-    shouldIncludeFileReference(reference, options.view.includeGlobs, options.view.excludeGlobs)
-  );
-  const automaticArtifactNodeIds = collectAutomaticFileArtifactNodeIds(scopedAuthoritativeFileReferences);
-  const allAutomaticArtifacts =
-    options.view.presentationMode === 'lists'
-      ? buildAutomaticFileListArtifacts(scopedAuthoritativeFileReferences, manualNodes, agentNodesById, existingAutoNodes)
-      : buildAutomaticFileNodeArtifacts(
-          scopedAuthoritativeFileReferences,
-          manualNodes,
-          agentNodesById,
-          existingAutoNodes,
-          options.preserveAutomaticFileNodeSizes,
-          {
-            displayStyle: options.view.displayStyle,
-            nodeDisplayMode: options.view.nodeDisplayMode,
-            pathDisplayMode: options.view.pathDisplayMode
-          }
-        );
-  const automaticArtifacts =
-    options.view.presentationMode === 'lists'
-      ? buildAutomaticFileListArtifacts(projectedFileReferences, manualNodes, agentNodesById, existingAutoNodes)
-      : buildAutomaticFileNodeArtifacts(
-          projectedFileReferences,
-          manualNodes,
-          agentNodesById,
-          existingAutoNodes,
-          options.preserveAutomaticFileNodeSizes,
-          {
-            displayStyle: options.view.displayStyle,
-            nodeDisplayMode: options.view.nodeDisplayMode,
-            pathDisplayMode: options.view.pathDisplayMode
-          }
-        );
-  const scopedAutomaticArtifacts = {
-    nodes: automaticArtifacts.nodes.map((node) =>
-      withCanvasNodeGroupId(
-        node,
-        resolveAutomaticFileArtifactGroupId(
-          node,
-          manualNodesById,
-          state.groups ?? [],
-          scope.allowedGroupId
-        )
-      )
-    ),
-    edges: automaticArtifacts.edges
-  };
-  const suppressedAutomaticFileArtifactNodeIds = new Set(state.suppressedAutomaticFileArtifactNodeIds);
-  const projectedNodes = [
-    ...manualNodes,
-    ...scopedAutomaticArtifacts.nodes.filter((node) => !suppressedAutomaticFileArtifactNodeIds.has(node.id))
-  ];
-  const projectedNodeIds = new Set(projectedNodes.map((node) => node.id));
-  const automaticEdgeIds = new Set(allAutomaticArtifacts.edges.map((edge) => edge.id));
-  const suppressedFileActivityEdgeIds = new Set(state.suppressedFileActivityEdgeIds);
-  const userEdges = state.edges.filter(
-    (edge) =>
-      edge.owner === 'user' &&
-      projectedNodeIds.has(edge.sourceNodeId) &&
-      projectedNodeIds.has(edge.targetNodeId)
-  );
-  const automaticEdges = automaticArtifacts.edges.filter(
-    (edge) =>
-      !suppressedFileActivityEdgeIds.has(edge.id) &&
-      projectedNodeIds.has(edge.sourceNodeId) &&
-      projectedNodeIds.has(edge.targetNodeId)
-  );
-  const replacedNodeIds = new Set<string>([
-    ...manualNodeIds,
-    ...scopedAutomaticNodeIds
-  ]);
-  const retainedNodes = state.nodes.filter((node) => !replacedNodeIds.has(node.id));
-  const retainedNodeIds = new Set(retainedNodes.map((node) => node.id));
-  const retainedEdges = state.edges.filter(
-    (edge) =>
-      !manualNodeIds.has(edge.sourceNodeId) &&
-      !manualNodeIds.has(edge.targetNodeId) &&
-      !automaticEdgeIds.has(edge.id) &&
-      retainedNodeIds.has(edge.sourceNodeId) &&
-      retainedNodeIds.has(edge.targetNodeId)
-  );
-  const retainedFileReferences = removeFileReferenceOwnersForNodeIds(state.fileReferences, manualNodeIds);
-
-  return {
-    ...state,
-    nodes: [...retainedNodes, ...projectedNodes],
-    edges: [...retainedEdges, ...userEdges, ...automaticEdges],
-    fileReferences: [...retainedFileReferences, ...scopedAuthoritativeFileReferences],
-    suppressedFileActivityEdgeIds: filterSuppressedFileActivityEdgeIdsForScope(
-      state.suppressedFileActivityEdgeIds,
-      automaticEdgeIds,
-      userEdges,
-      scope.namespaceId
-    ),
-    suppressedAutomaticFileArtifactNodeIds: filterSuppressedAutomaticFileArtifactNodeIdsForScope(
-      state.suppressedAutomaticFileArtifactNodeIds,
-      automaticArtifactNodeIds,
-      scope.namespaceId
-    )
-  };
-}
-
-function namespaceFileReferenceForScope(
-  reference: CanvasFileReferenceSummary,
-  namespaceId: string | undefined
-): CanvasFileReferenceSummary {
-  if (!namespaceId || splitNamespacedCanvasObjectId(reference.id)) {
-    return reference;
-  }
-
-  return {
-    ...reference,
-    id: `${namespaceId}:${reference.id}`
-  };
-}
-
-function mergeCanvasFileReferences(
-  fileReferences: readonly CanvasFileReferenceSummary[]
-): CanvasFileReferenceSummary[] {
-  const referencesById = new Map<string, CanvasFileReferenceSummary>();
-  for (const reference of fileReferences) {
-    const existingReference = referencesById.get(reference.id);
-    if (!existingReference) {
-      referencesById.set(reference.id, reference);
-      continue;
-    }
-
-    referencesById.set(reference.id, {
-      ...existingReference,
-      filePath: reference.filePath || existingReference.filePath,
-      relativePath: reference.relativePath ?? existingReference.relativePath,
-      updatedAt: compareTimestamp(reference.updatedAt, existingReference.updatedAt) >= 0
-        ? reference.updatedAt
-        : existingReference.updatedAt,
-      owners: reference.owners.reduce(
-        (owners, owner) => mergeFileReferenceOwners(owners, owner),
-        existingReference.owners
-      )
-    });
-  }
-  return Array.from(referencesById.values());
-}
-
-function compareTimestamp(left: string | undefined, right: string | undefined): number {
-  const leftTime = left ? Date.parse(left) : Number.NaN;
-  const rightTime = right ? Date.parse(right) : Number.NaN;
-  if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) {
-    return leftTime - rightTime;
-  }
-  if (Number.isFinite(leftTime)) {
-    return 1;
-  }
-  if (Number.isFinite(rightTime)) {
-    return -1;
-  }
-  return 0;
-}
-
-function removeFileReferenceOwnersForNodeIds(
-  fileReferences: readonly CanvasFileReferenceSummary[],
-  nodeIds: ReadonlySet<string>
-): CanvasFileReferenceSummary[] {
-  return fileReferences
-    .map((reference) => ({
-      ...reference,
-      owners: reference.owners.filter((owner) => !nodeIds.has(owner.nodeId))
-    }))
-    .filter((reference) => reference.owners.length > 0);
-}
-
-function withCanvasNodeGroupId(
-  node: CanvasNodeSummary,
-  groupId: string | undefined
-): CanvasNodeSummary {
-  return groupId
-    ? {
-        ...node,
-        groupId
-      }
-    : {
-        ...node,
-        groupId: undefined
-      };
-}
-
-function resolveAutomaticFileArtifactGroupId(
-  node: CanvasNodeSummary,
-  ownerNodesById: ReadonlyMap<string, CanvasNodeSummary>,
-  groups: readonly CanvasGroupSummary[],
-  fallbackGroupId: string | undefined
-): string | undefined {
-  const ownerNodes = resolveAutomaticFileArtifactOwnerNodeIds(node)
-    .map((ownerNodeId) => ownerNodesById.get(ownerNodeId))
-    .filter((ownerNode): ownerNode is CanvasNodeSummary => Boolean(ownerNode));
-  if (ownerNodes.length === 0) {
-    return resolveValidTargetGroupId(groups, fallbackGroupId);
-  }
-
-  return resolveCommonOwnerGroupId(ownerNodes, groups, fallbackGroupId);
-}
-
-function resolveAutomaticFileArtifactOwnerNodeIds(node: CanvasNodeSummary): string[] {
-  const ownerNodeIds = new Set<string>();
-  if (node.kind === 'file') {
-    for (const ownerNodeId of node.metadata?.file?.ownerNodeIds ?? []) {
-      ownerNodeIds.add(ownerNodeId);
-    }
-  }
-
-  if (node.kind === 'file-list') {
-    const fileListMetadata = node.metadata?.fileList;
-    if (fileListMetadata?.ownerNodeId) {
-      ownerNodeIds.add(fileListMetadata.ownerNodeId);
-    }
-    for (const entry of fileListMetadata?.entries ?? []) {
-      for (const ownerNodeId of entry.ownerNodeIds) {
-        ownerNodeIds.add(ownerNodeId);
-      }
-    }
-  }
-
-  return [...ownerNodeIds];
-}
-
-function resolveCommonOwnerGroupId(
-  ownerNodes: readonly CanvasNodeSummary[],
-  groups: readonly CanvasGroupSummary[],
-  fallbackGroupId: string | undefined
-): string | undefined {
-  const resolvedFallbackGroupId = resolveValidTargetGroupId(groups, fallbackGroupId);
-  const ownerGroupChains = ownerNodes.map((node) =>
-    resolveGroupAncestorChain(groups, node.groupId, resolvedFallbackGroupId)
-  );
-  if (ownerGroupChains.length === 0) {
-    return resolvedFallbackGroupId;
-  }
-
-  const [firstChain] = ownerGroupChains;
-  for (const groupId of firstChain) {
-    if (ownerGroupChains.every((chain) => chain.includes(groupId))) {
-      return groupId;
-    }
-  }
-
-  return resolvedFallbackGroupId;
-}
-
-function resolveGroupAncestorChain(
-  groups: readonly CanvasGroupSummary[],
-  groupId: string | undefined,
-  fallbackGroupId: string | undefined
-): string[] {
-  const groupIds = new Set(groups.map((group) => group.id));
-  const chain: string[] = [];
-  const visited = new Set<string>();
-  let currentGroupId = groupId && groupIds.has(groupId) ? groupId : undefined;
-  while (currentGroupId && !visited.has(currentGroupId)) {
-    chain.push(currentGroupId);
-    visited.add(currentGroupId);
-    currentGroupId = groups.find((group) => group.id === currentGroupId)?.parentGroupId;
-  }
-
-  if (fallbackGroupId && groupIds.has(fallbackGroupId) && !chain.includes(fallbackGroupId)) {
-    chain.push(fallbackGroupId);
-  }
-
-  return chain;
-}
-
-function isAutomaticFileArtifactNodeInScope(
-  node: CanvasNodeSummary,
-  scope: {
-    allowedGroupId: string | undefined;
-    namespaceId: string | undefined;
-  },
-  groups: readonly CanvasGroupSummary[]
-): boolean {
-  if (!scope.allowedGroupId) {
-    return true;
-  }
-
-  if (node.groupId === scope.allowedGroupId) {
-    return true;
-  }
-
-  if (node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId) === scope.allowedGroupId) {
-    return true;
-  }
-
-  const namespacedId = splitNamespacedCanvasObjectId(node.id);
-  if (namespacedId) {
-    return namespacedId.namespaceId === scope.namespaceId;
-  }
-
-  const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(node.id);
-  if (legacyArtifactNamespaceId) {
-    return legacyArtifactNamespaceId === scope.namespaceId;
-  }
-
-  return node.groupId === undefined;
-}
-
-function filterSuppressedFileActivityEdgeIdsForScope(
-  existingEdgeIds: readonly string[],
-  automaticEdgeIds: ReadonlySet<string>,
-  userEdges: readonly CanvasEdgeSummary[],
-  namespaceId: string | undefined
-): string[] {
-  const userEdgeIds = new Set(userEdges.map((edge) => edge.id));
-  return uniqueCanvasStrings(existingEdgeIds.filter((edgeId) => {
-    if (isCanvasObjectIdOutsideWorkspaceRootNamespace(edgeId, namespaceId)) {
-      return true;
-    }
-    return automaticEdgeIds.has(edgeId) || userEdgeIds.has(edgeId);
-  }));
-}
-
-function filterSuppressedAutomaticFileArtifactNodeIdsForScope(
-  existingNodeIds: readonly string[],
-  automaticArtifactNodeIds: ReadonlySet<string>,
-  namespaceId: string | undefined
-): string[] {
-  return uniqueCanvasStrings(existingNodeIds.filter((nodeId) => {
-    if (isCanvasObjectIdOutsideWorkspaceRootNamespace(nodeId, namespaceId)) {
-      return true;
-    }
-    return automaticArtifactNodeIds.has(nodeId);
-  }));
-}
-
-function uniqueCanvasStrings(values: readonly string[]): string[] {
-  return Array.from(new Set(values));
-}
-
-function isCanvasObjectIdOutsideWorkspaceRootNamespace(
-  objectId: string,
-  namespaceId: string | undefined
-): boolean {
-  if (!namespaceId) {
-    return false;
-  }
-  const namespacedId = splitNamespacedCanvasObjectId(objectId);
-  if (namespacedId) {
-    return namespacedId.namespaceId !== namespaceId;
-  }
-
-  const legacyArtifactNamespaceId = resolveLegacyAutomaticFileArtifactNamespaceId(objectId);
-  return legacyArtifactNamespaceId !== undefined && legacyArtifactNamespaceId !== namespaceId;
-}
-
-function resolveLegacyAutomaticFileArtifactNamespaceId(objectId: string): string | undefined {
-  for (const prefix of ['file-', 'file-list-agent-']) {
-    if (!objectId.startsWith(prefix)) {
-      continue;
-    }
-    const remainder = objectId.slice(prefix.length);
-    const separatorIndex = remainder.indexOf(':');
-    if (separatorIndex <= 0) {
-      continue;
-    }
-    const namespaceId = remainder.slice(0, separatorIndex);
-    if (namespaceId.startsWith('workspace-root-')) {
-      return namespaceId;
-    }
-  }
-  return undefined;
-}
-
-function isCanvasNodeInWorkspaceRootScope(
-  groups: readonly CanvasGroupSummary[],
-  node: CanvasNodeSummary,
-  rootGroupId: string
-): boolean {
-  if (node.groupId === rootGroupId) {
-    return true;
-  }
-  return Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId) === rootGroupId);
-}
-
-function isCanvasNodeInAnyWorkspaceRootScope(
-  groups: readonly CanvasGroupSummary[],
-  node: CanvasNodeSummary
-): boolean {
-  return Boolean(node.groupId && resolveContainingWorkspaceRootGroupId(groups, node.groupId));
-}
-
-function buildAutomaticFileNodeArtifacts(
-  fileReferences: CanvasFileReferenceSummary[],
-  manualNodes: CanvasNodeSummary[],
-  agentNodesById: Map<string, CanvasNodeSummary>,
-  existingAutoNodes: Map<string, CanvasNodeSummary>,
-  preserveAutomaticFileNodeSizes: boolean,
-  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
-): { nodes: CanvasNodeSummary[]; edges: CanvasEdgeSummary[] } {
-  const nodes: CanvasNodeSummary[] = [];
-  const edges: CanvasEdgeSummary[] = [];
-  const singleOwnerFileCounts = new Map<string, number>();
-
-  for (const reference of sortFileReferences(fileReferences)) {
-    const nodeId = buildFileNodeId(reference.id);
-    const existingNode = existingAutoNodes.get(nodeId);
-    const placementPreference = resolveFileReferencePlacementPreference(reference);
-    const anchor = resolveFileReferencePlacementAnchor(
-      reference,
-      agentNodesById,
-      singleOwnerFileCounts,
-      placementPreference
-    );
-    const occupiedNodes = [...manualNodes, ...nodes];
-    const position = resolveAutomaticArtifactPosition(
-      occupiedNodes,
-      'file',
-      anchor,
-      existingNode,
-      placementPreference
-    );
-    const title = buildFileDisplayLabel(reference, view.pathDisplayMode);
-    const fileNode: CanvasNodeSummary = {
-      id: nodeId,
-      kind: 'file',
-      title,
-      status: 'linked',
-      summary: reference.relativePath ?? reference.filePath,
-      position,
-      size: resolveAutomaticFileNodeSize(
-        reference,
-        preserveAutomaticFileNodeSizes ? existingNode : undefined,
-        view
-      ),
-      metadata: {
-        file: {
-          fileId: reference.id,
-          filePath: reference.filePath,
-          relativePath: reference.relativePath,
-          ownerNodeIds: reference.owners.map((owner) => owner.nodeId),
-          icon: createDefaultFileIconDescriptor(reference.filePath)
-        }
-      }
-    };
-    nodes.push(fileNode);
-
-    for (const owner of reference.owners) {
-      const agentNode = agentNodesById.get(owner.nodeId);
-      if (!agentNode) {
-        continue;
-      }
-
-      edges.push(
-        createAutomaticFileEdge({
-          edgeId: buildAutomaticFileEdgeId(owner.nodeId, nodeId),
-          referenceNode: fileNode,
-          agentNode,
-          accessMode: owner.accessMode
-        })
-      );
-    }
-  }
-
-  return { nodes, edges };
-}
-
-function resolveAutomaticFileNodeSize(
-  reference: CanvasFileReferenceSummary,
-  existingNode: CanvasNodeSummary | undefined,
-  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
-): CanvasNodeFootprint {
-  const preferredSize = estimateAutomaticFileNodeFootprint(reference, view);
-  if (!existingNode?.size) {
-    return preferredSize;
-  }
-
-  if (isKnownAutomaticFileNodeDefaultSize(reference, existingNode.size)) {
-    return preferredSize;
-  }
-
-  if (view.displayStyle === 'minimal') {
-    return {
-      width: Math.max(preferredSize.width, existingNode.size.width),
-      height: preferredSize.height
-    };
-  }
-
-  return existingNode.size;
-}
-
-function isKnownAutomaticFileNodeDefaultSize(
-  reference: CanvasFileReferenceSummary,
-  size: CanvasNodeFootprint
-): boolean {
-  const knownSizes: CanvasNodeFootprint[] = [
-    estimatedCanvasNodeFootprint('file'),
-    normalizeCanvasNodeFootprint('file', estimatedCanvasNodeFootprint('file'))
-  ];
-  const displayModes: CanvasFileNodeDisplayMode[] = ['icon-path', 'icon-only', 'path-only'];
-  const pathModes: CanvasFilePathDisplayMode[] = ['basename', 'relative-path'];
-
-  for (const nodeDisplayMode of displayModes) {
-    for (const pathDisplayMode of pathModes) {
-      const view = {
-        displayStyle: 'minimal' as const,
-        nodeDisplayMode,
-        pathDisplayMode
-      };
-      knownSizes.push(
-        estimateAutomaticFileNodeFootprint(reference, view),
-        estimateLegacyAutomaticFileNodeFootprint(reference, view)
-      );
-    }
-  }
-
-  return knownSizes.some(
-    (candidate) => candidate.width === size.width && candidate.height === size.height
-  );
-}
-
-function estimateAutomaticFileNodeFootprint(
-  reference: CanvasFileReferenceSummary,
-  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
-): CanvasNodeFootprint {
-  if (view.displayStyle === 'card') {
-    return estimatedCanvasNodeFootprint('file');
-  }
-
-  return resolveMinimalFileNodeFootprint(
-    {
-      filePath: reference.filePath,
-      relativePath: reference.relativePath
-    },
-    view
-  );
-}
-
-function estimateLegacyAutomaticFileNodeFootprint(
-  reference: CanvasFileReferenceSummary,
-  view: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
-): CanvasNodeFootprint {
-  if (view.displayStyle === 'card') {
-    return estimatedCanvasNodeFootprint('file');
-  }
-
-  const primaryLabel = buildFileDisplayLabel(reference, view.pathDisplayMode);
-  const textWidth = Math.max(
-    measureApproximateCanvasTextWidth(primaryLabel, 12, 0.62),
-    0
-  );
-
-  switch (view.nodeDisplayMode) {
-    case 'icon-only':
-      return {
-        width: 28,
-        height: 24
-      };
-    case 'path-only':
-      return {
-        width: Math.max(32, Math.min(320, Math.ceil(textWidth + 12))),
-        height: 22
-      };
-    default:
-      return {
-        width: Math.max(64, Math.min(360, Math.ceil(textWidth + 36))),
-        height: 24
-      };
-  }
-}
-
-function measureApproximateCanvasTextWidth(text: string, fontSizePx: number, widthFactor: number): number {
-  return Math.max(0, text.length) * fontSizePx * widthFactor;
-}
-
-function resolveMinimalFileNodeFootprint(
-  metadata: Pick<FileNodeMetadata, 'filePath' | 'relativePath'> | undefined,
-  view: Pick<CanvasFileViewConfiguration, 'nodeDisplayMode' | 'pathDisplayMode'>
-): CanvasNodeFootprint {
-  const primaryLabel = metadata
-    ? view.pathDisplayMode === 'relative-path'
-      ? metadata.relativePath ?? metadata.filePath
-      : path.basename(metadata.relativePath ?? metadata.filePath)
-    : '';
-
-  return estimateMinimalFileNodeFootprint(primaryLabel, view.nodeDisplayMode);
-}
-
-function buildAutomaticFileListArtifacts(
-  fileReferences: CanvasFileReferenceSummary[],
-  manualNodes: CanvasNodeSummary[],
-  agentNodesById: Map<string, CanvasNodeSummary>,
-  existingAutoNodes: Map<string, CanvasNodeSummary>
-): { nodes: CanvasNodeSummary[]; edges: CanvasEdgeSummary[] } {
-  const nodes: CanvasNodeSummary[] = [];
-  const edges: CanvasEdgeSummary[] = [];
-  const uniqueEntriesByAgent = new Map<string, FileListNodeEntrySummary[]>();
-  const sharedEntries: FileListNodeEntrySummary[] = [];
-
-  for (const reference of sortFileReferences(fileReferences)) {
-    const entryBase = {
-      fileId: reference.id,
-      filePath: reference.filePath,
-      relativePath: reference.relativePath,
-      ownerNodeIds: reference.owners.map((owner) => owner.nodeId),
-      icon: createDefaultFileIconDescriptor(reference.filePath)
-    };
-
-    if (reference.owners.length > 1) {
-      sharedEntries.push({
-        ...entryBase,
-        accessMode: mergeAccessModes(reference.owners.map((owner) => owner.accessMode))
-      });
-      continue;
-    }
-
-    const [owner] = reference.owners;
-    const bucket = uniqueEntriesByAgent.get(owner.nodeId) ?? [];
-    bucket.push({
-      ...entryBase,
-      accessMode: owner.accessMode
-    });
-    uniqueEntriesByAgent.set(owner.nodeId, bucket);
-  }
-
-  for (const [agentNodeId, entries] of uniqueEntriesByAgent.entries()) {
-    const agentNode = agentNodesById.get(agentNodeId);
-    if (!agentNode) {
-      continue;
-    }
-
-    const nodeId = buildAgentFileListNodeId(agentNodeId);
-    const existingNode = existingAutoNodes.get(nodeId);
-    const position = existingNode?.position
-      ? existingNode.position
-      : resolveNewNodePosition(
-          [...manualNodes, ...nodes],
-          'file-list',
-          resolveFileListAnchor(agentNode, 'agent')
-        );
-    const fileListNode: CanvasNodeSummary = {
-      id: nodeId,
-      kind: 'file-list',
-      title: vscode.l10n.t('{title} Files', { title: agentNode.title }),
-      status: 'linked',
-      summary: vscode.l10n.t('{count} files', { count: entries.length }),
-      position,
-      size: existingNode?.size ?? estimatedCanvasNodeFootprint('file-list'),
-      metadata: {
-        fileList: {
-          scope: 'agent',
-          ownerNodeId: agentNodeId,
-          entries
-        }
-      }
-    };
-    nodes.push(fileListNode);
-    edges.push(
-      createAutomaticFileEdge({
-        edgeId: buildAutomaticFileEdgeId(agentNodeId, nodeId),
-        referenceNode: fileListNode,
-        agentNode,
-        accessMode: mergeAccessModes(entries.map((entry) => entry.accessMode))
-      })
-    );
-  }
-
-  if (sharedEntries.length > 0) {
-    const sharedNodeId = buildSharedFileListNodeId(sharedEntries);
-    const existingNode = existingAutoNodes.get(sharedNodeId);
-    const position = existingNode?.position
-      ? existingNode.position
-      : resolveNewNodePosition(
-          [...manualNodes, ...nodes],
-          'file-list',
-          resolveSharedFileListAnchor(sharedEntries, agentNodesById)
-        );
-    const sharedNode: CanvasNodeSummary = {
-      id: sharedNodeId,
-      kind: 'file-list',
-      title: vscode.l10n.t('Shared Files'),
-      status: 'linked',
-      summary: vscode.l10n.t('{count} shared files', { count: sharedEntries.length }),
-      position,
-      size: existingNode?.size ?? estimatedCanvasNodeFootprint('file-list'),
-      metadata: {
-        fileList: {
-          scope: 'shared',
-          entries: sharedEntries
-        }
-      }
-    };
-    nodes.push(sharedNode);
-
-    const sharedOwners = new Map<string, CanvasFileActivityAccessMode[]>();
-    for (const entry of sharedEntries) {
-      for (const ownerNodeId of entry.ownerNodeIds) {
-        const bucket = sharedOwners.get(ownerNodeId) ?? [];
-        bucket.push(entry.accessMode);
-        sharedOwners.set(ownerNodeId, bucket);
-      }
-    }
-
-    for (const [agentNodeId, accessModes] of sharedOwners.entries()) {
-      const agentNode = agentNodesById.get(agentNodeId);
-      if (!agentNode) {
-        continue;
-      }
-      edges.push(
-        createAutomaticFileEdge({
-          edgeId: buildAutomaticFileEdgeId(agentNodeId, sharedNodeId),
-          referenceNode: sharedNode,
-          agentNode,
-          accessMode: mergeAccessModes(accessModes)
-        })
-      );
-    }
-  }
-
-  return { nodes, edges };
-}
-
-function buildFileNodeId(fileReferenceId: string): string {
-  const namespacedId = splitNamespacedCanvasObjectId(fileReferenceId);
-  return namespacedId
-    ? `${namespacedId.namespaceId}:file-${namespacedId.localId}`
-    : `file-${fileReferenceId}`;
-}
-
-function buildAgentFileListNodeId(agentNodeId: string): string {
-  const namespacedId = splitNamespacedCanvasObjectId(agentNodeId);
-  return namespacedId
-    ? `${namespacedId.namespaceId}:file-list-agent-${namespacedId.localId}`
-    : `file-list-agent-${agentNodeId}`;
-}
-
-function buildAutomaticFileEdgeId(ownerNodeId: string, artifactNodeId: string): string {
-  const ownerNamespacedId = splitNamespacedCanvasObjectId(ownerNodeId);
-  const artifactNamespacedId = splitNamespacedCanvasObjectId(artifactNodeId);
-  if (
-    ownerNamespacedId &&
-    artifactNamespacedId &&
-    ownerNamespacedId.namespaceId === artifactNamespacedId.namespaceId
-  ) {
-    return `${ownerNamespacedId.namespaceId}:${ownerNamespacedId.localId}::${artifactNamespacedId.localId}`;
-  }
-
-  return `${ownerNodeId}::${artifactNodeId}`;
-}
-
-function buildSharedFileListNodeId(entries: readonly FileListNodeEntrySummary[]): string {
-  const namespaceId = resolveSingleCanvasNamespaceId(entries.flatMap((entry) => entry.ownerNodeIds));
-  return namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared';
-}
-
-function resolveSingleCanvasNamespaceId(objectIds: readonly string[]): string | undefined {
-  let namespaceId: string | undefined;
-  for (const objectId of objectIds) {
-    const parts = splitNamespacedCanvasObjectId(objectId);
-    if (!parts) {
-      return undefined;
-    }
-    if (!namespaceId) {
-      namespaceId = parts.namespaceId;
-      continue;
-    }
-    if (namespaceId !== parts.namespaceId) {
-      return undefined;
-    }
-  }
-  return namespaceId;
-}
-
-function collectAutomaticFileArtifactNodeIds(
-  fileReferences: CanvasFileReferenceSummary[]
-): Set<string> {
-  const nodeIds = new Set<string>();
-  const uniqueAgentFileListOwnerIds = new Set<string>();
-  const sharedOwnerNodeIds: string[][] = [];
-
-  for (const reference of fileReferences) {
-    nodeIds.add(buildFileNodeId(reference.id));
-    if (reference.owners.length > 1) {
-      sharedOwnerNodeIds.push(reference.owners.map((owner) => owner.nodeId));
-      continue;
-    }
-
-    const [owner] = reference.owners;
-    if (owner) {
-      uniqueAgentFileListOwnerIds.add(owner.nodeId);
-    }
-  }
-
-  for (const ownerNodeId of uniqueAgentFileListOwnerIds) {
-    nodeIds.add(buildAgentFileListNodeId(ownerNodeId));
-  }
-
-  for (const ownerNodeIds of sharedOwnerNodeIds) {
-    const namespaceId = resolveSingleCanvasNamespaceId(ownerNodeIds);
-    nodeIds.add(namespaceId ? `${namespaceId}:file-list-shared` : 'file-list-shared');
-  }
-
-  return nodeIds;
-}
-
-function resolveAutomaticArtifactPosition(
-  occupiedNodes: CanvasNodeSummary[],
-  kind: CanvasNodeKind,
-  anchor: CanvasNodePosition,
-  existingNode?: CanvasNodeSummary,
-  preference: CanvasNodePlacementPreference = 'right-down'
-): CanvasNodePosition {
-  const existingPosition = existingNode?.position;
-  if (existingPosition) {
-    return existingPosition;
-  }
-
-  return resolveNewNodePosition(occupiedNodes, kind, anchor, preference);
-}
-
-function resolveFileReferencePlacementAnchor(
-  reference: CanvasFileReferenceSummary,
-  agentNodesById: Map<string, CanvasNodeSummary>,
-  singleOwnerFileCounts: Map<string, number>,
-  preference: CanvasNodePlacementPreference
-): CanvasNodePosition {
-  const baseAnchor = resolveFileReferenceAnchor(reference, agentNodesById, 'file', preference);
-  if (reference.owners.length !== 1) {
-    return baseAnchor;
-  }
-
-  const [owner] = reference.owners;
-  const countKey = `${owner.nodeId}:${preference}`;
-  const offsetIndex = singleOwnerFileCounts.get(countKey) ?? 0;
-  singleOwnerFileCounts.set(countKey, offsetIndex + 1);
-  if (offsetIndex === 0) {
-    return baseAnchor;
-  }
-
-  return snapCanvasPosition({
-    x: baseAnchor.x,
-    y: baseAnchor.y + (preference === 'left-up' ? -1 : 1) * offsetIndex * NODE_PLACEMENT_STEP_Y
-  });
-}
-
-function resolveFileReferenceAnchor(
-  reference: CanvasFileReferenceSummary,
-  agentNodesById: Map<string, CanvasNodeSummary>,
-  kind: 'file' | 'file-list',
-  preference: CanvasNodePlacementPreference = 'right-down'
-): CanvasNodePosition {
-  const ownerNodes = reference.owners
-    .map((owner) => agentNodesById.get(owner.nodeId))
-    .filter((node): node is CanvasNodeSummary => Boolean(node));
-  if (ownerNodes.length === 0) {
-    return createNodePosition(1);
-  }
-
-  const averageLeft = ownerNodes.reduce((sum, node) => sum + node.position.x, 0) / ownerNodes.length;
-  const averageRight =
-    ownerNodes.reduce((sum, node) => sum + node.position.x + node.size.width, 0) / ownerNodes.length;
-  const averageY =
-    ownerNodes.reduce((sum, node) => sum + node.position.y + node.size.height / 3, 0) / ownerNodes.length;
-  const footprint = estimatedCanvasNodeFootprint(kind);
-  const horizontalOffset = kind === 'file' ? 140 : 180;
-
-  return snapCanvasPosition({
-    x:
-      preference === 'left-up'
-        ? averageLeft - footprint.width - horizontalOffset
-        : averageRight + horizontalOffset,
-    y: averageY
-  });
-}
-
-function resolveFileReferencePlacementPreference(reference: CanvasFileReferenceSummary): CanvasNodePlacementPreference {
-  return mergeAccessModes(reference.owners.map((owner) => owner.accessMode)) === 'read' ? 'left-up' : 'right-down';
-}
-
-function doesPlacementRespectPreference(
-  position: CanvasNodePosition,
-  kind: CanvasNodeKind,
-  anchor: CanvasNodePosition,
-  preference: CanvasNodePlacementPreference
-): boolean {
-  const footprint = estimatedCanvasNodeFootprint(kind);
-  const centerX = position.x + footprint.width / 2;
-  const centerY = position.y + footprint.height / 2;
-
-  if (preference === 'left-up') {
-    return centerX <= anchor.x + NODE_PLACEMENT_STEP_X && centerY <= anchor.y + NODE_PLACEMENT_STEP_Y;
-  }
-
-  return centerX >= anchor.x - NODE_PLACEMENT_STEP_X && centerY >= anchor.y - NODE_PLACEMENT_STEP_Y;
-}
-
-function resolveFileListAnchor(
-  agentNode: CanvasNodeSummary,
-  scope: 'agent' | 'shared'
-): CanvasNodePosition {
-  return snapCanvasPosition({
-    x: agentNode.position.x + agentNode.size.width + 140,
-    y: agentNode.position.y + (scope === 'shared' ? 120 : 20)
-  });
-}
-
-function resolveSharedFileListAnchor(
-  sharedEntries: FileListNodeEntrySummary[],
-  agentNodesById: Map<string, CanvasNodeSummary>
-): CanvasNodePosition {
-  const ownerNodes = Array.from(
-    new Set(sharedEntries.flatMap((entry) => entry.ownerNodeIds))
-  )
-    .map((nodeId) => agentNodesById.get(nodeId))
-    .filter((node): node is CanvasNodeSummary => Boolean(node));
-  if (ownerNodes.length === 0) {
-    return createNodePosition(1);
-  }
-
-  const averageX =
-    ownerNodes.reduce((sum, node) => sum + node.position.x + node.size.width, 0) / ownerNodes.length;
-  const averageY =
-    ownerNodes.reduce((sum, node) => sum + node.position.y + node.size.height / 2, 0) / ownerNodes.length;
-  return snapCanvasPosition({
-    x: averageX + 180,
-    y: averageY + 80
-  });
-}
-
-function createAutomaticFileEdge(params: {
-  edgeId: string;
-  referenceNode: CanvasNodeSummary;
-  agentNode: CanvasNodeSummary;
-  accessMode: CanvasFileActivityAccessMode;
-}): CanvasEdgeSummary {
-  const arrowMode = params.accessMode === 'read-write' ? 'both' : 'forward';
-  if (params.accessMode === 'read') {
-    return createAutomaticFileEdgeSummary(
-      params.edgeId,
-      params.referenceNode,
-      params.agentNode,
-      arrowMode
-    );
-  }
-
-  return createAutomaticFileEdgeSummary(
-    params.edgeId,
-    params.agentNode,
-    params.referenceNode,
-    arrowMode
-  );
-}
-
-function createAutomaticFileEdgeSummary(
-  edgeId: string,
-  sourceNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
-  targetNode: Pick<CanvasNodeSummary, 'id' | 'position' | 'size'>,
-  arrowMode: CanvasEdgeSummary['arrowMode']
-): CanvasEdgeSummary {
-  const anchors = resolveHorizontalCanvasEdgeAnchors(sourceNode, targetNode);
-  return {
-    id: edgeId,
-    sourceNodeId: sourceNode.id,
-    targetNodeId: targetNode.id,
-    sourceAnchor: anchors.sourceAnchor,
-    targetAnchor: anchors.targetAnchor,
-    arrowMode,
-    owner: 'file-activity'
-  };
-}
-
-function sortFileReferences(fileReferences: CanvasFileReferenceSummary[]): CanvasFileReferenceSummary[] {
-  return [...fileReferences].sort((left, right) =>
-    (left.relativePath ?? left.filePath).localeCompare(right.relativePath ?? right.filePath)
-  );
-}
-
-function mergeAccessModes(accessModes: CanvasFileActivityAccessMode[]): CanvasFileActivityAccessMode {
-  const hasRead = accessModes.includes('read') || accessModes.includes('read-write');
-  const hasWrite = accessModes.includes('write') || accessModes.includes('read-write');
-  if (hasRead && hasWrite) {
-    return 'read-write';
-  }
-  return hasWrite ? 'write' : 'read';
-}
-
-function normalizeCanvasFileFilterGlobs(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .filter((entry): entry is string => typeof entry === 'string')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-}
-
-function createEmptyCanvasFileFilterState(): CanvasFileFilterState {
-  return {
-    includeGlobs: [],
-    excludeGlobs: []
-  };
-}
-
-function normalizeCanvasFileFilterState(value: unknown): CanvasFileFilterState {
-  if (!isRecord(value)) {
-    return createEmptyCanvasFileFilterState();
-  }
-
-  return {
-    includeGlobs: normalizeCanvasFileFilterGlobs(value.includeGlobs),
-    excludeGlobs: normalizeCanvasFileFilterGlobs(value.excludeGlobs)
-  };
-}
-
-function areStringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  return left.every((value, index) => value === right[index]);
-}
-
-function readLegacyCanvasFileFilterGlobs(kind: 'include' | 'exclude'): string[] {
-  const key =
-    kind === 'include' ? 'devSessionCanvas.files.includeGlobs' : 'devSessionCanvas.files.excludeGlobs';
-  return normalizeCanvasFileFilterGlobs(vscode.workspace.getConfiguration().get<unknown>(key));
-}
-
-function shouldIncludeFileReference(
-  reference: CanvasFileReferenceSummary,
-  includeGlobs: string[],
-  excludeGlobs: string[]
-): boolean {
-  const candidateText = reference.relativePath ?? reference.filePath;
-  if (includeGlobs.length > 0 && !includeGlobs.some((pattern) => globPatternMatches(pattern, candidateText))) {
-    return false;
-  }
-
-  return !excludeGlobs.some((pattern) => globPatternMatches(pattern, candidateText));
-}
-
-function globPatternMatches(pattern: string, value: string): boolean {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '::double-star::')
-    .replace(/\*/g, '[^/]*')
-    .replace(/::double-star::/g, '.*')
-    .replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`).test(value.replace(/\\/g, '/'));
-}
-
-function createDefaultFileIconDescriptor(filePath: string): CanvasFileIconDescriptor {
-  const extension = path.extname(filePath).toLowerCase();
-  if (extension === '.md') {
-    return { kind: 'codicon', id: 'markdown' };
-  }
-  if (extension === '.ts' || extension === '.tsx' || extension === '.js' || extension === '.jsx') {
-    return { kind: 'codicon', id: 'symbol-file' };
-  }
-  if (extension === '.json') {
-    return { kind: 'codicon', id: 'json' };
-  }
-  return { kind: 'codicon', id: 'file' };
-}
-
-function buildFileDisplayLabel(
-  reference: Pick<CanvasFileReferenceSummary, 'relativePath' | 'filePath'>,
-  mode: CanvasFilePathDisplayMode
-): string {
-  const candidate = mode === 'relative-path' ? reference.relativePath ?? reference.filePath : path.basename(reference.filePath);
-  return candidate || reference.filePath;
-}
-
 function createUserCanvasEdge(
   previousState: CanvasPrototypeState,
   edge: CanvasEdgeSummary
@@ -28401,22 +26615,10 @@ function updateCanvasEdge(
   if (areCanvasEdgesEquivalent(edge, patchedEdge)) {
     return previousState;
   }
-  const nextEdge =
-    edge.owner === 'file-activity'
-      ? {
-          ...patchedEdge,
-          owner: 'user' as const
-        }
-      : patchedEdge;
-
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    edges: previousState.edges.map((candidate) => (candidate.id === edgeId ? nextEdge : candidate)),
-    suppressedFileActivityEdgeIds:
-      edge.owner === 'file-activity'
-        ? ensureSuppressedFileActivityEdgeId(previousState.suppressedFileActivityEdgeIds, edgeId)
-        : previousState.suppressedFileActivityEdgeIds
+    edges: previousState.edges.map((candidate) => (candidate.id === edgeId ? patchedEdge : candidate))
   };
 }
 
@@ -28430,11 +26632,7 @@ function deleteCanvasEdge(previousState: CanvasPrototypeState, edgeId: string): 
   return {
     ...previousState,
     updatedAt: new Date().toISOString(),
-    edges: nextEdges,
-    suppressedFileActivityEdgeIds:
-      edge.owner === 'file-activity' || previousState.suppressedFileActivityEdgeIds.includes(edgeId)
-        ? ensureSuppressedFileActivityEdgeId(previousState.suppressedFileActivityEdgeIds, edgeId)
-        : previousState.suppressedFileActivityEdgeIds
+    edges: nextEdges
   };
 }
 
@@ -28495,138 +26693,6 @@ function areCanvasEdgesEquivalent(left: CanvasEdgeSummary, right: CanvasEdgeSumm
     left.color === right.color &&
     left.label === right.label
   );
-}
-
-function ensureSuppressedFileActivityEdgeId(edgeIds: string[], edgeId: string): string[] {
-  return edgeIds.includes(edgeId) ? edgeIds : [...edgeIds, edgeId];
-}
-
-function ensureSuppressedAutomaticFileArtifactNodeId(nodeIds: string[], nodeId: string): string[] {
-  return nodeIds.includes(nodeId) ? nodeIds : [...nodeIds, nodeId];
-}
-
-function recordAgentFileActivity(
-  previousState: CanvasPrototypeState,
-  event: AgentFileActivityEvent & { nodeId: string; relativePath?: string }
-): CanvasPrototypeState {
-  const normalizedPath = normalizeTrackedFilePath(event.path);
-  if (!normalizedPath) {
-    return previousState;
-  }
-
-  const localReferenceId = buildFileReferenceId(normalizedPath);
-  const referenceId = buildFileReferenceIdForOwner(normalizedPath, event.nodeId);
-  const ownerNamespaceId = splitNamespacedCanvasObjectId(event.nodeId)?.namespaceId;
-  const existingReference = previousState.fileReferences.find((reference) => reference.id === referenceId);
-  const migratedOwners = ownerNamespaceId
-    ? previousState.fileReferences
-        .filter((reference) => reference.id === localReferenceId)
-        .flatMap((reference) => reference.owners.filter((owner) =>
-          splitNamespacedCanvasObjectId(owner.nodeId)?.namespaceId === ownerNamespaceId
-        ))
-    : [];
-  const nextOwner: CanvasFileReferenceOwnerSummary = {
-    nodeId: event.nodeId,
-    accessMode: event.accessMode,
-    updatedAt: event.timestamp
-  };
-  const targetOwners = [...migratedOwners, nextOwner].reduce(
-    (owners, owner) => mergeFileReferenceOwners(owners, owner),
-    existingReference?.owners ?? []
-  );
-  const targetReference: CanvasFileReferenceSummary = {
-    ...(existingReference ?? {
-      id: referenceId,
-      filePath: normalizedPath
-    }),
-    id: referenceId,
-    filePath: normalizedPath,
-    relativePath: event.relativePath ?? existingReference?.relativePath,
-    updatedAt: event.timestamp,
-    owners: targetOwners
-  };
-  const retainedFileReferences = previousState.fileReferences.flatMap((reference): CanvasFileReferenceSummary[] => {
-    if (reference.id === referenceId) {
-      return [];
-    }
-    if (ownerNamespaceId && reference.id === localReferenceId) {
-      const remainingOwners = reference.owners.filter((owner) =>
-        splitNamespacedCanvasObjectId(owner.nodeId)?.namespaceId !== ownerNamespaceId
-      );
-      return remainingOwners.length > 0 ? [{ ...reference, owners: remainingOwners }] : [];
-    }
-    return [reference];
-  });
-
-  return {
-    ...previousState,
-    updatedAt: new Date().toISOString(),
-    fileReferences: [...retainedFileReferences, targetReference]
-  };
-}
-
-function removeAgentFileReferences(previousState: CanvasPrototypeState, nodeId: string): CanvasPrototypeState {
-  const nextFileReferences = previousState.fileReferences
-    .map((reference) => ({
-      ...reference,
-      owners: reference.owners.filter((owner) => owner.nodeId !== nodeId)
-    }))
-    .filter((reference) => reference.owners.length > 0);
-
-  if (nextFileReferences.length === previousState.fileReferences.length) {
-    const didChange = previousState.fileReferences.some((reference) =>
-      reference.owners.some((owner) => owner.nodeId === nodeId)
-    );
-    if (!didChange) {
-      return previousState;
-    }
-  }
-
-  return {
-    ...previousState,
-    updatedAt: new Date().toISOString(),
-    fileReferences: nextFileReferences
-  };
-}
-
-function mergeFileReferenceOwners(
-  owners: CanvasFileReferenceOwnerSummary[],
-  nextOwner: CanvasFileReferenceOwnerSummary
-): CanvasFileReferenceOwnerSummary[] {
-  let didMerge = false;
-  const nextOwners = owners.map((owner) => {
-    if (owner.nodeId !== nextOwner.nodeId) {
-      return owner;
-    }
-
-    didMerge = true;
-    return {
-      ...owner,
-      accessMode: mergeAccessModes([owner.accessMode, nextOwner.accessMode]),
-      updatedAt: nextOwner.updatedAt
-    };
-  });
-
-  return didMerge ? nextOwners : [...owners, nextOwner];
-}
-
-function buildFileReferenceId(filePath: string): string {
-  return createHash('sha256').update(filePath).digest('hex').slice(0, 16);
-}
-
-function buildFileReferenceIdForOwner(filePath: string, ownerNodeId: string): string {
-  const localReferenceId = buildFileReferenceId(filePath);
-  const ownerNamespaceId = splitNamespacedCanvasObjectId(ownerNodeId)?.namespaceId;
-  return ownerNamespaceId ? `${ownerNamespaceId}:${localReferenceId}` : localReferenceId;
-}
-
-function normalizeTrackedFilePath(filePath: string): string | undefined {
-  const trimmed = filePath.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  return path.normalize(trimmed);
 }
 
 function normalizeExecutionCwd(cwd: string): string | undefined {
@@ -28740,17 +26806,20 @@ function toNoteMarkdownDocumentSelection(
 
 function normalizeState(
   value: unknown,
-  defaultAgentProvider: AgentProviderKind = 'codex',
-  fileView?: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+  defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasPrototypeState {
   if (!isRecord(value)) {
-    return createDefaultState(defaultAgentProvider);
+    return createDefaultState();
   }
 
   const hasStoredNodesArray = Array.isArray(value.nodes);
   const rawNodes: unknown[] = hasStoredNodesArray ? (value.nodes as unknown[]) : [];
+  const retiredFileNodeIds = new Set(rawNodes
+    .filter((node) => isRecord(node) && (node.kind === 'file' || node.kind === 'file-list'))
+    .map((node) => (node as Record<string, unknown>).id)
+    .filter((nodeId): nodeId is string => typeof nodeId === 'string'));
   const nodes = rawNodes
-    .map((node, index) => normalizeNode(node, index, defaultAgentProvider, fileView))
+    .map((node, index) => normalizeNode(node, index, defaultAgentProvider))
     .filter((node): node is CanvasNodeSummary => node !== null);
 
   const normalizedNodes = hasStoredNodesArray
@@ -28758,23 +26827,15 @@ function normalizeState(
       ? []
       : nodes.length > 0
         ? nodes
-        : createDefaultState(defaultAgentProvider).nodes
-    : createDefaultState(defaultAgentProvider).nodes;
+        : rawNodes.every((node) => isRecord(node) && (node.kind === 'file' || node.kind === 'file-list'))
+          ? []
+          : createDefaultState().nodes
+    : createDefaultState().nodes;
   const edges = Array.isArray(value.edges)
     ? value.edges
         .map((edge) => normalizeCanvasEdge(edge))
         .filter((edge): edge is CanvasEdgeSummary => edge !== null)
-    : [];
-  const fileReferences = Array.isArray(value.fileReferences)
-    ? value.fileReferences
-        .map((reference) => normalizeCanvasFileReference(reference))
-        .filter((reference): reference is CanvasFileReferenceSummary => reference !== null)
-    : [];
-  const suppressedFileActivityEdgeIds = Array.isArray(value.suppressedFileActivityEdgeIds)
-    ? value.suppressedFileActivityEdgeIds.filter((edgeId): edgeId is string => typeof edgeId === 'string')
-    : [];
-  const suppressedAutomaticFileArtifactNodeIds = Array.isArray(value.suppressedAutomaticFileArtifactNodeIds)
-    ? value.suppressedAutomaticFileArtifactNodeIds.filter((nodeId): nodeId is string => typeof nodeId === 'string')
+        .filter((edge) => !retiredFileNodeIds.has(edge.sourceNodeId) && !retiredFileNodeIds.has(edge.targetNodeId))
     : [];
   const normalizedGroups = normalizeCanvasGroups(value.groups);
   const normalizedNodesWithGroups = normalizeCanvasNodeGroupMemberships(
@@ -28789,10 +26850,7 @@ function normalizeState(
     nodes: normalizedNodesWithGroups,
     edges,
     groups: removeMissingGroupNodeMemberships(normalizedGroups, normalizedNodesWithGroups),
-    nextGroupSequence,
-    fileReferences,
-    suppressedFileActivityEdgeIds,
-    suppressedAutomaticFileArtifactNodeIds
+    nextGroupSequence
   };
 }
 
@@ -28977,8 +27035,7 @@ function downgradeLiveRuntimeNodesMissingRuntimeStoragePath(
 function normalizeNode(
   value: unknown,
   index: number,
-  defaultAgentProvider: AgentProviderKind = 'codex',
-  fileView?: Pick<CanvasFileViewConfiguration, 'displayStyle' | 'nodeDisplayMode' | 'pathDisplayMode'>
+  defaultAgentProvider: AgentProviderKind = 'codex'
 ): CanvasNodeSummary | null {
   if (!isRecord(value) || typeof value.id !== 'string' || !isCanvasNodeKind(value.kind)) {
     return null;
@@ -29008,14 +27065,7 @@ function normalizeNode(
         ? value.summary
         : defaultSummaryForKind(value.kind),
     position: normalizePosition(value.position, sequence),
-    size: normalizeCanvasNodeFootprintForPersistence(
-      {
-        kind: value.kind,
-        metadata: normalizedMetadata
-      },
-      value.size,
-      fileView
-    ),
+    size: normalizeCanvasNodeFootprint(value.kind, value.size),
     groupId:
       typeof value.groupId === 'string' && isAllowedCanvasGroupMemberKind(value.kind)
         ? value.groupId
@@ -29031,7 +27081,8 @@ function normalizeCanvasEdge(value: unknown): CanvasEdgeSummary | null {
     typeof value.sourceNodeId !== 'string' ||
     typeof value.targetNodeId !== 'string' ||
     !isCanvasEdgeAnchor(value.sourceAnchor) ||
-    !isCanvasEdgeAnchor(value.targetAnchor)
+    !isCanvasEdgeAnchor(value.targetAnchor) ||
+    value.owner === 'file-activity'
   ) {
     return null;
   }
@@ -29043,51 +27094,9 @@ function normalizeCanvasEdge(value: unknown): CanvasEdgeSummary | null {
     sourceAnchor: value.sourceAnchor,
     targetAnchor: value.targetAnchor,
     arrowMode: normalizeCanvasEdgeArrowMode(value.arrowMode),
-    owner: value.owner === 'file-activity' ? 'file-activity' : 'user',
+    owner: 'user',
     color: typeof value.color === 'string' ? normalizeCanvasEdgeColor(value.color as CanvasEdgeColor) : undefined,
     label: typeof value.label === 'string' ? value.label : undefined
-  };
-}
-
-function normalizeCanvasFileReference(value: unknown): CanvasFileReferenceSummary | null {
-  if (
-    !isRecord(value) ||
-    typeof value.id !== 'string' ||
-    typeof value.filePath !== 'string' ||
-    !Array.isArray(value.owners)
-  ) {
-    return null;
-  }
-
-  const owners = value.owners
-    .map((owner) => normalizeCanvasFileReferenceOwner(owner))
-    .filter((owner): owner is CanvasFileReferenceOwnerSummary => owner !== null);
-  if (owners.length === 0) {
-    return null;
-  }
-
-  return {
-    id: value.id,
-    filePath: value.filePath,
-    relativePath: typeof value.relativePath === 'string' ? value.relativePath : undefined,
-    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
-    owners
-  };
-}
-
-function normalizeCanvasFileReferenceOwner(value: unknown): CanvasFileReferenceOwnerSummary | null {
-  if (
-    !isRecord(value) ||
-    typeof value.nodeId !== 'string' ||
-    !isCanvasFileActivityAccessMode(value.accessMode)
-  ) {
-    return null;
-  }
-
-  return {
-    nodeId: value.nodeId,
-    accessMode: value.accessMode,
-    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString()
   };
 }
 
@@ -29722,10 +27731,6 @@ function normalizeCanvasEdgeArrowMode(value: unknown): CanvasEdgeArrowMode {
   return value === 'both' || value === 'forward' ? value : 'none';
 }
 
-function isCanvasFileActivityAccessMode(value: unknown): value is CanvasFileActivityAccessMode {
-  return value === 'read' || value === 'write' || value === 'read-write';
-}
-
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -29780,10 +27785,6 @@ function createNodeMetadata(
     return {
       note: createNoteMetadata()
     };
-  }
-
-  if (kind === 'file' || kind === 'file-list') {
-    return undefined;
   }
 
   return undefined;
@@ -30408,119 +28409,7 @@ function normalizeMetadata(
     };
   }
 
-  if (kind === 'file') {
-    const file = isRecord(record.file) ? record.file : {};
-    const filePath = typeof file.filePath === 'string' ? normalizeTrackedFilePath(file.filePath) : undefined;
-    const fileId =
-      typeof file.fileId === 'string' && file.fileId.trim().length > 0
-        ? file.fileId
-        : filePath
-          ? buildFileReferenceId(filePath)
-          : nodeId;
-
-    if (!filePath) {
-      return undefined;
-    }
-
-    return {
-      file: {
-        fileId,
-        filePath,
-        relativePath:
-          typeof file.relativePath === 'string' && file.relativePath.trim().length > 0
-            ? file.relativePath
-            : undefined,
-        ownerNodeIds: Array.isArray(file.ownerNodeIds)
-          ? file.ownerNodeIds.filter((ownerNodeId): ownerNodeId is string => typeof ownerNodeId === 'string')
-          : [],
-        icon: normalizeCanvasFileIconDescriptor(file.icon)
-      }
-    };
-  }
-
-  if (kind === 'file-list') {
-    const fileList = isRecord(record.fileList) ? record.fileList : {};
-    const entries = Array.isArray(fileList.entries)
-      ? fileList.entries
-          .map((entry) => normalizeFileListEntry(entry))
-          .filter((entry): entry is FileListNodeEntrySummary => entry !== null)
-      : [];
-
-    return {
-      fileList: {
-        scope: fileList.scope === 'shared' ? 'shared' : 'agent',
-        ownerNodeId: typeof fileList.ownerNodeId === 'string' ? fileList.ownerNodeId : undefined,
-        entries
-      }
-    };
-  }
-
   return undefined;
-}
-
-function normalizeFileListEntry(value: unknown): FileListNodeEntrySummary | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const filePath = typeof value.filePath === 'string' ? normalizeTrackedFilePath(value.filePath) : undefined;
-  if (!filePath) {
-    return null;
-  }
-
-  return {
-    fileId:
-      typeof value.fileId === 'string' && value.fileId.trim().length > 0
-        ? value.fileId
-        : buildFileReferenceId(filePath),
-    filePath,
-    relativePath:
-      typeof value.relativePath === 'string' && value.relativePath.trim().length > 0
-        ? value.relativePath
-        : undefined,
-    accessMode:
-      value.accessMode === 'read' || value.accessMode === 'write' || value.accessMode === 'read-write'
-        ? value.accessMode
-        : 'read',
-    ownerNodeIds: Array.isArray(value.ownerNodeIds)
-      ? value.ownerNodeIds.filter((ownerNodeId): ownerNodeId is string => typeof ownerNodeId === 'string')
-      : [],
-    icon: normalizeCanvasFileIconDescriptor(value.icon)
-  };
-}
-
-function normalizeCanvasFileIconDescriptor(value: unknown): CanvasFileIconDescriptor | undefined {
-  if (!isRecord(value) || typeof value.kind !== 'string') {
-    return undefined;
-  }
-
-  switch (value.kind) {
-    case 'codicon':
-      return typeof value.id === 'string'
-        ? {
-            kind: 'codicon',
-            id: value.id
-          }
-        : undefined;
-    case 'image':
-      return typeof value.src === 'string'
-        ? {
-            kind: 'image',
-            src: value.src
-          }
-        : undefined;
-    case 'font':
-      return typeof value.fontFamily === 'string' && typeof value.character === 'string'
-        ? {
-            kind: 'font',
-            fontFamily: value.fontFamily,
-            character: value.character,
-            color: typeof value.color === 'string' ? value.color : undefined
-          }
-        : undefined;
-    default:
-      return undefined;
-  }
 }
 
 interface ReconcileRuntimeOptions {

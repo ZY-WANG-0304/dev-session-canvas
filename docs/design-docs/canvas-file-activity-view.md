@@ -1,6 +1,6 @@
 ---
-title: 画布文件活动视图设计
-decision_status: 已选定
+title: 画布文件活动视图历史设计
+decision_status: 已废弃
 validation_status: 已验证
 domains:
   - 画布交互域
@@ -16,11 +16,13 @@ related_specs:
   - docs/product-specs/canvas-core-collaboration-mvp.md
   - docs/product-specs/canvas-graph-links-and-file-activity.md
 related_plans:
-  - docs/exec-plans/active/canvas-graph-links-and-file-activity.md
-updated_at: 2026-06-08
+  - docs/exec-plans/completed/canvas-graph-links-and-file-activity.md
+updated_at: 2026-11-01
 ---
 
 # 画布文件活动视图设计
+
+> 本文记录已退役功能的历史实现与验证，不代表当前产品行为。2026-11-01 起自动文件活动、文件节点、文件列表、过滤和自动边全部移除；当前决定、旧画布清理边界见[退役设计](canvas-file-activity-retirement.md)。
 
 ## 1. 背景
 

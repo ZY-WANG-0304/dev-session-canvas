@@ -20,10 +20,12 @@ related_plans:
   - docs/exec-plans/completed/canvas-dynamic-overview-zoom.md
   - docs/exec-plans/active/create-node-entry-availability-and-block-reasons.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-06-25
+updated_at: 2026-11-01
 ---
 
 # 画布导航与工作台原生收口设计
+
+> 2026-11-01：自动文件活动、文件节点和文件列表已退役。本文较早关于文件节点低倍率概览的描述仅为历史方案；当前概览只适用于 Agent、Terminal 和 Note 等受支持节点。
 
 ## 1. 背景
 
@@ -208,8 +210,8 @@ updated_at: 2026-06-25
 - 概览模式由 `devSessionCanvas.canvas.overviewMode` 控制。`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 只接受 `none` 与 `title` 两个值，并通过 `CanvasRuntimeContext.overviewMode` 从 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 传到 `extensions/vscode/dev-session-canvas/src/webview/main.tsx`；未知值统一归一为默认值 `title`。
 - 概览触发倍率由 `devSessionCanvas.canvas.overviewZoomThreshold` 控制，默认值来自 `DEFAULT_CANVAS_OVERVIEW_ZOOM_THRESHOLD = 0.2`。`normalizeCanvasOverviewZoomThreshold` 将非有限数字回退到默认值，并把有效数字钳制在 `[0, 1]`；归一后的值通过 `CanvasRuntimeContext.overviewZoomThreshold` 下发给 Webview。修改 `overviewMode` 或 `overviewZoomThreshold` 都会触发 `CanvasPanelManager` 重新 post runtime state，当前画布无需重新加载即可更新概览判定。
 - `none` 表示无概览：即使当前 viewport `zoom < overviewZoomThreshold`，`CanvasOverviewModeBridge` 也不会给 `.canvas-shell` 加上 `.is-overview-mode`，节点继续按普通表面渲染。这个选项只关闭概览视觉收口，不改变动态 `minZoom`、fit view 或手动缩小能力。
-- `title` 表示标题概览：当当前 viewport `zoom < overviewZoomThreshold` 时，`CanvasOverviewModeBridge` 给 `.canvas-shell` 加上概览模式标记，并通过 `data-canvas-overview-config="title"` 与 `--canvas-overview-title-scale` 驱动 `extensions/vscode/dev-session-canvas/src/webview/styles.css`；节点内容区内的 `.node-overview-title` 显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点显示状态标记，同时弱化 `Terminal` / `Agent` 的终端正文、Note 正文、文件节点内容和文件列表明细，隐藏主要操作按钮与次级文本，保留节点标题、必要状态、轮廓、连线和 minimap 作为低倍率导航线索。
-- `NodeOverviewTitle` 是纯展示层叠加，覆盖 `Agent` / `Terminal` 的 `.terminal-frame`、Note 的 `.object-body`、File 的 `.file-node-action`、FileList 的 `.file-list-body` 以及 fallback card；`Agent` / `Terminal` 节点读取当前 `status`，用与常规状态胶囊一致的语义色和文本生成 `.node-overview-status`，`Note` / `File` / `FileList` 不额外显示状态，避免把默认 `ready` / `linked` 这类结构性值放大成概览结论。概览模式不销毁节点内的真实 `xterm`、Note 编辑器或文件列表 DOM，不改变宿主状态，也不重算 PTY 行列数。用户聚焦回某个节点后仍回到原有节点表面。
+- `title` 表示标题概览：当当前 viewport `zoom < overviewZoomThreshold` 时，`CanvasOverviewModeBridge` 给 `.canvas-shell` 加上概览模式标记，并通过 `data-canvas-overview-config="title"` 与 `--canvas-overview-title-scale` 驱动 `extensions/vscode/dev-session-canvas/src/webview/styles.css`；节点内容区内的 `.node-overview-title` 显示节点标题，并只为 `Agent` / `Terminal` 等本身有运行状态的节点显示状态标记，同时弱化 `Terminal` / `Agent` 的终端正文和 Note 正文，隐藏主要操作按钮与次级文本，保留节点标题、必要状态、轮廓、连线和 minimap 作为低倍率导航线索。
+- `NodeOverviewTitle` 是纯展示层叠加，覆盖 `Agent` / `Terminal` 的 `.terminal-frame`、Note 的 `.object-body` 以及 fallback card；`Agent` / `Terminal` 节点读取当前 `status`，用与常规状态胶囊一致的语义色和文本生成 `.node-overview-status`，概览模式不销毁节点内的真实 `xterm` 或 Note 编辑器，不改变宿主状态，也不重算 PTY 行列数。用户聚焦回某个节点后仍回到原有节点表面。
 
 ## 8. 验证方法
 

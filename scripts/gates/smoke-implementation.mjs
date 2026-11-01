@@ -45,8 +45,13 @@ export function validateSmokeImplementationMap(map, design = readJSON(designFile
   for (const expected of design.cases) {
     const item = cases.get(expected.id);
     assert(Array.isArray(item.destinations));
-    assert(['existing-to-migrate', 'proposed-gap', 'implementation-target'].includes(expected.status),
+    assert(['existing-to-migrate', 'proposed-gap', 'implementation-target', 'retired'].includes(expected.status),
       `Unknown design coverage status: ${expected.id}/${expected.status}`);
+    if (expected.status === 'retired') {
+      assert.equal(item.status, 'retired', `Retired case must stay retired: ${item.id}`);
+      assert.equal(item.destinations.length, 0, `Retired case cannot count as current coverage: ${item.id}`);
+      continue;
+    }
     if (expected.status === 'proposed-gap') {
       assert.equal(item.status, 'not-implemented', `Proposed gap cannot claim implementation: ${item.id}`);
       assert.equal(item.destinations.length, 0, `Unimplemented gap cannot count as coverage: ${item.id}`);
@@ -156,8 +161,9 @@ export async function verifySmokeImplementationSources(map = readSmokeImplementa
   };
   for (const item of map.cases) for (const destination of item.destinations) assertHelper(destination);
   for (const review of map.assertionReview) assertHelper(review.replacement);
-  return { scope: map.scope, designDestinations: map.cases.length,
+  return { scope: map.scope, designDestinations: map.cases.filter(item => item.status !== 'retired').length,
     mappedDestinations: map.cases.filter(item => item.destinations.length).length,
-    unimplemented: map.cases.filter(item => !item.destinations.length).map(item => item.id),
+    unimplemented: map.cases.filter(item => item.status === 'not-implemented').map(item => item.id),
+    retired: map.cases.filter(item => item.status === 'retired').map(item => item.id),
     reviewedAssertionReplacements: map.assertionReview.length };
 }

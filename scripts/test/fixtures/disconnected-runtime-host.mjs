@@ -31,7 +31,7 @@ export async function deleteDisconnectedRuntimeNode({ directory, backend, owner,
       runtimeSessionId: sessionId, runtimeStoragePath: storage, runtimeBackend: backend.kind, runtimeOwner: owner,
       persistenceMode: 'live-runtime', attachmentState: 'history-restored', liveSession: false
     } } };
-  const initial = { version: 1, updatedAt: '', nodes: [node], groups: [], edges: [], nextGroupSequence: 1, fileReferences: [] };
+  const initial = { version: 1, updatedAt: '', nodes: [node], groups: [], edges: [], nextGroupSequence: 1 };
   const filename = path.join(directory, 'shared-canvas', 'canvas-state.json');
   const messages = [], events = [];
   const host = Object.create(CanvasPanelManager.prototype);

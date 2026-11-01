@@ -7,7 +7,6 @@ import { promises as fs } from 'fs';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import esbuild from 'esbuild';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { runProcess,retireProcessGroup } from '../gates/process.mjs';
 import { environmentPolicy, infrastructureBudgets } from '../gates/catalog.mjs';
@@ -68,11 +67,6 @@ export async function launchPreparedVSCodeScenario(options) {
   const runtime = options.runtime;
   const vscodeExecutablePath = options.vscodeExecutablePath ?? (await ensureVSCodeExecutable(options.projectRoot,
     { evidenceDir: runtime.artifactsDir }));
-  // Source and packaged file-entry tests share the same native input driver.
-  const nativeFileInput = options.extensionTestsEnv?.DEV_SESSION_CANVAS_SMOKE_SCENARIO === 'execution-file-activity/views';
-  const nativeInputEnv = nativeFileInput ? {
-    DEV_SESSION_CANVAS_SMOKE_PLAYWRIGHT: createRequire(path.join(options.projectRoot, 'package.json')).resolve('playwright')
-  } : {};
   const args = buildVSCodeArgs({
     workspacePath: options.workspacePath ?? options.projectRoot,
     folderUri: options.folderUri,
@@ -85,15 +79,13 @@ export async function launchPreparedVSCodeScenario(options) {
     disableWorkspaceTrust: options.disableWorkspaceTrust ?? true,
     disableExtensions: options.disableExtensions ?? true,
     profileName: options.profileName,
-    extraLaunchArgs: [...(options.extraLaunchArgs ?? []),
-      ...(nativeFileInput ? ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0'] : [])]
+    extraLaunchArgs: options.extraLaunchArgs ?? []
   });
 
   try {
     await launchVSCodeTestProcess(vscodeExecutablePath, args, {
       ...runtime.environment,
-      ...(options.extensionTestsEnv ?? {}),
-      ...nativeInputEnv
+      ...(options.extensionTestsEnv ?? {})
     });
   } catch (error) {
     await snapshotVSCodeLogs(runtime.userDataDir, runtime.artifactsDir);

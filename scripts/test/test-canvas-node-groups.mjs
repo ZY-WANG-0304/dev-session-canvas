@@ -30,9 +30,7 @@ try {
     'createBranchAgentUserEdge',
     'createUserCanvasEdge',
     'updateCanvasEdge',
-    'recordAgentFileActivity',
-    'removeAgentFileReferences',
-    'rebuildCanvasFileArtifacts'
+    'clearFileDomainState',
   ];
 
   await esbuild.build({
@@ -93,7 +91,7 @@ try {
                 workspace: {
                   isTrusted: true,
                   workspaceFolders: [],
-                  getConfiguration: () => ({ get: () => undefined, update: async () => undefined }),
+                  getConfiguration: () => ({ get: () => undefined, inspect: () => undefined, update: async () => undefined }),
                   onDidChangeConfiguration: () => new Disposable(),
                   fs: { writeFile: async () => undefined, readFile: async () => new Uint8Array(), createDirectory: async () => undefined }
                 }
@@ -138,9 +136,7 @@ try {
     createBranchAgentUserEdge,
     createUserCanvasEdge,
     updateCanvasEdge,
-    recordAgentFileActivity,
-    removeAgentFileReferences,
-    rebuildCanvasFileArtifacts
+    clearFileDomainState,
   } = require(outfile);
 
   const note = (id, position, extra = {}) => ({
@@ -165,17 +161,6 @@ try {
     metadata: { agent: { provider: 'codex' } },
     ...extra
   });
-  const fileNode = (id, position, extra = {}) => ({
-    id,
-    kind: 'file',
-    title: id,
-    status: 'linked',
-    summary: '',
-    position,
-    size: { width: 120, height: 80 },
-    metadata: { file: { fileId: id, filePath: `src/${id}.ts`, ownerNodeIds: [], accessMode: 'read' } },
-    ...extra
-  });
   const group = (id, position, size, extra = {}) => ({
     id,
     title: id,
@@ -189,9 +174,6 @@ try {
     nodes: [],
     edges: [],
     groups: [],
-    fileReferences: [],
-    suppressedFileActivityEdgeIds: [],
-    suppressedAutomaticFileArtifactNodeIds: [],
     nextGroupSequence: 1,
     ...overrides
   });
@@ -706,8 +688,7 @@ try {
     state({
       nodes: [
         note('note-contained', { x: 260, y: 60 }),
-        note('note-crossing', { x: 380, y: 120 }),
-        fileNode('file-contained', { x: 260, y: 60 })
+        note('note-crossing', { x: 380, y: 120 })
       ],
       groups: [
         group('group-parent', { x: 0, y: 0 }, { width: 220, height: 180 }),
@@ -724,248 +705,13 @@ try {
   const crossingAfterResize = resizedWithContainmentAndCollision.groups.find((candidate) => candidate.id === 'group-crossing');
   const containedNoteAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'note-contained');
   const crossingNoteAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'note-crossing');
-  const containedFileAfterResize = resizedWithContainmentAndCollision.nodes.find((candidate) => candidate.id === 'file-contained');
   assert.deepStrictEqual(resizedPinnedGroup.position, { x: 0, y: -2 });
   assert.deepStrictEqual(resizedPinnedGroup.size, { width: 430, height: 182 });
   assert.strictEqual(containedAfterResize.parentGroupId, 'group-parent');
   assert.strictEqual(crossingAfterResize.parentGroupId, undefined);
   assert.strictEqual(containedNoteAfterResize.groupId, 'group-parent');
   assert.strictEqual(crossingNoteAfterResize.groupId, undefined);
-  assert.strictEqual(containedFileAfterResize.groupId, undefined);
   assert.ok(!rectsOverlapForTest(rectForTestGroup(resizedPinnedGroup), rectForTestGroup(crossingAfterResize)));
-
-  const fileActivityOwnerGroupState = state({
-    nodes: [
-      agent('agent-owned', { x: 100, y: 100 }, { groupId: 'group-owner-a' }),
-      agent('agent-shared', { x: 1460, y: 100 }, { groupId: 'group-owner-b' })
-    ],
-    groups: [
-      group('group-owner-a', { x: 40, y: 40 }, { width: 900, height: 340 }),
-      group('group-owner-b', { x: 1400, y: 40 }, { width: 900, height: 340 })
-    ],
-    fileReferences: [
-      {
-        id: 'file-owned',
-        filePath: '/repo/src/owned.ts',
-        relativePath: 'src/owned.ts',
-        updatedAt: '2026-06-08T00:00:00.000Z',
-        owners: [
-          { nodeId: 'agent-owned', accessMode: 'write', updatedAt: '2026-06-08T00:00:00.000Z' }
-        ]
-      },
-      {
-        id: 'file-shared',
-        filePath: '/repo/src/shared.ts',
-        relativePath: 'src/shared.ts',
-        updatedAt: '2026-06-08T00:00:00.000Z',
-        owners: [
-          { nodeId: 'agent-owned', accessMode: 'write', updatedAt: '2026-06-08T00:00:00.000Z' },
-          { nodeId: 'agent-shared', accessMode: 'read', updatedAt: '2026-06-08T00:00:00.000Z' }
-        ]
-      }
-    ]
-  });
-  const ownerGroupedFileNodes = rebuildCanvasFileArtifacts(fileActivityOwnerGroupState, {
-    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.strictEqual(
-    ownerGroupedFileNodes.nodes.find((candidate) => candidate.id === 'file-file-owned').groupId,
-    'group-owner-a',
-    'Single-owner file artifacts should join the owner Agent group.'
-  );
-  assert.strictEqual(
-    ownerGroupedFileNodes.nodes.find((candidate) => candidate.id === 'file-file-shared').groupId,
-    undefined,
-    'Shared file artifacts owned by Agents in sibling groups should fall back to the nearest common parent.'
-  );
-
-  const ownerGroupedFileLists = rebuildCanvasFileArtifacts(fileActivityOwnerGroupState, {
-    view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.strictEqual(
-    ownerGroupedFileLists.nodes.find((candidate) => candidate.id === 'file-list-agent-agent-owned').groupId,
-    'group-owner-a',
-    'Agent file-list artifacts should join the owner Agent group.'
-  );
-  assert.strictEqual(
-    ownerGroupedFileLists.nodes.find((candidate) => candidate.id === 'file-list-shared').groupId,
-    undefined,
-    'Shared file-list artifacts should use the nearest common parent of all owner Agents.'
-  );
-
-  const commonParentFileListState = rebuildCanvasFileArtifacts(
-    state({
-      nodes: [
-        agent('agent-left', { x: 120, y: 140 }, { groupId: 'group-left' }),
-        agent('agent-right', { x: 680, y: 140 }, { groupId: 'group-right' })
-      ],
-      groups: [
-        group('group-phase', { x: 40, y: 40 }, { width: 1120, height: 520 }),
-        group('group-left', { x: 80, y: 100 }, { width: 420, height: 320 }, { parentGroupId: 'group-phase' }),
-        group('group-right', { x: 640, y: 100 }, { width: 420, height: 320 }, { parentGroupId: 'group-phase' })
-      ],
-      fileReferences: [
-        {
-          id: 'file-common-parent',
-          filePath: '/repo/src/common-parent.ts',
-          relativePath: 'src/common-parent.ts',
-          updatedAt: '2026-06-08T00:00:00.000Z',
-          owners: [
-            { nodeId: 'agent-left', accessMode: 'write', updatedAt: '2026-06-08T00:00:00.000Z' },
-            { nodeId: 'agent-right', accessMode: 'read', updatedAt: '2026-06-08T00:00:00.000Z' }
-          ]
-        }
-      ]
-    }),
-    {
-      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true
-    }
-  );
-  assert.strictEqual(
-    commonParentFileListState.nodes.find((candidate) => candidate.id === 'file-list-shared').groupId,
-    'group-phase',
-    'Shared file-list artifacts should join the nearest common parent when owner Agents are in nested sibling groups.'
-  );
-
-  const movedOwnerAgentState = rebuildCanvasFileArtifacts(
-    moveNode(
-      ownerGroupedFileLists,
-      'agent-owned',
-      {
-        x: ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-b').position.x + 60,
-        y: ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-b').position.y + 220
-      },
-      {
-        x: ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-b').position.x + 80,
-        y: ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-b').position.y + 240
-      }
-    ),
-    {
-      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true
-    }
-  );
-  assert.strictEqual(movedOwnerAgentState.nodes.find((candidate) => candidate.id === 'agent-owned').groupId, 'group-owner-b');
-  assert.strictEqual(
-    movedOwnerAgentState.nodes.find((candidate) => candidate.id === 'file-list-agent-agent-owned').groupId,
-    'group-owner-b',
-    'When an Agent moves to a new group, its automatic file-list should follow the owner-derived group.'
-  );
-
-  const multiSelectedAgentAndFileListMoveState = rebuildCanvasFileArtifacts(
-    moveNode(
-      ownerGroupedFileLists,
-      'agent-owned',
-      { x: 1660, y: 260 },
-      { x: 1680, y: 280 },
-      [
-        {
-          id: 'file-list-agent-agent-owned',
-          position: { x: 1880, y: 260 }
-        }
-      ]
-    ),
-    {
-      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true
-    }
-  );
-  const oldOwnerGroupAfterMultiMove = multiSelectedAgentAndFileListMoveState.groups.find((candidate) => candidate.id === 'group-owner-a');
-  const newOwnerGroupAfterMultiMove = multiSelectedAgentAndFileListMoveState.groups.find((candidate) => candidate.id === 'group-owner-b');
-  const multiMovedAgent = multiSelectedAgentAndFileListMoveState.nodes.find((candidate) => candidate.id === 'agent-owned');
-  const multiMovedFileList = multiSelectedAgentAndFileListMoveState.nodes.find((candidate) => candidate.id === 'file-list-agent-agent-owned');
-  assert.strictEqual(multiMovedAgent.groupId, 'group-owner-b');
-  assert.strictEqual(
-    multiMovedFileList.groupId,
-    'group-owner-b',
-    'Multi-select moving an owner Agent with its file-list should regroup the file-list before group repair.'
-  );
-  assert.deepStrictEqual(
-    oldOwnerGroupAfterMultiMove.position,
-    ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-a').position,
-    'The old owner group should not move while repairing a file-list that followed its owner.'
-  );
-  assert.deepStrictEqual(
-    oldOwnerGroupAfterMultiMove.size,
-    ownerGroupedFileLists.groups.find((candidate) => candidate.id === 'group-owner-a').size,
-    'The old owner group should not expand to contain the stale file-list position from the same drag batch.'
-  );
-  assert.ok(
-    rectContainsRectForTest(rectForTestGroup(newOwnerGroupAfterMultiMove), rectForTestNode(multiMovedFileList)),
-    'The new owner group should expand to contain the moved owner-derived file-list.'
-  );
-
-  const draggedFileListState = rebuildCanvasFileArtifacts(
-    moveNode(
-      ownerGroupedFileLists,
-      'file-list-agent-agent-owned',
-      { x: 1460, y: 260 },
-      { x: 1480, y: 280 }
-    ),
-    {
-      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true
-    }
-  );
-  const draggedFileList = draggedFileListState.nodes.find((candidate) => candidate.id === 'file-list-agent-agent-owned');
-  assert.deepStrictEqual(draggedFileList.position, { x: 1460, y: 260 });
-  assert.strictEqual(
-    draggedFileList.groupId,
-    'group-owner-a',
-    'Dragging a file-list changes its position but not its owner-derived group.'
-  );
-  const draggedFileListSecondPass = rebuildCanvasFileArtifacts(draggedFileListState, {
-    view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.deepStrictEqual(
-    draggedFileListSecondPass.groups.map((candidate) => ({
-      id: candidate.id,
-      parentGroupId: candidate.parentGroupId,
-      position: candidate.position,
-      size: candidate.size
-    })),
-    draggedFileListState.groups.map((candidate) => ({
-      id: candidate.id,
-      parentGroupId: candidate.parentGroupId,
-      position: candidate.position,
-      size: candidate.size
-    })),
-    'Repeated file artifact rebuilds should not keep changing group boundaries.'
-  );
-  const resizedOwnerArtifactGroupState = resizeGroup(
-    ownerGroupedFileLists,
-    'group-owner-a',
-    { x: 40, y: 40 },
-    { width: 260, height: 220 }
-  );
-  const resizedOwnerArtifactGroup = resizedOwnerArtifactGroupState.groups.find((candidate) => candidate.id === 'group-owner-a');
-  const retainedOwnerFileList = resizedOwnerArtifactGroupState.nodes.find((candidate) => candidate.id === 'file-list-agent-agent-owned');
-  assert.strictEqual(retainedOwnerFileList.groupId, 'group-owner-a');
-  assert.ok(
-    rectContainsRectForTest(rectForTestGroup(resizedOwnerArtifactGroup), rectForTestNode(retainedOwnerFileList)),
-    'Resizing an owner group should expand back to contain owner-derived file-lists instead of releasing them.'
-  );
-  const ownerDeletedFileArtifactsState = rebuildCanvasFileArtifacts(
-    removeAgentFileReferences(
-      {
-        ...ownerGroupedFileLists,
-        nodes: ownerGroupedFileLists.nodes.filter((node) => node.id !== 'agent-owned')
-      },
-      'agent-owned'
-    ),
-    {
-      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true
-    }
-  );
-  assert.ok(
-    !ownerDeletedFileArtifactsState.nodes.some((candidate) => candidate.id === 'file-list-agent-agent-owned'),
-    'Deleting an owner Agent should remove its automatic file-list instead of leaving an orphan group member.'
-  );
 
   const resizedBoundaryInsideChild = resizeGroup(
     state({
@@ -1290,367 +1036,39 @@ try {
   const frontendAgentOneId = `${namespacedFrontendRootId}:agent-1`;
   const frontendAgentTwoId = `${namespacedFrontendRootId}:agent-2`;
   const backendAgentOneId = `${namespacedBackendRootId}:agent-1`;
-  const crossRootSharedFileActivityState = state({
-    nodes: [
-      agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: namespacedFrontendRootId }),
-      agent(backendAgentOneId, { x: 900, y: 140 }, { groupId: namespacedBackendRootId })
-    ],
-    groups: [
-      group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 720, height: 520 }, {
-        role: 'workspace-root',
-        workspaceRootPath: frontendRootPath
-      }),
-      group(namespacedBackendRootId, { x: 840, y: 30 }, { width: 720, height: 520 }, {
-        role: 'workspace-root',
-        workspaceRootPath: backendRootPath
-      })
-    ],
-    fileReferences: [
-      {
-        id: 'cross-root-shared',
-        filePath: '/repo/shared.ts',
-        relativePath: 'shared.ts',
-        updatedAt: '2026-06-04T00:00:00.000Z',
-        owners: [
-          { nodeId: frontendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' },
-          { nodeId: backendAgentOneId, accessMode: 'read', updatedAt: '2026-06-04T00:00:00.000Z' }
-        ]
-      }
-    ]
-  });
-  const reconciledCrossRootFileLists = rebuildCanvasFileArtifacts(crossRootSharedFileActivityState, {
-    view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.ok(
-    reconciledCrossRootFileLists.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-agent-agent-1`),
-    'Cross-root file activity should keep a frontend-scoped file-list instead of merging roots.'
-  );
-  assert.ok(
-    reconciledCrossRootFileLists.nodes.some((candidate) => candidate.id === `${namespacedBackendRootId}:file-list-agent-agent-1`),
-    'Cross-root file activity should keep a backend-scoped file-list instead of merging roots.'
-  );
-  assert.ok(
-    !reconciledCrossRootFileLists.nodes.some((candidate) => candidate.id === 'file-list-shared' || candidate.id.endsWith(':file-list-shared')),
-    'Cross-root owners must not create one shared file-list artifact in the current version.'
-  );
-
-  const fileActivityRootState = state({
-    nodes: [
-      agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: `${namespacedFrontendRootId}:group-agent-one` }),
-      agent(frontendAgentTwoId, { x: 760, y: 140 }, { groupId: `${namespacedFrontendRootId}:group-agent-two` }),
-      agent(backendAgentOneId, { x: 900, y: 140 }, { groupId: namespacedBackendRootId })
-    ],
-    groups: [
-      group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 1600, height: 720 }, {
-        role: 'workspace-root',
-        workspaceRootPath: frontendRootPath
-      }),
-      group(namespacedBackendRootId, { x: 840, y: 30 }, { width: 720, height: 520 }, {
-        role: 'workspace-root',
-        workspaceRootPath: backendRootPath
-      }),
-      group(`${namespacedFrontendRootId}:group-agent-one`, { x: 80, y: 100 }, { width: 420, height: 340 }, { parentGroupId: namespacedFrontendRootId }),
-      group(`${namespacedFrontendRootId}:group-agent-two`, { x: 720, y: 100 }, { width: 420, height: 340 }, { parentGroupId: namespacedFrontendRootId })
-    ],
-    fileReferences: [
-      {
-        id: `${namespacedFrontendRootId}:file-ref-1`,
-        filePath: '/repo/frontend/src/a.ts',
-        relativePath: 'src/a.ts',
-        updatedAt: '2026-06-04T00:00:00.000Z',
-        owners: [
-          { nodeId: frontendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' }
-        ]
-      },
-      {
-        id: `${namespacedFrontendRootId}:file-ref-shared`,
-        filePath: '/repo/frontend/src/shared.ts',
-        relativePath: 'src/shared.ts',
-        updatedAt: '2026-06-04T00:00:00.000Z',
-        owners: [
-          { nodeId: frontendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' },
-          { nodeId: frontendAgentTwoId, accessMode: 'read', updatedAt: '2026-06-04T00:00:00.000Z' }
-        ]
-      },
-      {
-        id: `${namespacedBackendRootId}:file-ref-1`,
-        filePath: '/repo/backend/src/a.ts',
-        relativePath: 'src/a.ts',
-        updatedAt: '2026-06-04T00:00:00.000Z',
-        owners: [
-          { nodeId: backendAgentOneId, accessMode: 'write', updatedAt: '2026-06-04T00:00:00.000Z' }
-        ]
-      }
-    ],
-    suppressedAutomaticFileArtifactNodeIds: [`${namespacedFrontendRootId}:file-ref-suppressed`]
-  });
-  const reconciledFileNodeArtifacts = rebuildCanvasFileArtifacts(fileActivityRootState, {
-    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  const frontendFileNode = reconciledFileNodeArtifacts.nodes.find((candidate) => candidate.id === `${namespacedFrontendRootId}:file-file-ref-1`);
-  const backendFileNode = reconciledFileNodeArtifacts.nodes.find((candidate) => candidate.id === `${namespacedBackendRootId}:file-file-ref-1`);
-  assert.ok(frontendFileNode, 'Namespaced file references should rebuild as root-local automatic file nodes.');
-  assert.ok(backendFileNode, 'Each root should rebuild its own automatic file nodes.');
-  assert.strictEqual(frontendFileNode.groupId, `${namespacedFrontendRootId}:group-agent-one`);
-  assert.strictEqual(backendFileNode.groupId, namespacedBackendRootId);
-  assert.strictEqual(
-    reconciledFileNodeArtifacts.nodes.find((candidate) => candidate.id === `${namespacedFrontendRootId}:file-file-ref-shared`).groupId,
-    namespacedFrontendRootId,
-    'Multi-owner file artifacts should use the nearest common parent inside the owner root.'
-  );
-  assert.ok(reconciledFileNodeArtifacts.edges.some((candidate) =>
-    candidate.id === `${namespacedFrontendRootId}:agent-1::file-file-ref-1`
-  ));
-  const reconciledFileListArtifacts = rebuildCanvasFileArtifacts(fileActivityRootState, {
-    view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.ok(
-    reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-shared` && candidate.groupId === namespacedFrontendRootId),
-    'Shared file-list artifacts must use the root namespace so different roots never collide.'
-  );
-  assert.ok(
-    reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-agent-agent-1` && candidate.groupId === `${namespacedFrontendRootId}:group-agent-one`),
-    'Single-owner namespaced file-list artifacts should join the owner Agent group.'
-  );
-  const regroupedFrontendAgentState = rebuildCanvasFileArtifacts(
-    {
-      ...reconciledFileListArtifacts,
-      nodes: reconciledFileListArtifacts.nodes.map((node) =>
-        node.id === frontendAgentOneId
-          ? { ...node, groupId: `${namespacedFrontendRootId}:group-agent-two` }
-          : node
-      )
-    },
-    {
-      view: { enabled: true, presentationMode: 'lists', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true
-    }
-  );
-  assert.ok(
-    regroupedFrontendAgentState.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-list-agent-agent-1` && candidate.groupId === `${namespacedFrontendRootId}:group-agent-two`),
-    'Root-scoped rebuilds must replace stale auto file-lists that previously belonged to a nested owner group.'
-  );
-  assert.ok(!reconciledFileListArtifacts.nodes.some((candidate) => candidate.id === 'file-list-shared'));
-  assert.deepStrictEqual(
-    reconciledFileListArtifacts.suppressedAutomaticFileArtifactNodeIds,
-    [],
-    'Root-local suppression ids that do not match rebuilt artifact ids should be pruned in composed state.'
-  );
-  const liveFilePath = '/repo/frontend/src/live.ts';
-  const liveFileReferenceId = fileReferenceId(liveFilePath);
-  const liveFileActivityState = recordAgentFileActivity(
-    state({
+  const legacyState = {
+    ...state({
       nodes: [
-        agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: namespacedFrontendRootId })
+        agent('legacy-agent', { x: 40, y: 60 }, { groupId: 'legacy-group', metadata: { agent: { provider: 'claude', runtimeSessionId: 'session-legacy' } } }),
+        { ...note('legacy-terminal', { x: 220, y: 60 }, { groupId: 'legacy-group' }), kind: 'terminal', metadata: { terminal: { runtimeSessionId: 'terminal-legacy' } } },
+        note('legacy-note', { x: 400, y: 60 }, { groupId: 'legacy-group' }),
+        { ...note('legacy-file', { x: 600, y: 60 }, { groupId: 'legacy-group' }), kind: 'file' },
+        { ...note('legacy-list', { x: 800, y: 60 }, { groupId: 'legacy-group' }), kind: 'file-list' }
       ],
-      groups: [
-        group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 720, height: 520 }, {
-          role: 'workspace-root',
-          workspaceRootPath: frontendRootPath
-        })
+      groups: [group('legacy-group', { x: 20, y: 20 }, { width: 900, height: 300 })],
+      edges: [
+        { id: 'keep', sourceNodeId: 'legacy-agent', targetNodeId: 'legacy-note', sourceAnchor: 'right', targetAnchor: 'left', arrowMode: 'forward', owner: 'user' },
+        { id: 'remove-user-file-link', sourceNodeId: 'legacy-agent', targetNodeId: 'legacy-file', sourceAnchor: 'right', targetAnchor: 'left', arrowMode: 'forward', owner: 'user' },
+        { id: 'remove-activity', sourceNodeId: 'legacy-agent', targetNodeId: 'legacy-list', sourceAnchor: 'right', targetAnchor: 'left', arrowMode: 'forward', owner: 'file-activity' }
       ]
     }),
-    {
-      nodeId: frontendAgentOneId,
-      path: liveFilePath,
-      relativePath: 'src/live.ts',
-      accessMode: 'write',
-      timestamp: '2026-06-04T00:00:00.000Z'
-    }
-  );
-  assert.ok(
-    liveFileActivityState.fileReferences.some((reference) => reference.id === `${namespacedFrontendRootId}:${liveFileReferenceId}`),
-    'Live file activity from a namespaced owner must create a namespaced file reference.'
-  );
-  const reconciledLiveFileArtifacts = rebuildCanvasFileArtifacts(liveFileActivityState, {
-    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.ok(
-    reconciledLiveFileArtifacts.nodes.some((candidate) => candidate.id === `${namespacedFrontendRootId}:file-${liveFileReferenceId}`),
-    'Live file activity must rebuild automatic file nodes with the owner root namespace.'
-  );
-  assert.ok(
-    !reconciledLiveFileArtifacts.nodes.some((candidate) => candidate.id === `file-${liveFileReferenceId}`),
-    'Live file activity must not leave unnamespaced automatic file nodes in multi-root state.'
-  );
-
-  const migratedLiveFileActivityState = recordAgentFileActivity(
-    state({
-      nodes: [
-        agent(frontendAgentOneId, { x: 100, y: 140 }, { groupId: namespacedFrontendRootId })
-      ],
-      groups: [
-        group(namespacedFrontendRootId, { x: 20, y: 30 }, { width: 720, height: 520 }, {
-          role: 'workspace-root',
-          workspaceRootPath: frontendRootPath
-        })
-      ],
-      fileReferences: [
-        {
-          id: liveFileReferenceId,
-          filePath: liveFilePath,
-          relativePath: 'src/live.ts',
-          updatedAt: '2026-06-04T00:00:00.000Z',
-          owners: [
-            { nodeId: frontendAgentOneId, accessMode: 'read', updatedAt: '2026-06-04T00:00:00.000Z' }
-          ]
-        }
-      ],
-      suppressedAutomaticFileArtifactNodeIds: [`${namespacedFrontendRootId}:file-${liveFileReferenceId}`]
-    }),
-    {
-      nodeId: frontendAgentOneId,
-      path: liveFilePath,
-      relativePath: 'src/live.ts',
-      accessMode: 'write',
-      timestamp: '2026-06-04T00:10:00.000Z'
-    }
-  );
-  assert.ok(
-    migratedLiveFileActivityState.fileReferences.some((reference) => reference.id === `${namespacedFrontendRootId}:${liveFileReferenceId}`),
-    'Legacy unnamespaced file references with a namespaced owner should migrate into the owner root namespace.'
-  );
-  assert.ok(
-    !migratedLiveFileActivityState.fileReferences.some((reference) => reference.id === liveFileReferenceId),
-    'Migrated live file activity should not retain the stale unnamespaced file reference for the same root.'
-  );
-  const reconciledMigratedLiveFileArtifacts = rebuildCanvasFileArtifacts(migratedLiveFileActivityState, {
-    view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-    preserveAutomaticFileNodeSizes: true
-  });
-  assert.deepStrictEqual(
-    reconciledMigratedLiveFileArtifacts.suppressedAutomaticFileArtifactNodeIds,
-    [`${namespacedFrontendRootId}:file-${liveFileReferenceId}`],
-    'Namespaced suppression ids for live file activity should survive root-scoped artifact rebuild.'
-  );
-  const rootScopedGeometryRepairState = rebuildCanvasFileArtifacts(
-    state({
-      nodes: [
-        agent('scoped-agent', { x: 80, y: 120 }, { groupId: 'workspace-root-target' }),
-        note('scoped-wide-note', { x: 1080, y: 120 }, { groupId: 'workspace-root-target' }),
-        note('fixed-root-note', { x: 980, y: 120 }, { groupId: 'workspace-root-fixed' }),
-        note('fixed-root-overlap-note', { x: 980, y: 120 }, { groupId: 'workspace-root-fixed' }),
-        note('fixed-overlay-note', { x: 0, y: 980 }),
-        note('fixed-overlay-overlap-note', { x: 30, y: 760 }, { groupId: 'fixed-overlay-group' })
-      ],
-      groups: [
-        group('workspace-root-target', { x: 0, y: 0 }, { width: 920, height: 520 }, {
-          role: 'workspace-root',
-          workspaceRootPath: '/repo/scoped-target'
-        }),
-        group('workspace-root-fixed', { x: 900, y: 0 }, { width: 720, height: 520 }, {
-          role: 'workspace-root',
-          workspaceRootPath: '/repo/scoped-fixed'
-        }),
-        group('fixed-root-overlap-group', { x: 960, y: 80 }, { width: 220, height: 180 }, {
-          parentGroupId: 'workspace-root-fixed'
-        }),
-        group('fixed-overlay-group', { x: 0, y: 700 }, { width: 360, height: 240 }),
-        group('fixed-overlay-overlap-group', { x: 20, y: 730 }, { width: 220, height: 180 }, {
-          parentGroupId: 'fixed-overlay-group'
-        })
-      ],
-      fileReferences: [
-        {
-          id: 'workspace-root-target:file-ref-scoped',
-          filePath: '/repo/scoped-target/src/scoped.ts',
-          relativePath: 'src/scoped.ts',
-          updatedAt: '2026-07-02T00:00:00.000Z',
-          owners: [
-            { nodeId: 'scoped-agent', accessMode: 'write', updatedAt: '2026-07-02T00:00:00.000Z' }
-          ]
-        }
-      ]
-    }),
-    {
-      view: { enabled: true, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' },
-      preserveAutomaticFileNodeSizes: true,
-      geometryRepairOptions: { repairTargetGroupIds: ['workspace-root-target'] }
-    }
-  );
-  const repairedScopedTargetRoot = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'workspace-root-target');
-  const unchangedFixedRoot = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'workspace-root-fixed');
-  const unchangedFixedRootOverlapGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-root-overlap-group');
-  const unchangedOverlayGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-overlay-group');
-  const unchangedOverlayOverlapGroup = rootScopedGeometryRepairState.groups.find((candidate) => candidate.id === 'fixed-overlay-overlap-group');
-  assert.deepStrictEqual(
-    unchangedFixedRoot.position,
-    { x: 900, y: 0 },
-    'Scoped file-artifact reconciliation must not move non-target workspace roots.'
-  );
-  assert.deepStrictEqual(
-    unchangedFixedRoot.size,
-    { width: 720, height: 520 },
-    'Scoped file-artifact reconciliation must not resize non-target workspace roots.'
-  );
-  assert.deepStrictEqual(
-    unchangedFixedRootOverlapGroup.position,
-    { x: 960, y: 80 },
-    'Scoped file-artifact reconciliation must not repair existing non-target root child overlaps.'
-  );
-  assert.deepStrictEqual(
-    unchangedFixedRootOverlapGroup.size,
-    { width: 220, height: 180 },
-    'Scoped file-artifact reconciliation must not resize existing non-target root child groups.'
-  );
-  assert.deepStrictEqual(
-    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-root-note').position,
-    { x: 980, y: 120 },
-    'Scoped file-artifact reconciliation must not move non-target root subtrees.'
-  );
-  assert.deepStrictEqual(
-    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-root-overlap-note').position,
-    { x: 980, y: 120 },
-    'Scoped file-artifact reconciliation must leave non-target root node/group overlaps untouched.'
-  );
-  assert.deepStrictEqual(
-    unchangedOverlayGroup.position,
-    { x: 0, y: 700 },
-    'Scoped file-artifact reconciliation must not move workspace-level overlay groups.'
-  );
-  assert.deepStrictEqual(
-    unchangedOverlayGroup.size,
-    { width: 360, height: 240 },
-    'Scoped file-artifact reconciliation must not resize workspace-level overlay groups.'
-  );
-  assert.deepStrictEqual(
-    unchangedOverlayOverlapGroup.position,
-    { x: 20, y: 730 },
-    'Scoped file-artifact reconciliation must not repair existing workspace-level overlay child overlaps.'
-  );
-  assert.deepStrictEqual(
-    unchangedOverlayOverlapGroup.size,
-    { width: 220, height: 180 },
-    'Scoped file-artifact reconciliation must not resize existing workspace-level overlay child groups.'
-  );
-  assert.deepStrictEqual(
-    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-overlay-note').position,
-    { x: 0, y: 980 },
-    'Scoped file-artifact reconciliation must not move workspace-level overlay nodes.'
-  );
-  assert.deepStrictEqual(
-    rootScopedGeometryRepairState.nodes.find((candidate) => candidate.id === 'fixed-overlay-overlap-note').position,
-    { x: 30, y: 760 },
-    'Scoped file-artifact reconciliation must leave workspace-level overlay node/group overlaps untouched.'
-  );
-  assert.ok(
-    rootScopedGeometryRepairState.nodes.some((candidate) => candidate.id === 'workspace-root-target:file-file-ref-scoped'),
-    'Regression must include the file-artifact rebuild path before scoped geometry repair.'
-  );
-  assert.notDeepStrictEqual(
-    repairedScopedTargetRoot.position,
-    { x: 0, y: 0 },
-    'When the target root collides after artifact reconciliation, only the target root subtree should translate.'
-  );
-  assert.ok(!rectsOverlapForTest(
-    rectForTestGroup(repairedScopedTargetRoot),
-    rectForTestGroup(unchangedFixedRoot)
-  ), 'Scoped file-artifact reconciliation should leave workspace root siblings non-overlapping.');
-
+    fileReferences: [{ id: 'old', filePath: '/repo/a', owners: [] }],
+    suppressedFileActivityEdgeIds: ['remove-activity'],
+    suppressedAutomaticFileArtifactNodeIds: ['legacy-file']
+  };
+  const migrated = normalizeState(legacyState);
+  assert.deepEqual(migrated.nodes.map(node => node.id), ['legacy-agent', 'legacy-terminal', 'legacy-note']);
+  assert.deepEqual(migrated.edges.map(edge => edge.id), ['keep']);
+  assert.deepEqual(migrated.groups.map(group => group.id), ['legacy-group']);
+  assert.deepEqual(migrated.groups[0].position, { x: 20, y: 20 });
+  assert.deepEqual(migrated.groups[0].size, { width: 900, height: 300 });
+  assert.deepEqual(migrated.nodes.map(node => node.position), [{ x: 40, y: 60 }, { x: 220, y: 60 }, { x: 400, y: 60 }]);
+  assert.equal(migrated.nodes[0].metadata.agent.runtimeSessionId, 'session-legacy');
+  assert.equal(migrated.nodes[1].metadata.terminal.runtimeSessionId, 'terminal-legacy');
+  assert.ok(!Object.hasOwn(migrated, 'fileReferences'));
+  assert.ok(!Object.hasOwn(migrated, 'suppressedFileActivityEdgeIds'));
+  assert.deepEqual(normalizeState(migrated), migrated, 'Old Canvas migration must remain stable when repeated.');
+  assert.deepEqual(clearFileDomainState(migrated), migrated);
   const spreadInsertedGroupBetweenSiblings = createEmptyCanvasGroup(
     state({
       groups: [
@@ -1728,16 +1146,12 @@ try {
   });
   assert.strictEqual(isEmptyCanvasGroup(groupWithChildGroupState, 'group-parent'), false);
 
-  const normalized = normalizeState(
-    state({
-      nodes: [agent('agent-1', { x: 0, y: 0 }, { groupId: 'group-valid' }), fileNode('file-1', { x: 200, y: 0 }, { groupId: 'group-valid' })],
-      groups: [group('group-valid', { x: 0, y: 0 }, { width: 360, height: 240 })]
-    }),
-    'codex',
-    { enabled: false, presentationMode: 'nodes', includeGlobs: [], excludeGlobs: [], displayStyle: 'card', nodeDisplayMode: 'icon-path', pathDisplayMode: 'basename' }
-  );
+  const normalized = normalizeState(state({
+    nodes: [agent('agent-1', { x: 0, y: 0 }, { groupId: 'group-valid' }), note('note-1', { x: 200, y: 0 }, { groupId: 'group-valid' })],
+    groups: [group('group-valid', { x: 0, y: 0 }, { width: 600, height: 300 })]
+  }));
   assert.strictEqual(normalized.nodes.find((candidate) => candidate.id === 'agent-1').groupId, 'group-valid');
-  assert.strictEqual(normalized.nodes.find((candidate) => candidate.id === 'file-1').groupId, 'group-valid');
+  assert.strictEqual(normalized.nodes.find((candidate) => candidate.id === 'note-1').groupId, 'group-valid');
 
   const deleted = deleteCanvasNode(
     state({
