@@ -25,7 +25,7 @@ Swift 主体容易优先满足 macOS 原生需求，但不能复用 Windows / Li
 
 ### 职责与落点
 
-主扩展 `extensions/vscode/dev-session-canvas/` 继续识别 attention 信号并持有节点状态。现有 `extensions/vscode/dev-session-canvas-notifier/src/extension.ts` 逐步收缩为本机连接适配器：注册来源、转发事件、执行白名单定位动作；`src/platformNotification.ts` 的旧后端在迁移验收完成前保留，但不得与新后端同时投递同一事件。
+主扩展 `extensions/vscode/dev-session-canvas/` 继续识别 attention 信号并持有节点状态。`extensions/vscode/dev-session-canvas-notifier/src/extension.ts` 是本机连接适配器：注册来源、转发事件、执行白名单定位动作；`src/platformNotification.ts` 的旧后端在迁移验收完成前保留，但不得与新后端同时投递同一事件。Remote SSH 下主扩展运行于 workspace/远端侧，Notifier companion 以 `extensionKind: ["ui"]` 运行于本机侧；当前没有主扩展与 companion 的运行时 semver 握手，因此远端验收必须让两侧开发构建来自同一仓库提交。当前两个 manifest 都标为 `0.27.0`、VS Code engine 为 `^1.80.0`，版本号相同本身不保证新桥接代码存在。
 
 计划新增 `apps/notifier/`，其中 `src/` 放 React 界面，`src-tauri/` 放 Tauri 外壳、Rust 连接管理、持久化、去重与回跳路由。目前已有最小界面与 macOS 适配骨架；收件箱和来源核心未实现。应用平时驻留托盘或菜单栏，提供系统通知、待处理列表、历史记录、设置与诊断。第一版采用单个用户态应用进程，不拆出独立系统服务。
 
