@@ -13,7 +13,7 @@
 - [x] (2026-11-01) 检查 Mac 工具链及固定版插件源码，发现权限查询和撤销缺口。
 - [x] (2026-11-01) 固定 Tauri/Swift 骨架、锁文件和应用身份；Mac 本地安装包通过查询、真实点击、撤销和退出后点击恢复。
 - [x] (2026-11-01) 新端侧 v2 契约与 63 个 TypeScript/Rust 请求及响应共享向量通过。
-- [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、重复资源采样与启动耗时。
+- [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、冷启动耗时与跨会话资源预算。
 - [x] (2026-11-01) 接入默认关闭的 Mac socket、持久化回执、来源路由、companion 与主扩展身份复核。
 - [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号、安装版通知和点击回跳均通过；Remote SSH 仍待验收。
 - [ ] 实现共享核心、收件箱、恢复、诊断和完整回退。
@@ -152,7 +152,7 @@ npm 默认缓存 EACCES，成功改用 `/tmp/dsc-notifier-npm-cache`；rustup �
 
 桌面自动化此时只能定位到旧 terminal-notifier 通知，已请用户点击 A/B；未得到 clicked.json 前不记回跳通过。对已存在的 Remote SSH dev_labs 做非交互连接时，跳板机拒绝 publickey/password；未修改已有远端任务，远端验收仍未完成。CPU/内存归属查询 launchctl procinfo 要求 root，不为采样提权，尚无完整进程树资源预算。
 
-2026-11-01 09:46Z 对已安装 Notifier 做单次无来源连接 RSS 采样：`dsc-notifier` 42,800 KiB、同启动时长的 WebKit GPU 11,328 KiB 与 WebContent 10,640 KiB，合计 64,768 KiB（约 63.3 MiB）；三个进程 elapsed 均约 01:30:06。另有运行更久的系统 WebKit 进程未计入。原始读数见 `apps/notifier/validation/2026-11-01-macos-idle-resource-snapshot.json`。该单次观测不构成资源预算，未重启用户当前应用，因此启动耗时未测。`dev_labs` 再次以 BatchMode SSH 连接仍拒绝 publickey/password；本机列有 5 个 identityfile 配置但均不可读，ssh-agent 未列出可用身份。未尝试修改密钥、Keychain 或远端任务；Remote SSH 需要恢复可用凭据后再做隔离窗口验收。
+2026-11-01 09:46Z 对已安装 Notifier 做无来源连接 RSS 采样：`dsc-notifier` 42,800 KiB、同启动时长的 WebKit GPU 11,328 KiB 与 WebContent 10,640 KiB，合计 64,768 KiB（约 63.3 MiB）；三个进程 elapsed 均约 01:30:06。09:51Z 又取三条相隔 5 秒的样本，进程树 RSS 合计为 69,040、69,344、69,616 KiB。另有运行更久的系统 WebKit 进程未计入。原始读数见 `apps/notifier/validation/2026-11-01-macos-idle-resource-snapshot.json`。这些单会话短间隔观测不构成资源预算；未重启用户当前应用，因此启动耗时未测。`dev_labs` 再次以 BatchMode SSH 连接仍拒绝 publickey/password；本机列有 5 个 identityfile 配置但均不可读，ssh-agent 未列出可用身份。未尝试修改密钥、Keychain 或远端任务；Remote SSH 需要恢复可用凭据后再做隔离窗口验收。
 
 用户截图报告默认 F5 构建缺少 generated/execution-assets。本机已安装扩展 0.26.1 的六目标资产通过 readPackagedExecutionAssetSet（包含当前 owner/shared-owner/patch 源码和原生文件摘要检查），原字节复制到未跟踪的 generated/execution-assets 后再次通过全量资产集校验。来源与摘要记录在 `.debug/notifier-native/local-execution-assets-provenance.json`。此恢复仅用于本机开发，不冒充本分支正式 release acceptance；没有降低默认六目标校验或切成 stock。新增明确的 Native Notifier Local Window F5 入口设置开发变量，原有入口不变。
 

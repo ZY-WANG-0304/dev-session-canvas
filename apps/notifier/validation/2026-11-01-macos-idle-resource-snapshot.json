@@ -7,7 +7,9 @@
     "architecture": "arm64"
   },
   "application": "DSCanvas Notifier",
-  "state": "no IDE sources connected; one idle RSS sample",
+  "sourceCommit": "b28d048bab232306c5cc0f10bf888992409c468b",
+  "packageSha256": "cd03e693049b9b4cdd342e3eb927e68a658cb785022a9f6d11df4d3d820e3786",
+  "state": "no IDE sources connected; four idle RSS samples in one session",
   "elapsedSinceProcessStart": "01:30:06",
   "processes": [
     {
@@ -27,8 +29,31 @@
   ],
   "totalRssKiB": 64768,
   "totalRssMiB": 63.25,
+  "shortIntervalSamples": [
+    {
+      "recordedAt": "2026-11-01T09:51:27Z",
+      "notifierRssKiB": 41792,
+      "webkitRssKiB": 27248,
+      "webkitProcessCount": 2,
+      "totalRssKiB": 69040
+    },
+    {
+      "recordedAt": "2026-11-01T09:51:32Z",
+      "notifierRssKiB": 41824,
+      "webkitRssKiB": 27520,
+      "webkitProcessCount": 2,
+      "totalRssKiB": 69344
+    },
+    {
+      "recordedAt": "2026-11-01T09:51:37Z",
+      "notifierRssKiB": 41872,
+      "webkitRssKiB": 27744,
+      "webkitProcessCount": 2,
+      "totalRssKiB": 69616
+    }
+  ],
   "limitations": [
-    "Single snapshot; not a resource budget or repeated sample.",
+    "Four samples are limited to one idle session and a short interval; not a resource budget.",
     "Startup latency was not measured because the running app was left open.",
     "Other longer-running WebKit processes were excluded."
   ]
