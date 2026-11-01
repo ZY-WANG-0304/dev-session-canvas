@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "status": "click-focus-and-state-assertions-passed",
+  "recordedAt": "2026-11-01",
+  "machine": {
+    "model": "Mac14,7",
+    "os": "macOS 26.6.2",
+    "architecture": "arm64",
+    "vscode": "1.144.0"
+  },
+  "notifier": {
+    "package": ".debug/notifier-native/notifier-macos-arm64-final.zip",
+    "sha256": "880191699dfbe4d22bfcc73739fec25d047df75ebed7c61e6f6e54b0c7895034"
+  },
+  "simultaneousOnlineSourcesObserved": 2,
+  "events": [
+    {
+      "label": "B4",
+      "eventId": "e5c6bf0f-a962-4d4f-9ef1-11e717f73fe6",
+      "nodeId": "terminal-1-bdcf7b4d-c3f0-45fc-9170-6cd2a0353032",
+      "nativeTitle": "DSCanvas · workspace · Terminal",
+      "nativeBody": "Terminal「同名通知节点」: DSCanvas 原生来源 B4",
+      "acceptance": "posted / native-client / durably-accepted",
+      "clickedReceipt": {
+        "file": "B4/clicked.json",
+        "attentionPending": true,
+        "selectionUnchanged": true,
+        "centerOnly": true,
+        "windowFocused": true
+      },
+      "completionReceipt": {
+        "file": "B4/completed.json",
+        "staleEventRejected": true,
+        "acknowledged": true
+      },
+      "runnerCleanup": "resetState reported local final snapshot pending; diagnostic later recorded state/persistWritten",
+      "evidenceDirectory": "/tmp/dsc-native-acceptance-20261101/B4/evidence"
+    },
+    {
+      "label": "A5",
+      "eventId": "e396c547-84f9-45ff-b187-2e323ea1bfce",
+      "nodeId": "terminal-1-45f15591-8dd0-4643-88aa-886bc420eeda",
+      "nativeTitle": "DSCanvas · workspace · Terminal",
+      "nativeBody": "Terminal「同名通知节点」: DSCanvas 原生来源 A5",
+      "acceptance": "posted / native-client / durably-accepted",
+      "clickedReceipt": {
+        "file": "A5/clicked.json",
+        "attentionPending": true,
+        "selectionUnchanged": true,
+        "centerOnly": true,
+        "windowFocused": true
+      },
+      "completionReceipt": {
+        "file": "A5/completed.json",
+        "staleEventRejected": true,
+        "acknowledged": true
+      },
+      "runnerCleanup": "resetState reported local final snapshot pending; diagnostic later recorded state/persistWritten",
+      "evidenceDirectory": "/tmp/dsc-native-acceptance-20261101/A5/evidence"
+    }
+  ],
+  "scope": "Two local isolated VS Code windows; real shell OSC 9 events, installed native Notifier acceptance, actual OS clicks and focus/state assertions passed. Runner cleanup reported a local final snapshot pending despite a subsequent state/persistWritten diagnostic. Remote SSH remains unverified."
+}

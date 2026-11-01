@@ -15,7 +15,7 @@
 - [x] (2026-11-01) 新端侧 v2 契约与 63 个 TypeScript/Rust 请求及响应共享向量通过。
 - [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、完整资源采样。
 - [x] (2026-11-01) 接入默认关闭的 Mac socket、持久化回执、来源路由、companion 与主扩展身份复核。
-- [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号已接单，真实点击及 Remote SSH 仍待验收。
+- [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号、安装版通知和点击回跳均通过；Remote SSH 仍待验收。
 - [ ] 实现共享核心、收件箱、恢复、诊断和完整回退。
 - [ ] Windows / Linux 原生安装包验收及 macOS 签名公证验收。
 - [ ] 完成默认路径迁移、文档、CI 与发布交付。
@@ -156,3 +156,5 @@ npm 默认缓存 EACCES，成功改用 `/tmp/dsc-notifier-npm-cache`；rustup �
 
 
 本轮最终进度：默认 `npm run build`、companion build、两扩展 typecheck、v1 协议、notifier-source、common-dependencies、smoke runner 环境测试均通过。新协议 44 个请求 + 19 个响应共享向量、11 项 Rust 测试通过；socket 客户端覆盖丢回执/absent 查询/异步 sync 竞争/IDE 查询超时；Host 实际方法测试覆盖已签发 eventId、确认后同代重新提醒、等待 webview 期间换代与 unknown 不回退。旧默认 smoke 的历史失败未追认通过。A/B 点击等待未收口，来源已离线；不要再以点击这两条残留通知来验收在线回跳，下一轮需重新启动隔离来源。可提交证据见 `apps/notifier/validation/2026-11-01-ipc.{json,log}`，完整本地失败记录保留在 .debug 下。
+
+2026-11-01 后续原生回跳复验：此前 A3 等待人工点击期间宿主退出，旧 A3 通知不再用于回跳验收。B3 隔离窗口因 terminal 长时间停在 `Waiting for node size before starting the embedded Terminal.` 未能产生通知，失败证据保留在 `/tmp/dsc-native-acceptance-20261101/B3/evidence/failure.json`。使用 VS Code CLI（而非 Electron 主二进制）并传入 Chromium 窗口尺寸参数后，B4 与 A5 两个全新隔离本地窗口均启动真实 Terminal，分别经真实 shell OSC 9 由已安装 Notifier 持久化接单；UI 观察同时显示 2 个在线 IDE 来源。用户分别点击两条新通知后，两份 `clicked.json` 均确认 eventId/nodeId 对应、`windowFocused=true`、`centerOnly=true`、`selectionUnchanged=true`、`attentionPending=true`；随后 `completed.json` 确认节点 acknowledgement 后旧 eventId 被拒绝。VS Code 为 1.144.0，安装包 ZIP SHA256 为 `880191699dfbe4d22bfcc73739fec25d047df75ebed7c61e6f6e54b0c7895034`。可提交摘要与分窗口回执见 `apps/notifier/validation/2026-11-01-macos-native-ide-click/`，原始 runner 在 `/tmp/dsc-native-acceptance-20261101/{B4,A5}/`。两 runner 清理阶段调用 `resetState` 均报告 local final snapshot pending，但各自诊断序列随后出现 `state/persistWritten`；点击和完成断言已独立写入回执，清理异常未抹去该证据，需作为夹具 teardown 问题单独跟进。Remote SSH 仍未验收；本轮两个窗口都是本地隔离来源。
