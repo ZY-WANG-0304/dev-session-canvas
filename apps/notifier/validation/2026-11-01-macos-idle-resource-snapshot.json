@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-01T09:46:09Z",
+  "machine": {
+    "model": "Mac14,7",
+    "os": "macOS 26.6.2",
+    "architecture": "arm64"
+  },
+  "application": "DSCanvas Notifier",
+  "state": "no IDE sources connected; one idle RSS sample",
+  "elapsedSinceProcessStart": "01:30:06",
+  "processes": [
+    {
+      "name": "dsc-notifier",
+      "rssKiB": 42800
+    },
+    {
+      "name": "com.apple.WebKit.GPU",
+      "rssKiB": 11328,
+      "attribution": "same process elapsed time as Notifier"
+    },
+    {
+      "name": "com.apple.WebKit.WebContent",
+      "rssKiB": 10640,
+      "attribution": "same process elapsed time as Notifier"
+    }
+  ],
+  "totalRssKiB": 64768,
+  "totalRssMiB": 63.25,
+  "limitations": [
+    "Single snapshot; not a resource budget or repeated sample.",
+    "Startup latency was not measured because the running app was left open.",
+    "Other longer-running WebKit processes were excluded."
+  ]
+}
