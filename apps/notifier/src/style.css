@@ -1,0 +1,7 @@
+:root { color-scheme: light dark; font: 13px/1.5 system-ui, sans-serif; color: CanvasText; background: Canvas; }
+body { margin: 0; } main { padding: 24px; max-width: 900px; margin: auto; }
+h1 { font-size: 22px; } h2 { font-size: 15px; margin-top: 24px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; min-height: 32px; padding: 4px 12px; color: ButtonText; background: ButtonFace; border: 1px solid GrayText; border-radius: 5px; }
+button:focus-visible { outline: 2px solid Highlight; outline-offset: 3px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 45vh; overflow: auto; border-top: 1px solid GrayText; padding-top: 12px; font-size: 12px; }

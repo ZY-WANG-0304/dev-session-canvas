@@ -16,7 +16,8 @@
     "extensions/vscode/dev-session-canvas-notifier",
     "packages/attention-protocol",
     "apps/template-marketplace",
-    "packages/marketplace-shared"
+    "packages/marketplace-shared",
+    "apps/notifier"
   ],
   "scripts": {
     "build": "node scripts/build/build.mjs",

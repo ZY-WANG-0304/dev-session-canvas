@@ -4,13 +4,15 @@
 
 ## 目标与全局图景
 
-用户安装独立通知应用后，可以在离开画布时收到原生通知，从收件箱找回遗漏提醒，并准确回到产生事件的 IDE 窗口和节点。应用采用 Tauri 外壳、Rust 核心、React / TypeScript UI，平台差异由薄适配层处理。首先在 Mac 打通正式应用身份到真实点击回跳，再完成 Windows / Linux 验证。不需要 IDE 退出后继续提醒，不实现 supervisor 直连、云推送或 IntelliJ。当前任务只交付文档和远端分支，后续实施从此计划继续。
+用户安装独立通知应用后，可以在离开画布时收到原生通知，从收件箱找回遗漏提醒，并准确回到产生事件的 IDE 窗口和节点。应用采用 Tauri 外壳、Rust 核心、React / TypeScript UI，平台差异由薄适配层处理。首先在 Mac 打通正式应用身份到真实点击回跳，再完成 Windows / Linux 验证。不需要 IDE 退出后继续提醒，不实现 supervisor 直连、云推送或 IntelliJ。当前从 Mac 里程碑一继续实施；先核验原生能力，再接入正式端侧协议。
 
 ## 进度
 
 - [x] (2026-11-01) 用户确认职责、跨平台方向及 IDE 退出后的范围边界。
 - [x] (2026-11-01) 写入设计、验收与 Mac 接手计划，登记产品与架构入口。
-- [ ] 在 Mac 验证平台能力，冻结依赖、身份和通信契约。
+- [x] (2026-11-01) 检查 Mac 工具链及固定版插件源码，发现权限查询和撤销缺口。
+- [x] (2026-11-01) 固定 Tauri/Swift 骨架、锁文件和应用身份；Mac 本地安装包通过查询、真实点击、撤销和退出后点击恢复。
+- [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、完整资源采样、新端侧协议及跨语言向量。
 - [ ] 实现原生通知到正确 IDE 节点的安装包闭环。
 - [ ] 实现共享核心、收件箱、恢复、诊断和完整回退。
 - [ ] Windows / Linux 原生安装包验收及 macOS 签名公证验收。
@@ -20,19 +22,21 @@
 
 现有 `packages/attention-protocol/src/index.ts` 只有 execution-attention、dedupeKey 和 focusAction，以及 posted/unsupported/error 回执，缺少来源实例、执行代次和更新撤销接口。不能只把平台命令替换成 socket 调用就宣称生命周期完整。现有回跳语义是居中而非确认提醒，必须保留。
 
-当前工作环境是 Linux，没有进行 macOS 原生验证。已暂停的 IntelliJ 未跟踪文件保存在原机器 worktree 外，不在本分支或远端交付内容中，后续开发不依赖它们。
+初始交接环境为 Linux；现已切换到 macOS 并完成下述原生能力验证。已暂停的 IntelliJ 未跟踪文件保存在原机器 worktree 外，不在本分支或远端交付内容中，后续开发不依赖它们。
 
 ## 决策记录
+
+2026-11-01，代理：固定发布版插件无法满足 macOS 权限查询和撤销，先以隔离 AppKit 探针验证 UserNotifications 薄适配，再接入 Tauri。探针不替代产品应用和 IDE 真实链验收。
 
 2026-11-01，用户与代理：保留独立应用加 IDE 薄适配器，选定 Tauri + Rust + TypeScript 方向，Swift 仅在必要的平台适配中使用。理由是三平台共享业务与 UI；框架能力仍需验证。
 
 2026-11-01，用户：不要求关闭 IDE 后继续提醒。应用只消费在线 IDE 的事件，断线来源显示离线，不建设额外远端事件网络。
 
-2026-11-01，代理：先验证正式应用身份、通知点击和多窗口定位，再扩展界面；协议与生命周期在共享核心实现，不能依赖显示名或任意命令回调。本轮只推送交接文档，不初始化未验证的应用脚手架。
+2026-11-01，代理：先验证正式应用身份、通知点击和多窗口定位，再扩展界面；协议与生命周期在共享核心实现，不能依赖显示名或任意命令回调。初始交接轮只推送文档，不初始化未验证的应用脚手架；后续 Mac 验证批次按上方新决策创建骨架。
 
 ## 结果与复盘
 
-本轮完成设计与执行计划交接；应用代码、平台能力和性能均未实现或验证。Mac 开发首先执行里程碑一。计划保持 active，不把文档交付当作整个应用完成；最终完成时迁入 completed，并将实际遗留技术债写入 `docs/exec-plans/tech-debt-tracker.md`。
+Mac 平台子批次已交付 Tauri + Rust + React 骨架、Swift UserNotifications 适配、隔离探针和安装包原始日志。原生查询、点击、撤销及冷启动回调通过；里程碑一的协议/性能预算未完成，里程碑二的 IDE 多窗口路由未实现。首次授权曾失败但系统设置开启后可用，需要保留失败证据并继续定位。原有 notifier 源码测试通过，默认 smoke 缺执行资产；stock 对照等待 Agent liveSession 超时，不算验收通过。计划保持 active，不将平台子批次算作整个应用完成。
 
 ## 上下文与定向
 
@@ -88,14 +92,14 @@ Mac 上在仓库根执行以下现有命令；若当前工作目录已有同名�
     npm run test:notifier-smoke
     npm run test:notifier-locale-smoke
 
-以下是里程碑一必须创建的脚本契约，目前不能运行：应用 workspace `apps/notifier/package.json` 暴露 dev、build、test；dev 启动 Tauri 开发应用，build 生成本平台安装包，test 运行 UI/协议测试。Rust manifest 创建后提供核心测试：
+以下里程碑一脚本已创建：应用 workspace `apps/notifier/package.json` 暴露 dev、build、test；dev 启动 Tauri 开发应用，build 生成本平台安装包，test 运行 TypeScript 类型检查与 Rust 白名单动作边界测试；跨语言协议测试仍未实现。Rust manifest 创建后提供核心测试：
 
     npm run -w apps/notifier dev
     npm run -w apps/notifier build
     npm run -w apps/notifier test
-    cargo test --manifest-path apps/notifier/src-tauri/Cargo.toml
+    cargo +1.90.0 test --manifest-path apps/notifier/src-tauri/Cargo.toml --release --locked
 
-创建脚本后将实际产物位置、安装命令和验收 runner 命令更新到本节。原生验证必须退出开发实例，安装并启动同批产物；记录 SHA256，不能将开发运行结果记到正式包上。
+实际产物为 `apps/notifier/src-tauri/target/release/bundle/macos/DSCanvas Notifier.app`；退出旧实例后用 ditto 复制到 `~/Applications/`。详见 `apps/notifier/README.md`。原生验证必须退出开发实例，安装并启动同批产物；记录 SHA256，不能将开发运行结果记到正式包上。
 
 ## 验证与验收
 
@@ -111,10 +115,26 @@ Mac 上在仓库根执行以下现有命令；若当前工作目录已有同名�
 
 ## 证据与备注
 
-2026-11-01：从 origin/main 的 e0527132 建立 notifier-native-client，当前只有交接文档。当前 Linux 环境未安装或运行新应用，不能提供平台通过证据。本轮文档检查与远端交付由提交和最终回复记录；后续每个里程碑在此追加真实命令、结果和证据路径。
+2026-11-01 初始交接：从 origin/main 的 e0527132 建立 notifier-native-client，当时只有交接文档，Linux 环境未安装或运行新应用。本轮文档检查与远端交付由提交和最终回复记录；后续每个里程碑在此追加真实命令、结果和证据路径。
 
 ## 接口与依赖
 
 新增 Rust 的 NotificationBackend 接口，提供 post、withdraw、settings 和用户操作事件；核心通过 SourceRegistry 注册/断开来源，通过 EventStore 持久化并查询事件，通过 Router 定位已验证来源。类型与函数签名在里程碑一按固定依赖落地后记录，不能用空接口冒充实现。TypeScript companion 负责 registerSource、publishEvent、queryEvent、syncState 与处理 focus 请求。所有结果区分 accepted、rejected 和 unknown；系统提交与用户点击另记事实。共享 JSON 测试向量覆盖 Rust/TypeScript 字段、版本、未知动作和过期，UI 不直接执行任意系统命令。
 
 修订记录：2026-11-01，首次将用户确认的跨平台方向、IDE 在线边界和正式包验收写成可接手计划；实现与平台验证明确保持未完成。
+
+
+### 2026-11-01 Mac 实施证据
+
+基线为 `72203a33`，同批源码和日志随本提交保存。机器 Mac14,7、macOS 26.6.2 arm64，VS Code 1.140.0。PATH 的 code 实为 Cursor，测试必须使用 `/Applications/Visual Studio Code.app/Contents/MacOS/Code`。Node 使用与 CI 一致的 22.23.3；全局 Node 26.3.0 未更改。Rust 1.90.0 已并行安装并由 apps/notifier/rust-toolchain.toml 选择，全局默认 1.86 未改。系统仅存在非 Developer ID 的其他项目签名身份，本应用使用 ad-hoc，不挪用它。
+
+npm 默认缓存 EACCES，成功改用 `/tmp/dsc-notifier-npm-cache`；rustup 官方下载超时，USTC 完成工具链安装（随后 self-update 报错，但 rustc/cargo +1.90.0 实际执行成功）。Cargo 构建临时使用 `.debug/notifier-native/cargo/config.toml` 的 USTC source replacement，不写用户全局配置。通常使用默认 registry 即可，不将本机镜像设置作为产品依赖。
+
+已通过：npm ci、typecheck:notifier、test:notifier-source、Tauri build、应用 TypeScript 检查和 Rust 动作白名单测试。`test:notifier-smoke` 默认构建因 generated/execution-assets 缺失失败；显式 stock 构建成功，随后 smoke 在 notifier-companion-tests.cjs:70 等待 Agent liveSession 超时；尚未运行 locale smoke。stock 路径只作对照，不替代默认执行后端验收。完整日志在 `.debug/notifier-native/stock-smoke-corrected.log` 和 `.debug/vscode-smoke/notifier-companion/artifacts/`。
+
+图标修正版 ZIP 位于 `.debug/notifier-native/notifier-macos-arm64-icon-fixed.zip`，SHA256 `68bdcfc0fdc406dba4a5837b39a029ab805928c42aa3f1157e0d782a29477a32`，安装副本签名校验通过。可提交的原始原生日志为 `apps/notifier/validation/2026-11-01-macos.log`，逐项说明见设计文档“macOS 安装包实测”。测试包没有 IDE IPC，不可将应用自身窗口激活当作 IDE 多窗口回跳。
+
+下一步先复核首次授权错误与系统图标缓存，然后定义端侧协议及向量、注册来源并接 companion；必须建立两套隔离 IDE 来源才能测试同名节点路由。不要修改用户现有 Remote SSH 中运行的任务作为测试夹具。资源预算需统计 Tauri 与 WebKit 进程合计并测启动耗时；当前只有主进程 RSS 样本。
+
+
+最终图标资源使用 `notifier.icns`，包摘要 `880191699dfbe4d22bfcc73739fec25d047df75ebed7c61e6f6e54b0c7895034`，产物 `.debug/notifier-native/notifier-macos-arm64-final.zip`。安装资源已解码确认正确；重新注册后系统横幅仍显示旧图标，待定位缓存边界。`test:common-dependencies` 通过（40 文件）；最终 Rust 白名单测试 1 项通过。未完成项仍按进度表推进，不将平台子批次收口等同里程碑一或二完成。

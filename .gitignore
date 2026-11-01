@@ -25,3 +25,6 @@ apps/template-marketplace/.dev.vars
 apps/template-marketplace/.dev.vars.*
 !apps/template-marketplace/.dev.vars.example
 release-artifacts/
+
+/apps/notifier/src-tauri/target/
+/apps/notifier/src-tauri/gen/
