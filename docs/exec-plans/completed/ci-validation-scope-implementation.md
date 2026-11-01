@@ -84,3 +84,13 @@ regression shard-1 job 124743016743 日志确认最新输入完整合同 tests 2
 两个阶段全部完成，设计、工作流、评审口径及剩余问题已同步。PR #352 保持开放供评审，未获本 PR 合并授权，未执行合并。文档收口提交后的当前 head 状态以该 PR Checks 中的独立门禁为准；reuse 必须引用上述原始完整运行，不能冒称业务任务在新文档 SHA 执行。
 
 修订记录：2026-11-01 完整远端验收通过后归档实施计划，记录实测收益、来源身份、观察样本限制及本地首败后续责任。
+
+### Review 发现的消费者遗漏修复（2026-11-01）
+
+独立 review 在 head e5dd8f83 确认两项确定性遗漏：`docs/UI.md` 缺少 `test:sidebar-list-colors` 消费者，notifier 侧栏源码缺少 `test:theme-color-tokens` 消费者。已在 `scope-policy.mjs` 补齐；notifier 业务 job 数仍为 27，新增合同进入已有 regression 分片。
+
+新增两个真实输入隔离反例：删除 UI 文档的 sidebar list token 契约时主题测试通过、侧栏颜色测试拒绝；将 notifier 侧栏背景替换为固定白色时主题测试拒绝。测试同时断言对应失败消费者必须被选中。两例在旧策略下分别因消费者漏选失败，修复后定向 22/22 通过。此前的完整 CI 与文档复用结果仍属于旧策略输入，修复 head 必须重新执行所需验收。
+
+修订记录：2026-11-01 按独立 review 补齐两个直接消费者，以真实输入变异证明旧策略漏检及修复后的选测覆盖。
+
+本轮完整本地合同为 204/205：`test-gate-contracts.mjs:1698` 的 snapshot Host 反例预期 `/exit/`，实际从 `host-evidence.mjs:17` 收到 AbortError，cause TimeoutError；这是既有进程退出期限错误契约问题的新受影响断言，未改本轮两项消费者修复的结论。原日志 `/tmp/dsc-ci-consumer-contracts.log` 保留，未重跑刷绿。定向 22/22；原独立 reviewer 复核两项 finding 均解决、未发现本次修复新增确定性问题。修复后的远端 CI 需针对新 head 单独核验，旧 277/277 不代证。

@@ -3,7 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import yaml from 'js-yaml';
 import { buildPlan, planJobs, validateFrozenPlan } from '../gates/resolve-plan.mjs';
 import { selectAffectedTasks, ordinaryDocumentation, classifyImpact, documentationConsumers } from '../gates/scope-policy.mjs';
@@ -18,6 +18,53 @@ const baseArgs = { mode: 'pr', inputSHA: 'a'.repeat(40), headSHA: 'a'.repeat(40)
 const planFor = (paths, extra = {}) => buildPlan({ ...baseArgs, changedPaths: paths, ...extra });
 const jobs = plan => new Set(plan.tasks.map(task => task.job));
 const full = planFor(['package-lock.json']);
+
+async function colorContractFixture(t) {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-ci-color-consumers-'));
+  t.after(() => fs.rm(folder, { recursive: true, force: true }));
+  const scripts = ['scripts/test/test-theme-color-tokens.mjs', 'scripts/test/test-sidebar-list-color-tokens.mjs'];
+  const files = new Set(scripts);
+  for (const script of scripts) {
+    const source = await fs.readFile(script, 'utf8');
+    for (const match of source.matchAll(/['"]((?:docs|extensions)\/[^'"`\s]+)['"]/g)) files.add(match[1]);
+  }
+  for (const name of ['canvasNodeChrome', 'fileNoteNodes', 'paneGallerySurface']) {
+    files.add(`extensions/vscode/dev-session-canvas/src/webview/${name}.tsx`);
+  }
+  for (const file of files) {
+    await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true });
+    await fs.copyFile(file, path.join(folder, file));
+  }
+  const run = script => spawnSync(process.execPath, [script], { cwd: folder, encoding: 'utf8' });
+  for (const script of scripts) {
+    const result = run(script); assert.equal(result.status, 0, result.stderr);
+  }
+  return { folder, run };
+}
+
+test('UI documentation selects both real color consumers and catches sidebar contract deletion', async t => {
+  const { folder, run } = await colorContractFixture(t);
+  const file = 'docs/UI.md', location = path.join(folder, file);
+  const source = await fs.readFile(location, 'utf8');
+  const mutated = source.replace('Webview 自绘 sidebar 列表必须按 VSCode list 状态 token 成对绑定颜色', '删除侧栏颜色契约的受控反例');
+  assert.notEqual(source, mutated); await fs.writeFile(location, mutated);
+  assert.equal(run('scripts/test/test-theme-color-tokens.mjs').status, 0);
+  const failure = run('scripts/test/test-sidebar-list-color-tokens.mjs');
+  assert.equal(failure.status, 1); assert.match(failure.stderr, /sidebar Webview list color-token contract/);
+  const ids = new Set(planFor([file]).tasks.map(task => task.id));
+  for (const id of ['test:theme-color-tokens', 'test:sidebar-list-colors']) assert(ids.has(id), `Missing real consumer: ${id}`);
+});
+
+test('notifier changes select the real theme consumer that rejects a fixed sidebar background', async t => {
+  const { folder, run } = await colorContractFixture(t);
+  const file = 'extensions/vscode/dev-session-canvas-notifier/src/sidebarView.ts', location = path.join(folder, file);
+  const source = await fs.readFile(location, 'utf8');
+  const mutated = source.replace('background: var(--vscode-sideBar-background, var(--vscode-editor-background));', 'background: #fff;');
+  assert.notEqual(source, mutated); await fs.writeFile(location, mutated);
+  const failure = run('scripts/test/test-theme-color-tokens.mjs');
+  assert.equal(failure.status, 1); assert.match(failure.stderr, /Notifier sidebar body should explicitly use/);
+  assert(planFor([file]).tasks.some(task => task.id === 'test:theme-color-tokens'), 'Missing notifier theme consumer');
+});
 
 test('ordinary prose has no product jobs; executable or evidence inputs are conservative', () => {
   const plan = planFor(['docs/workflows/COMMIT.md']);

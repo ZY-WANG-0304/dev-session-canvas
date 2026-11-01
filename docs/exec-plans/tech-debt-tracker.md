@@ -1083,3 +1083,5 @@ PR #352 本地完整合同在 head `d8d463c09d0b4f026161233119687208fdf8eb30`、
 按用户决定登记为后续专门处理的非阻塞问题。负责人 repository-maintainers，复核日期 2026-11-15；后续任务是受控覆盖截止到达和 I/O 取消的两种拒绝路径，统一错误契约并保留原期限与实际进程存活/退出断言。完整本地日志 `/tmp/dsc-ci-scope-contracts-final.log`；原关键错误及远端结果随 [实施计划](completed/ci-validation-scope-implementation.md) 收口。本次不修改该测试或将整个回归分片设为可忽略。
 
 远端后续证据：run 41270750500 的 regression shard-1 job 124743016743 在 CI 的 Node 22.23.3 环境完整合同 203/203 通过，该具名反例本轮通过。此证据只限定本轮结果，不证明 Node 版本是根因，不关闭上述时序/错误契约后续任务。
+
+2026-11-01 消费者映射 review 修复验证补充：完整本地合同 204/205；同一 `processIdentity` 期限取消路径在 `test-gate-contracts.mjs:1698` 的 snapshot Host 反例再次返回 AbortError/TimeoutError，而断言预期 `/exit/`。新增两项选测反例均通过（定向 22/22）。扩大本条后续任务到该断言，仍由 repository-maintainers 于 2026-11-15 复核；未据该文本差异推断退出误判或产品数据丢失。原始日志 `/tmp/dsc-ci-consumer-contracts.log`，不重跑覆盖本轮首败。

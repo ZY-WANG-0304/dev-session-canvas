@@ -210,3 +210,11 @@ PR Checks / Summary 至少分开显示：阻塞检查通过/失败数量；当�
 [run 41270750500](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41270750500) 在 main `e0527132` 与 PR head `24a78a77` 的真实预合并输入上完成 277/277 jobs；362 项计划任务及最后的独立来源核验通过。远端完整门禁/发布合同 203/203，通过日志位于 regression shard-1 job `124743016743`。该次远端通过不关闭本地 AbortError 首败的后续跟踪。完整身份、工件与 SHA256 见已完成实施计划。
 
 两个阶段的实现及上述验收已完成；PR #352 尚未合并。最终文档收口 head 的门禁结果在 PR Checks 中独立呈现；若使用 reuse，必须明确引用这次完整原运行。
+
+### Review 发现的消费者遗漏修复（2026-11-01）
+
+独立 review 在 head e5dd8f83 确认两项确定性遗漏：`docs/UI.md` 缺少 `test:sidebar-list-colors` 消费者，notifier 侧栏源码缺少 `test:theme-color-tokens` 消费者。已在 `scope-policy.mjs` 补齐；notifier 业务 job 数仍为 27，新增合同进入已有 regression 分片。
+
+新增两个真实输入隔离反例：删除 UI 文档的 sidebar list token 契约时主题测试通过、侧栏颜色测试拒绝；将 notifier 侧栏背景替换为固定白色时主题测试拒绝。测试同时断言对应失败消费者必须被选中。两例在旧策略下分别因消费者漏选失败，修复后定向 22/22 通过。此前的完整 CI 与文档复用结果仍属于旧策略输入，修复 head 必须重新执行所需验收。
+
+本轮完整本地合同为 204/205：`test-gate-contracts.mjs:1698` 的 snapshot Host 反例预期 `/exit/`，实际从 `host-evidence.mjs:17` 收到 AbortError，cause TimeoutError；这是既有进程退出期限错误契约问题的新受影响断言，未改本轮两项消费者修复的结论。原日志 `/tmp/dsc-ci-consumer-contracts.log` 保留，未重跑刷绿。定向 22/22；原独立 reviewer 复核两项 finding 均解决、未发现本次修复新增确定性问题。修复后的远端 CI 需针对新 head 单独核验，旧 277/277 不代证。

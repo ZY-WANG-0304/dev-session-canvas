@@ -5,7 +5,7 @@ import { jobDependencies, taskKey } from './catalog.mjs';
 // execution dependencies, not a claim that every file under docs is inert.
 export const scopePolicyVersion = 1;
 export const documentationConsumers = Object.freeze({
-  'docs/UI.md': ['test:theme-color-tokens'],
+  'docs/UI.md': ['test:theme-color-tokens', 'test:sidebar-list-colors'],
   'docs/design-docs/canvas-multi-root-workspace-support.md': ['test:theme-color-tokens'],
   'docs/product-specs/canvas-multi-root-workspace-support.md': ['test:theme-color-tokens'],
   'docs/product-specs/canvas-template-feature.md': ['test:canvas-templates'],
@@ -47,7 +47,7 @@ export function classifyImpact(paths) {
   return { version: scopePolicyVersion, domains: [...domains].sort(), contracts: [...contracts].sort(), reasons };
 }
 const marketRegression = /marketplace|canvas-templates|common-dependencies|workspace-relative-paths/;
-const attentionRegression = /notifier|attention|ui-copy|extension-manifest|protocol-webview|common-dependencies/;
+const attentionRegression = /notifier|attention|ui-copy|extension-manifest|protocol-webview|common-dependencies|theme-color-tokens/;
 const attentionSuites = /^(notifier-|ui-copy-locale$|execution-notifications\/)/;
 const templateSuites = /^(canvas-entry\/(?:first-template|trusted-templates)|canvas-nodes\/(?:create|layout))/;
 
