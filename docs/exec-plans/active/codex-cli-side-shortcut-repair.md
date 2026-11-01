@@ -21,7 +21,7 @@
 - [x] (2026-11-01 06:35Z) 处理 PR review：只按 `KeyboardEvent.key === '/'` 识别实际输出斜杠，不再按物理 `code` 兜底；Playwright 覆盖非美式布局下由其他物理键产生 `/`，以及物理 Slash 位置输出 `-` 的反例。
 - [x] (2026-11-01 06:37Z) 更新 PR #355 描述，按最新 `origin/main` rebase 后推送 review 修复；新 head 为 `16c26855`。
 - [x] (2026-11-01 08:03Z) 按 review 反馈将两条 Ctrl+/ Playwright 用例加入冻结目录 `scripts/gates/browser-catalog.json`；Playwright list 注册集合与目录均为 441 项且 ID 完全一致。
-- [ ] 更新 PR 验证说明，按最新 `origin/main` rebase 并推送目录修复，等待最新 head 的 Release Preflight。
+- [x] (2026-11-01 08:08Z) 更新 PR 验证说明，按最新 `origin/main` rebase 并推送目录修复；新 head 已启动 Release Preflight。
 - [ ] 在可写且隔离的 Codex 配置下，以实际 Codex PTY 确认 `0x1f` 切换侧聊，并在真实 VS Code Agent 节点确认按键到 PTY 的整条链路。
 
 ## 意外与发现
@@ -62,4 +62,4 @@
 
 ## 结果与复盘
 
-修复通过 xterm 的用户输入 API 将实际字符 `/` 对应的 Ctrl 组合映射到传统控制字符 `0x1f`，并保留 Ctrl+C 输入处理。PR review 发现物理 Slash 位置回退会误拦非美式键盘 Ctrl+-；实现已改为按实际字符识别，并允许 Shift 参与产生 `/`。两类执行节点的布局回归通过，构建和类型检查通过。第二轮 review 确认无新代码 blocker；随后 CI 暴露浏览器冻结目录漏登记两条回归，现已补齐且与 441 项实际注册集合一致。PR 新 head 的 CI 尚待执行。真实 Codex CLI PTY 仍未证实 `0x1f` 会触发侧聊，本计划保持 active，等待正式门禁和现场证据。
+修复通过 xterm 的用户输入 API 将实际字符 `/` 对应的 Ctrl 组合映射到传统控制字符 `0x1f`，并保留 Ctrl+C 输入处理。PR review 发现物理 Slash 位置回退会误拦非美式键盘 Ctrl+-；实现已改为按实际字符识别，并允许 Shift 参与产生 `/`。两类执行节点的布局回归通过，构建和类型检查通过。第二轮 review 确认无新代码 blocker；随后 CI 暴露浏览器冻结目录漏登记两条回归，现已补齐且与 441 项实际注册集合一致，PR 描述已同步并推送，Release Preflight 已启动。真实 Codex CLI PTY 仍未证实 `0x1f` 会触发侧聊，本计划保持 active，等待正式门禁和现场证据。
