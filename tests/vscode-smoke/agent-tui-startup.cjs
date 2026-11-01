@@ -1,15 +1,16 @@
 // The first-run menu cursor is not a composer. Only approve the private empty
 // workspace created by this fixture, selecting Yes explicitly if No is default.
 const assert = require('node:assert/strict');
+const { hasThemeSelectionPrompt } = require('./agent-startup-prompts.cjs');
 function startupAction(text, accepted, now = Date.now()) {
   const previousYesAt = accepted.trustYesAt;
   accepted.trustYesAt = undefined;
   assert(!/Select login method:|Not logged in|Invalid API key/i.test(text), 'Private CLI authentication is unavailable');
-  for (const [id, pattern] of [['theme', /Choose.*(?:theme|text style)|Select.*theme/i],
+  for (const [id, pattern] of [['theme', hasThemeSelectionPrompt],
     ['trust', /Yes, I trust|Do you trust|Trust this (?:folder|directory)/i],
     ['key', /Detected a custom API key/], ['login', /Select login method:/],
     ['security', /Press Enter to continue/]]) {
-    if (!pattern.test(text)) continue;
+    if (!(typeof pattern === 'function' ? pattern(text) : pattern.test(text))) continue;
     if (accepted.has(id)) return { ready: false };
     if (id === 'trust' && /Accessing workspace:/i.test(text)) {
       // Fixed Claude 2.1.280 can revert its first selection. Reuse the bounded

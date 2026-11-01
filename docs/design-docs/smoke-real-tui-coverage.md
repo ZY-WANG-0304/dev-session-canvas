@@ -49,3 +49,9 @@ run40701818847 的 head97fa646f、预合并输入7c3c412dbe1cde4798112100d17f044
 run40696561957 的 source footer / packaged silence 在 Codex 正常 Stop 后仍为 running。定向 run40700749341 记录到约100ms一次、标题过滤后长度为0的输出；`consumeNonNativeHostBusinessOutput` 仍刷新lastOutput并重排120ms轮询，使轮询长期无法执行。修正规则为：标题继续更新与投影，但空的可观察输出不记录Agent活动、不取消已有轮询；真实正文、控制序列和spinner仍保留原行为。以真实owner接线回归确认持续标题更新不延后完成，处理中真实spinner不提前完成。
 
 同轮诊断Claude在正常回答里用行内代码包裹receipt，页面去掉反引号，而hook保留Markdown。证据比较使用现有markdown-it解析本次完整回答，仅允许文本、行内代码、强调和换行的已知显示语义；未知结构拒绝，转为显示文字后仍只归一空白和零宽字符，不能删除缺失词句、receipt字符或字面反引号。原prompt/turn/tool因果检查不变，不要求模型遵循固定文案或格式。
+
+## 主题提示与 Codex readiness 误判
+
+2026-11-02 的 `Release Preflight` run `41340087830` 在 packaged `agent-tui--input-during-work` 的 Codex prepare 阶段失败，尚未提交模型 prompt。失败页面已显示 Codex composer 和 DeepSeek model/context 行；其普通 `Tip: Use /theme to choose a syntax highlighting theme.` 被宽泛主题菜单匹配器反复识别为首次主题选择，夹具因此持续发送 Enter 并最终超时。该失败是测试启动判定缺陷，不能作为产品 Agent 场景通过或失败的证据；同轮其他结果不覆盖原失败。
+
+修复将主题提示匹配集中到 `agent-startup-prompts.cjs`，先排除普通 `Tip:` 行，再保留已有主题菜单文案识别；agent TUI、候选验证和 Runtime reload driver 共用该判断。`test:agent-tui` 增加原失败页面提示与有效主题菜单的对照。正式 release acceptance 仍需对新的固定输入重跑完整任务图；原 run 的红灯和工件保持历史事实。
