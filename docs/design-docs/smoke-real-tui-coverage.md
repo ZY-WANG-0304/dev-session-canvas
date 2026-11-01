@@ -6,7 +6,7 @@ domains: [执行编排域, VSCode 集成域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/smoke-real-tui-coverage.md]
-updated_at: 2026-10-28
+updated_at: 2026-11-02
 ---
 
 # 真实 Agent TUI 的独立回合判定与 CI 覆盖
