@@ -166,7 +166,8 @@
     "ci:verify": "node scripts/gates/run-local.mjs",
     "ci:diagnose": "node scripts/gates/run-local.mjs --diagnose",
     "test:runtime-restore-subscription": "node scripts/test/test-runtime-restore-subscription.mjs",
-    "test:runtime-mode-switch-races": "node scripts/test/test-runtime-mode-switch-races.mjs && node scripts/test/test-runtime-mode-switch-socket.mjs"
+    "test:runtime-mode-switch-races": "node scripts/test/test-runtime-mode-switch-races.mjs && node scripts/test/test-runtime-mode-switch-socket.mjs",
+    "test:notifier-native": "node --no-warnings --experimental-transform-types packages/attention-protocol/tests/native.test.mts && node --no-warnings --experimental-transform-types extensions/vscode/dev-session-canvas-notifier/tests/nativeClient.test.mts && node scripts/test/test-native-attention-routing.mjs"
   },
   "overrides": {
     "cheerio": "1.0.0-rc.12",

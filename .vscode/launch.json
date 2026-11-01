@@ -78,6 +78,31 @@
       "preLaunchTask": "build extension + notifier"
     },
     {
+      "name": "Run Dev Session Canvas + Native Notifier (Local Window)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--profile=Dev Session Canvas Native Notifier Debug",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier"
+      ],
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/.vscode-server/**/extensions/**",
+        "**/.vscode-server/**/server/extensions/**",
+        "**/resources/app/extensions/**"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
+      ],
+      "preLaunchTask": "build extension + notifier",
+      "env": {
+        "DEV_SESSION_CANVAS_NATIVE_NOTIFIER": "1"
+      }
+    },
+    {
       "name": "Run Dev Session Canvas + Notifier (Remote Window)",
       "type": "extensionHost",
       "request": "launch",

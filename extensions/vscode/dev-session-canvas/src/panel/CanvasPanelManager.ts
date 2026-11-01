@@ -1,3 +1,4 @@
+import { isNativeEvent, isNativeTarget, type NativeTarget, type NativeEvent } from '../../../../../packages/attention-protocol/src/native';
 import { isRuntimeConnectionUnavailable, recordDisconnectedRuntimeDeletion } from './disconnectedRuntimeDeletion';
 import { CanvasDisplayPublisher, type CanvasLayoutAcknowledgement } from '../common/canvasDisplayUpdates';
 import { ExecutionFlowRecorder, EXECUTION_FLOW_DURATION_MS, FLOW_DURATION_BUCKETS_MS, type FlowSnapshot, type FlowToken } from '../common/executionFlowDiagnostics';
@@ -3498,6 +3499,93 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
 
     try {
       await this.focusNodeInCanvas(nodeId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private readonly nativeAttentionEvents = new Map<string, NativeEvent>();
+  private readonly nativeGenerationCache = new Map<
+    string,
+    { operation: number; generation: string }
+  >();
+  private nativeWorkspaceId(): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify([
+          this.context.storageUri?.toString() ??
+            this.context.globalStorageUri.toString(),
+          vscode.workspace.workspaceFile?.toString(),
+          (vscode.workspace.workspaceFolders ?? [])
+            .map((folder) => folder.uri.toString())
+            .sort()
+        ])
+      )
+      .digest('hex');
+  }
+  private nativeGeneration(
+    kind: ExecutionNodeKind,
+    nodeId: string
+  ): string | undefined {
+    const key = this.getExecutionSessionOperationKey(kind, nodeId);
+    const operation = this.executionSessionOperationTokens.get(key) ?? 0;
+    const record = this.nonNativeHostExecutions.get(key);
+    const session = this.getExecutionSessions(kind).get(nodeId);
+    const identity = record
+      ? JSON.stringify(record.execution.identity)
+      : session?.sessionId;
+    if (identity) {
+      const generation = createHash('sha256')
+        .update(`${operation}:${identity}`)
+        .digest('hex');
+      this.nativeGenerationCache.set(nodeId, { operation, generation });
+      return generation;
+    }
+    // Completed executions retain their last observed identity only until the next operation.
+    const previous = this.nativeGenerationCache.get(nodeId);
+    return previous?.operation === operation ? previous.generation : undefined;
+  }
+  private isNativeAttentionCurrent(target: unknown): target is NativeTarget {
+    if (!isNativeTarget(target)) return false;
+    const known = this.nativeAttentionEvents.get(target.eventId);
+    if (
+      !known ||
+      known.expiresAt <= Date.now() ||
+      Object.entries(target).some(
+        ([key, value]) => known[key as keyof NativeEvent] !== value
+      )
+    )
+      return false;
+    const workspaceId = this.nativeWorkspaceId();
+    const node = this.state.nodes.find((node) => node.id === target.nodeId);
+    return (
+      target.workspaceId === workspaceId &&
+      target.canvasId === `canvas:${workspaceId}` &&
+      !!node &&
+      isExecutionNodeKind(node.kind) &&
+      node.metadata?.[node.kind]?.attentionPending === true &&
+      this.nativeGeneration(node.kind, node.id) === target.executionGeneration
+    );
+  }
+  public activeNativeAttention(targets: unknown): string[] {
+    if (!Array.isArray(targets) || targets.length > 256) return [];
+    return targets
+      .filter((target) => this.isNativeAttentionCurrent(target))
+      .map((target) => target.eventId);
+  }
+  public async focusNativeAttention(target: unknown): Promise<boolean> {
+    if (!this.isNativeAttentionCurrent(target)) return false;
+    try {
+      await this.centerNodeInCanvas(target.nodeId, () =>
+        this.isNativeAttentionCurrent(target)
+      );
+      if (!this.isNativeAttentionCurrent(target)) return false;
+      await vscode.commands.executeCommand('workbench.action.focusWindow');
+      this.recordDiagnosticEvent('execution/nativeAttentionFocused', {
+        eventId: target.eventId,
+        nodeId: target.nodeId
+      });
       return true;
     } catch {
       return false;
@@ -16002,6 +16090,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     pending: boolean,
     options: { postState?: boolean; persistState?: boolean } = {}
   ): boolean {
+    if(!pending)for(const [id,event] of this.nativeAttentionEvents){if(event.nodeId===nodeId)this.nativeAttentionEvents.delete(id);}
     const node = this.state.nodes.find((candidate) => candidate.id === nodeId && candidate.kind === kind);
     if (!node) {
       return false;
@@ -16311,8 +16400,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const companionResult = await this.postExecutionAttentionNotificationToCompanion(
         this.buildExecutionAttentionNotificationRequest(kind, nodeId, message, notificationKey)
       );
-      if (companionResult.status === 'posted') {
-        this.recordDiagnosticEvent('execution/attentionNotificationCompanionPosted', {
+      if (companionResult.status === 'posted' || companionResult.status === 'unknown') {
+        this.recordDiagnosticEvent(companionResult.status === 'unknown' ? 'execution/attentionNotificationCompanionUnknown' : 'execution/attentionNotificationCompanionPosted', {
           ...detail,
           kind,
           nodeId,
@@ -16363,7 +16452,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     message: string,
     notificationKey: string
   ): AttentionNotificationRequest {
+    for(const [id,event] of this.nativeAttentionEvents){if(event.expiresAt<=Date.now() || !this.state.nodes.some(node=>node.id===event.nodeId))this.nativeAttentionEvents.delete(id);}
+    for(const nodeId of this.nativeGenerationCache.keys()){if(!this.state.nodes.some(node=>node.id===nodeId))this.nativeGenerationCache.delete(nodeId);}
+    const generation=this.nativeGeneration(kind,nodeId);
+    const workspaceId=this.nativeWorkspaceId();
+    const occurredAt=Date.now();
+    let nativeEvent:NativeEvent|undefined=generation && this.nativeAttentionEvents.size<256 ? {
+      eventId:randomUUID(),
+      workspaceId,canvasId:`canvas:${workspaceId}`,nodeId,executionGeneration:generation,
+      occurredAt,expiresAt:occurredAt+86400000,mergeKey:createHash('sha256').update(`${nodeId}:${generation}`).digest('hex'),
+      title:this.buildExecutionAttentionNotificationTitle(kind,this.resolveExecutionAttentionNotificationCwd(kind,nodeId)),
+      body:message,playSound:false
+    }:undefined;
+    if(nativeEvent && isNativeEvent(nativeEvent,occurredAt)){this.nativeAttentionEvents.set(nativeEvent.eventId,nativeEvent);}else{nativeEvent=undefined;}
     return {
+      nativeEvent,
       version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
       kind: 'execution-attention',
       title: this.buildExecutionAttentionNotificationTitle(
@@ -16424,14 +16527,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
 
       return {
-        status: 'error',
+        status: 'unknown',
         backend: 'unsupported',
         activationMode: 'none',
         detail: 'invalid-companion-result'
       };
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      const status = /command .* not found/i.test(detail) ? 'unsupported' : 'error';
+      const status = /command .* not found/i.test(detail) ? 'unsupported' : 'unknown';
       return {
         status,
         backend: 'unsupported',
@@ -16516,10 +16619,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
   }
 
-  private async centerNodeInCanvas(nodeId: string): Promise<void> {
+  private async centerNodeInCanvas(nodeId: string, isCurrent:()=>boolean = ()=>true): Promise<void> {
     const targetSurface = this.activeSurface ?? this.getConfiguredSurface();
     await this.revealSurface(targetSurface, { restoreWebviewFocus: false });
     await this.waitForCanvasReady(targetSurface, EXECUTION_ATTENTION_FOCUS_TIMEOUT_MS);
+    if(!isCurrent())throw new Error('stale-native-target');
     this.postMessageToSurface(targetSurface, {
       type: 'host/centerNode',
       payload: {

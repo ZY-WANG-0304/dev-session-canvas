@@ -12,8 +12,10 @@
 - [x] (2026-11-01) 写入设计、验收与 Mac 接手计划，登记产品与架构入口。
 - [x] (2026-11-01) 检查 Mac 工具链及固定版插件源码，发现权限查询和撤销缺口。
 - [x] (2026-11-01) 固定 Tauri/Swift 骨架、锁文件和应用身份；Mac 本地安装包通过查询、真实点击、撤销和退出后点击恢复。
-- [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、完整资源采样、新端侧协议及跨语言向量。
-- [ ] 实现原生通知到正确 IDE 节点的安装包闭环。
+- [x] (2026-11-01) 新端侧 v2 契约与 63 个 TypeScript/Rust 请求及响应共享向量通过。
+- [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、完整资源采样。
+- [x] (2026-11-01) 接入默认关闭的 Mac socket、持久化回执、来源路由、companion 与主扩展身份复核。
+- [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号已接单，真实点击及 Remote SSH 仍待验收。
 - [ ] 实现共享核心、收件箱、恢复、诊断和完整回退。
 - [ ] Windows / Linux 原生安装包验收及 macOS 签名公证验收。
 - [ ] 完成默认路径迁移、文档、CI 与发布交付。
@@ -36,7 +38,7 @@
 
 ## 结果与复盘
 
-Mac 平台子批次已交付 Tauri + Rust + React 骨架、Swift UserNotifications 适配、隔离探针和安装包原始日志。原生查询、点击、撤销及冷启动回调通过；里程碑一的协议/性能预算未完成，里程碑二的 IDE 多窗口路由未实现。首次授权曾失败但系统设置开启后可用，需要保留失败证据并继续定位。原有 notifier 源码测试通过，默认 smoke 缺执行资产；stock 对照等待 Agent liveSession 超时，不算验收通过。计划保持 active，不将平台子批次算作整个应用完成。
+Mac 已交付 Tauri + Rust + React 骨架、Swift 适配以及默认关闭的 v2 本机桥接。原有安装包的权限查询、点击、撤销与冷启动验证已记录；本轮协议、持久化、来源路由和 IDE 回跳防护通过自动测试。两本地 IDE 的真实终端通知已由新安装包接单，但 A 等待用户点击超时，B 宿主退出而未产生 clicked 回执；真实多窗口回跳、Remote SSH、图标缓存、首次授权失败复现与完整资源预算均未完成。当前仍是开发入口，默认路径未迁移，不声明里程碑一或二整体完成。
 
 ## 上下文与定向
 
@@ -92,7 +94,7 @@ Mac 上在仓库根执行以下现有命令；若当前工作目录已有同名�
     npm run test:notifier-smoke
     npm run test:notifier-locale-smoke
 
-以下里程碑一脚本已创建：应用 workspace `apps/notifier/package.json` 暴露 dev、build、test；dev 启动 Tauri 开发应用，build 生成本平台安装包，test 运行 TypeScript 类型检查与 Rust 白名单动作边界测试；跨语言协议测试仍未实现。Rust manifest 创建后提供核心测试：
+以下里程碑一脚本已创建：应用 workspace `apps/notifier/package.json` 暴露 dev、build、test；dev 启动 Tauri 开发应用，build 生成本平台安装包，test 运行 TypeScript 类型检查、跨语言请求/响应向量以及 Rust 存储、路由、socket 与动作白名单测试。Rust manifest 创建后提供核心测试：
 
     npm run -w apps/notifier dev
     npm run -w apps/notifier build
@@ -138,3 +140,19 @@ npm 默认缓存 EACCES，成功改用 `/tmp/dsc-notifier-npm-cache`；rustup �
 
 
 最终图标资源使用 `notifier.icns`，包摘要 `880191699dfbe4d22bfcc73739fec25d047df75ebed7c61e6f6e54b0c7895034`，产物 `.debug/notifier-native/notifier-macos-arm64-final.zip`。安装资源已解码确认正确；重新注册后系统横幅仍显示旧图标，待定位缓存边界。`test:common-dependencies` 通过（40 文件）；最终 Rust 白名单测试 1 项通过。未完成项仍按进度表推进，不将平台子批次收口等同里程碑一或二完成。
+
+2026-11-01 后续决策：先落地严格 v2 JSON 行契约与共享向量，再接入 IPC；未知接单状态不触发工作台回退，query absent 不是迟到 publish 的取消屏障。正式字段、24 小时事件有效期及 7 天/2000 条历史预算见设计文档“端侧协议 v2”。此项完成前不把现有 v1 focusAction 任意命令直接接入本机服务。
+
+
+### 2026-11-01 本地桥接与开发环境恢复
+
+实现 Unix socket 0600 / runtime 0700、排他进程锁及每次启动轮换的凭据；事件先原子保存再返回 accepted，存储文件上限 24 MiB/2000 条，单来源活动事件上限 256。记录与路由按来源实例隔离，update 不重弹，sync 撤销已失效事件。Swift identifier 只携带不透明 token。主扩展二次校验 generation、workspace、canvas 与 attentionPending，然后 centerNode 并请求本窗口置前；unknown 不再工作台重投。服务器 focusResult 绑定原连接和短期待回执。单元测试覆盖身份、凭据、分片/超长帧、落盘失败、重试、撤销和异步同步竞争。
+
+本轮实际安装应用 ZIP：`.debug/notifier-native/notifier-macos-arm64-ipc.zip`，SHA256 `cd03e693049b9b4cdd342e3eb927e68a658cb785022a9f6d11df4d3d820e3786`，签名校验通过。旧应用备份 `.debug/notifier-native/DSCanvas Notifier.before-ipc.app`。两套隔离 VS Code 1.144.0（本轮已更新，不改写前轮 1.140.0 记录）使用 `/tmp/dsc-nc-94ugcjlp/{A,B}/user`，workspace 为 `.debug/notifier-native/ide-acceptance/source-{A,B}/same`，同名 Terminal 节点通过真实 shell OSC 9 提交成功，证据在相应 evidence/posted.json。首个夹具错误把 terminal live 状态写成 running，修正后两套均 ready；保留 initial-test-predicate-failure.json，不视为产品故障。
+
+桌面自动化此时只能定位到旧 terminal-notifier 通知，已请用户点击 A/B；未得到 clicked.json 前不记回跳通过。对已存在的 Remote SSH dev_labs 做非交互连接时，跳板机拒绝 publickey/password；未修改已有远端任务，远端验收仍未完成。CPU/内存归属查询 launchctl procinfo 要求 root，不为采样提权，尚无完整进程树资源预算。
+
+用户截图报告默认 F5 构建缺少 generated/execution-assets。本机已安装扩展 0.26.1 的六目标资产通过 readPackagedExecutionAssetSet（包含当前 owner/shared-owner/patch 源码和原生文件摘要检查），原字节复制到未跟踪的 generated/execution-assets 后再次通过全量资产集校验。来源与摘要记录在 `.debug/notifier-native/local-execution-assets-provenance.json`。此恢复仅用于本机开发，不冒充本分支正式 release acceptance；没有降低默认六目标校验或切成 stock。新增明确的 Native Notifier Local Window F5 入口设置开发变量，原有入口不变。
+
+
+本轮最终进度：默认 `npm run build`、companion build、两扩展 typecheck、v1 协议、notifier-source、common-dependencies、smoke runner 环境测试均通过。新协议 44 个请求 + 19 个响应共享向量、11 项 Rust 测试通过；socket 客户端覆盖丢回执/absent 查询/异步 sync 竞争/IDE 查询超时；Host 实际方法测试覆盖已签发 eventId、确认后同代重新提醒、等待 webview 期间换代与 unknown 不回退。旧默认 smoke 的历史失败未追认通过。A/B 点击等待未收口，来源已离线；不要再以点击这两条残留通知来验收在线回跳，下一轮需重新启动隔离来源。可提交证据见 `apps/notifier/validation/2026-11-01-ipc.{json,log}`，完整本地失败记录保留在 .debug 下。

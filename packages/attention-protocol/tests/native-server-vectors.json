@@ -1,0 +1,97 @@
+[
+  {
+    "name": "valid receipt {\"status\": \"accepted\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "valid receipt {\"status\": \"accepted\", \"eventState\": \"stored\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"eventState\":\"stored\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "valid receipt {\"status\": \"accepted\", \"eventState\": \"withdrawn\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"eventState\":\"withdrawn\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "valid receipt {\"status\": \"accepted\", \"eventState\": \"absent\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"eventState\":\"absent\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "valid receipt {\"status\": \"unknown\", \"code\": \"lost\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"unknown\",\"code\":\"lost\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "valid receipt {\"status\": \"rejected\", \"code\": \"invalid\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"rejected\",\"code\":\"invalid\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "invalid receipt {\"status\": \"accepted\", \"eventState\": null}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"eventState\":null}}\n",
+    "valid": false
+  },
+  {
+    "name": "invalid receipt {\"status\": \"accepted\", \"code\": \"x\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"code\":\"x\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "invalid receipt {\"status\": \"accepted\", \"eventState\": \"seen\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"eventState\":\"seen\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "invalid receipt {\"status\": \"rejected\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"rejected\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "invalid receipt {\"status\": \"unknown\", \"code\": \"\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"unknown\",\"code\":\"\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "invalid receipt {\"status\": \"unknown\", \"code\": \"x\", \"eventState\": \"stored\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"unknown\",\"code\":\"x\",\"eventState\":\"stored\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "invalid receipt {\"status\": \"posted\"}",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"posted\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "focus",
+    "frame": "{\"version\":2,\"type\":\"focus-node\",\"focusRequestId\":\"r\",\"target\":{\"eventId\":\"e\",\"workspaceId\":\"w\",\"canvasId\":\"c\",\"nodeId\":\"n\",\"executionGeneration\":\"g\"}}\n",
+    "valid": true
+  },
+  {
+    "name": "arbitrary command",
+    "frame": "{\"version\":2,\"type\":\"focus-node\",\"focusRequestId\":\"r\",\"target\":{\"eventId\":\"e\",\"workspaceId\":\"w\",\"canvasId\":\"c\",\"nodeId\":\"n\",\"executionGeneration\":\"g\"},\"command\":\"exec\"}\n",
+    "valid": false
+  },
+  {
+    "name": "missing generation",
+    "frame": "{\"version\":2,\"type\":\"focus-node\",\"focusRequestId\":\"r\",\"target\":{\"eventId\":\"e\",\"workspaceId\":\"w\",\"canvasId\":\"c\",\"nodeId\":\"n\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "unknown focus target field",
+    "frame": "{\"version\":2,\"type\":\"focus-node\",\"focusRequestId\":\"r\",\"target\":{\"eventId\":\"e\",\"workspaceId\":\"w\",\"canvasId\":\"c\",\"nodeId\":\"n\",\"executionGeneration\":\"g\",\"uri\":\"vscode://x\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "bad version",
+    "frame": "{\"version\":2.0,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\"}}\n",
+    "valid": false
+  },
+  {
+    "name": "duplicate result",
+    "frame": "{\"version\":2,\"type\":\"receipt\",\"requestId\":\"r\",\"result\":{\"status\":\"accepted\",\"status\":\"accepted\"}}\n",
+    "valid": false
+  }
+]

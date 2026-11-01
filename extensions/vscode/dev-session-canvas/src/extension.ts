@@ -1,3 +1,4 @@
+import { NATIVE_IDE_COMMANDS } from '../../../../packages/attention-protocol/src/native';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { mkdir, realpath, stat } from 'fs/promises';
@@ -771,6 +772,8 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
+    vscode.commands.registerCommand(NATIVE_IDE_COMMANDS.focus, target=>panelManager.focusNativeAttention(target)),
+    vscode.commands.registerCommand(NATIVE_IDE_COMMANDS.active, targets=>panelManager.activeNativeAttention(targets)),
     vscode.commands.registerCommand(COMMAND_IDS.focusNode, focusNodeFromCommand),
     vscode.commands.registerCommand(COMMAND_IDS.focusAttentionNode, centerAttentionNodeFromCommand),
     vscode.commands.registerCommand(COMMAND_IDS.centerAttentionNode, centerAttentionNodeFromCommand),

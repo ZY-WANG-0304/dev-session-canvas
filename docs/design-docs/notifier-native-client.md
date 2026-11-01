@@ -84,3 +84,27 @@ IDE 是 attention 权威，应用保存派生记录。事件支持发布、更�
 
 
 图标缓存复测：改用独立资源名 `notifier.icns`，退出应用后以完整新 bundle 替换安装副本并执行 lsregister -f。最终 ZIP `.debug/notifier-native/notifier-macos-arm64-final.zip` SHA256 为 `880191699dfbe4d22bfcc73739fec25d047df75ebed7c61e6f6e54b0c7895034`；签名校验通过，Info.plist 指向 notifier.icns，直接解码安装资源确认带铃铛专属图标。但系统新横幅仍显示旧主图标，不能宣称系统显示修复完成；保留为本机缓存问题待进一步定位，不重置用户通知数据库或重启系统服务。最终包与上一验证包的变更仅为图标资源文件名及对应配置；新通知提交与展示已观察，上一包的点击/撤销/冷启动证据不冒充对最终包的完整重跑。
+
+### 端侧协议 v2（2026-11-01 实施契约）
+
+旧扩展间 v1 不改为端侧协议。新增 `packages/attention-protocol/src/native.ts` 与 Rust `protocol.rs`，共享 JSON 向量验证结构和时间约束。传输为 UTF-8 JSON 行，每帧含换行最多 65536 字节，必须在解析前限长；字符串限制以 UTF-8 字节为单位，防止两端 Unicode 长度口径不同。版本必须为整数 2，未知字段/动作拒绝，不透传 command、URI、文件路径动作。所有时间是非负安全整数毫秒；eventId/sourceInstanceId/workspaceId/canvasId/nodeId/executionGeneration/mergeKey 都是非空、无控制字符的有界字符串，显示名不参与身份。
+
+客户端请求固定 envelope：version、requestId、credential、sourceInstanceId、operation。register 携带 workspaceId 和 capabilities（只接受 focus-node）；publish 携带事件；update 仅允许修改事件展示正文；withdraw/query 按 eventId；sync 携带最多 256 个当前有效事件 ID（分批状态同步尚未实现时不得默默截断）；focusResult 包含 focusRequestId 和 focused/stale/offline 三态。事件必含 eventId、workspaceId、canvasId、nodeId、executionGeneration、occurredAt、expiresAt、mergeKey、title、body、playSound。有效期最长 24 小时，允许最多 60 秒未来时钟偏差，过期请求拒绝。
+
+服务端回执固定 accepted/rejected/unknown；accepted 只表示事件已持久化接单，不能由 native submitted 推导。query 的 absent 仅表示查询时未找到，不授权回退：此前 publish 可能仍在途；客户端只有连接发送前失败或收到明确 rejected 才能回退，发送后的断线/超时保持 unknown，查询不能将其降格为未发送。后续取消屏障未实现前，不承诺 unknown 自动回退。定位命令固定 focus-node，携带不透明 focusRequestId 和完整稳定目标；来源连接必须先校验自己的 workspace、canvas、node、executionGeneration 后再居中，不接受显示名或任意 command。
+
+连接身份与事件身份分离：每次 extension activation 生成新的 sourceInstanceId；事件键为 (sourceInstanceId,eventId)。同一 ID 的重复 publish 必须与原事件逐字段一致，否则 rejected；异来源同 eventId 不合并。客户端重连不能仅凭 workspace 同名继承旧实例。来源离线后路由拒绝；收到撤销/过期后旧 token 不可定位。首版历史预算定为 7 天、总计 2000 条，先按过期/历史清理；活动事件满额时拒绝新接单，不能为了容量悄悄丢弃待处理记录。正文只在受当前用户权限保护的事件存储中保留，不进入诊断日志；持久化实现前仍不回 accepted。
+
+本节定义契约和预算，落地进度由 ExecPlan 单独记录；结构测试通过不等于 socket、持久化或 IDE 来源链已实现。
+
+IPC 实现采用当前用户家目录下 `~/.dsc-notifier/runtime/`（0700），Unix socket 和 credential/lock/store 文件为 0600，拒绝目录或文件符号链接与非当前 uid 所有权。进程持有排他文件锁后才能清理旧 socket 并创建新凭据；不监听 TCP。凭据每次应用启动重新生成，客户端重连时重读；sourceInstanceId 不随同一 extension activation 的重连变化，但新 activation 必须生成新 ID。单进程最多 16 个连接，每帧受 64 KiB 限制，空闲连接用重复 register 保活。此机制隔离其他系统用户，不声称抵御能读取当前用户文件的恶意进程。
+
+首次桥接仅支持 Mac 开发态环境变量 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1`，正式默认仍为旧后端。未建立连接前失败可明确回退；发出 publish 后无明确回执则返回 unknown，主扩展不能再投工作台。原生通知 identifier 使用随机 token；外部通知不携带节点、命令或凭据。点击先查当前已验证来源，发送固定 focus-node；companion 再向主扩展验证目标当前 executionGeneration 后居中。真实来源注册和跨窗口验收完成前，环境变量入口不得当成发布能力。
+
+桥接实现补充：workspaceId 是主扩展 storage URI、workspace 文件 URI 与排序后文件夹 URI 的 SHA-256；不把路径发给通知服务。当前产品为一份组合画布，canvasId 为该 workspace 的固定 canvas 标识。executionGeneration 来自执行 ownership identity 或 managed sessionId，并叠加本窗口 operation token；结束的执行可保留最后身份，但下一次 start/attach/invalidate 后立即失效。每次点击在主扩展检查节点仍存在、attentionPending、workspace/canvas/generation，并在等待 webview ready 后再次检查，发送的仍是 centerNode，不选中、不清 attention。通过来源连接调用本窗口内置 `workbench.action.focusWindow`；该命令在本机 VS Code 1.140.0 安装源码已核实，真实窗口激活仍须安装包验证。
+
+桥接每 10 秒查询主扩展的有效目标，sync 撤销已确认、删除或换代的记录；查询失败不能被当作“全部已处理”。companion 在一次 activation 内保留最多 256 个未过期发送记录（包含已撤销），防止同 eventId 的未知结果被遗忘后重投；超过容量明确拒绝，暂不做截断。服务器 update 持久化独立的展示覆盖，不修改原 publish 去重输入，且不重新弹出通知；已有系统横幅不改写，更新正文待收件箱消费。focusResult 必须匹配原连接的短期待回执 ID，不能凭任意 ID 伪造完成事实。以上属于默认关闭的 Mac 开发入口，不将源码接入或自动测试当成真实多窗口验收。
+
+补充投递边界：主扩展跨 host 执行 companion 命令时，命令不存在才视为明确未发送；命令执行异常或返回格式损坏均保守归为 unknown。明确 error/unsupported 回执仍可回退。每次通过既有 cooldown 的新 attention 生成独立 eventId；同一次发送的重试必须复用完整事件。重连 sync 在异步询问主扩展后比对客户端发送集合版本，若期间新增 publish，则放弃旧快照并等待下一轮，不能误撤销新事件。
+
+同一执行可以在确认后再次请求关注，因此 generation 与 attentionPending 两者不足以判断旧事件有效。主扩展还维护最多 256 条本激活内、未过期的已签发 eventId 集合；确认时立即移除该节点旧事件。随后同代再次 attention 只认可新 eventId，旧通知不能借新的 pending 状态恢复有效。原生事件字段越界时省略可选 nativeEvent，让显式开发入口返回明确未发送；旧 v1 投递不受新协议长度约束影响。

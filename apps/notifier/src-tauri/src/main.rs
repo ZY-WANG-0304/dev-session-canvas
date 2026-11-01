@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[cfg(target_os = "macos")]
+mod ipc;
 use std::{
     collections::VecDeque,
     sync::{Mutex, OnceLock},
@@ -55,6 +57,8 @@ mod native {
     extern "C" {
         pub fn dsc_notifications_init(callback: extern "C" fn(*const c_char));
         pub fn dsc_notifications_action(action: i32);
+        pub fn dsc_notifications_post(payload: *const c_char);
+        pub fn dsc_notifications_withdraw(token: *const c_char);
     }
     pub extern "C" fn callback(raw: *const c_char) {
         if raw.is_null() {
@@ -63,23 +67,70 @@ mod native {
         // Swift owns the nul-terminated string for the duration of this call.
         let value = unsafe { CStr::from_ptr(raw) }.to_string_lossy();
         record(&value);
-        if serde_json::from_str::<serde_json::Value>(&value)
-            .ok()
-            .and_then(|v| v["kind"].as_str().map(str::to_owned))
-            .as_deref()
-            == Some("native-response")
-        {
-            if let Some(app) = APP.get() {
-                let handle = app.clone();
-                let _ = app.run_on_main_thread(move || {
-                    if let Some(window) = handle.get_webview_window("main") {
-                        let _ = window.unminimize();
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+        let response = serde_json::from_str::<serde_json::Value>(&value).ok();
+        if response.as_ref().is_some_and(|v| {
+            v["kind"] == "native-response"
+                && v["action"] == "com.apple.UNNotificationDefaultActionIdentifier"
+        }) {
+            let Some(token) = response
+                .as_ref()
+                .and_then(|v| v["id"].as_str())
+                .map(str::to_owned)
+            else {
+                return;
+            };
+            // A slow IDE socket must not block UserNotifications' main-thread callback.
+            std::thread::spawn(move || {
+                let routed = ipc::focus(&token);
+                record(if routed {
+                    "focus-dispatched"
+                } else {
+                    "focus-unavailable"
                 });
-            }
+                if routed {
+                    return;
+                }
+                if let Some(app) = APP.get() {
+                    let handle = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    });
+                }
+            });
         }
+    }
+}
+#[cfg(target_os = "macos")]
+fn post_native_payload(payload: String) {
+    if let Some(app) = APP.get() {
+        if app
+            .run_on_main_thread(move || {
+                if let Ok(payload) = std::ffi::CString::new(payload) {
+                    unsafe {
+                        native::dsc_notifications_post(payload.as_ptr());
+                    }
+                }
+            })
+            .is_err()
+        {
+            record("native-schedule-failed");
+        }
+    }
+}
+#[cfg(target_os = "macos")]
+fn withdraw_native_token(token: String) {
+    if let Some(app) = APP.get() {
+        let _ = app.run_on_main_thread(move || {
+            if let Ok(token) = std::ffi::CString::new(token) {
+                unsafe {
+                    native::dsc_notifications_withdraw(token.as_ptr());
+                }
+            }
+        });
     }
 }
 fn action_code(action: &str) -> Result<i32, String> {
@@ -113,6 +164,17 @@ fn diagnostics() -> Vec<String> {
         .map(|e| e.iter().cloned().collect())
         .unwrap_or_default()
 }
+#[tauri::command]
+fn connected_sources() -> usize {
+    #[cfg(target_os = "macos")]
+    {
+        ipc::connection_count()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        0
+    }
+}
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -123,9 +185,19 @@ fn main() {
                 native::dsc_notifications_action(0);
             }
             record("launch");
+            #[cfg(target_os = "macos")]
+            if let Err(error) = ipc::start(post_native_payload, withdraw_native_token) {
+                record(&format!("ipc-start-failed {error}"));
+            } else {
+                record("ipc-ready");
+            }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![notification_action, diagnostics])
+        .invoke_handler(tauri::generate_handler![
+            notification_action,
+            diagnostics,
+            connected_sources
+        ])
         .run(tauri::generate_context!())
         .expect("failed to run notifier");
 }

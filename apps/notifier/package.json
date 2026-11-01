@@ -7,7 +7,7 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "build:ui": "tsc --noEmit && vite build",
-    "test": "tsc --noEmit && cargo test --manifest-path src-tauri/Cargo.toml --release --locked",
+    "test": "tsc --noEmit && node --no-warnings --experimental-transform-types ../../packages/attention-protocol/tests/native.test.mts && cargo test --manifest-path src-tauri/Cargo.toml --release --locked",
     "ui": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "typecheck": "tsc --noEmit"
   },

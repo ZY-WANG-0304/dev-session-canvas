@@ -1,0 +1,8 @@
+1793520989744 launch
+1793520989750 ipc-ready
+1793520989765 {"alert":2,"authorization":2,"kind":"permission"}
+1793520989766 {"ids":[],"kind":"delivered"}
+1793521255301 {"id":"d425a0c65c050d41f5cda368a606ee48098b7bc0537e713178003e67bd1dee38","kind":"submitted"}
+1793521364765 {"alert":2,"authorization":2,"kind":"permission"}
+1793521364772 {"ids":["d425a0c65c050d41f5cda368a606ee48098b7bc0537e713178003e67bd1dee38"],"kind":"delivered"}
+1793521405142 {"id":"8b87ba36a0bbb553e663f5fd19138a583d23b328d72da80d5e1e030860a517ab","kind":"submitted"}

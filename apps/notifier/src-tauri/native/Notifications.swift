@@ -27,7 +27,7 @@ private final class Notifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
     func post() {
-        let id = UUID().uuidString
+        let id = "test-" + UUID().uuidString
         let content = UNMutableNotificationContent()
         content.title = "DSCanvas 测试通知"
         content.body = "点击返回通知应用。IDE 回跳尚未接入。"
@@ -58,9 +58,37 @@ public func action(_ value: Int32) {
     case 1: n.authorize()
     case 2: n.post()
     case 3:
-        n.center.removeAllPendingNotificationRequests()
-        n.center.removeAllDeliveredNotifications()
-        n.emit("withdraw-requested")
+        n.center.getPendingNotificationRequests { requests in
+            n.center.removePendingNotificationRequests(withIdentifiers: requests.map { $0.identifier }.filter { $0.hasPrefix("test-") })
+        }
+        n.center.getDeliveredNotifications { items in
+            n.center.removeDeliveredNotifications(withIdentifiers: items.map { $0.request.identifier }.filter { $0.hasPrefix("test-") })
+            n.emit("test-withdraw-requested")
+        }
     default: n.emit("unsupported")
     }
+}
+
+// Payload is supplied only by the validated Rust core; no executable callback data.
+@_cdecl("dsc_notifications_post")
+public func postPayload(_ raw: UnsafePointer<CChar>) {
+    guard let n = notifications,
+          let data = String(cString: raw).data(using: .utf8),
+          let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let id = value["id"] as? String, let title = value["title"] as? String,
+          let body = value["body"] as? String, let sound = value["playSound"] as? Bool else { return }
+    let content = UNMutableNotificationContent()
+    content.title = title; content.body = body
+    if sound { content.sound = .default }
+    n.center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil)) { error in
+        n.emit(error == nil ? "submitted" : "submit-error", ["id": id])
+    }
+}
+@_cdecl("dsc_notifications_withdraw")
+public func withdrawToken(_ raw: UnsafePointer<CChar>) {
+    guard let n = notifications else { return }
+    let id = String(cString: raw)
+    n.center.removePendingNotificationRequests(withIdentifiers: [id])
+    n.center.removeDeliveredNotifications(withIdentifiers: [id])
+    n.emit("withdraw-requested", ["id": id])
 }

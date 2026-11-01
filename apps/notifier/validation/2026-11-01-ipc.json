@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-01",
+  "appArchiveSha256": "cd03e693049b9b4cdd342e3eb927e68a658cb785022a9f6d11df4d3d820e3786",
+  "installedApp": "~/Applications/DSCanvas Notifier.app",
+  "scope": "Mac 安装包接收两本地 VS Code 真实终端 OSC 9；不包含真实点击成功或 Remote SSH 验收",
+  "ideBuildHashes": {
+    "extensions/vscode/dev-session-canvas/dist/extension.js": "05d946855c5d65c1b524b9a7cd3aa7ba32f1d8ee3a6460231979b2c3a3a239d5",
+    "extensions/vscode/dev-session-canvas-notifier/dist/extension.js": "72b41d0ade0bc56a1d927f8de0d83c6cc472d026a30f3fbe23c5b193a70be9dc"
+  },
+  "sources": {
+    "A": {
+      "ready": {
+        "nodeId": "terminal-1-f04da82a-de14-48e7-a083-60930faab28f",
+        "version": "1.144.0",
+        "remote": null,
+        "workspace": "same"
+      },
+      "posted": {
+        "nodeId": "terminal-1-f04da82a-de14-48e7-a083-60930faab28f",
+        "eventId": "c59fad9f-2907-4224-93f0-8a9f354ef289",
+        "result": {
+          "status": "posted",
+          "backend": "native-client",
+          "activationMode": "direct-action",
+          "detail": "durably-accepted"
+        }
+      },
+      "clickVerified": false,
+      "termination": "等待真实点击超时"
+    },
+    "B": {
+      "ready": {
+        "nodeId": "terminal-1-fe35da11-5d6e-4eb8-a18a-dd6cb432a528",
+        "version": "1.144.0",
+        "remote": null,
+        "workspace": "same"
+      },
+      "posted": {
+        "nodeId": "terminal-1-fe35da11-5d6e-4eb8-a18a-dd6cb432a528",
+        "eventId": "c1788a93-0369-4fc9-b0f1-407e3cad7cff",
+        "result": {
+          "status": "posted",
+          "backend": "native-client",
+          "activationMode": "direct-action",
+          "detail": "durably-accepted"
+        }
+      },
+      "clickVerified": false,
+      "termination": "测试宿主退出，未产生 clicked/completed 回执"
+    }
+  }
+}

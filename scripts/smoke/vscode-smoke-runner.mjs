@@ -405,6 +405,9 @@ export async function copyPathRecursive(sourcePath, targetPath) {
   await fs.cp(sourcePath, targetPath, {
     recursive: true,
     dereference: true,
+    // The desktop app is not an extension runtime dependency; dereferencing its workspace
+    // symlink would copy Rust build artifacts into every VS Code smoke host.
+    filter: source => !source.endsWith(path.join('node_modules', '@dev-session-canvas', 'notifier')),
     force: true
   });
 }

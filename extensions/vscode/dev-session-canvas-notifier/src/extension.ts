@@ -1,3 +1,5 @@
+import { NativeNotifierClient } from './nativeClient.ts';
+import { NATIVE_IDE_COMMANDS } from '../../../../packages/attention-protocol/src/native.ts';
 import * as vscode from 'vscode';
 import { randomBytes } from 'crypto';
 
@@ -73,6 +75,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const postedNotifications: AttentionNotificationDebugRecord[] = [];
   const manualNotificationAttempts = new Map<string, ManualNotificationAttempt>();
   let lastWorkbenchPrompt: WorkbenchPromptRecord | undefined;
+  let nativeClient: NativeNotifierClient | undefined;
+  context.subscriptions.push({dispose:()=>nativeClient?.dispose()});
   const pendingFocusActions = restorePendingFocusActions(context.globalState);
   const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
   const sidebarViewProvider = new NotifierSidebarViewProvider({
@@ -194,6 +198,26 @@ export function activate(context: vscode.ExtensionContext): void {
         `source=${source} rejected unsupported focus action command=${request.focusAction.command}`
       );
       return { result };
+    }
+
+    if (source === 'main-extension' && process.env.DEV_SESSION_CANVAS_NATIVE_NOTIFIER === '1' && process.platform === 'darwin') {
+      let result: AttentionNotificationDeliveryResult;
+      if (!request.nativeEvent) {
+        result={status:'error',backend:'native-client',activationMode:'none',detail:'missing-native-target'};
+      } else {
+        nativeClient ??= new NativeNotifierClient({
+          workspaceId:request.nativeEvent.workspaceId,
+          focus:async target => await vscode.commands.executeCommand<boolean>(NATIVE_IDE_COMMANDS.focus,target) ? 'focused' : 'stale',
+          active:async targets => await vscode.commands.executeCommand<string[]>(NATIVE_IDE_COMMANDS.active,targets)
+        });
+        const receipt=await nativeClient.publish({...request.nativeEvent,playSound:readPlaySoundEnabled()});
+        result={status:receipt.status==='accepted'?'posted':receipt.status==='unknown'?'unknown':'error',
+          backend:'native-client',activationMode:'direct-action',detail:receipt.status==='accepted'?'durably-accepted':receipt.code};
+      }
+      recordDebugNotification(postedNotifications,{request,result});
+      appendOutputLine(outputChannel,`native status=${result.status} detail=${result.detail}`);
+      void sidebarViewProvider.refresh();
+      return {request,result};
     }
 
     const normalizedRequest = focusAction

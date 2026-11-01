@@ -1,3 +1,4 @@
+import { isNativeEvent, type NativeEvent } from './native.ts';
 export const ATTENTION_NOTIFICATION_PROTOCOL_VERSION = 1 as const;
 
 export const NOTIFIER_COMMAND_IDS = {
@@ -26,9 +27,11 @@ export interface AttentionNotificationRequest {
   message: string;
   dedupeKey: string;
   focusAction?: AttentionNotificationFocusAction;
+  nativeEvent?: NativeEvent;
 }
 
 export type AttentionNotificationBackend =
+  | 'native-client'
   | 'test'
   | 'linux-notify-send'
   | 'macos-terminal-notifier'
@@ -39,7 +42,7 @@ export type AttentionNotificationBackend =
 export type AttentionNotificationActivationMode = 'none' | 'direct-action' | 'protocol' | 'test-replay';
 
 export interface AttentionNotificationDeliveryResult {
-  status: 'posted' | 'unsupported' | 'error';
+  status: 'posted' | 'unsupported' | 'error' | 'unknown';
   backend: AttentionNotificationBackend;
   activationMode: AttentionNotificationActivationMode;
   detail?: string;
@@ -88,7 +91,10 @@ export function parseAttentionNotificationRequest(value: unknown): AttentionNoti
     return undefined;
   }
 
+  if (value.nativeEvent !== undefined && !isNativeEvent(value.nativeEvent,Date.now())) return undefined;
+
   return {
+    ...(value.nativeEvent ? {nativeEvent:value.nativeEvent} : {}),
     version: ATTENTION_NOTIFICATION_PROTOCOL_VERSION,
     kind: 'execution-attention',
     title: value.title.trim(),
@@ -110,7 +116,7 @@ export function isAttentionNotificationDeliveryResult(
     return false;
   }
 
-  if (value.status !== 'posted' && value.status !== 'unsupported' && value.status !== 'error') {
+  if (value.status !== 'posted' && value.status !== 'unsupported' && value.status !== 'error' && value.status !== 'unknown') {
     return false;
   }
 
@@ -127,6 +133,7 @@ export function isAttentionNotificationDeliveryResult(
 
 function isAttentionNotificationBackend(value: unknown): value is AttentionNotificationBackend {
   return (
+    value === 'native-client' ||
     value === 'test' ||
     value === 'linux-notify-send' ||
     value === 'macos-terminal-notifier' ||
