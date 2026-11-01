@@ -5,7 +5,7 @@ validation_status: 验证中
 domains: [VSCode 集成域, 画布交互域, 协作对象域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层]
 related_specs: [docs/product-specs/agent-terminal-clipboard-shortcuts.md]
-related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md, docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md]
+related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md, docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md, docs/exec-plans/active/codex-cli-side-shortcut-repair.md]
 updated_at: 2026-11-01
 ---
 
@@ -171,3 +171,7 @@ Playwright Webview harness 已进一步确认浏览器端行为：在 Agent 和 
 该复现使用仓库构建的浏览器 bundle 和 Playwright Chromium，不包含真实 VS Code 工作台 keybinding，也没有接上真实 Codex CLI PTY。因此用户 CLI 版本、操作系统、键盘布局和实际焦点仍需在现场核对。选择正式修复前，应先确认目标宿主中工作台没有抢先处理该键，再验证候选输入能被 Codex 识别。`/side` 命令和 `/keymap` 自定义绑定是可用的替代入口；本轮不预先指定另一组快捷键或控制序列。
 
 调研过程与命令证据见 `docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md`。本补充将整体验证状态改为“验证中”，直至真实 Webview 输入链路得到复现或排除。
+
+2026-11-01 修复决策：`executionTerminalNativeInteractions.ts` 在 xterm 获得焦点时识别无其他修饰键的 Ctrl+/（DOM `key` 为 `/` 或物理 `code` 为 `Slash`），阻止该按键继续传播，并调用 `terminal.input('\x1f', true)`。ASCII US（`0x1f`）是 Ctrl+/ 的传统终端控制表示；`Terminal.input` 会按用户输入路径触发 `onData`，因此继续复用现有 `webview/executionInput` → Host/runtime PTY 链路。该分支仅处理 Ctrl+/，不改动 Ctrl+C 的 ETX 输入和剪贴板规则。
+
+本次 Playwright 调试已确认 Chromium 将 Ctrl+/ 交给 Agent / Terminal xterm，且原实现没有产生 PTY 输入；真实 Codex PTY 候选字节验证因本机 Codex 状态目录只读而未完成。故 `0x1f` 是依据终端控制编码选择的兼容输入，尚不能记录为已被 Codex `0.166.0` TUI 现场证实。目标宿主和用户键盘布局验证仍是待办；`Ctrl+/` 之外的按键继续原有 xterm / Workbench 路径。

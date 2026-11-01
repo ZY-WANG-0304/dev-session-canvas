@@ -1,6 +1,6 @@
 # Agent / Terminal 复制粘贴快捷键规格
 
-当前状态：已确认，已实现并通过自动化验证。本文收口画布内 `Agent` / `Terminal` 执行节点在终端焦点下处理复制、OSC 52 复制桥接、文本粘贴、Agent 截图粘贴和 `Ctrl+C` 打断冲突的产品口径；原文本粘贴实现由 `docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md` 跟踪，Agent 截图粘贴实现由 `docs/exec-plans/active/agent-screenshot-paste-input.md` 跟踪。
+当前状态：复制粘贴及 `Ctrl+C` 已实现并通过自动化验证；Codex CLI `/side` 的 `Ctrl+/` 输入兼容修复进行中。本文收口画布内 `Agent` / `Terminal` 执行节点在终端焦点下处理复制、OSC 52 复制桥接、文本粘贴、Agent 截图粘贴、`Ctrl+C` 打断冲突和 Codex CLI `Ctrl+/` 侧聊切换的产品口径；相关实现由 `docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md`、`docs/exec-plans/active/agent-screenshot-paste-input.md` 和 `docs/exec-plans/active/codex-cli-side-shortcut-repair.md` 跟踪。
 
 ## 1. 用户问题
 
@@ -32,6 +32,7 @@
 - `Agent` 节点支持从剪贴板粘贴 `image/png`、`image/jpeg`、`image/webp` 截图或图片；Webview 读取图片字节，Host 校验并保存到扩展存储，再把图片路径文本粘贴回当前 Agent 输入行。
 - Agent 截图文件是临时附件缓存，不是用户资产；默认 7 天 TTL，由独立后台维护任务在低优先级窗口分片清理。清理不绑定启动、panel 激活、截图粘贴、粘贴后立即动作或 Agent 退出；清理失败可以用非阻塞错误提示让用户感知并排查，但不得阻塞或影响当前输入、粘贴、启动或画布交互。
 - Agent 截图粘贴不自动提交回车；用户仍需自行补充问题并提交，避免截图一粘贴就触发不可撤销或高成本请求。
+- Codex CLI 的 `Ctrl+/` 仅在 Agent / Terminal xterm 实际持有焦点时映射为终端控制输入 `0x1f`，并走现有 PTY 输入链路；该兼容分支不得更改 `Ctrl+C` 的打断语义。
 - 执行节点内 TUI 发出的 OSC 52 剪贴板序列属于复制主路径：当当前终端有焦点、序列目标是 clipboard（`c` 或空 target）且不处于 snapshot restore 时，系统把解码后的文本写入系统剪贴板。
 - `Terminal` 节点不把图片剪贴板转成 shell 输入；如果同一次粘贴没有文本内容，应取消或提示，而不是向 PTY 写入图片路径。
 

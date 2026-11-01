@@ -457,6 +457,15 @@ export function setupExecutionTerminalNativeInteractions(
       return true;
     }
 
+    if (isFocusedCodexSideConversationShortcut(terminal, event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      // xterm 6 has no Ctrl+/ keyboard mapping. The conventional terminal
+      // representation for Ctrl+/ is ASCII US (0x1f).
+      terminal.input('\x1f', true);
+      return false;
+    }
+
     const selection = terminal.getSelection();
     const action = resolveExecutionTerminalClipboardShortcut(clipboardPlatform, event, selection.length > 0);
     if (action !== 'passThrough' || isExecutionClipboardShortcutCandidate(clipboardPlatform, event)) {
@@ -920,6 +929,17 @@ function isExecutionClipboardShortcutCandidate(
   }
 
   return Boolean(event.metaKey || (event.ctrlKey && event.shiftKey));
+}
+
+function isFocusedCodexSideConversationShortcut(terminal: Terminal, event: KeyboardEvent): boolean {
+  return (
+    terminal.textarea === document.activeElement &&
+    event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    (event.key === '/' || event.code === 'Slash')
+  );
 }
 
 function createExecutionClipboardDiagnosticEmitter(
