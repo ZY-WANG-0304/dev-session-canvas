@@ -123,6 +123,56 @@
         "${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
       ],
       "preLaunchTask": "build extension"
+    },
+    {
+      "name": "Run Dev Session Canvas + Native Notifier (Remote Window)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--profile=Dev Session Canvas Native Notifier Remote Debug",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas",
+        "--extensionDevelopmentPath=${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier"
+      ],
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/.vscode-server/**/extensions/**",
+        "**/.vscode-server/**/server/extensions/**",
+        "**/resources/app/extensions/**"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
+        "${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
+      ],
+      "preLaunchTask": "build extension",
+      "env": {
+        "DEV_SESSION_CANVAS_NATIVE_NOTIFIER": "1"
+      }
+    },
+    {
+      "name": "Run Dev Session Canvas + Native Notifier (Remote Bridge Check, Stock Comparison)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--profile=Dev Session Canvas Native Notifier Remote Bridge Check",
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/vscode/dev-session-canvas",
+        "--extensionDevelopmentPath=${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier"
+      ],
+      "skipFiles": [
+        "<node_internals>/**",
+        "**/.vscode-server/**/extensions/**",
+        "**/.vscode-server/**/server/extensions/**",
+        "**/resources/app/extensions/**"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/vscode/dev-session-canvas/dist/**/*.js",
+        "${input:devSessionCanvas.localRepoRoot}/extensions/vscode/dev-session-canvas-notifier/dist/**/*.js"
+      ],
+      "preLaunchTask": "build extension (stock comparison)",
+      "env": {
+        "DEV_SESSION_CANVAS_NATIVE_NOTIFIER": "1"
+      }
     }
   ],
   "inputs": [

@@ -14,14 +14,20 @@
 
 建议这个专用 profile 只保留调试必需的插件；如果要调 `Remote SSH`，就在该 profile 里额外安装 `Remote Development` 相关扩展，但不要把 Marketplace 里的 `Dev Session Canvas` 或 `Dev Session Canvas Notifier` 已发布版本装进这个 profile。
 
-如果当前仓库是通过 `Remote SSH` / WSL / Dev Container 打开的，主扩展可以继续跟着远端源码目录启动；但 notifier 是 `extensionKind: ["ui"]`，仍需要从本机路径加载。为此，仓库只保留一条远端 notifier 联调配置：
+如果当前仓库是通过 `Remote SSH` / WSL / Dev Container 打开的，主扩展可以继续跟着远端源码目录启动；但 notifier 是 `extensionKind: ["ui"]`，仍需要从本机路径加载。仓库提供两条远端调试配置：
 
-1. 如果你当前打开的是远端仓库窗口，选择 `Run Dev Session Canvas + Notifier (Remote Window)`
+1. 旧后端对照：选择 `Run Dev Session Canvas + Notifier (Remote Window)`。它不启用原生客户端，系统通知仍由旧平台后端（macOS 上通常是 `terminal-notifier`）发送。
+2. 验收本机 DSCanvas Notifier 应用：先在本机 clone 的仓库根目录执行 `npm run build:notifier`，然后选择 `Run Dev Session Canvas + Native Notifier (Remote Window)`。
    - 输入 `localRepoRoot`：你本机 clone 的 repo 根目录绝对路径，例如 `/Users/you/dev-session-canvas`
-   - 这条配置会直接复用当前远端窗口作为主扩展上下文，并把 `${localRepoRoot}/extensions/vscode/dev-session-canvas-notifier` 作为本机 UI 侧 notifier 注入同一个 Development Host
-2. 如果你只想在远端窗口里调主扩展而不联调 notifier，则直接使用 `Run Dev Session Canvas (Main Only)`
+   - 当前远端主扩展和本机 notifier 源码必须来自同一 Git commit；两个 manifest 同为 `0.27.0` 并不能证明桥接代码一致。
+   - 配置会设置 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1`，使用远端 workspace 的主扩展和本机 `localRepoRoot` 下已构建的 UI 侧 notifier。启动前会构建远端主扩展。
+   - 启动后在 Development Host 执行 `Developer: Show Running Extensions`，确认主扩展位于 `SSH: dev_labs`，Notifier 位于本机 UI host。真实 OSC 9 通知后，Notifier 输出应记录 `backend=native-client`，且本机 DSCanvas Notifier 应用出现对应事件。
+   - 若远端构建因缺少 `generated/execution-assets` 失败，可选择 `Run Dev Session Canvas + Native Notifier (Remote Bridge Check, Stock Comparison)` 临时验证通知桥接和点击回跳。此配置使用 stock 执行后端，只证明 Notifier IPC/原生点击链路，不算默认执行后端的完整远端验收。
+3. 如果你只想在远端窗口里调主扩展而不联调 notifier，则直接使用 `Run Dev Session Canvas (Main Only)`
    - 这条配置不需要输入 `localRepoRoot`
    - 主扩展会从当前远端 `${workspaceFolder}` 生成 debug-only 临时目录并启动
+
+直接使用 Marketplace 已安装版本或第一条旧后端配置不会启用原生应用桥接；macOS 上仍看到 `terminal-notifier` 表示当次事件走的是旧路径，不能作为原生客户端验收结果。
 
 配合这些配置，建议：
 

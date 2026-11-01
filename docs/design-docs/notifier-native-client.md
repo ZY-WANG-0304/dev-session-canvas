@@ -53,6 +53,8 @@ IDE 是 attention 权威，应用保存派生记录。事件支持发布、更�
 
 先通过显式开发配置启用新后端，未完成能力不作为 main 的默认路径。应用缺失或明确拒绝接单时保持工作台回退；系统权限拒绝时显示权限诊断，并按明确失败策略回退。安装包交付与 VSIX 分开管理，应用身份、签名、公证、升级兼容及卸载需真实验证。切默认路径与删除旧后端必须在正式安装包闭环通过后单独收口。
 
+Remote SSH 开发验收必须从 SSH 工作区选择 `Run Dev Session Canvas + Native Notifier (Remote Window)`。该配置显式设置 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1`，使用远端 workspace 的主扩展和本机 UI host 上的 notifier companion；本机 companion 需预先构建。由于目前没有运行时 semver 握手，本机与远端源码必须来自同一个 Git commit。若远端缺少 `generated/execution-assets`，可用 `Run Dev Session Canvas + Native Notifier (Remote Bridge Check, Stock Comparison)` 单独诊断 IPC 与通知回跳，但不能将 stock 执行后端的结果记为默认执行后端验收。旧的 `Run Dev Session Canvas + Notifier (Remote Window)` 和 Marketplace 安装版本仍使用旧通知后端；macOS 出现 `terminal-notifier` 只说明原生开发开关未接管该次事件，不能计为原生客户端验收。
+
 ## 验证方法与未决项
 
 验收分共享核心自动化、IDE 集成、原生桌面交互和正式安装包四层。Mac 上用本地与 Remote SSH 两窗口完成通知、点击、正确节点定位、重复请求、节点确认/删除/换代、应用重启、IDE 退出、权限拒绝、断线回执丢失和工作台回退。Windows / Linux 用同样场景单独记账，Linux 同时注明桌面环境和通知服务。

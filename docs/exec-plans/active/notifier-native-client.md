@@ -16,6 +16,8 @@
 - [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、冷启动耗时与跨会话资源预算。
 - [x] (2026-11-01) 接入默认关闭的 Mac socket、持久化回执、来源路由、companion 与主扩展身份复核。
 - [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号、安装版通知和点击回跳均通过；Remote SSH 仍待验收。
+- [x] (2026-11-01) 补充 Remote SSH 原生联调入口：新增显式设置 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1` 的 F5 配置和缺少执行资产时的 stock bridge diagnostic；记录本机/远端必须同提交，用户先前看到的 `terminal-notifier` 属于旧后端路径。
+- [ ] Remote SSH 原生验收仍待用户在 SSH Development Host 中执行：核对主扩展在远端、Notifier 在本机 UI host，真实 OSC 9 通知进入本机 DSCanvas Notifier 并点击回到正确节点。
 - [ ] 实现共享核心、收件箱、恢复、诊断和完整回退。
 - [ ] Windows / Linux 原生安装包验收及 macOS 签名公证验收。
 - [ ] 完成默认路径迁移、文档、CI 与发布交付。
@@ -23,6 +25,8 @@
 ## 意外与发现
 
 现有 `packages/attention-protocol/src/index.ts` 只有 execution-attention、dedupeKey 和 focusAction，以及 posted/unsupported/error 回执，缺少来源实例、执行代次和更新撤销接口。不能只把平台命令替换成 socket 调用就宣称生命周期完整。现有回跳语义是居中而非确认提醒，必须保留。
+
+2026-11-01，用户报告在 Remote SSH 触发后仍看到 `terminal-notifier` 通知。配置检查发现旧的 `Run Dev Session Canvas + Notifier (Remote Window)` 没有设置 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1`，其 `preLaunchTask` 也只构建远端主扩展；已安装 Marketplace 版本同样默认保留旧后端。该观察只证明当次事件走旧后端，不能作为原生客户端的远端验收。新增独立的 `Run Dev Session Canvas + Native Notifier (Remote Window)` 配置；本机 UI companion 需先构建，且必须与远端主扩展来自同一 Git commit。
 
 初始交接环境为 Linux；现已切换到 macOS 并完成下述原生能力验证。已暂停的 IntelliJ 未跟踪文件保存在原机器 worktree 外，不在本分支或远端交付内容中，后续开发不依赖它们。
 
@@ -36,9 +40,11 @@
 
 2026-11-01，代理：先验证正式应用身份、通知点击和多窗口定位，再扩展界面；协议与生命周期在共享核心实现，不能依赖显示名或任意命令回调。初始交接轮只推送文档，不初始化未验证的应用脚手架；后续 Mac 验证批次按上方新决策创建骨架。
 
+2026-11-01，代理：保留原 Remote Window F5 配置作为旧后端对照，并新增显式启用原生桥接的 Remote Window 配置。原因是默认安装版和旧调试入口都会继续调用平台通知后端；版本号相同也无法证明远端/本机桥接代码一致，因此人工验收前必须对齐 Git commit，并在本机 UI companion 日志确认 `backend=native-client`。另加明确标为 stock comparison 的桥接诊断配置，供远端暂缺 `generated/execution-assets` 时使用；其结果不能代替默认执行后端验收。
+
 ## 结果与复盘
 
-Mac 已交付 Tauri + Rust + React 骨架、Swift 适配以及默认关闭的 v2 本机桥接。原有安装包的权限查询、点击、撤销与冷启动验证已记录；本轮协议、持久化、来源路由和 IDE 回跳防护通过自动测试。双本地窗口的真实 OSC 9、安装版通知点击和正确节点居中均已通过；Remote SSH、图标缓存复核、首次授权失败复现、重复资源采样与启动耗时仍未完成。当前仍是开发入口，默认路径未迁移，不声明里程碑一或二整体完成。
+Mac 已交付 Tauri + Rust + React 骨架、Swift 适配以及默认关闭的 v2 本机桥接。原有安装包的权限查询、点击、撤销与冷启动验证已记录；本轮协议、持久化、来源路由和 IDE 回跳防护通过自动测试。双本地窗口的真实 OSC 9、安装版通知点击和正确节点居中均已通过。Remote SSH 用户此前运行的是旧通知路径；现已提供原生专用 F5 配置，但远端真实通知与点击仍待验证。图标缓存复核、首次授权失败复现、完整资源预算和启动耗时也未完成。当前仍是开发入口，默认路径未迁移，不声明里程碑一或二整体完成。
 
 ## 上下文与定向
 

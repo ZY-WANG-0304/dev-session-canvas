@@ -36,4 +36,10 @@ build 默认输出本地 ad-hoc 签名的 macOS `.app`：`apps/notifier/src-taur
 
 `npm run test:notifier-native` 运行共享请求/响应向量和真实 Unix socket 客户端故障测试；应用 workspace 的 test 同时运行 Rust 存储、路由与传输测试。`tests/vscode-smoke/notifier-native-tests.cjs` 是人工点击的隔离桌面验收入口，不加入无人值守默认 smoke。它从真实终端 OSC 9 信号开始，保存 posted/clicked/completed 证据；需要自有 workspace/user-data-dir 和 `DSC_NATIVE_ACCEPTANCE_DIR`、`DSC_NATIVE_ACCEPTANCE_LABEL`，driver 创建 trigger/finish 文件推进。启动命令与本机证据见 ExecPlan。
 
-F5 调试可选 `.vscode/launch.json` 的 `Run Dev Session Canvas + Native Notifier (Local Window)`，该配置设置开发变量并构建两扩展。先启动已安装的 DSCanvas Notifier。默认 `npm run build` 仍要求完整六目标资产集，不能只放本机的一份 manifest；本机已从已安装 0.26.1 扩展提取六目标到 `generated/execution-assets`，通过当前原生源码和文件摘要校验。该目录不入 Git，也不作为正式发布验收来源；换机器后需重新准备匹配资产。
+F5 本地调试可选 `.vscode/launch.json` 的 `Run Dev Session Canvas + Native Notifier (Local Window)`，该配置设置开发变量并构建两扩展。先启动已安装的 DSCanvas Notifier。
+
+Remote SSH 验收应从 SSH 工作区选择 `Run Dev Session Canvas + Native Notifier (Remote Window)`；在提示中填写本机 clone 的仓库根目录。先在本机仓库根目录执行 `npm run build:notifier`，并确认本机 UI companion 与远端主扩展来自同一 Git commit。调试配置会设置 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1` 并构建远端主扩展。直接使用已安装的 Marketplace 扩展或 `Run Dev Session Canvas + Notifier (Remote Window)` 不会打开原生客户端路径，通知仍可能由 `terminal-notifier` 发出。
+
+如果远端构建因缺少 `generated/execution-assets` 失败，可临时选择 `Run Dev Session Canvas + Native Notifier (Remote Bridge Check, Stock Comparison)` 验证本机 IPC、原生通知和点击回跳。它使用 stock 执行后端，因此不能替代默认执行后端的 Remote SSH 验收。
+
+默认 `npm run build` 仍要求完整六目标资产集，不能只放本机的一份 manifest；本机已从已安装 0.26.1 扩展提取六目标到 `generated/execution-assets`，通过当前原生源码和文件摘要校验。该目录不入 Git，也不作为正式发布验收来源；换机器后需重新准备匹配资产。
