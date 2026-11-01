@@ -14,14 +14,14 @@ related_specs: []
 related_plans:
   - docs/exec-plans/completed/canvas-layout-arrangement.md
   - docs/exec-plans/completed/canvas-layout-arrangement-edge-polish.md
-updated_at: 2026-07-02
+updated_at: 2026-11-02
 ---
 
 # 画布布局整理设计
 
 ## 1. 背景
 
-DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace root section。随着 Agent、Terminal、关联文件和 Note 增多，用户手工拖拽后容易出现遮挡、孤立对象散落和 root / group 边界难读的问题。布局整理需要提供一次性空间收口，让用户点击一次后能得到更清晰的画布，同时不改变执行语义或协作对象归属。
+DevSessionCanvas 已支持 Agent、Terminal、Note、连线、普通分组和 multi-root workspace root section。用户手工拖拽后容易出现遮挡、孤立对象散落和 root / group 边界难读的问题。布局整理需要提供一次性空间收口，让用户点击一次后能得到更清晰的画布，同时不改变执行语义或协作对象归属。
 
 ## 2. 问题定义
 
@@ -31,7 +31,7 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 - 在画布空白处右键菜单提供一次性“整理画布布局”。
 - 自动消除同一容器内的直接成员重叠，并保持可读间距。
-- 使用用户连线、文件活动 owner 和同 cwd 执行节点关系，让 Agent、Terminal、关联文件和连线对象尽量靠近。
+- 使用用户连线和同 cwd 执行节点关系，让 Agent、Terminal 和连线对象尽量靠近。
 - 普通分组内部先单独整理；普通分组在父容器中作为整体参与排列。
 - workspace root section 作为硬边界；只整理 root 内部对象，root 之间只在外层避让重叠。
 - 在 multi-root `rootGroups` 或 `paneGallery` 中从某个 root 内触发整理时，主菜单默认只整理当前 root；右侧 `>` 二级菜单提供当前 root 与整个 workspace 两个整理范围。
@@ -41,7 +41,7 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 - 不清理、归档、收起、创建、删除、改名或折叠任何分组或节点。
 - 不提供撤销和恢复机制，不弹整理完成提示。
-- 不改变节点的 `groupId`、root 归属、`cwd`、runtime metadata、连线端点或文件活动 owner。
+- 不改变节点的 `groupId`、root 归属、`cwd`、runtime metadata 或连线端点。
 - 不做持续自动布局、物理模拟或用户拖拽时的实时吸附。
 - 不支持跨普通分组或跨 root 自动搬移节点。
 
@@ -55,23 +55,23 @@ DevSessionCanvas 已支持节点、连线、普通分组和 multi-root workspace
 
 ## 6. 风险与取舍
 
-首版使用持久化 footprint 而不是渲染后 DOM 尺寸，极端情况下可能与真实视觉高度有少量差异；但当前节点尺寸本身已在状态中维护，足以作为整理依据。算法优先确定性和语义边界，不追求专业图布局最优解；大型画布可能不是全局最紧凑，但应明显减少重叠并让相关对象更容易一起看见。文件活动节点归属继续由现有 Host reconciliation 维护，整理函数只移动当前成员，不抢占 owner 推导。
+首版使用持久化 footprint 而不是渲染后 DOM 尺寸，极端情况下可能与真实视觉高度有少量差异；但当前节点尺寸本身已在状态中维护，足以作为整理依据。算法优先确定性和语义边界，不追求专业图布局最优解；大型画布可能不是全局最紧凑，但应明显减少重叠并让相关对象更容易一起看见。
 
 空分组在整理语义中只表示“当前没有直接成员的可见分组对象”。它不是垃圾区域，不能在整理时被删除、折叠或重命名；它也不被额外解释为用户预留规划空间，整理命令可以规范化其几何尺寸。风险主要是显式整理会改变可见对象尺寸；当前取舍是把这视为“整理画布布局”的合理几何副作用，并通过保持父级归属、标题和 workspace root 专属最小尺寸来限制影响范围。
 
 ## 7. 正式方案
 
-主要落点：`extensions/vscode/dev-session-canvas/src/common/canvasLayoutArrangement.ts` 提供纯函数 `arrangeCanvasLayout(state, now, options)`；`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 提供 `webview/arrangeCanvasLayout` 消息，并允许携带可选 `targetGroupId`；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 在画布右键菜单发送该消息；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 在 Host 侧解析整理范围、调用整理函数、执行现有文件活动 reconciliation、持久化并广播 `host/stateUpdated`。
+主要落点：`extensions/vscode/dev-session-canvas/src/common/canvasLayoutArrangement.ts` 提供纯函数 `arrangeCanvasLayout(state, now, options)`；`extensions/vscode/dev-session-canvas/src/common/protocol.ts` 提供 `webview/arrangeCanvasLayout` 消息，并允许携带可选 `targetGroupId`；`extensions/vscode/dev-session-canvas/src/webview/main.tsx` 在画布右键菜单发送该消息；`extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts` 在 Host 侧解析整理范围、调用整理函数、持久化并广播 `host/stateUpdated`。
 
 布局按容器递归处理。容器可以是整张画布、workspace root section 或普通分组。每个容器只排列直接成员：直接节点和直接子分组。普通分组先整理内部，再作为父容器中的一个 block 参与排列；root section 内部独立整理，root section 本身只在外层参与 root-root 避让。所有节点和分组保持原有 `groupId` / `parentGroupId`，所以整理不会把对象搬入或搬出任何普通分组或 root。
 
-关系图只在当前容器的直接成员之间构造。用户 edge 是强关系，file activity edge 和文件 owner 是强关系，同 cwd 的 Agent / Terminal 是弱关系。若关系发生在子分组内部，父容器只看到对应子分组 block；若关系跨不同 root 或不同普通分组，布局不会跨边界搬移节点，只会在共同父容器中让直接 block 尽量靠近。
+关系图只在当前容器的直接成员之间构造。用户 edge 是强关系，同 cwd 的 Agent / Terminal 是弱关系。若关系发生在子分组内部，父容器只看到对应子分组 block；若关系跨不同 root 或不同普通分组，布局不会跨边界搬移节点，只会在共同父容器中让直接 block 尽量靠近。
 
-排列策略是确定性的：先按关系图拆 connected components；component 之间按原始位置顺序进行行列 packing。component 内部若没有明确方向关系，则继续按 Agent、Terminal、文件、分组、Note 的稳定优先级和关系权重排成小型网格。若存在用户 edge、file activity edge 或文件 owner 关系，则把关系保留为有方向的布局证据：用户 edge 使用既有 source / target 和 anchor 推导左右或上下层级，文件 owner 使用 owner -> file 方向；若约束成环，则优先保留权重高的约束并丢弃会形成环的低优先级约束。水平或垂直层级排列时，直接相连对象进入相邻层，同一 source 的多个 target 尽量同层排列，层间距按连线标签估算宽度放大，让连线文案有可读通道，不再只把“有关系”理解为同一网格组件。
+排列策略是确定性的：先按关系图拆 connected components；component 之间按原始位置顺序进行行列 packing。component 内部若没有明确方向关系，则按现有节点和分组的稳定优先级及关系权重排成小型网格。若存在用户 edge，则把关系保留为有方向的布局证据，使用既有 source / target 和 anchor 推导左右或上下层级；若约束成环，则优先保留权重高的约束并丢弃会形成环的低优先级约束。水平或垂直层级排列时，直接相连对象进入相邻层，同一 source 的多个 target 尽量同层排列，层间距按连线标签估算宽度放大，让连线文案有可读通道，不再只把“有关系”理解为同一网格组件。
 
 整理后分组尺寸按直接成员 bounds 收缩或扩展到最小尺寸与成员内边距；root 使用 root section 最小尺寸与 root 内容 inset，普通分组使用现有普通分组标题 / padding inset。普通分组即使只有一个直接成员也会执行内部整理，因此单成员分组会把成员移动到内容内边距附近，而不是保留整理前的大块空白。普通空分组没有内容 bounds 可参考，整理时先把尺寸规范化为创建空分组的默认尺寸 `360 x 240`，再作为普通 `group` block 参与父容器排列；嵌套空分组同样适用该规则，并会触发外层分组按规范化后的空子分组 bounds 收口。workspace root section 不适用普通空分组默认尺寸；空 root section 仍规范化到 workspace root 最小尺寸，不因内容少而收缩到普通分组大小。
 
-Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。如果消息携带 `targetGroupId`，Host 只接受当前存在的 workspace root 或其内部用户分组，并把内部用户分组提升为所属 workspace root 后再调用目标分组整理；如果目标不存在则忽略该消息，避免 Webview 旧菜单误整理整个画布。在 multi-root `rootGroups` 中，命中 root section 的 title/body/chrome 或其内部用户分组时，主菜单“整理画布布局”默认携带所属 workspace-root group id；在 `paneGallery` 可交互 root pane 中，主菜单默认携带该 pane 对应的 workspace-root group id；上述路径都只整理当前 root 内部对象。同一行右侧 `>` 二级菜单同时提供“整理当前 root 内的节点”和“整理整个 workspace 的画布”：当前 root 选项继续发送携带目标 group 的消息，整个 workspace 选项发送不带目标的消息，后者才按整张组合画布整理 root 分组、外层分组和节点。目标 root 整理后的文件活动 reconciliation 继续重建自动文件节点，但其几何修复使用 scoped repair：member expansion 只作用于目标 root 子树，非目标 root 与 workspace-level overlay 的节点/分组几何保持不变，既有内部重叠也不会被这次 root-scoped 路径顺手修复；若目标 root 因尺寸变化与其他 root 冲突，只平移目标 root 子树到最近非重叠位置，避免后续全局 finalize 泄漏成全 workspace 重排。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
+Host 收到整理消息后把结果写回当前权威 `CanvasPrototypeState`，并走现有 `persistState()`。如果消息携带 `targetGroupId`，Host 只接受当前存在的 workspace root 或其内部用户分组，并把内部用户分组提升为所属 workspace root 后再调用目标分组整理；如果目标不存在则忽略该消息，避免 Webview 旧菜单误整理整个画布。在 multi-root `rootGroups` 中，命中 root section 的 title/body/chrome 或其内部用户分组时，主菜单“整理画布布局”默认携带所属 workspace-root group id；在 `paneGallery` 可交互 root pane 中，主菜单默认携带该 pane 对应的 workspace-root group id；上述路径都只整理当前 root 内部对象。同一行右侧 `>` 二级菜单同时提供“整理当前 root 内的节点”和“整理整个 workspace 的画布”：当前 root 选项继续发送携带目标 group 的消息，整个 workspace 选项发送不带目标的消息，后者才按整张组合画布整理 root 分组、外层分组和节点。在 multi-root workspace 下，后续既有 decompose / root-local storage / overlay 持久化继续负责把 root-local 坐标和 root section overlay 写回对应存储，因此 reload 与重开 VSCode 后保持整理结果。
 
 ## 8. 验证方法
 

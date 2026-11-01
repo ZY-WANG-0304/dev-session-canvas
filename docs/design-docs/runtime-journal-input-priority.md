@@ -247,7 +247,7 @@ Webview 完成 266 次分页往返，平均 101.232 ms、最大 161.4 ms；Host 
 
 2026-10-27 用户授权实施侧栏优化及代理独立验证。基线为 d4edaa71（业务代码包含 56b29664 的配置复用）。不改变 CanvasPanelManager 的状态发布、事件产生、持久化、journal 或输入/分页路径；不从全局屏蔽侧栏通知。
 
-CanvasSidebarView 使用事件携带的状态生成摘要快照，getChildren 复用该快照；比较实际摘要项（包括 tooltip 和 command）再通知树刷新，初次查询无快照时读取一次最新状态。CanvasSidebarActionsView 将事件状态投影为该 Webview 消费的 canvasSurface、filesFeatureEnabled、fileFilters；相同投影不再发消息。ready、视图重建和重新显示强制同步当前值；投递失败不能使同一状态永久被去重。
+CanvasSidebarView 使用事件携带的状态生成摘要快照，getChildren 复用该快照；比较实际摘要项（包括 tooltip 和 command）再通知树刷新，初次查询无快照时读取一次最新状态。CanvasSidebarActionsView 将事件状态投影为该 Webview 消费的 canvasSurface；相同投影不再发消息。ready、视图重建和重新显示强制同步当前值；投递失败不能使同一状态永久被去重。
 
 CanvasSidebarNodeListView 独立从节点/分组构造实际展示 items，比较展示 items 与展示分组，避免仅 outputSequence 等无关 metadata 变化发送消息；目录分类继续按刷新执行，工作区顺序及目录类型仍参与最终展示比较。summary 是 tooltip 的一部分，变化时不能丢弃。既有 75 ms 刷新等待改为有界合并：已有待执行 timer 不因持续通知重置，防止连续输出使更新无限延期。异步目录分类期间的新状态需再次处理，旧异步结果不得覆盖较新快照；ready、重开和显式 refresh 不受去重阻断。目录类型检测按实际刷新执行，避免引入无失效机制的长期文件系统缓存。
 

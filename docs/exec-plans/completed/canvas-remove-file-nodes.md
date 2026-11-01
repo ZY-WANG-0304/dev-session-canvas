@@ -19,8 +19,10 @@
 - [x] (2026-11-01) 修正侧栏摘要 smoke 对已退役 Files 项目的过期断言，并通过 `npm run test:smoke -- --scenario=canvas-entry/surface-sidebar`；真实 VS Code 1.140.0 场景通过。
 - [x] (2026-11-01) 删除只服务文件节点点击的 CDP smoke 辅助器与过期合同测试，重新生成并审核 bounded-wait inventory；`node scripts/test/test-gate-contracts.mjs` 101/101 通过。
 - [x] (2026-11-01) 更新多根、模板市场与技术债文档中的过时当前口径；将旧关系连线 / 文件活动计划标为历史并归档；同步退役设计状态和索引。
-- [x] (2026-11-01) 完成 `git diff --check`、残留搜索与最终差异审计；保留未提交分支状态和原有未跟踪文件，不提交或推送。
+- [x] (2026-11-01) 完成 `git diff --check`、残留搜索与最终差异审计；保留原有未跟踪文件。该记录对应当日尚未获 PR 授权的状态。
 - [x] (2026-11-01) 用户已在本机手动调试并确认未发现问题；真实 Claude CLI 专项未由本轮单独自动运行，作为验证边界明确记录。
+- [x] (2026-11-02) 按后续授权提交实现并 rebase 到最新 `origin/main`；rebase 后 `npm run typecheck`、`node scripts/test/test-gate-contracts.mjs`（101/101）通过。
+- [x] (2026-11-02) rebase 后完整 Webview 回归 420 项中 419 项通过；一项终端悬停链接用例首次超时，独立复跑通过。打包检查发现并移除已退役脚本目录的 staging 引用，`npm run test:package-vsix-file-list` 和 `canvas-entry/surface-sidebar` VS Code smoke 修复后通过。
 
 ## 意外与发现
 
@@ -36,7 +38,7 @@
 
 ## 结果与复盘
 
-主功能、迁移兼容和文档规格已按用户确认的边界落地。`npm run typecheck`、`npm run test:webview`（418 passed）、迁移与多根 / 共享 root / 模板 / 侧栏 / 打包定向测试通过；`npm run test:package-vsix-file-list`、`node scripts/test/test-gate-contracts.mjs`（101/101）及 `npm run test:smoke -- --scenario=canvas-entry/surface-sidebar` 通过。烟雾测试收尾时移除了已退役文件条目点击所专用的 CDP helper 和过期合同测试，并按流程重新生成、审核 bounded-wait inventory。用户完成手动调试并确认未发现问题。当前 150 个 smoke 目标有实现映射，2 个旧文件活动目标明确退役。完整 host owner-wiring 测试中的单根 reset 夹具错误此前已在未修改的 `origin/main` 基线上复现，不作为本分支回归。真实 Claude CLI 文件读写专项没有在本轮单独自动运行；不把 fake provider 或用户总体手动验收描述成这条专项的自动证据。最终完成残留搜索与 diff 检查后，本计划归档。
+主功能、迁移兼容和文档规格已按用户确认的边界落地。初次实施时 `npm run typecheck`、迁移与多根 / 共享 root / 模板 / 侧栏 / 打包定向测试、`npm run test:webview`（418 项）和 VS Code smoke 通过。随后 rebase 到最新 `origin/main` 后，类型检查和 gate-contracts（101/101）通过。更新后的完整 Webview 回归为 419/420：终端悬停链接用例在整套运行中首次超时，独立单项复跑通过，因此保留为一次偶发失败而不声称整套全绿。打包清单测试发现 staging 仍复制已删除的 `scripts/runtime`，VS Code smoke 又发现调试宿主仍无条件复制已删除的 `scripts`；移除两条过期 staging 后，`npm run test:package-vsix-file-list` 与 `npm run test:smoke -- --scenario=canvas-entry/surface-sidebar` 均通过。用户完成手动调试并确认未发现问题。当前 150 个 smoke 目标有实现映射，2 个旧文件活动目标明确退役。完整 host owner-wiring 测试中的单根 reset 夹具错误此前已在未修改的 `origin/main` 基线上复现，不作为本分支回归。真实 Claude CLI 文件读写专项没有在本轮单独自动运行；不把 fake provider 或用户总体手动验收描述成这条专项的自动证据。最终完成残留搜索与 diff 检查后，本计划归档。
 
 ## 上下文与定向
 
@@ -50,7 +52,7 @@ VS Code 扩展宿主 `extensions/vscode/dev-session-canvas/src/panel/CanvasPanel
 
 第三里程碑移除 Webview、侧栏、设置、命令、本地化文案及专属样式和测试；清理自动文件节点的布局、分组、投影与过滤逻辑，保留共用 Note 与普通连线代码。检查 README 中当前功能描述、相关正式规格与设计索引；历史执行记录和历史发布记录保留为历史，不把过去的事实改写为当前行为。验收为设置、侧栏和画布均没有文件活动入口，其他功能回归通过。
 
-第四里程碑执行下述验收并记录证据。功能实现、迁移与文档已经完成；当前工作按本轮明确范围停在本地功能分支，不提交、不推送，也不创建 PR。
+第四里程碑执行下述验收并记录证据。功能实现、迁移与文档已经完成；用户随后授权将分支 rebase 到 `origin/main` 并创建 PR，按该授权继续交付，不执行合并。
 
 ## 具体步骤
 

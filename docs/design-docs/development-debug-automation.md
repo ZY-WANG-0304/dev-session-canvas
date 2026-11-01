@@ -135,7 +135,7 @@ updated_at: 2026-10-13
 
 - `.vscode/launch.json` 与 `.vscode/tasks.json`：保留三条默认调试路径，即 `Run Dev Session Canvas (Main Only)`、`Run Dev Session Canvas + Notifier (Local Window)`、`Run Dev Session Canvas + Notifier (Remote Window)`；另提供显式的 `Run Dev Session Canvas (Main Only, Stock Comparison)` 对照入口。默认入口走 owned-provider，stock 入口不属于正式运行时验证。
 - `scripts/shared/ensure-node-dependencies.mjs`：作为 VS Code build task 的第一步，检测当前 worktree 是否具备构建所需的根 `node_modules`；若缺失则在仓库根执行 `npm ci`，让新建 worktree 的 F5 / build task 能自举依赖。
-- `scripts/shared/prepare-debug-main-only-extension.mjs`：在 `Run Dev Session Canvas (Main Only)` 启动前生成 `.debug/vscode-extension-main-only/`，把仓库根主扩展复制成一份 debug-only 临时目录，保留运行时需要的 `scripts/runtime/claude-file-event-hook.cjs`，并仅在这份临时 manifest 里移除 `extensionDependencies` / `extensionPack`，从而在保留正式安装真相不变的前提下维持主扩展单调能力。
+- `scripts/shared/prepare-debug-main-only-extension.mjs`：在 `Run Dev Session Canvas (Main Only)` 启动前生成 `.debug/vscode-extension-main-only/`，把仓库根主扩展复制成一份 debug-only 临时目录，并仅在这份临时 manifest 里移除 `extensionDependencies` / `extensionPack`，从而在保留正式安装真相不变的前提下维持主扩展单体调试能力。
 - `scripts/smoke/run-vscode-smoke.mjs` 与 `tests/vscode-smoke/extension-tests.cjs`：承担真实 VS Code 宿主级自动化，覆盖扩展激活、Webview ready、`webview/*` 消息桥接、执行会话、runtime persistence、Restricted Mode、真实 Webview probe 与 test-only DOM action。
 - `scripts/smoke/run-vscode-vsix-smoke.mjs`：先打包 `.vsix`，再解包并用打包产物跑 trusted smoke，用来验证 VSIX 运行时文件集和最小集成链路。
 - `scripts/test/run-playwright-webview.mjs`、`tests/playwright/webview-harness.spec.mjs` 与 `tests/playwright/harness/webview-harness.html`：承担 Webview 专项 UI / 截图自动化，覆盖截图基线、Note 编辑、删除按钮、Agent 启动 provider 取自节点 metadata，以及错误 toast。

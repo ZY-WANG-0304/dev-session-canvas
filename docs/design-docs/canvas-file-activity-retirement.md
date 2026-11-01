@@ -6,7 +6,7 @@ domains: [画布交互域, 协作对象域, VSCode 集成域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层, 适配与基础设施层]
 related_specs: [docs/product-specs/canvas-graph-links-and-file-activity.md]
 related_plans: [docs/exec-plans/completed/canvas-remove-file-nodes.md]
-updated_at: 2026-11-01
+updated_at: 2026-11-02
 ---
 
 # 画布文件活动功能退役
@@ -25,6 +25,6 @@ updated_at: 2026-11-01
 
 ## 验证
 
-自动化覆盖旧画布清理、普通连线和分组保留、单根 / 多根 / 共享 root 恢复、配置及侧栏移除、Claude 启动接线、模板和打包边界。`npm run typecheck`、`npm run test:webview`（418 项）、受影响的迁移 / 多根 / 共享 root / 模板 / 侧栏 / 执行上下文回归、`npm run test:package-vsix-file-list` 和 `npm run test:smoke -- --scenario=canvas-entry/surface-sidebar` 均通过。smoke 场景最初发现侧栏摘要测试仍要求已退役的 Files 项；移除该过期期望后，真实 VS Code 1.140.0 smoke 通过。用户也在本机手动调试并确认未发现问题。
+自动化覆盖旧画布清理、普通连线和分组保留、单根 / 多根 / 共享 root 恢复、配置及侧栏移除、Claude 启动接线、模板和打包边界。首次实施时，类型检查、418 项 Webview、受影响的定向回归、VSIX 文件清单及 `canvas-entry/surface-sidebar` smoke 通过。2026-11-02 rebase 到最新 `origin/main` 后，类型检查和 gate-contracts（101/101）通过；完整 Webview 回归 420 项中 419 项通过，一项终端悬停链接用例在整套运行中首次超时，独立复跑通过。随后修复已删除 `scripts/runtime` 与 `scripts` 目录的过期打包 / smoke staging 引用；VSIX 文件清单测试和真实 VS Code 1.140.0 smoke 均通过。用户也在本机手动调试并确认未发现问题。
 
 本轮没有另行启动真实 Claude CLI 文件读写专项，因此自动验证不代表重新覆盖真实 provider 的文件操作；用户的整体手动调试确认作为补充验收证据。旧活动记录在升级写回后不会保留，磁盘文件和独立的终端文件链接、Markdown Note 关联、Explorer 创建执行节点不受影响。

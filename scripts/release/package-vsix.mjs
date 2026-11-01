@@ -453,11 +453,6 @@ export function stageMainPackageFiles(stagePackageRoot, packageJson, readmePath,
   cpSync(path.join(mainExtensionRoot, 'l10n'), path.join(stagePackageRoot, 'l10n'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'images'), path.join(stagePackageRoot, 'images'), { recursive: true });
   cpSync(path.join(mainExtensionRoot, 'resources'), path.join(stagePackageRoot, 'resources'), { recursive: true });
-  cpSync(
-    path.join(mainExtensionRoot, 'scripts', 'runtime'),
-    path.join(stagePackageRoot, 'scripts', 'runtime'),
-    { recursive: true }
-  );
   stageNodePtyRuntime(stagePackageRoot);
 }
 
