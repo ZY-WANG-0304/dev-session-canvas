@@ -55,3 +55,5 @@ run40696561957 的 source footer / packaged silence 在 Codex 正常 Stop 后仍
 2026-11-02 的 `Release Preflight` run `41340087830` 在 packaged `agent-tui--input-during-work` 的 Codex prepare 阶段失败，尚未提交模型 prompt。失败页面已显示 Codex composer 和 DeepSeek model/context 行；其普通 `Tip: Use /theme to choose a syntax highlighting theme.` 被宽泛主题菜单匹配器反复识别为首次主题选择，夹具因此持续发送 Enter 并最终超时。该失败是测试启动判定缺陷，不能作为产品 Agent 场景通过或失败的证据；同轮其他结果不覆盖原失败。
 
 修复将主题提示匹配集中到 `agent-startup-prompts.cjs`，先排除普通 `Tip:` 行，再保留已有主题菜单文案识别；agent TUI、候选验证和 Runtime reload driver 共用该判断。`test:agent-tui` 增加原失败页面提示与有效主题菜单的对照。正式 release acceptance 仍需对新的固定输入重跑完整任务图；原 run 的红灯和工件保持历史事实。
+
+PR #358 review 进一步发现 Runtime reload 的 composer 二次确认仍假设所有启动提示都是 RegExp，且源码抽取测试没有注入新增 helper。修复让初次与二次 readiness 检查共用支持函数和 RegExp 的 matcher，并在测试编译上下文提供 helper；新增 Codex 普通 `/theme` help tip composer 确认回归。修复 head 的 `test-agent-runtime-reload-driver.mjs` 为46/46、`test:agent-tui` 为10/10、`test:ci-gates` 为203/203，语法检查及 `git diff --check` 通过。此前 PR head 的 Release Preflight 不覆盖本次更新，完整发布验收仍需在更新后的固定输入上重跑。
