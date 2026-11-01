@@ -25,6 +25,10 @@ name: CI Validation
         required: false
         type: string
         default: ''
+      selection:
+        required: false
+        type: string
+        default: ''
     outputs:
       input_sha:
         value: ${{ jobs.resolve.outputs.input_sha }}
@@ -94,6 +98,7 @@ jobs:
       id: plan
       shell: bash
       env:
+        GATE_SELECTION: ${{ inputs.selection }}
         GATE_MODE: ${{ inputs.mode }}
         GATE_BASE: ${{ inputs.base_sha }}
         GATE_HEAD: ${{ inputs.head_sha }}
@@ -104,6 +109,7 @@ jobs:
         set -euo pipefail
         run_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .head_sha)"
         args=(--mode "$GATE_MODE" --sha "$GATE_SHA" --base "$GATE_BASE" --head "$GATE_HEAD" --run-head "$run_head" --output gate-plan/gate-plan.json)
+        if [[ -n "$GATE_SELECTION" ]]; then args+=(--selection "$GATE_SELECTION"); fi
         if [[ -n "$GATE_VERSION" ]]; then args+=(--version "$GATE_VERSION"); fi
         if [[ -n "$GATE_TRIGGER_TAG" ]]; then args+=(--trigger-tag "$GATE_TRIGGER_TAG"); fi
         node scripts/gates/resolve-plan.mjs "${args[@]}"
@@ -120,7 +126,7 @@ jobs:
     name: Gate input-contract (${{ matrix.variant }})
     needs:
     - resolve
-    if: ${{ always() && needs.resolve.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.input_contract != '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -171,7 +177,7 @@ jobs:
     name: Gate regression (${{ matrix.variant }})
     needs:
     - resolve
-    if: ${{ always() && needs.resolve.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.regression != '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -231,7 +237,7 @@ jobs:
     name: Gate frontend-build (${{ matrix.variant }})
     needs:
     - resolve
-    if: ${{ always() && needs.resolve.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.frontend_build != '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -292,7 +298,7 @@ jobs:
     needs:
     - resolve
     - frontend-build
-    if: ${{ always() && needs.resolve.result == 'success' && needs.frontend-build.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.webview_function != '' && needs.frontend-build.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -363,7 +369,7 @@ jobs:
     needs:
     - resolve
     - frontend-build
-    if: ${{ always() && needs.resolve.result == 'success' && needs.frontend-build.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.webview_visual != '' && needs.frontend-build.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -434,7 +440,7 @@ jobs:
     needs:
     - resolve
     - frontend-build
-    if: ${{ always() && needs.resolve.result == 'success' && needs.frontend-build.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.marketplace_browser != '' && needs.frontend-build.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -505,7 +511,7 @@ jobs:
     needs:
     - resolve
     - input-contract
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.input-contract.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.native_assets != '' && needs.resolve.outputs.functional == 'true' && needs.input-contract.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -602,7 +608,7 @@ jobs:
     - resolve
     - input-contract
     - native-assets
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.input-contract.result == 'success' && (needs.native-assets.result ==
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.source_build != '' && needs.resolve.outputs.functional == 'true' && needs.input-contract.result == 'success' && (needs.native-assets.result ==
       'success' || needs.native-assets.result == 'failure') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
@@ -669,7 +675,7 @@ jobs:
     needs:
     - resolve
     - source-build
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.source-build.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.source_host != '' && needs.resolve.outputs.functional == 'true' && needs.source-build.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -760,7 +766,7 @@ jobs:
     needs:
     - resolve
     - source-build
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.functional == 'true' && needs.source-build.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.marketplace_host != '' && needs.resolve.outputs.functional == 'true' && needs.source-build.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -838,7 +844,7 @@ jobs:
     - resolve
     - input-contract
     - native-assets
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.artifact == 'true' && needs.input-contract.result == 'success' && (needs.native-assets.result == 'success'
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.package_clean != '' && needs.resolve.outputs.artifact == 'true' && needs.input-contract.result == 'success' && (needs.native-assets.result == 'success'
       || needs.native-assets.result == 'failure') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
@@ -905,7 +911,7 @@ jobs:
     needs:
     - resolve
     - package-clean
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.artifact == 'true' && needs.package-clean.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.packaged_host != '' && needs.resolve.outputs.artifact == 'true' && needs.package-clean.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -989,7 +995,7 @@ jobs:
     needs:
     - resolve
     - package-clean
-    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.artifact == 'true' && needs.package-clean.result == 'success' }}
+    if: ${{ always() && needs.resolve.result == 'success' && needs.resolve.outputs.installed_pair != '' && needs.resolve.outputs.artifact == 'true' && needs.package-clean.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -1124,6 +1130,17 @@ jobs:
         args=(--plan gate-plan/gate-plan.json --results gate-actual --provenance gate-provenance.json --output gate-final)
         if [[ -f "$candidate" ]]; then args+=(--package-receipt "$candidate"); fi
         node scripts/gates/verify-result.mjs "${args[@]}"
+    - name: Report nonblocking observations
+      if: ${{ always() && inputs.mode == 'observational' }}
+      run: node scripts/gates/report-observations.mjs --plan gate-plan/gate-plan.json --result gate-final/gate-result.json --receipts gate-actual --output observation-report
+    - name: Preserve observation report
+      if: ${{ always() && inputs.mode == 'observational' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ci-observation-report-${{ github.run_id }}-${{ github.run_attempt }}
+        path: observation-report
+        if-no-files-found: warn
+        retention-days: 30
     - name: Preserve aggregate infrastructure failure
       if: ${{ always() }}
       env:
@@ -1144,5 +1161,5 @@ jobs:
         retention-days: ${{ inputs.mode == 'release-tag' && 90 || 14 }}
     - name: Expose verified acceptance
       id: acceptance
-      if: ${{ success() && steps.verify.outcome == 'success' }}
+      if: ${{ success() && steps.verify.outcome == 'success' && inputs.mode != 'observational' }}
       run: echo "accepted=true" >> "$GITHUB_OUTPUT"

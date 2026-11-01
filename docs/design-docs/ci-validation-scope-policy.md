@@ -1,11 +1,11 @@
 ---
 title: 合并 CI 的必跑任务与省略规则
-decision_status: 比较中
+decision_status: 已选定
 validation_status: 验证中
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [适配与基础设施层]
 related_specs: []
-related_plans: [docs/exec-plans/completed/ci-validation-scope-policy.md]
+related_plans: [docs/exec-plans/completed/ci-validation-scope-policy.md, docs/exec-plans/active/ci-validation-scope-implementation.md]
 updated_at: 2026-11-01
 ---
 
@@ -15,7 +15,7 @@ updated_at: 2026-11-01
 
 用户指出 PR #350 在代码 CI 已通过后仅补文档，也再次运行全部 jobs，要求明确必须执行的 runner 和可以省略的情形。本设计将问题落到验证任务：runner 是执行 job 的机器，只有取消不适用或已被有效证据覆盖的 job，才能减少机器分配；更换 runner 标签不能消除重复验证。
 
-目标是让每个新 head 都有自己的明确合并结论，同时避免对相同功能输入重复执行昂贵验证，并将已登记的间歇性问题持续展示为非阻塞观察。本轮完成现状核验、任务分级建议与实施验收标准，尚未修改 CI；下文推荐规则需要后续实现和反例验证后才能启用。现行规则仍以 `docs/WORKFLOW.md` 与 `release-gate-redesign.md` 为准。
+目标是让每个新 head 都有自己的明确合并结论，同时避免对相同功能输入重复执行昂贵验证，并将已登记的间歇性问题持续展示为非阻塞观察。下文保留研究时的范围与取舍记录；2026-11-01 已按用户授权开始实现两个阶段，当前实现接口与边界见末尾“正式方案”和 `docs/workflows/CI.md`。验证状态在最新实现的 CI 完成前保持“验证中”。
 
 ## 已确认的重复原因与代价
 
@@ -112,7 +112,7 @@ PR Checks / Summary 至少分开显示：阻塞检查通过/失败数量；当�
 
 恢复为 required 需要修复依据和覆盖原失败条件的回归证据，明确支持的平台/场景，并经过一段预先定义的观察窗口。窗口由该项的触发频率和实际风险确定，不能以“重跑一次变绿”或任意刷满连续成功次数代替修复结论。用户允许本次讨论的低概率产品缺陷先合并、再专门修复；“已确认缺陷”和“必须本 PR 修复”是不同判断。合并不表示问题已修复，也不降低问题本身的影响描述。
 
-该非阻塞原则首先适用于普通代码合并。正式发布中的适用性必须在发布契约中显式列出；普通 PR 的观察分类不能自动减少完整发布任务，不能把观察失败隐藏在完整 release acceptance 中。本轮只更新设计，未将任何现有 required job 实际降级。
+该非阻塞原则首先适用于普通代码合并。正式发布中的适用性必须在发布契约中显式列出；普通 PR 的观察分类不能自动减少完整发布任务，不能把观察失败隐藏在完整 release acceptance 中。当前实现仅对策略表中的三个具名普通 PR 用例拆分观察；正式发布 required 集合保持完整。
 
 ## 文档追加时如何复用旧验证
 
@@ -175,4 +175,18 @@ PR Checks / Summary 至少分开显示：阻塞检查通过/失败数量；当�
 7. 已登记间歇失败应在独立观察检查中真实显示失败，required 门禁仍可通过且不等待观察；未知失败和同 job 其他用例不能被通配豁免；已登记的低概率产品缺陷按用户决定可先合入，不因确认根因而自动阻塞。
 8. 首次失败后复跑通过仍保留首败、首轮失败率与原证据；观察未运行/取消/过期不得伪装为通过；修复恢复门禁有可追溯的验证依据。
 
-本轮现状验证与设计已完成，CI 行为没有改变。实施缺口和消费者审计要求已登记到技术债跟踪器。
+以上为设计阶段的验收要求，当前实现及证据按下节持续更新。
+
+## 正式方案
+
+2026-11-01 用户授权在 PR #352 一次实施两个阶段。实现由 [实施计划](../exec-plans/active/ci-validation-scope-implementation.md) 推进；前文“第一阶段/后续”为研究时顺序，两阶段均属于本次交付。
+
+`scripts/gates/merge-control.mjs` 与 `release-preflight.yml` 提供 documentation / reuse / execute 三路径；`check-documentation.mjs` 只使用 Node 内置模块验证链接/设计索引与删除引用。documentation 分配两个 Linux 控制 jobs，不调用业务图。reuse 独立下载核对原 acceptance，保留原 SHA/run，签发新的 merge-verification；证明类型不能成为 release-tag acceptance。
+
+`scope-policy.mjs` 定义模块到 regression/Host/浏览器/安装消费者的映射，选择后补齐 `catalog.mjs::jobDependencies`。`resolve-plan.mjs` 的 affected 选择模式保持 legacy 与发布完整模式兼容；`ci-validation.yml` 仅调度非空矩阵。新策略自身在 PR 中变化时，控制层禁用 affected，首次完整执行；其后的普通文档追加可复用原完整成功结果，不能缩减原任务集合。已落地策略才供后续 PR 按模块选测。
+
+全局样式与插件源码共享所有插件 Host 消费者，进一步审计后撤销了研究初期仅按 UI suite 名字裁剪的窄选择。源码和打包仍消费六平台同批 native 资产。当前模型：市场应用 15 个业务 jobs，市场共享 35，notifier 27，listing 14，插件/全局样式 269；完整普通 affected 模式为 270 个业务 jobs（3 个具名用例另行观察），不含 4 个控制 jobs。纯文档直接走两控制 jobs；数字为选测模型，不代替真实运行。
+
+`observation-policy.json` 登记三个具名历史 Host 间歇用例，由 `ci-observations.yml` 在相关 PR 和每日定时独立执行。`report-observations.mjs` 保留当前结果、已匹配/待归类失败、首轮样本统计与维护责任。必需 verifier 不等待观察，也不把失败改写为通过；release-pr/release-tag 的 362 项仍全部必需。普通 pr 的 legacy 首轮策略变更验证仍为 277 jobs，不能使用正在修改的观察表给本 PR 自行减项。
+
+最终新增 17 项定向测试通过，覆盖真实 Git 的代码后补文档、输入变化/目标变化/旧来源失效/错误 PR、当前 verifier 对同一原 artifact 的再次校验、范围依赖闭包、完整发布集合与观察首败统计；三份 workflow 的 actionlint 通过。现有完整门禁/发布合同 198/198 通过；三份 workflow 的 actionlint 和发布 preflight/workflow 合同通过。真实 CI 与受控 Actions 对照仍在验证。

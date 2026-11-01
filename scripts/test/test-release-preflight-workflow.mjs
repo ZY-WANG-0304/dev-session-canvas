@@ -12,7 +12,7 @@ assert.equal(outer.jobs.validation.with.mode,'pr');
 assert.equal(outer.jobs['verify-release-contract'].name,'Verify release contract');
 assert.match(outer.jobs['verify-release-contract'].if,/always\(\)/);
 assert.deepEqual(outer.jobs['verify-release-contract'].needs,['resolve-input','validation']);
-const acceptanceStep=outer.jobs['verify-release-contract'].steps.find(step=>step.run?.includes('check-acceptance.mjs'));
+const acceptanceStep=outer.jobs['verify-release-contract'].steps.find(step=>step.run?.includes('merge-control.mjs --command verify'));
 assert(acceptanceStep);assert.match(acceptanceStep.run,/test "\$RESOLVE_RESULT" = success/);
 assert(!acceptanceStep.run.includes('VALIDATION_RESULT'),'Calibration uses independently verified acceptance');
 assert(!reusable.jobs.resolve.env?.GITHUB_REF_NAME,'Reserved GitHub identity must not be overridden');
