@@ -428,6 +428,11 @@
       "title": "note body editing target fills the note frame without an inset editor box"
     },
     {
+      "id": "a03daaf9564243b49609-2f692bf70a446493fe54",
+      "file": "webview-harness.spec.mjs",
+      "title": "quick drag after selecting a group moves it and suppresses the following title double-click focus"
+    },
+    {
       "id": "a03daaf9564243b49609-31b4dda4959894dd757e",
       "file": "webview-harness.spec.mjs",
       "title": "clicking a quoted note checklist checkbox updates markdown without entering edit mode"
@@ -1626,6 +1631,11 @@
       "id": "a03daaf9564243b49609-c29a583c829d1d33184f",
       "file": "webview-harness.spec.mjs",
       "title": "availability receipts work without a terminal controller and ignore stale lifecycle notifications"
+    },
+    {
+      "id": "a03daaf9564243b49609-c2b28e817c422eb75aca",
+      "file": "webview-harness.spec.mjs",
+      "title": "a small second-press jitter still focuses the group without committing its candidate move"
     },
     {
       "id": "a03daaf9564243b49609-c2fff19bd670a71d3806",

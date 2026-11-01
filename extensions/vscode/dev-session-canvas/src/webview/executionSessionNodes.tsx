@@ -797,6 +797,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             subtitleTooltip={launchCommandSubtitle}
             subtitleAccessory={<deps.ExecutionHelpTrigger help={deps.executionNodeHelpTips} variant="inline" />}
             placeholder={deps.t('agent.title.placeholder')}
+            titleEditLabel={deps.t('action.editTitle')}
             className="agent-window-title"
             onSelectNode={() => data.onSelectNode?.(id)}
             onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}
@@ -1512,6 +1513,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             subtitleTooltip={terminalMetadata.shellPath}
             subtitleAccessory={<deps.ExecutionHelpTrigger help={deps.executionNodeHelpTips} variant="inline" />}
             placeholder={deps.t('terminal.title.placeholder')}
+            titleEditLabel={deps.t('action.editTitle')}
             className="terminal-window-title"
             onSelectNode={() => data.onSelectNode?.(id)}
             onSubmit={(title) => data.onUpdateNodeTitle?.(id, title)}

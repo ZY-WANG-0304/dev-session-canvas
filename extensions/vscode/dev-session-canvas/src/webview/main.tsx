@@ -9500,7 +9500,17 @@ async function performWebviewDomAction(requestId: string, action: WebviewDomActi
         break;
       }
       case 'setNodeTextField': {
+        if (action.field === 'title') {
+          const editButton = queryNodeTitleEditButton(action.nodeId);
+          editButton.focus();
+          dispatchSyntheticMouseClick(editButton, undefined, true);
+          await waitForDomActionFlush();
+        }
+
         const field = await queryNodeTextField(action.nodeId, action.field);
+        if (action.field === 'title' && field instanceof HTMLInputElement && field.readOnly) {
+          throw new Error(`Node ${action.nodeId} title edit button did not activate the title input.`);
+        }
         field.focus();
         field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
         setControlledFieldValue(field, action.value);
@@ -9867,6 +9877,15 @@ function queryNodeActionButton(nodeId: string, action: Extract<WebviewDomAction,
   );
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error(`Could not find action button ${action.action} on node ${nodeId}.`);
+  }
+
+  return button;
+}
+
+function queryNodeTitleEditButton(nodeId: string): HTMLButtonElement {
+  const button = queryNodeRoot(nodeId).querySelector('.window-title-edit-button');
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Could not find an editable title button on node ${nodeId}.`);
   }
 
   return button;

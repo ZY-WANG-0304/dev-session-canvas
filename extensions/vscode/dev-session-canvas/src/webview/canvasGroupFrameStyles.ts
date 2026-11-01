@@ -68,9 +68,12 @@ export function createCanvasGroupFrameStyle(
   workspaceRootWatermarksEnabled = true
 ): CSSProperties {
   const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(group.role);
+  const titleEditActionWidth = isWorkspaceRootGroup ? 0 : 28;
   const titleBaseWidth = Math.max(
     CANVAS_GROUP_TITLE_BASE_MIN_WIDTH,
-    group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR + CANVAS_GROUP_TITLE_HORIZONTAL_PADDING
+    group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR +
+      CANVAS_GROUP_TITLE_HORIZONTAL_PADDING +
+      titleEditActionWidth
   );
   const toolbarScaleBaseWidth = selected
     ? CANVAS_GROUP_ACTION_PRIMARY_WIDTH + CANVAS_GROUP_ACTION_DANGER_WIDTH
