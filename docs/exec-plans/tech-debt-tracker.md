@@ -1074,10 +1074,12 @@ PR #350 的代码 CI 通过后仅补四份文档，第二轮 run `41229901129` �
 
 ### 两阶段实现接续（2026-11-01）
 
-PR #352 已实现普通文档两控制 job、同 base 原完整验收复用、模块消费者和依赖闭包选测，以及三个具名 Host 间歇用例的独立观察与首败报告；前文“尚未实施”为设计阶段状态。完整合同 198/198、最终定向 17/17 与 workflow/preflight 检查通过，真实 CI 和临时分支对照仍在执行。全局 CSS 保留所有插件 Host 消费者，六平台 native 输入按实际构建依赖保留；未知路径不做猜测裁剪。首次修改 gate 的 PR 必须完整执行，之后仅补文档可复用相同完整结果。三个观察项由 repository-maintainers 跟进，复核日期 2026-11-15，原具体问题仍未修复。实现计划见 `docs/exec-plans/active/ci-validation-scope-implementation.md`。
+PR #352 已实现普通文档两控制 job、同 base 原完整验收复用、模块消费者和依赖闭包选测，以及三个具名 Host 间歇用例的独立观察与首败报告；前文“尚未实施”为设计阶段状态。远端完整合同 203/203、定向 20/20 与 workflow/preflight 检查通过；正式 run 41270750500 为 277/277 jobs，三个临时 Actions 对照通过。纯文档为两个门禁 job，市场代码为 19，代码后补文档复用为两个，详见实施计划。本地一次 202/203 的首败仍按下节跟踪。全局 CSS 保留所有插件 Host 消费者，六平台 native 输入按实际构建依赖保留；未知路径不做猜测裁剪。首次修改 gate 的 PR 必须完整执行，之后仅补文档可复用相同完整结果。三个观察项由 repository-maintainers 跟进，复核日期 2026-11-15，原具体问题仍未修复。实现计划见 `docs/exec-plans/completed/ci-validation-scope-implementation.md`。
 
 ### 进程退出期限合同的错误类型不稳定（2026-11-01）
 
 PR #352 本地完整合同在 head `d8d463c09d0b4f026161233119687208fdf8eb30`、Linux / Node v25.6.0 下为 202/203；`scripts/test/test-gate-contracts.mjs:116` 的原进程仍存活反例期望 `deadline exhausted|unconfirmed`，实际从 `host-evidence.mjs:17` 的带期限 `/proc/<pid>/stat` 读取收到 `AbortError: The operation was aborted`，cause 为 TimeoutError。该例此前完整合同通过；本次原失败保留，不以另一次绿色覆盖。当前证据证明拒绝错误文本与断言不一致，没有证明进程误判为已退出或产品数据丢失；具体触发时序与跨 Node 版本范围待定位。
 
-按用户决定登记为后续专门处理的非阻塞问题。负责人 repository-maintainers，复核日期 2026-11-15；后续任务是受控覆盖截止到达和 I/O 取消的两种拒绝路径，统一错误契约并保留原期限与实际进程存活/退出断言。完整本地日志 `/tmp/dsc-ci-scope-contracts-final.log`；原关键错误及远端结果随 [实施计划](active/ci-validation-scope-implementation.md) 收口。本次不修改该测试或将整个回归分片设为可忽略。
+按用户决定登记为后续专门处理的非阻塞问题。负责人 repository-maintainers，复核日期 2026-11-15；后续任务是受控覆盖截止到达和 I/O 取消的两种拒绝路径，统一错误契约并保留原期限与实际进程存活/退出断言。完整本地日志 `/tmp/dsc-ci-scope-contracts-final.log`；原关键错误及远端结果随 [实施计划](completed/ci-validation-scope-implementation.md) 收口。本次不修改该测试或将整个回归分片设为可忽略。
+
+远端后续证据：run 41270750500 的 regression shard-1 job 124743016743 在 CI 的 Node 22.23.3 环境完整合同 203/203 通过，该具名反例本轮通过。此证据只限定本轮结果，不证明 Node 版本是根因，不关闭上述时序/错误契约后续任务。

@@ -12,8 +12,8 @@
 - [x] (2026-11-01) 实现模块影响分类、文档消费者清单、任务依赖闭包和文档验证。
 - [x] (2026-11-01) 实现普通 PR 的验收复用证明与稳定门禁接线。
 - [x] (2026-11-01) 实现具名观察策略、独立运行及首败/统计报告。
-- [ ] 完成正反例、现有合同与工作流检查，同步设计/手册与实际验证。
-- [ ] 更新同一 PR，验证真实 CI 及可控文档追加场景。
+- [x] (2026-11-01) 完成 20 项定向反例、现有合同与工作流检查；完整本地合同 202/203，原进程期限错误类型首败作为非阻塞后续问题登记。
+- [x] (2026-11-01) 同一 PR 的完整 CI 277/277 通过；纯文档、模块选测与代码后补文档三个真实 Actions 对照通过，临时 PR/分支/worktree 已清理。
 
 ## 意外与发现
 
@@ -25,7 +25,7 @@
 
 ## 结果与复盘
 
-三个主实现与模块选择已完成，20 项定向反例和 workflow 检查通过；现有完整门禁/发布合同 198/198 通过，远端 CI 尚在验证。全局 CSS 的消费者包含插件 Host，已保守保留而非按 suite 名称猜测裁剪。
+三个主实现与模块选择已完成，20 项定向反例和 workflow 检查通过。早期完整合同 198/198；补齐五项测试后的完整运行 202/203，原进程退出期限反例的 AbortError 文本不匹配已登记非阻塞跟踪，未删除首败。纯文档、市场模块与文档追加复用三个真实对照均通过；正式 PR 基于 main e0527132 的完整 CI 277/277 通过，远端完整合同 203/203。全局 CSS 的消费者包含插件 Host，已保守保留而非按 suite 名称猜测裁剪。
 
 ## 上下文与定向
 
@@ -62,3 +62,25 @@
 修订记录：2026-11-01 补齐只改索引时对受影响设计状态的校验，以及删除设计必须清理索引的反例；不扫描未改动的历史索引条目。定向 20/20 通过。
 
 修订记录：2026-11-01 目标 main 合入 PR #351（`e052713255825d4ba62dc4fe1c51ca6d13880b96`），rebase 时保留双方 core-beliefs 内容。最后一次完整本地合同为 202/203，原进程退出期限反例收到 AbortError 而非预期错误文本，原失败作为非阻塞后续问题登记技术债，未重跑刷绿。纯文档实跑 41269707882 仅两个 job；市场模块 41269710672 为 19 个实际 job（15 业务 + 4 控制），随后仅补文档的 41270501557 为两个 job，63 秒运行跨度，并在独立核验后明确引用原 acceptance 工件 13068583921。
+
+## 真实 Actions 对照原始身份
+
+固定基线 `4da60dc969d35217e535f6c3c3957e360c662bda`，临时 PR #353/#354 不合并。以下 merge-verification 从真实 ZIP 下载，先比对 GitHub API digest，再读取内容。所有运行均 attempt 1，status passed；计数只含实际启动的 job，非 skipped 占位。
+
+docs：run `41269707882`；head `253aa17a666d192deec61a298eb474a80872596a`；input `62b8f260e8ab97062c55d512a0b5b30c359ddb91`；checked-acceptance artifact `13068428687`，ZIP SHA256 `3cea173a17fbeae11e394289988c263b1bf9ee909819380155cb9fbebcfcd670`。实际 2 jobs，首个启动至最后完成 46 秒，累计 job 时间 37 秒；execution `not-applicable`。
+
+code：run `41269710672`；head `dca8337c3c30119d8c8b13e84fc9059d5b076909`；input `becdeed77ee449e05136cbaee0206d51136e09ad`；checked-acceptance artifact `13069201673`，ZIP SHA256 `3fa0c73592902a509deeb60b14f84e1d59fcd8f853f43939ccc048440eacc719`。实际 19 jobs，首个启动至最后完成 591 秒，累计 job 时间 1158 秒；execution `executed`。
+
+reuse：run `41270501557`；head `1f1b8fbb70ff9e08351935ac0c2c659c7606955d`；input `b5c4c808c07d25db21539b7408d1b623b89873ce`；checked-acceptance artifact `13068404133`，ZIP SHA256 `0675fbb243ac4e9b14c7e59467abcac42f190b2ac6ff0371aebb384f9f51bdd8`。实际 2 jobs，首个启动至最后完成 63 秒，累计 job 时间 61 秒；execution `reused`。
+
+复用结果 sourceRun 为 41269710672/attempt 1，原 acceptance artifact 13068583921（原 ZIP SHA256 `6531e969bfa58690ddff3d5a9d9123ce2fa827c8fd4007017e27922986645435`）；有效输入摘要 `ed18a89225a78e3f5be00fc22c5fe1b109af0d4adfd92211c4b5ac343dbc3987`。未改原 acceptance 或 VSIX 的 SHA。2026-11-01 对照结束后关闭 PR 并按核验过的 head 删除源分支与基线分支，移除干净临时 worktree。
+
+## 正式 PR 验收及交付结果
+
+2026-11-01：PR #352 完整运行 41270750500/attempt 1 成功，277 个实际 job 全部成功，362 tasks，最后的 Verify release contract job 124749990012 通过。base `e052713255825d4ba62dc4fe1c51ca6d13880b96`，head `24a78a779c5f8bf2d454ec0ad6b3979f5ac22ab4`，预合并 input `c331f75ced959a2472cc9604ceee9a42823ab3d8`。checked-acceptance artifact 13069674393 的 ZIP SHA256 为 `22cea1f2103621ab95c222419093777d6b64fd5e7714eca458857edcc4500764`，下载后比对通过；内部 merge-verification 明确 execution executed、tasks 362。原 gate-acceptance artifact 13069099950 的 API ZIP digest 为 `8f91a857bc1ac0a1682088242e21e8ce6e9d1c881941fd51448a99b26eecc23d`。
+
+regression shard-1 job 124743016743 日志确认最新输入完整合同 tests 203 / pass 203 / fail 0；原本地 202/203 的 AbortError 首败仍在技术债中保留，没有修改原测试、扩大超时或以此宣称根因修复。20 项定向反例在 rebase 后通过；三份 workflow actionlint 和发布 preflight/workflow 合同通过。观察独立报告和首败保留通过受控测试；本轮真实独立观察只完成分类，尚未形成上线后的连续历史样本。
+
+两个阶段全部完成，设计、工作流、评审口径及剩余问题已同步。PR #352 保持开放供评审，未获本 PR 合并授权，未执行合并。文档收口提交后的当前 head 状态以该 PR Checks 中的独立门禁为准；reuse 必须引用上述原始完整运行，不能冒称业务任务在新文档 SHA 执行。
+
+修订记录：2026-11-01 完整远端验收通过后归档实施计划，记录实测收益、来源身份、观察样本限制及本地首败后续责任。

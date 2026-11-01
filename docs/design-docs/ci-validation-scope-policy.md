@@ -1,11 +1,11 @@
 ---
 title: 合并 CI 的必跑任务与省略规则
 decision_status: 已选定
-validation_status: 验证中
+validation_status: 已验证
 domains: [执行编排域, VSCode 集成域]
 architecture_layers: [适配与基础设施层]
 related_specs: []
-related_plans: [docs/exec-plans/completed/ci-validation-scope-policy.md, docs/exec-plans/active/ci-validation-scope-implementation.md]
+related_plans: [docs/exec-plans/completed/ci-validation-scope-policy.md, docs/exec-plans/completed/ci-validation-scope-implementation.md]
 updated_at: 2026-11-01
 ---
 
@@ -179,7 +179,7 @@ PR Checks / Summary 至少分开显示：阻塞检查通过/失败数量；当�
 
 ## 正式方案
 
-2026-11-01 用户授权在 PR #352 一次实施两个阶段。实现由 [实施计划](../exec-plans/active/ci-validation-scope-implementation.md) 推进；前文“第一阶段/后续”为研究时顺序，两阶段均属于本次交付。
+2026-11-01 用户授权在 PR #352 一次实施两个阶段。实现由 [实施计划](../exec-plans/completed/ci-validation-scope-implementation.md) 推进；前文“第一阶段/后续”为研究时顺序，两阶段均属于本次交付。
 
 `scripts/gates/merge-control.mjs` 与 `release-preflight.yml` 提供 documentation / reuse / execute 三路径；`check-documentation.mjs` 只使用 Node 内置模块验证链接/设计索引与删除引用。documentation 分配两个 Linux 控制 jobs，不调用业务图。reuse 独立下载核对原 acceptance，保留原 SHA/run，签发新的 merge-verification；证明类型不能成为 release-tag acceptance。
 
@@ -189,4 +189,24 @@ PR Checks / Summary 至少分开显示：阻塞检查通过/失败数量；当�
 
 `observation-policy.json` 登记三个具名历史 Host 间歇用例，由 `ci-observations.yml` 在相关 PR 和每日定时独立执行。`report-observations.mjs` 保留当前结果、已匹配/待归类失败、首轮样本统计与维护责任。必需 verifier 不等待观察，也不把失败改写为通过；release-pr/release-tag 的 362 项仍全部必需。普通 pr 的 legacy 首轮策略变更验证仍为 277 jobs，不能使用正在修改的观察表给本 PR 自行减项。
 
-最终新增 17 项定向测试通过，覆盖真实 Git 的代码后补文档、输入变化/目标变化/旧来源失效/错误 PR、当前 verifier 对同一原 artifact 的再次校验、范围依赖闭包、完整发布集合与观察首败统计；三份 workflow 的 actionlint 通过。现有完整门禁/发布合同 198/198 通过；三份 workflow 的 actionlint 和发布 preflight/workflow 合同通过。真实 CI 与受控 Actions 对照仍在验证。
+新增 20 项定向测试通过，覆盖真实 Git 的代码后补文档、输入/目标/策略变化、失效来源、最终 verifier 对同一原 artifact 的再次校验、模块依赖闭包、完整发布集合、观察首败统计，以及只改索引和删除设计的文档错误。三份 workflow 的 actionlint v1.7.12 通过（未启用 shellcheck），发布 preflight/workflow 合同通过。早期完整本地合同 198/198；补齐五项测试后的完整运行 202/203，进程退出期限反例收到 AbortError 而非预期文本，首败按非阻塞问题登记技术债，未修改原断言或重跑覆盖。rebase 到 main `e0527132` 后，20 项定向测试再次通过。
+
+### 真实 Actions 对照（2026-11-01）
+
+对照基线为 `4da60dc969d35217e535f6c3c3957e360c662bda`，不合并临时 PR。后续正式代码只补充观察重试历史和文档索引校验；以下对照证明当时的模块选择、文档路径与复用流程，不将其视为最新 PR 的完整验收。
+
+| 场景 | 原 run | 实际分配 jobs | 首个 job 启动至最后 job 结束 | 累计 job 时间 |
+| --- | --- | --- | --- | --- |
+| 独立普通文档 | [41269707882](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41269707882) | 2 | 46 秒 | 37 秒 |
+| 市场应用源码 | [41269710672](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41269710672) | 19（15 业务 + 4 控制） | 591 秒 | 1158 秒 |
+| 同一 PR 随后只补文档 | [41270501557](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41270501557) | 2 | 63 秒 | 61 秒 |
+
+表格仅统计对应合并门禁 workflow，不计 skipped 占位节点，运行跨度不含首个 job 启动前的排队。代码 PR 即使本次只追加文档，独立观察 workflow 仍可能依据完整 PR 差异另运行一个分类 job；该 job 不进入必需门禁等待链。本次市场及复用对照均没有适用观察用例。纯文档整个 run 含初始排队约 98 秒。纯文档两个 workspace 依赖安装步骤均 skipped。市场原运行验收 32 tasks；复用回执保留原 input `becdeed77ee449e05136cbaee0206d51136e09ad`、原 head `dca8337c3c30119d8c8b13e84fc9059d5b076909`，明确引用原 acceptance 工件 `13068583921`，新 input 为 `b5c4c808c07d25db21539b7408d1b623b89873ce`。以上回执均独立下载并核对 API 声明的 ZIP SHA256；完整身份与摘要保留于实施计划。
+
+临时 PR #353/#354 已关闭且未合并，源分支、固定基线分支及临时 worktree 已清理。观察流程的独立接线、失败/未运行分类和重试保留首败由受控测试验证；本轮真实 observer run 因策略变更或没有适用用例只执行分类，尚无上线后的连续观测样本。正式 PR 最新输入的完整 CI 另行记录，不用这些对照或历史绿色代替。
+
+### 正式 PR 完整验收
+
+[run 41270750500](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41270750500) 在 main `e0527132` 与 PR head `24a78a77` 的真实预合并输入上完成 277/277 jobs；362 项计划任务及最后的独立来源核验通过。远端完整门禁/发布合同 203/203，通过日志位于 regression shard-1 job `124743016743`。该次远端通过不关闭本地 AbortError 首败的后续跟踪。完整身份、工件与 SHA256 见已完成实施计划。
+
+两个阶段的实现及上述验收已完成；PR #352 尚未合并。最终文档收口 head 的门禁结果在 PR Checks 中独立呈现；若使用 reuse，必须明确引用这次完整原运行。
