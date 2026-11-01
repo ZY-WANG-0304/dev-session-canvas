@@ -14,8 +14,10 @@
 - [x] (2026-11-01 04:03Z) 查询并打开 OpenAI Docs 的 Codex CLI 命令/快捷键文档；确认 `/side` 与 `/keymap` 已有说明，但官方页面没有给出 `Ctrl+/` 默认绑定。
 - [x] (2026-11-01 04:03Z) 检查本机 `codex-cli 0.166.0` 的 `/keymap`，确认 `Global / Toggle Side Conversation / ctrl-/`，并记录 keymap 页面统计。
 - [x] (2026-11-01 04:03Z) 跟踪插件从 Webview 键盘事件到 PTY 的处理路径，并按锁定版本检查 xterm.js `6.0.0` 键盘映射。
-- [x] (2026-11-01 04:03Z) 更新终端快捷键设计文档及注册表，写明代码级高置信根因、焦点边界与真实 Webview 验证缺口。
-- [x] (2026-11-01 04:03Z) 完成本轮调研记录；不实现快捷键修复，待后续受控验证决定编码适配方案。
+- [x] (2026-11-01 04:03Z) 更新终端快捷键设计文档及注册表，写明代码级高置信根因、焦点边界与验证缺口。
+- [x] (2026-11-01 05:02Z) 用仓库 Playwright Webview harness 在 Agent / Terminal xterm 上分别发送 Ctrl+/；捕获事件字段并检查 PTY 输入消息。
+- [x] (2026-11-01 05:02Z) 增加 Ctrl+C 正向对照，确认同一 Webview / xterm 能将控制字符发到输入链路；移除临时调试用例，只保留文档证据。
+- [x] (2026-11-01 05:02Z) 更新设计记录，明确浏览器 harness 已复现、真实 VS Code 宿主与用户键盘布局仍未覆盖。
 
 ## 意外与发现
 
@@ -27,23 +29,25 @@
   证据：锁文件 `package-lock.json` 的 `node_modules/@xterm/xterm` 条目；对应 xterm `6.0.0` 源码 `src/common/input/Keyboard.ts` 中 keyCode `191` 的斜杠定义和 Ctrl 特殊键映射、`src/browser/CoreBrowserTerminal.ts` 中 `if (!result.key) return true` 路径。插件落点见 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`、`executionSessionNodes.tsx`。
 - 观察：键盘焦点可能形成另一条“巧合”路径。Note 可编辑字段只向外透传 Ctrl/Cmd+C/X/V/Z/Y 等编辑快捷键，其他按键会停止冒泡；如果焦点不在 Agent xterm，`Ctrl+/` 不会走执行节点输入路径。
   证据：`extensions/vscode/dev-session-canvas/src/webview/canvasUiSurface.tsx` 中的 `handleEditableFieldKeyDown` 和 `shouldAllowTextEditingShortcutToBubble`。
-- 观察：尚未在真实 VS Code Webview 内同时记录 DOM `KeyboardEvent` 与 `terminal.onData`，因此布局差异、Webview 到工作台的事件冒泡，以及用户安装版本的具体表现仍需现场复现。
-  证据：本轮运行了本机 TUI 的 `/keymap` 并检查锁定 xterm 源码；没有启动真实 VS Code Webview，也没有运行自动化测试。
+- 观察：浏览器 Playwright harness 中，Agent 与 Terminal xterm 都收到 `Ctrl+/` 的 DOM `keydown`，但都没有生成 `webview/executionInput`；同一焦点下 `Ctrl+C` 则生成 ETX（`0x03`）。这确认 harness 中的事件进入 xterm，但 Ctrl+/ 在 xterm 到 PTY 输入消息之间没有被编码。
+  证据：临时用例 `temporary debug Ctrl slash xterm delivery` 通过 `node scripts/test/run-playwright-webview.mjs --grep 'temporary debug Ctrl slash'` 运行。事件字段为 `key="/"`、`code="Slash"`、`keyCode=191`、`ctrlKey=true`、`shiftKey=false`、`defaultPrevented=false`；Ctrl+/ 输入消息为空，Ctrl+C 正向对照的输入数据为 ETX（`0x03`）。用例已在验证后删除。
+- 观察：以上确认范围是仓库构建的浏览器 Webview bundle 和 Playwright Chromium，并未启动真实 VS Code 工作台或用户的 Codex CLI PTY，因此宿主 keybinding 抢占、键盘布局和 CLI 版本差异仍待现场验证。
+  证据：默认构建因缺少 `generated/execution-assets` 退出；按构建脚本提示以 `npm run build -- --execution-profile=stock` 成功构建后运行上述两例。没有启动真实 VS Code。
 
 ## 决策记录
 
 - 决策：本轮只记录调研结论，不直接在 `attachCustomKeyEventHandler` 中注入 `Ctrl+/` 兼容输入。
   理由：需要先确认 Codex CLI 对收到的 PTY 字节/增强键盘序列的识别，以及目标操作系统和键盘布局；否则可能误触发、破坏终端输入或只修复一个布局。
   日期/作者：2026-11-01 / Codex。
-- 决策：将 `Ctrl+/` 不生效记录为“锁定 xterm 版本中的代码路径高度可疑，真实扩展现场尚待确认”，而不是已完成端到端复现的故障结论。
-  理由：CLI 的默认绑定已从当前二进制确认，xterm 6.0.0 源码没有对应输入映射；但用户的 CLI 版本、焦点和键盘布局未知。
+- 决策：将根因升级为“浏览器 Webview harness 已确认 xterm 输入转换缺失；真实 VS Code 宿主与用户环境仍待确认”。
+  理由：两类执行节点的 xterm 均收到 Ctrl+/ DOM 事件，且 Ctrl+C 正向对照证明同一链路可发送控制字符；但没有真实 VS Code 宿主、用户 CLI 版本和键盘布局证据。
   日期/作者：2026-11-01 / Codex。
 
 ## 结果与复盘
 
-调研确认 Codex CLI `0.166.0` 的默认全局侧聊切换快捷键是 `Ctrl+/`，并确认仓库现有剪贴板 handler 不主动拦截该组合键。更可能的断点位于 xterm.js `6.0.0`：DOM 按键未形成 PTY 输入，因此 CLI 收不到该快捷键。Note 编辑字段拦截非白名单组合键是另一个依赖焦点的路径。
+调研确认 Codex CLI `0.166.0` 的默认全局侧聊切换快捷键是 `Ctrl+/`，仓库剪贴板 handler 不主动拦截它。Playwright Webview harness 已复现 Agent 与 Terminal xterm 收到 `key=/, code=Slash, ctrlKey=true`，但没有发出 PTY 输入消息；同一页面的 Ctrl+C 正向对照会发出 ETX（`0x03`）。结合 xterm.js `6.0.0` 源码，根因已从代码推断升级为浏览器 harness 可复现：该组合没有被 xterm 转换成终端输入。Note 编辑字段拦截非白名单组合键仍是另一条依赖焦点的路径。
 
-本轮没有完成真实 Webview 的按键到 PTY 端到端复现，也没有选择正式修复。后续验证应记录目标操作系统、键盘布局、Codex CLI 版本和焦点；在 xterm key handler 与 `terminal.onData` 两侧对同一次输入做无敏感内容的诊断。再比较可行的兼容序列或 `/keymap` 替代绑定，之后另建实现计划。
+本轮没有在真实 VS Code 工作台或用户 Codex CLI PTY 中复现，也没有选择正式修复。后续若要跨环境关闭问题，应记录目标操作系统、键盘布局、CLI 版本和焦点，并确认 VS Code 工作台没有先行处理该键；再比较可行的兼容输入或 `/keymap` 替代绑定，另建实现计划。
 
 ## 上下文与定向
 
@@ -64,12 +68,13 @@ DevSessionCanvas 的 Agent 与 Terminal 节点在 Webview 中使用 xterm.js 呈
 3. 执行 `codex --version`，在空目录启动 TUI 并运行 `/keymap`，只读查看默认快捷键，不保存自定义配置。
 4. 检查 `extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts`、`executionSessionNodes.tsx`、`canvasUiSurface.tsx` 以及 `package-lock.json` 的 xterm 版本。按锁定版本源码核对 Ctrl 加斜杠是否会生成终端输入。
 5. 更新 `docs/design-docs/execution-terminal-clipboard-shortcuts.md` 的附加调研章节和 `docs/design-docs/index.md` 注册项；结果明确标记真实 Webview 验证缺口。
+6. 用临时 Playwright harness 用例发送 `Control+Slash` 并捕获目标 textarea 的 DOM 事件；检查 harness 的 `webview/executionInput` 消息，再用 `Control+KeyC` 做正向对照。临时用例完成后删除，只把结果记录到计划和设计文档。
 
 ## 验证与验收
 
 研究结果只有在以下可复核条件同时成立时才算完成：本机 `/keymap` 明确显示 `Toggle Side Conversation / ctrl-/`；插件代码可追踪出 xterm 自定义 handler、xterm 键盘映射和 `terminal.onData` 的先后关系；正式设计文档与索引同步，并将代码证据和现场不确定性分开写。
 
-本轮不运行自动化测试。真实 VS Code Webview 端到端验证是后续工作，建议在不同操作系统/布局与目标 CLI 版本中分别观察 `KeyboardEvent.key/code/modifier` 和 `terminal.onData` 是否产生字节。未经该验证，不应把某种终端控制序列视为正式兼容方案。
+运行 `npm run build -- --execution-profile=stock` 后，执行 `node scripts/test/run-playwright-webview.mjs --grep 'temporary debug Ctrl slash'`。Agent 与 Terminal 各有一例通过：DOM 事件包含 `key="/"`、`code="Slash"`、`ctrlKey=true`、`shiftKey=false`；Ctrl+/ 后没有 `webview/executionInput`；Ctrl+C 对照发送 ETX（`0x03`）。该结果证明浏览器 harness 的 xterm 路径，不代表真实 VS Code 工作台或其他操作系统键盘布局。
 
 ## 幂等性与恢复
 
@@ -91,7 +96,17 @@ DevSessionCanvas 的 Agent 与 Terminal 节点在 Webview 中使用 xterm.js 呈
 
 xterm 6.0.0 的关键行为：物理斜杠的键码是 191；Ctrl 特殊映射不包含该键。`evaluateKeyboardEvent` 无 `result.key` 时，`CoreBrowserTerminal._keyDown` 提前返回，不触发 xterm data event。
 
-本文件变更说明（2026-11-01）：首次记录 `/side` 默认绑定与插件/xterm 输入链路调研，用于将下一步验证建立在可追踪证据上。
+Playwright 运行证据（临时调试用例已移除）：
+
+    Agent: key="/", code="Slash", keyCode=191, ctrlKey=true, defaultPrevented=false; executionInput=[]
+    Agent Ctrl+C: executionInput.data=ETX (0x03)
+    Terminal: key="/", code="Slash", keyCode=191, ctrlKey=true, defaultPrevented=false; executionInput=[]
+    Terminal Ctrl+C: executionInput.data=ETX (0x03)
+    2 passed (7.9s)
+
+构建前提：普通 `npm run build` 因缺少 `generated/execution-assets` 失败；`npm run build -- --execution-profile=stock` 成功。stock 只用于这次 xterm Webview 输入路径调试。
+
+本文件变更说明（2026-11-01）：新增 Playwright Chromium 的 Ctrl+/ 事件与 Ctrl+C 正向对照证据；将确认范围限定为浏览器 Webview harness，真实 VS Code 宿主仍待验证。
 
 ## 接口与依赖
 

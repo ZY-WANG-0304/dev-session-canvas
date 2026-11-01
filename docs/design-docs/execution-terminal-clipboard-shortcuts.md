@@ -166,6 +166,8 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 
 因此当前最强的代码级判断是：这组按键没有被插件剪贴板 handler 吞掉，而更可能在 xterm DOM 键盘事件到终端数据的转换处丢失，Codex CLI 收不到 `Ctrl+/`。另有一个焦点相关的独立情况：若焦点在 Note 标题/正文输入框，`canvasUiSurface.tsx` 的 `handleEditableFieldKeyDown` 会阻止未列入编辑快捷键白名单的 Ctrl 组合冒泡；画布全局监听则处理删除和菜单 Escape，不处理 `Ctrl+/`。只有 Agent xterm 获得焦点时，才应检查终端输入链路。
 
-这仍是高置信代码根因，不是已完成的真实扩展端到端复现。当前没有收集用户的 CLI 版本、操作系统、键盘布局和实际焦点，也没有在 VS Code Webview 同时观察 `KeyboardEvent` 与 `terminal.onData`。在选择正式修复前，应使用实际扩展包记录按键的 `key`、`code`、`ctrlKey`、`shiftKey`，并确认终端 `onData` 是否产生输入；还要验证 Codex 能识别候选兼容输入。`/side` 命令和 `/keymap` 自定义绑定是调查期间可用的替代入口；本轮不预先指定另一组快捷键或控制序列。
+Playwright Webview harness 已进一步确认浏览器端行为：在 Agent 和 Terminal 两类 xterm 上，Chromium 收到 `key="/"`、`code="Slash"`、`keyCode=191`、`ctrlKey=true`、`shiftKey=false` 的 `keydown`，事件没有被阻止，但没有产生 `webview/executionInput`。同一焦点下 Ctrl+C 正向对照会产生 `webview/executionInput`，数据为 ETX（`0x03`）。这确认 harness 中的缺失发生在 xterm 按键到终端输入之间，与锁定版本源码分析一致。
+
+该复现使用仓库构建的浏览器 bundle 和 Playwright Chromium，不包含真实 VS Code 工作台 keybinding，也没有接上真实 Codex CLI PTY。因此用户 CLI 版本、操作系统、键盘布局和实际焦点仍需在现场核对。选择正式修复前，应先确认目标宿主中工作台没有抢先处理该键，再验证候选输入能被 Codex 识别。`/side` 命令和 `/keymap` 自定义绑定是可用的替代入口；本轮不预先指定另一组快捷键或控制序列。
 
 调研过程与命令证据见 `docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md`。本补充将整体验证状态改为“验证中”，直至真实 Webview 输入链路得到复现或排除。
