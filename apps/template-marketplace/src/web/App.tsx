@@ -324,3 +324,5 @@ function navItemClassName(active: boolean): string {
     ? 'inline-flex shrink-0 bg-canvas-accent px-10 py-4 text-canvas-accentText'
     : 'inline-flex shrink-0 px-8 py-4 text-canvas-muted hover:text-canvas-ink hover:underline';
 }
+
+// CI scope validation: this comment does not change application behavior.
