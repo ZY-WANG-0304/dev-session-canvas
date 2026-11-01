@@ -6114,6 +6114,50 @@ for (const executionKind of ['agent', 'terminal']) {
       .toBe('\u0003');
   });
 
+  test(`${executionKind} Ctrl+/ uses the produced slash character and ignores the physical Slash position`, async ({
+    page
+  }) => {
+    const nodeId = `${executionKind}-zoom`;
+
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await clearPostedMessages(page);
+
+    // A non-US layout can produce '/' from a different physical key with Shift.
+    await dispatchTerminalShortcut(page, nodeId, {
+      key: '/',
+      code: 'Digit7',
+      keyCode: 55,
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: true
+    });
+    await expect
+      .poll(async () => {
+        const messages = await readPostedMessagesByType(page, 'webview/executionInput');
+        return messages.find((entry) => entry.payload.nodeId === nodeId)?.payload.data ?? null;
+      })
+      .toBe('\u001f');
+
+    await clearPostedMessages(page);
+
+    // On layouts such as German, this physical position produces '-'. It must not
+    // be mistaken for Ctrl+/ just because KeyboardEvent.code is still 'Slash'.
+    await dispatchTerminalShortcut(page, nodeId, {
+      key: '-',
+      code: 'Slash',
+      keyCode: 189,
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: false
+    });
+    await settleWebview(page, 2);
+
+    const messages = await readPostedMessagesByType(page, 'webview/executionInput');
+    expect(messages).toEqual([]);
+  });
+
   test(`${executionKind} link activation posts parsed file and URL targets`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     const fileLinkText = 'src/index.ts:42:10';

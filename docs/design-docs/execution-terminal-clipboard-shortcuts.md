@@ -1,12 +1,12 @@
 ---
 title: Agent / Terminal 终端复制粘贴快捷键交互
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains: [VSCode 集成域, 画布交互域, 协作对象域, 执行编排域]
 architecture_layers: [宿主集成层, 画布呈现层, 共享模型与编排层]
 related_specs: [docs/product-specs/agent-terminal-clipboard-shortcuts.md]
-related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md]
-updated_at: 2026-07-01
+related_plans: [docs/exec-plans/active/execution-terminal-clipboard-shortcuts.md, docs/exec-plans/active/agent-screenshot-paste-input.md, docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md, docs/exec-plans/active/codex-cli-side-shortcut-repair.md]
+updated_at: 2026-11-01
 ---
 
 # Agent / Terminal 终端复制粘贴快捷键交互
@@ -153,3 +153,25 @@ Webview 收到 `host/executionPasteText` 后，必须查找当前 `executionTerm
 - VSCode Terminal skipped command defaults: https://github.com/microsoft/vscode/blob/9300eb847eaf812841160885d4885ae6dd394d1c/src/vs/workbench/contrib/terminal/common/terminal.ts
 - Claude Code common workflows, Work with images: https://code.claude.com/docs/en/common-workflows
 - Claude Code interactive mode keyboard shortcuts: https://code.claude.com/docs/en/interactive-mode
+
+## 10. Codex CLI `/side` 快捷键兼容性调研
+
+截至 2026-11-01，本机安装版本为 `codex-cli 0.166.0`。官方 OpenAI Docs 的 [Developer commands](https://learn.chatgpt.com/docs/developer-commands) 将 `/side` 列为启动临时侧聊的命令，并说明 `/keymap` 可以查看和持久化 TUI 快捷键；页面的交互快捷键清单未列出 `Ctrl+/` 默认绑定。因此精确绑定来自本机 TUI，而不是官方文档。当前确认的是安装版本的快捷键状态；本轮未比较历史 CLI 版本，无法从这些材料断定该绑定具体从哪一版引入。
+
+在空目录打开该版本 TUI 并运行 `/keymap` 后，界面显示 154 个 action、0 个自定义绑定、6 个未绑定项，其中 `Global / Toggle Side Conversation` 的默认绑定是 `ctrl-/`，`Global / Leader` 是 `ctrl-x`。这确认了当前被用户提到的快捷键确实存在于该 CLI 版本，但不能推断用户实际安装版本与此相同。
+
+画布 Agent 和 Terminal 节点共用 Webview xterm 输入路径：`extensions/vscode/dev-session-canvas/src/webview/executionTerminalNativeInteractions.ts` 的 `terminal.attachCustomKeyEventHandler` 只处理已识别的复制/粘贴快捷键；不属于剪贴板操作的 `Ctrl+/` 会走 `action === 'passThrough'` 并返回 `true`。之后 `extensions/vscode/dev-session-canvas/src/webview/executionSessionNodes.tsx` 的 `terminal.onData` 才能将 xterm 生成的终端数据交给现有 Host/runtime 输入链路。插件没有显式的 `Ctrl+/` 拦截或映射。
+
+`package-lock.json` 锁定 `@xterm/xterm` `6.0.0`。该版本的 `src/common/input/Keyboard.ts` 把物理斜杠键码 191 记录为 `/` 与 `?`，但 Ctrl 组合映射不包括斜杠；Ctrl 字符的特殊映射覆盖数字键的一部分、方括号/反斜杠和 `_` 等，不包含 Ctrl 加 `/`。在标准 US 键盘的 Ctrl 加斜杠事件形状下，xterm 的 `evaluateKeyboardEvent` 不会产生 `result.key`；`src/browser/CoreBrowserTerminal.ts` 随即在 `if (!result.key) return true` 提前返回，不触发 xterm data event。需要 Shift 才能输入 `/` 的键盘布局也不一定会落入 xterm 已有的控制键编码分支。
+
+因此当前最强的代码级判断是：这组按键没有被插件剪贴板 handler 吞掉，而更可能在 xterm DOM 键盘事件到终端数据的转换处丢失，Codex CLI 收不到 `Ctrl+/`。另有一个焦点相关的独立情况：若焦点在 Note 标题/正文输入框，`canvasUiSurface.tsx` 的 `handleEditableFieldKeyDown` 会阻止未列入编辑快捷键白名单的 Ctrl 组合冒泡；画布全局监听则处理删除和菜单 Escape，不处理 `Ctrl+/`。只有 Agent xterm 获得焦点时，才应检查终端输入链路。
+
+Playwright Webview harness 已进一步确认浏览器端行为：在 Agent 和 Terminal 两类 xterm 上，Chromium 收到 `key="/"`、`code="Slash"`、`keyCode=191`、`ctrlKey=true`、`shiftKey=false` 的 `keydown`，事件没有被阻止，但没有产生 `webview/executionInput`。同一焦点下 Ctrl+C 正向对照会产生 `webview/executionInput`，数据为 ETX（`0x03`）。这确认 harness 中的缺失发生在 xterm 按键到终端输入之间，与锁定版本源码分析一致。
+
+该复现使用仓库构建的浏览器 bundle 和 Playwright Chromium，不包含真实 VS Code 工作台 keybinding，也没有接上真实 Codex CLI PTY。因此用户 CLI 版本、操作系统、键盘布局和实际焦点仍需在现场核对。选择正式修复前，应先确认目标宿主中工作台没有抢先处理该键，再验证候选输入能被 Codex 识别。`/side` 命令和 `/keymap` 自定义绑定是可用的替代入口；本轮不预先指定另一组快捷键或控制序列。
+
+调研过程与命令证据见 `docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md`。本补充将整体验证状态改为“验证中”，直至真实 Webview 输入链路得到复现或排除。
+
+2026-11-01 修复决策：`executionTerminalNativeInteractions.ts` 在 xterm 获得焦点时按 DOM 当前字符 `key === '/'` 识别 Ctrl+/，要求 Ctrl 且不带 Meta / Alt；若某个键盘布局需要 Shift 才能产生实际 `/`，仍允许映射。代码不按物理 `code` 回退，因为 `code === 'Slash'` 在德语布局等环境可对应 `-`，会误吞 Ctrl+-。命中后阻止按键继续传播，并调用 `terminal.input('\x1f', true)`。ASCII US（`0x1f`）是 Ctrl+/ 的传统终端控制表示；`Terminal.input` 会按用户输入路径触发 `onData`，因此继续复用现有 `webview/executionInput` → Host/runtime PTY 链路。该分支仅处理 Ctrl+/，不改动 Ctrl+C 的 ETX 输入和剪贴板规则。
+
+Playwright 调试已确认 Chromium 将 Ctrl+/ 交给 Agent / Terminal xterm，原实现没有产生 PTY 输入；修复回归覆盖非美式布局实际字符 `/` 与物理 Slash 位置输出 `-`，确认前者发送 `0x1f`、后者不被误拦。PR #355 的上一轮 CI 已运行 438 个功能用例且全部通过，但门禁随后发现新增两项尚未登记到 `scripts/gates/browser-catalog.json`；现已补齐，完整 Playwright 注册 ID 与目录都为 441 项且精确匹配，最新 head 的正式 CI 仍待运行。真实 Codex PTY 候选字节验证因本机 Codex 状态目录只读而未完成。故 `0x1f` 是依据终端控制编码选择的兼容输入，尚不能记录为已被 Codex `0.166.0` TUI 现场证实。目标宿主现场验证仍待完成；`Ctrl+/` 之外的按键继续原有 xterm / Workbench 路径。

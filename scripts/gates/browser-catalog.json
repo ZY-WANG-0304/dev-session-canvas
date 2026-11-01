@@ -1438,6 +1438,11 @@
       "title": "workspace root group selected title chrome keeps nodes inside body while zoomed out"
     },
     {
+      "id": "a03daaf9564243b49609-a7c82eee7daaa11df09d",
+      "file": "webview-harness.spec.mjs",
+      "title": "terminal Ctrl+/ uses the produced slash character and ignores the physical Slash position"
+    },
+    {
       "id": "a03daaf9564243b49609-a8830033cd8d28836ffb",
       "file": "webview-harness.spec.mjs",
       "title": "terminal hard-wrapped styled path boundary accepts 2 lines before prose"
@@ -1606,6 +1611,11 @@
       "id": "a03daaf9564243b49609-be4a0215c2b35d4db6b1",
       "file": "webview-harness.spec.mjs",
       "title": "canvas group resize auto-pans at the canvas edge and keeps member drafts stationary"
+    },
+    {
+      "id": "a03daaf9564243b49609-bf11b0fc649648da8216",
+      "file": "webview-harness.spec.mjs",
+      "title": "agent Ctrl+/ uses the produced slash character and ignores the physical Slash position"
     },
     {
       "id": "a03daaf9564243b49609-c0bb75468205f66d7ae8",
