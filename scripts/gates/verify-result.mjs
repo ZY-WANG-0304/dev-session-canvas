@@ -113,5 +113,7 @@ if(process.argv[1]&&fileURLToPath(import.meta.url)===path.resolve(process.argv[1
   await writeJSON(path.join(values.output,'gate-result.json'),result);
   if(acceptance)await writeJSON(path.join(values.output,'acceptance-receipt.json'),acceptance);
   console.log(JSON.stringify({status:result.status,passed:result.passed.length,failed:result.failed,notRun:result.notRun,
-    errors:result.errors,calibration:result.calibration}));if(!acceptance)process.exitCode=1;
+    errors:result.errors,calibration:result.calibration}));if(planModeRequiresAcceptance(await readJSON(values.plan)) ? !acceptance : result.status !== 'passed')process.exitCode=1;
 }
+
+function planModeRequiresAcceptance(plan) { return plan.mode !== 'observational'; }

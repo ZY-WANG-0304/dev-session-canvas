@@ -1,0 +1,70 @@
+name: CI Stability Observations
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ci-observations-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  resolve:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      input: ${{ steps.plan.outputs.input }}
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+      applicable: ${{ steps.plan.outputs.applicable }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.3
+      - id: plan
+        name: Select registered observations
+        env:
+          INPUT_BASE: ${{ github.event.pull_request.base.sha }}
+          INPUT_HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          import { buildPlan } from './scripts/gates/resolve-plan.mjs';
+          import { policyUnchanged, assertMergeInput } from './scripts/gates/merge-control.mjs';
+          import { changedFiles } from './scripts/gates/check-documentation.mjs';
+          const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+          const input = git('rev-parse', 'HEAD');
+          const head = process.env.INPUT_HEAD || input, base = process.env.INPUT_BASE || git('rev-parse', 'HEAD^1');
+          assertMergeInput({ root: process.cwd(), input, base, head });
+          const trusted = !process.env.INPUT_HEAD || policyUnchanged(process.cwd(), base, input);
+          const paths = process.env.INPUT_HEAD ? changedFiles(process.cwd(), base, input) : ['package-lock.json'];
+          const plan = buildPlan({ mode: 'observational', selection: 'affected', inputSHA: input, baseSHA: base, headSHA: head,
+            changedPaths: paths, version: JSON.parse(execFileSync('git', ['show', `${input}:package.json`])).version });
+          const applicable = trusted && plan.selectionResult.observations.length > 0;
+          appendFileSync(process.env.GITHUB_OUTPUT, `input=${input}
+          base=${base}
+          head=${head}
+          applicable=${applicable}
+          `);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, applicable ? '具名稳定性观察独立执行，不阻塞合并。\n' : '本次无适用观察，或选测策略正在变更；未运行不表示通过。\n');
+          JS
+  observation:
+    needs: resolve
+    if: ${{ needs.resolve.outputs.applicable == 'true' }}
+    uses: ./.github/workflows/ci-validation.yml
+    with:
+      input_sha: ${{ needs.resolve.outputs.input }}
+      base_sha: ${{ needs.resolve.outputs.base }}
+      head_sha: ${{ needs.resolve.outputs.head }}
+      mode: observational
+      selection: affected

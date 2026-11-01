@@ -11,6 +11,8 @@ import { smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { assertSHA, objectDigest, readJSON, validatePlan, writeJSON } from './receipts.mjs';
 import { smokeBudgets, smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
 import { readSmokeImplementationMap, smokeImplementationFile } from './smoke-implementation.mjs';
+import { selectAffectedTasks } from './scope-policy.mjs';
+import { splitObservations } from './observation-policy.mjs';
 import { dependencyProfileForTasks } from './dependency-install.mjs';
 
 export const classificationRules = Object.freeze({
@@ -49,7 +51,7 @@ export function classifyChanges(paths) {
 }
 const policyData = () => ({ version: policyVersion, classification: {
   ...classificationRules, functional: classificationRules.functional.source, artifact: classificationRules.artifact.source
-}, environment: environmentPolicy, budgets: infrastructureBudgets, evidenceLimits,
+}, selectionSources: ['scope-policy.mjs', 'observation-policy.mjs', 'observation-policy.json'].map(file => readFileSync(new URL(file, import.meta.url), 'utf8')), environment: environmentPolicy, budgets: infrastructureBudgets, evidenceLimits,
   browserCatalogue:JSON.parse(readFileSync(new URL('./browser-catalog.json',import.meta.url),'utf8')) });
 
 export function freezeTasks(scope, diagnostic) {
@@ -79,24 +81,39 @@ export function freezeTasks(scope, diagnostic) {
   });
 }
 export function buildPlan({ mode, inputSHA, headSHA = inputSHA, baseSHA, version,
-  changedPaths, run = { id: `local-${randomUUID()}`, attempt: 1, headSHA: inputSHA }, catalogDelta = [], diagnostic, full = false }) {
+  changedPaths, run = { id: `local-${randomUUID()}`, attempt: 1, headSHA: inputSHA }, catalogDelta = [], diagnostic, full = false, selection }) {
   assert(['pr', 'release-pr', 'release-tag', 'channel-retry', 'diagnostic', 'observational'].includes(mode));
   assertSHA(inputSHA); assertSHA(headSHA); assertSHA(baseSHA);
   assert(Array.isArray(changedPaths));
   assert(mode === 'diagnostic' || diagnostic === undefined, 'Formal mode cannot carry a diagnostic selection');
   assert.equal(typeof full, 'boolean');
-  assert(!full || mode === 'pr', 'Only ordinary validation can request the broader full regression scope');
+  assert(!full || ['pr', 'observational'].includes(mode), 'Only ordinary/observation validation can request the broader scope');
+  assert(selection === undefined || selection === 'affected', 'Unknown task selection policy');
   const scope = mode === 'diagnostic' ? { functional: true, artifact: diagnostic?.payload === 'packaged', release: false }
     : ['release-pr', 'release-tag'].includes(mode) ? { functional: true, artifact: true, release: true }
       : full ? { functional: true, artifact: true, release: false }
         : { ...classifyChanges(changedPaths), release: false };
-  const tasks = freezeTasks(scope, mode === 'diagnostic' ? diagnostic : undefined);
+  let tasks = freezeTasks(scope, mode === 'diagnostic' ? diagnostic : undefined);
+  let selectionResult;
+  if (selection === 'affected' && ['pr', 'observational'].includes(mode)) {
+    const all = freezeTasks({ functional: true, artifact: true, release: false });
+    const affected = selectAffectedTasks(all, full ? ['package-lock.json'] : changedPaths);
+    const split = splitObservations(affected.tasks, all);
+    tasks = mode === 'observational' ? split.observationTasks : split.required;
+    // An empty observation run uses only the cheap input contract and reports
+    // that no observation is applicable; the outer workflow normally skips it.
+    if (!tasks.length) tasks = all.filter(task => task.job === 'input-contract');
+    scope.functional = tasks.some(task => task.job === 'native-assets');
+    scope.artifact = tasks.some(task => task.job === 'package-clean');
+    selectionResult = { ...affected.impact, omitted: affected.omitted, observations: split.observations };
+  }
   if (mode === 'diagnostic') assert(diagnostic, 'A diagnostic plan requires an explicit selection');
   const plan = { schemaVersion: 1, mode, inputSHA, baseSHA, headSHA, version, run, full,
     policyVersion, policyDigest: objectDigest(policyData()),
     catalogDigest: objectDigest({ tasks: freezeTasks({ functional: true, artifact: true, release: true }),
       smokeImplementation: readSmokeImplementationMap() }),
     environmentDigest: objectDigest(environmentPolicy), budgetDigest: objectDigest({ infrastructureBudgets, smokeBudgetInventory }),
+    ...(selection ? { selection, ...(selectionResult ? { selectionResult } : {}) } : {}),
     scope, changedPaths: [...changedPaths].sort(), catalogDelta, tasks,
     ...(diagnostic ? { diagnostic } : {}) };
   return validatePlan(plan);
@@ -104,13 +121,13 @@ export function buildPlan({ mode, inputSHA, headSHA = inputSHA, baseSHA, version
 export function validateFrozenPlan(plan) {
   validatePlan(plan);
   const expected = buildPlan(plan);
-  for (const field of ['policyVersion', 'policyDigest', 'catalogDigest', 'environmentDigest', 'budgetDigest', 'scope', 'tasks']) {
+  for (const field of ['policyVersion', 'policyDigest', 'catalogDigest', 'environmentDigest', 'budgetDigest', 'scope', 'tasks', 'selectionResult']) {
     assert.deepEqual(plan[field], expected[field], `Frozen plan ${field} differs from actual policy/catalogue`);
   }
   return plan;
 }
 export async function resolvePlan({ root = process.cwd(), mode = 'pr', inputSHA, baseSHA, headSHA,
-  version, run, triggerTag, env = process.env, diagnostic, full = false }) {
+  version, run, triggerTag, env = process.env, diagnostic, full = false, selection }) {
   if (!['diagnostic', 'observational'].includes(mode)) assertFormalEnvironment(env);
   verifySmokeBudgetSources();
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
@@ -163,16 +180,16 @@ export async function resolvePlan({ root = process.cwd(), mode = 'pr', inputSHA,
       inputDigest: objectDigest(contents.trim()), reviewRequired: true });
   }
   return buildPlan({ mode, inputSHA, headSHA, baseSHA, version, changedPaths, catalogDelta, run, diagnostic,
-    full: mode === 'pr' && full });
+    full: mode === 'pr' ? full : mode === 'observational' && env.GITHUB_EVENT_NAME !== 'pull_request', selection });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const { values } = parseArgs({ options: { mode: { type: 'string' }, sha: { type: 'string' },
     base: { type: 'string' }, head: { type: 'string' }, version: { type: 'string' }, output: { type: 'string' },
-    'run-head': { type: 'string' }, 'trigger-tag': { type: 'string' } } });
+    'run-head': { type: 'string' }, 'selection': { type: 'string' }, 'trigger-tag': { type: 'string' } } });
   assert(values.output, 'Specify --output for the frozen plan');
   const plan = await resolvePlan({ mode: values.mode, inputSHA: values.sha, baseSHA: values.base,
-    headSHA: values.head, version: values.version, triggerTag: values['trigger-tag'], run: process.env.GITHUB_RUN_ID ? {
+    headSHA: values.head, version: values.version, selection: values.selection, triggerTag: values['trigger-tag'], run: process.env.GITHUB_RUN_ID ? {
       id: process.env.GITHUB_RUN_ID, attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
       headSHA: values['run-head'] ?? process.env.GITHUB_SHA
     } : undefined });

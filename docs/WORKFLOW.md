@@ -53,7 +53,7 @@
 1. 当准备一次对外发布时，先确认当前版本对应的 feature 均已经合入 `main`；不要把尚未合并的功能分支 head 直接当成发布输入。
 2. 从最新 `main` 单独切出发布准备分支，在这条分支上集中处理版本号、`package.json`、`package-lock.json`、主扩展与 notifier `CHANGELOG.md`、Marketplace 文案、发布手册，以及 `docs/release-contracts/vX.Y.Z.md`。契约必须列出发布范围、用户 release notes、已复核文档、已知限制和验证范围；它们全部是发布前的静态输入。
 3. CHANGELOG 只写用户可见的功能、安装升级、回退和产品限制。不要写发布准备待办、gate 状态、候选 SHA、workflow run、VSIX hash 或渠道结果；这些属于发布后证据，不能等发布完成后再回写进同版本 CHANGELOG。
-4. 普通非草稿 PR 与 main push 均通过 `Release Preflight` 调用唯一的 `ci-validation.yml`：基础层始终执行，保守路径分类追加全部功能/产物范围；版本或发布契约改动强制完整 `release-pr`。发布准备 PR 每次更新从最新远端目标与 head 生成真实预合并 SHA，先纯静态 `release:preflight`，再执行完整任务图。稳定检查 `Release Preflight / Verify release contract` 只在独立核对实际 Actions job/工件来源、精确必跑集合和同批产物后通过；取消、少结果、错输入及清理/取证失败不能成功跳过。`main` 已启用活动 ruleset，要求 PR、至少一次 review、基于最新 base，并要求 GitHub Actions 的 `Verify release contract`。2026-10-29 临时红灯 PR #342 中，该检查失败且 PR 显示 BLOCKED；验证范围与限制见 [`release-gate-redesign.md`](design-docs/release-gate-redesign.md)。发布契约和完整验收未通过不得合并发布 PR。
+4. 普通非草稿 PR 与 main push 均由 `Release Preflight` 核对最新输入：普通文档使用轻量路径，合格的同 base 文档追加可验证原 acceptance 后复用；其余调用唯一的 `ci-validation.yml` 按模块与依赖选择任务。未知输入或选测策略变化回退完整范围；版本或发布契约改动强制完整 `release-pr`。具体分类、复用和独立非阻塞观察见 `docs/workflows/CI.md`。发布准备 PR 每次更新从最新远端目标与 head 生成真实预合并 SHA，先纯静态 `release:preflight`，再执行完整任务图。稳定检查 `Release Preflight / Verify release contract` 只在独立核对实际 Actions job/工件来源、精确必跑集合和同批产物后通过；取消、少结果、错输入及清理/取证失败不能成功跳过。`main` 已启用活动 ruleset，要求 PR、至少一次 review、基于最新 base，并要求 GitHub Actions 的 `Verify release contract`。2026-10-29 临时红灯 PR #342 中，该检查失败且 PR 显示 BLOCKED；验证范围与限制见 [`release-gate-redesign.md`](design-docs/release-gate-redesign.md)。发布契约和完整验收未通过不得合并发布 PR。
 5. 发布准备 PR review 并合并后，记录最终产品 SHA，从 `main` 手动启动 `build-release-batch.yml`，传入 `product_sha` 和 `version`。构建与完整 `release-tag` 验收在该产品的隔离 checkout 执行；只在本地建立兼容原验收入口的验证引用，不推送 publish tag。seal job 独立核对真实验收与候选 producer 后保存原双包、回执、产品 CHANGELOG 和固定上下文，生成 `release-batch-<run>-<attempt>`。此流水线仅有 contents/read 权限，不创建正式 tag/Release 或写渠道。
 6. 从 `main` 启动独立的 `publish-marketplace-release.yml`，传入 `version`、`batch_run_id`、`batch_attempt`。resolve、verify、prepare、Open VSX 和 finalize 均使用本次 workflow SHA 上的工具；产品内容只来自已验收批次。校验成功前不交付；prepare 创建或确认指向原产品 SHA 的正式 `vX.Y.Z`，上传原字节并验真。发布过程不重新构建，也不随工具更新切换产品版本或 CHANGELOG。
 7. 首次上传中断时，修复工具并合入 main 后，用相同批次参数启动新的发布运行。无状态根时补齐同批缺失资产；所有已有资产先核字节，不同内容拒绝。已有 manifest/state 时复核原资产、验收和连通状态链，再走 channel-retry，不另建状态根。不得用新构建替换原批次，不能以旧 workflow 的 rerun 代替采用新工具的新 dispatch。
@@ -83,6 +83,7 @@
 
 - 分支命名规则见 `docs/workflows/BRANCH.md`。
 - commit 约定见 `docs/workflows/COMMIT.md`。
+- 合并 CI 任务范围与非阻塞观察见 `docs/workflows/CI.md`。
 - 技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 - 版本号命名规则见 `docs/workflows/VERSION.md`。
 - 模板市场生产服务部署流程见 `docs/workflows/SERVICE_DEPLOY.md`。

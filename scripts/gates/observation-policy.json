@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "host-remount-preparation",
+      "job": "packaged-host",
+      "suite": "surface-continuity/live-page-remount",
+      "variant": "surface-continuity--live-page-remount",
+      "owner": "repository-maintainers",
+      "reviewAfter": "2026-11-15",
+      "reason": "既有 Host 准备等待消息间歇超时；未确认产品归因，保留原断言并独立观察。",
+      "failurePatterns": ["Last messages=\\[\\]", "timed out.*Host", "等待.*Host"],
+      "evidence": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40701818847",
+      "tracking": "docs/exec-plans/tech-debt-tracker.md#2026-10-28既有-terminal-host-准备间歇超时未定位"
+    },
+    {
+      "id": "multi-root-host-ready",
+      "job": "source-host",
+      "suite": "multi-root-real-reopen",
+      "variant": "multi-root-real-reopen",
+      "owner": "repository-maintainers",
+      "reviewAfter": "2026-11-15",
+      "reason": "第二 Host editor ready 的既有间歇超时，根因仍待定位。",
+      "failurePatterns": ["ready.*(?:timeout|timed out|超时)", "(?:timeout|timed out).*ready"],
+      "evidence": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40696561957",
+      "tracking": "docs/exec-plans/tech-debt-tracker.md#2026-10-28既有-terminal-host-准备间歇超时未定位"
+    },
+    {
+      "id": "systemd-host-ready",
+      "job": "source-host",
+      "suite": "systemd-user-real-reopen",
+      "variant": "systemd-user-real-reopen",
+      "owner": "repository-maintainers",
+      "reviewAfter": "2026-11-15",
+      "reason": "第二 Host ready 的既有间歇超时，保留原期限和退出/清理断言。",
+      "failurePatterns": ["ready.*(?:timeout|timed out|超时)", "(?:timeout|timed out).*ready"],
+      "evidence": "https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/40683646799",
+      "tracking": "docs/exec-plans/tech-debt-tracker.md#2026-10-28既有-terminal-host-准备间歇超时未定位"
+    }
+  ]
+}
