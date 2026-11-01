@@ -14,7 +14,8 @@
 - [x] (2026-11-02) 记录 `0.28.0` 新里程碑选择、发布范围和验证边界于 `docs/design-docs/release-0-28-0.md`。
 - [x] (2026-11-02) 对齐 package / lockfile 版本、用户 CHANGELOG、双语 README / listing、发布手册、支持材料与 `docs/release-contracts/v0.28.0.md`；同步设计索引、core beliefs 与发布决策记录。
 - [x] (2026-11-02) `npm run release:preflight -- --version 0.28.0` 通过；package manifests 与 lockfile 四处 workspace 版本均为 `0.28.0`；`git diff --check` 通过。
-- [ ] 提交并推送发布准备分支，创建 main 目标 PR；等待该 head 的 required contract check、完整门禁及必要 review。
+- [x] (2026-11-02) 提交并推送发布准备分支，创建 main 目标非草稿 PR #357（https://github.com/ZY-WANG-0304/dev-session-canvas/pull/357）。
+- [ ] 等待最新 PR head 的 required contract check、完整门禁及必要 review；不复用旧 head 结果。
 - [ ] PR 合并后固定最终产品 SHA，按 `docs/WORKFLOW.md` 运行 release batch 与发布渠道流程；如门禁、审批或渠道条件未满足，记录停点而不绕过。
 
 ## 意外与发现
