@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/canvas-node-notifications.md]
 related_plans: [docs/exec-plans/active/notifier-native-client.md]
-updated_at: 2026-11-01
+updated_at: 2026-11-02
 ---
 
 # 跨平台 Notifier 端侧应用
@@ -48,6 +48,8 @@ Swift 主体容易优先满足 macOS 原生需求，但不能复用 Windows / Li
 IDE 是 attention 权威，应用保存派生记录。事件支持发布、更新、撤销、来源状态同步及定位请求/结果。应用区分已持久化接单、系统提交结果、用户操作和定位结果；OS 接单不等于用户看见。应用先持久化再确认接单；同 eventId 重试应返回已有结果。回执丢失时先查同事件状态，未知结果不得冒充明确失败。实施时明确回退仲裁：确定未接单才投工作台；不能先回退再允许迟到的新通道请求弹出。该边界必须有断线/超时反例测试，不能声称跨两个外部系统实现无条件 exactly-once。
 
 点击通知只居中来源节点，不自动选中、不清除 attentionPending。节点处理由 IDE 同步；收件箱关闭记录与画布确认是不同动作。删除节点、换代执行及迟到旧事件不得影响新执行。重连先核对权威状态再恢复展示，不把历史通知重新当新事件弹出。
+
+macOS 点击归属 Notifier 的原生通知时，系统可能激活 Notifier 应用。点击处理需先在主线程隐藏 Notifier 窗口，再异步向已验证来源发送 `focus-node`；只有来源路由不可用时才显示 Notifier 诊断窗口。socket 写入成功和来源 `focusResult=focused` 都不等同于 macOS 已将 VS Code 置于前台，必须以实际窗口和节点状态验收。
 
 ### 迁移与交付
 
@@ -108,5 +110,11 @@ IPC 实现采用当前用户家目录下 `~/.dsc-notifier/runtime/`（0700），
 桥接每 10 秒查询主扩展的有效目标，sync 撤销已确认、删除或换代的记录；查询失败不能被当作“全部已处理”。companion 在一次 activation 内保留最多 256 个未过期发送记录（包含已撤销），防止同 eventId 的未知结果被遗忘后重投；超过容量明确拒绝，暂不做截断。服务器 update 持久化独立的展示覆盖，不修改原 publish 去重输入，且不重新弹出通知；已有系统横幅不改写，更新正文待收件箱消费。focusResult 必须匹配原连接的短期待回执 ID，不能凭任意 ID 伪造完成事实。以上属于默认关闭的 Mac 开发入口，不将源码接入或自动测试当成真实多窗口验收。
 
 补充投递边界：主扩展跨 host 执行 companion 命令时，命令不存在才视为明确未发送；命令执行异常或返回格式损坏均保守归为 unknown。明确 error/unsupported 回执仍可回退。每次通过既有 cooldown 的新 attention 生成独立 eventId；同一次发送的重试必须复用完整事件。重连 sync 在异步询问主扩展后比对客户端发送集合版本，若期间新增 publish，则放弃旧快照并等待下一轮，不能误撤销新事件。
+
+### 通知点击与应用窗口激活（2026-11-02）
+
+Remote SSH 实测中，用户点击通知后看到 DSCanvas Notifier 外壳，`Terminal 4` 对应节点没有居中。此前代码直接发送来源 focus 请求，没有隐藏可见的 Notifier 主窗口；系统激活通知所属应用时，外壳因此可能留在前台。原生日志里的 `focus-dispatched` 仅代表 focus-node 帧写入来源 socket，`source-focus-result result=focused` 是来源端回执，二者都不能证明 macOS 最终前台窗口或画布居中结果。
+
+决定先在 Tauri 主线程隐藏 Notifier 窗口，等待隐藏操作完成后再路由来源请求；路由不可用时显示诊断窗口。该顺序由 Rust 回归测试覆盖。重新验收必须在匹配提交的 Remote SSH 开发窗口中点击真实通知，并检查 VS Code 前台、Terminal 4 节点居中、selection 不变、`attentionPending` 保持。尚未完成人工复验，不计 Remote SSH 回跳通过。
 
 同一执行可以在确认后再次请求关注，因此 generation 与 attentionPending 两者不足以判断旧事件有效。主扩展还维护最多 256 条本激活内、未过期的已签发 eventId 集合；确认时立即移除该节点旧事件。随后同代再次 attention 只认可新 eventId，旧通知不能借新的 pending 状态恢复有效。原生事件字段越界时省略可选 nativeEvent，让显式开发入口返回明确未发送；旧 v1 投递不受新协议长度约束影响。

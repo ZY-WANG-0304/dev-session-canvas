@@ -15,7 +15,7 @@
 - [x] (2026-11-01) 新端侧 v2 契约与 63 个 TypeScript/Rust 请求及响应共享向量通过。
 - [ ] 里程碑一剩余：首次授权失败复现、图标缓存复核、冷启动耗时与跨会话资源预算。
 - [x] (2026-11-01) 接入默认关闭的 Mac socket、持久化回执、来源路由、companion 与主扩展身份复核。
-- [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号、安装版通知和点击回跳均通过；Remote SSH 仍待验收。
+- [ ] 实现原生通知到正确 IDE 节点的安装包闭环；两本地测试窗口真实 OSC 9 信号、安装版通知和点击回跳均通过；Remote SSH 用户实测点击后只打开 Notifier 外壳、Terminal 4 未居中，修复后需重新验收。
 - [x] (2026-11-01) 补充 Remote SSH 原生联调入口：新增显式设置 `DEV_SESSION_CANVAS_NATIVE_NOTIFIER=1` 的 F5 配置和缺少执行资产时的 stock bridge diagnostic；记录本机/远端必须同提交，用户先前看到的 `terminal-notifier` 属于旧后端路径。
 - [ ] Remote SSH 原生验收仍待用户在 SSH Development Host 中执行：核对主扩展在远端、Notifier 在本机 UI host，真实 OSC 9 通知进入本机 DSCanvas Notifier 并点击回到正确节点。
 - [ ] 实现共享核心、收件箱、恢复、诊断和完整回退。
@@ -168,10 +168,16 @@ npm 默认缓存 EACCES，成功改用 `/tmp/dsc-notifier-npm-cache`；rustup �
 2026-11-01 后续原生回跳复验：此前 A3 等待人工点击期间宿主退出，旧 A3 通知不再用于回跳验收。B3 隔离窗口因 terminal 长时间停在 `Waiting for node size before starting the embedded Terminal.` 未能产生通知，失败证据保留在 `/tmp/dsc-native-acceptance-20261101/B3/evidence/failure.json`。使用 VS Code CLI（而非 Electron 主二进制）并传入 Chromium 窗口尺寸参数后，B4 与 A5 两个全新隔离本地窗口均启动真实 Terminal，分别经真实 shell OSC 9 由已安装 Notifier 持久化接单；UI 观察同时显示 2 个在线 IDE 来源。用户分别点击两条新通知后，两份 `clicked.json` 均确认 eventId/nodeId 对应、`windowFocused=true`、`centerOnly=true`、`selectionUnchanged=true`、`attentionPending=true`；随后 `completed.json` 确认节点 acknowledgement 后旧 eventId 被拒绝。VS Code 为 1.144.0，本次实际安装包为 `.debug/notifier-native/notifier-macos-arm64-ipc.zip`，SHA256 `cd03e693049b9b4cdd342e3eb927e68a658cb785022a9f6d11df4d3d820e3786`，来源代码提交 `b28d048bab232306c5cc0f10bf888992409c468b`。可提交摘要与分窗口回执见 `apps/notifier/validation/2026-11-01-macos-native-ide-click/`，原始 runner 在 `/tmp/dsc-native-acceptance-20261101/{B4,A5}/`。两 runner 清理阶段调用 `resetState` 均报告 local final snapshot pending，但各自诊断序列随后出现 `state/persistWritten`；点击和完成断言已独立写入回执，清理异常未抹去该证据，需作为夹具 teardown 问题单独跟进。Remote SSH 仍未验收；本轮两个窗口都是本地隔离来源。
 
 
-### 2026-11-02 Remote SSH 原生通知观察
+### 2026-11-02 Remote SSH 原生通知观察与点击失败
 
 用户提供的 `SSH: dev_labs` 横幅截图显示 `Terminal 4` 来源和正文 `Remote native bridge check`。图标外观与 `apps/notifier/src-tauri/icons/icon.png` 中的 Notifier 专属图标一致；这次截图与先前“显示主扩展图标”的观察不同。截图确认远端来源的通知出现在本机，但正文也可能来自 `Remote Bridge Check (Stock Comparison)`，当前没有启动配置选择记录，不能据此认定默认执行后端已验收。
 
-本机 `~/Library/Logs/io.github.zy-wang-0304.dsc.notifier/native.log` 在 2026-11-02 01:33:18 +08:00 记录 `native-response`，随后 `source-focus-result result=focused`。该记录支持至少一次原生点击回调与来源聚焦成功；日志不包含事件 ID、正文或节点标识，无法仅凭时间将它与截图严格关联，也无法证明 selection 未改变或 `attentionPending` 保持。现有 VS Code 持久化输出日志没有这次远端投递的 `lastDelivery backend=native-client` 诊断字段。
+用户随后反馈：点击目标通知没有让 `Terminal 4` 对应节点居中，而是打开了 DSCanvas Notifier 外壳。这是 Remote SSH 回跳失败的实际结果，应覆盖先前仅根据日志作出的乐观判断。
 
-首次记录时，本地与远端分支均为 `d3990d52aebda98b414ebd920b627243ac2cad9e`。随后按推送前流程将主题分支 rebase 到最新 `origin/main`（`4498dd8545576ef37528a7e7107fd4be890461cb`）并推送，目前本地与 `origin/notifier-native-client` 均为 `ae18e863a6121f28a2138fb33b0ee26dbdbd2c0a`。rebase 后 `apps/notifier/`、两扩展、协议包和 `.vscode/launch.json` 与 d3990d52 的运行时代码一致；本次额外改动仅更新了 ExecPlan。Remote SSH 尚无同提交的远端输出证据；在默认 F5 配置下完成远端 build 后，仍需确认远端与本机 companion 来自同一完整 SHA。下一轮使用 `Run Dev Session Canvas + Native Notifier (Remote Window)`，在 Development Host 确认主扩展位于远端且 Notifier 位于本机 UI host，执行 `Dev Session Canvas Notifier: 打开通知诊断输出` 并核对 `backend=native-client`，再由真实 Canvas Terminal OSC 9 通知验证点击后 Terminal 4 居中且 selection、attention 状态不变。若默认执行资产缺失而改用 Stock Comparison，结果仅计为桥接诊断，不计完整远端验收。
+重新核对本机 `~/Library/Logs/io.github.zy-wang-0304.dsc.notifier/native.log`：相关点击记录为 `native-response`、`focus-dispatched`，并有 `source-focus-result result=focused`。源码显示 `focus-dispatched` 仅代表 focus-node 帧写入来源 socket；`source-focus-result focused` 也只是来源端回执，均不证明 macOS 最终激活了 VS Code 窗口。通知默认点击路径此前没有隐藏可见的 Notifier 主窗口，而 macOS 会激活通知所属应用，因此外壳出现与当前实现相符；具体失败通知与日志记录未以 eventId 关联，仍不宣称日志已定位该次点击。
+
+修复决策：默认点击后先在 Tauri 主线程隐藏 Notifier 窗口，并等待隐藏操作完成，再由后台线程发送来源 focus-node 请求。只有来源路由不可用时才显示 Notifier 诊断窗口。新增回归覆盖隐藏先于路由、成功路由不显示外壳、路由不可用显示回退窗口。日志改用 `focus-request-sent`，避免把写 socket 描述成已完成聚焦。此修复完成后仍需用户在 Remote SSH 窗口真实点击，确认 VS Code 在前台、Terminal 4 节点居中且 selection 与 `attentionPending` 不变。
+
+实现与定向验证：`cargo +1.90.0 test --manifest-path apps/notifier/src-tauri/Cargo.toml --release --locked` 通过（Rust 库 8 项、应用 4 项）；应用类型检查通过；Node 26.3.0 使用 `--experimental-strip-types` 运行共享协议向量，44 个请求和 19 个响应通过。组合脚本 `npm run -w apps/notifier test` 因本机 Node 26 不再识别 Node 22 使用的 `--experimental-transform-types` 而未启动向量测试；改用上述分项命令后完成等价向量验证。`npm run -w apps/notifier build` 与 `npm run build:notifier` 通过；Tauri bundle `apps/notifier/src-tauri/target/release/bundle/macos/DSCanvas Notifier.app` 的 ad-hoc 签名校验通过。可复验 ZIP 为 `.debug/notifier-native/notifier-macos-arm64-window-hide-fix.zip`，SHA256 `c7f2e9f2f67fae045ee5f93485b8e3124bfb5fad2d1f510a190f9b15e7a5d385`。当前运行中的 `~/Applications/DSCanvas Notifier.app` 尚未替换，因此真实点击尚未验证该修复。
+
+首次记录时，本地与远端分支均为 `d3990d52aebda98b414ebd920b627243ac2cad9e`。随后按推送前流程将主题分支 rebase 到最新 `origin/main`（`4498dd8545576ef37528a7e7107fd4be890461cb`）并推送，原记录 SHA 为 `ae18e863a6121f28a2138fb33b0ee26dbdbd2c0a`。本次修复代码待定向测试、重新构建及提交后，远端窗口需要同步到新的完整 SHA。复验使用 `Run Dev Session Canvas + Native Notifier (Remote Window)`；在 Development Host 确认主扩展位于远端且 Notifier 位于本机 UI host，执行 `Dev Session Canvas Notifier: 打开通知诊断输出` 并核对 `backend=native-client`，再由真实 Canvas Terminal OSC 9 通知验证点击后 VS Code 在前台、Terminal 4 节点居中且 selection 状态与 `attentionPending` 不变。若默认执行资产缺失而改用 Stock Comparison，结果仅计为桥接诊断，不计完整远端验收。

@@ -51,6 +51,28 @@ fn record(value: &str) {
     }
 }
 #[cfg(target_os = "macos")]
+fn run_focus_click(
+    token: String,
+    hide_shell: impl FnOnce() + Send + 'static,
+    route: impl FnOnce(&str) -> bool + Send + 'static,
+    show_fallback: impl FnOnce() + Send + 'static,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        // Notification activation can bring the owning app to the foreground.
+        // Hide its shell before asking the source IDE window to become active.
+        hide_shell();
+        let request_sent = route(&token);
+        record(if request_sent {
+            "focus-request-sent"
+        } else {
+            "focus-request-unavailable"
+        });
+        if !request_sent {
+            show_fallback();
+        }
+    })
+}
+#[cfg(target_os = "macos")]
 mod native {
     use super::*;
     use std::ffi::{c_char, CStr};
@@ -79,29 +101,65 @@ mod native {
             else {
                 return;
             };
-            // A slow IDE socket must not block UserNotifications' main-thread callback.
-            std::thread::spawn(move || {
-                let routed = ipc::focus(&token);
-                record(if routed {
-                    "focus-dispatched"
-                } else {
-                    "focus-unavailable"
-                });
-                if routed {
-                    return;
-                }
-                if let Some(app) = APP.get() {
-                    let handle = app.clone();
-                    let _ = app.run_on_main_thread(move || {
-                        if let Some(window) = handle.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    });
-                }
-            });
+            // A slow IDE socket must not block UserNotifications' callback.
+            // Wait for the main-thread hide to run before writing the IPC request.
+            let Some(app) = APP.get().cloned() else {
+                record("focus-app-handle-unavailable");
+                return;
+            };
+            let hide_app = app.clone();
+            let fallback_app = app.clone();
+            let _ = run_focus_click(
+                token,
+                move || hide_notifier_window(hide_app),
+                ipc::focus,
+                move || show_notifier_fallback(fallback_app),
+            );
         }
+    }
+}
+#[cfg(target_os = "macos")]
+fn hide_notifier_window(app: tauri::AppHandle) {
+    let (hidden_tx, hidden_rx) = std::sync::mpsc::sync_channel(1);
+    let handle = app.clone();
+    if app
+        .run_on_main_thread(move || {
+            let hidden = handle
+                .get_webview_window("main")
+                .is_some_and(|window| window.hide().is_ok());
+            record(if hidden {
+                "notifier-window-hidden-for-focus"
+            } else {
+                "notifier-window-hide-unavailable"
+            });
+            let _ = hidden_tx.send(hidden);
+        })
+        .is_err()
+    {
+        record("notifier-window-hide-schedule-failed");
+        return;
+    }
+    if hidden_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .is_err()
+    {
+        record("notifier-window-hide-timeout");
+    }
+}
+#[cfg(target_os = "macos")]
+fn show_notifier_fallback(app: tauri::AppHandle) {
+    let handle = app.clone();
+    if app
+        .run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        })
+        .is_err()
+    {
+        record("notifier-fallback-show-schedule-failed");
     }
 }
 #[cfg(target_os = "macos")]
@@ -204,6 +262,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    use std::sync::Arc;
     #[test]
     fn external_actions_cannot_execute_commands_or_urls() {
         for value in [
@@ -217,5 +277,44 @@ mod tests {
             assert!(action_code(value).is_err());
         }
         assert_eq!(action_code("post"), Ok(2));
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn notification_click_hides_shell_before_routing_and_only_shows_on_unavailable_route() {
+        let actions = Arc::new(Mutex::new(Vec::new()));
+        let token = "opaque-route-token".to_owned();
+        let hide_actions = actions.clone();
+        let route_actions = actions.clone();
+        let fallback_actions = actions.clone();
+        run_focus_click(
+            token,
+            move || hide_actions.lock().unwrap().push("hide"),
+            move |token| {
+                assert_eq!(token, "opaque-route-token");
+                route_actions.lock().unwrap().push("route");
+                true
+            },
+            move || fallback_actions.lock().unwrap().push("fallback"),
+        )
+        .join()
+        .unwrap();
+        assert_eq!(*actions.lock().unwrap(), ["hide", "route"]);
+
+        let actions = Arc::new(Mutex::new(Vec::new()));
+        let hide_actions = actions.clone();
+        let route_actions = actions.clone();
+        let fallback_actions = actions.clone();
+        run_focus_click(
+            "opaque-route-token".to_owned(),
+            move || hide_actions.lock().unwrap().push("hide"),
+            move |_| {
+                route_actions.lock().unwrap().push("route");
+                false
+            },
+            move || fallback_actions.lock().unwrap().push("fallback"),
+        )
+        .join()
+        .unwrap();
+        assert_eq!(*actions.lock().unwrap(), ["hide", "route", "fallback"]);
     }
 }
