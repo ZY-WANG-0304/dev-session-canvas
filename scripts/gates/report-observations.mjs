@@ -31,7 +31,8 @@ export function summarizeObservations({ plan, result, receipts = [], logs = '', 
 export async function readObservationHistory({ repository, api = githubAPI(repository), token = process.env.GH_TOKEN, currentRun }) {
   const history = [];
   const runs = await api('actions/workflows/ci-observations.yml/runs?per_page=20');
-  for (const run of runs.workflow_runs.filter(run => run.id !== Number(currentRun) && run.status === 'completed')) {
+  for (const run of runs.workflow_runs.filter(run => run.id !== Number(currentRun) && run.status === 'completed'
+    || run.id === Number(currentRun) && run.run_attempt > 1)) {
     // History is informational. It is never used to authorize a merge or to
     // manufacture a current passing test. Verify artifact identity and digest.
     const artifacts = await api(`actions/runs/${run.id}/artifacts?per_page=100`);

@@ -9,7 +9,7 @@ import { buildPlan, planJobs, validateFrozenPlan } from '../gates/resolve-plan.m
 import { selectAffectedTasks, ordinaryDocumentation, classifyImpact, documentationConsumers } from '../gates/scope-policy.mjs';
 import { jobDependencies, taskKey } from '../gates/catalog.mjs';
 import { observationPolicy, validateObservationPolicy } from '../gates/observation-policy.mjs';
-import { summarizeObservations } from '../gates/report-observations.mjs';
+import { summarizeObservations, readObservationHistory } from '../gates/report-observations.mjs';
 import { validateReuseCandidate, effectiveTree, prepareMerge, verifyMerge, policyUnchanged } from '../gates/merge-control.mjs';
 import { checkDocumentation } from '../gates/check-documentation.mjs';
 import { writeJSON } from '../gates/receipts.mjs';
@@ -214,4 +214,17 @@ test('a gate-changing PR may reuse its prior full execution only after unchanged
   assert.equal(f.previous.tasks.length,362);
   assert.doesNotThrow(()=>validateReuseCandidate(f));
   assert.throws(()=>validateReuseCandidate({...f,previous:{...f.previous,selection:'affected'}}),/full execution/);
+});
+
+test('a running retry downloads its own first-attempt observation report instead of losing the first failure', async t => {
+  const {default:JSZip}=await import('jszip');
+  const {digest}=await import('../gates/receipts.mjs');
+  const report={repository:'owner/repo',runID:'7',attempt:1,headSHA:'a'.repeat(40),observations:[{key:'case',status:'failed'}]};
+  const zip=new JSZip();zip.file('observation-report.json',JSON.stringify(report));const bytes=await zip.generateAsync({type:'nodebuffer'});
+  const originalFetch=globalThis.fetch;t.after(()=>{globalThis.fetch=originalFetch;});
+  globalThis.fetch=async url=>{assert(String(url).endsWith('/actions/artifacts/70/zip'));return {ok:true,arrayBuffer:async()=>bytes};};
+  const api=async route=>route.startsWith('actions/workflows/')?{workflow_runs:[{id:7,status:'in_progress',run_attempt:2,head_sha:'a'.repeat(40)}]}
+    :{artifacts:[{id:70,name:'ci-observation-report-7-1',expired:false,digest:`sha256:${digest(bytes)}`}]};
+  const history=await readObservationHistory({repository:'owner/repo',currentRun:'7',api});
+  assert.equal(history.length,1);assert.equal(history[0].observations[0].status,'failed');
 });
