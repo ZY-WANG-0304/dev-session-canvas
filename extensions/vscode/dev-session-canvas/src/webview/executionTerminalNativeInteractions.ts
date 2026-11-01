@@ -936,9 +936,8 @@ function isFocusedCodexSideConversationShortcut(terminal: Terminal, event: Keybo
     terminal.textarea === document.activeElement &&
     event.ctrlKey &&
     !event.metaKey &&
-    !event.shiftKey &&
     !event.altKey &&
-    (event.key === '/' || event.code === 'Slash')
+    event.key === '/'
   );
 }
 

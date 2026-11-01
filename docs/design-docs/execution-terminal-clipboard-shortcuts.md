@@ -172,6 +172,6 @@ Playwright Webview harness 已进一步确认浏览器端行为：在 Agent 和 
 
 调研过程与命令证据见 `docs/exec-plans/completed/codex-cli-side-shortcut-compatibility-research.md`。本补充将整体验证状态改为“验证中”，直至真实 Webview 输入链路得到复现或排除。
 
-2026-11-01 修复决策：`executionTerminalNativeInteractions.ts` 在 xterm 获得焦点时识别无其他修饰键的 Ctrl+/（DOM `key` 为 `/` 或物理 `code` 为 `Slash`），阻止该按键继续传播，并调用 `terminal.input('\x1f', true)`。ASCII US（`0x1f`）是 Ctrl+/ 的传统终端控制表示；`Terminal.input` 会按用户输入路径触发 `onData`，因此继续复用现有 `webview/executionInput` → Host/runtime PTY 链路。该分支仅处理 Ctrl+/，不改动 Ctrl+C 的 ETX 输入和剪贴板规则。
+2026-11-01 修复决策：`executionTerminalNativeInteractions.ts` 在 xterm 获得焦点时按 DOM 当前字符 `key === '/'` 识别 Ctrl+/，要求 Ctrl 且不带 Meta / Alt；若某个键盘布局需要 Shift 才能产生实际 `/`，仍允许映射。代码不按物理 `code` 回退，因为 `code === 'Slash'` 在德语布局等环境可对应 `-`，会误吞 Ctrl+-。命中后阻止按键继续传播，并调用 `terminal.input('\x1f', true)`。ASCII US（`0x1f`）是 Ctrl+/ 的传统终端控制表示；`Terminal.input` 会按用户输入路径触发 `onData`，因此继续复用现有 `webview/executionInput` → Host/runtime PTY 链路。该分支仅处理 Ctrl+/，不改动 Ctrl+C 的 ETX 输入和剪贴板规则。
 
-本次 Playwright 调试已确认 Chromium 将 Ctrl+/ 交给 Agent / Terminal xterm，且原实现没有产生 PTY 输入；真实 Codex PTY 候选字节验证因本机 Codex 状态目录只读而未完成。故 `0x1f` 是依据终端控制编码选择的兼容输入，尚不能记录为已被 Codex `0.166.0` TUI 现场证实。目标宿主和用户键盘布局验证仍是待办；`Ctrl+/` 之外的按键继续原有 xterm / Workbench 路径。
+Playwright 调试已确认 Chromium 将 Ctrl+/ 交给 Agent / Terminal xterm，原实现没有产生 PTY 输入；修复回归覆盖非美式布局实际字符 `/` 与物理 Slash 位置输出 `-`，确认前者发送 `0x1f`、后者不被误拦。真实 Codex PTY 候选字节验证因本机 Codex 状态目录只读而未完成。故 `0x1f` 是依据终端控制编码选择的兼容输入，尚不能记录为已被 Codex `0.166.0` TUI 现场证实。目标宿主现场验证仍待完成；`Ctrl+/` 之外的按键继续原有 xterm / Workbench 路径。
