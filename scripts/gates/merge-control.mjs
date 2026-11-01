@@ -90,7 +90,7 @@ export async function prepareMerge({ root = process.cwd(), input, base, head, pr
   const paths = changedFiles(root, base, input), impact = classifyImpact(paths);
   const trusted = policyUnchanged(root, base, input);
   const selection = trusted ? 'affected' : undefined;
-  const documentation = checkDocumentation({ root, paths });
+  const documentation = checkDocumentation({ root, paths, base });
   const control = { schemaVersion: 1, kind: 'merge-control', input, base, head, pr: pr ?? null, repository, run,
     route: 'execute', selection: selection ?? '', impact, documentation, reuse: null, reuseMisses: [] };
   if (trusted && impact.domains.every(domain => domain === 'documentation')) {
@@ -132,7 +132,7 @@ export async function prepareMerge({ root = process.cwd(), input, base, head, pr
 export async function verifyMerge({ root = process.cwd(), control, output, api = githubAPI(control.repository), checkAcceptance }) {
   assert.equal(control.kind, 'merge-control'); assertMergeInput({ root, input: control.input, base: control.base, head: control.head });
   await assertCurrentPR(api, control.pr, control.base, control.head);
-  const paths = changedFiles(root, control.base, control.input), documentation = checkDocumentation({ root, paths });
+  const paths = changedFiles(root, control.base, control.input), documentation = checkDocumentation({ root, paths, base: control.base });
   assert.deepEqual(control.impact, classifyImpact(paths));
   assert.equal(control.selection, policyUnchanged(root, control.base, control.input) ? 'affected' : '');
   let evidence;

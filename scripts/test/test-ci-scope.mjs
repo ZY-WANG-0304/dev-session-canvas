@@ -228,3 +228,28 @@ test('a running retry downloads its own first-attempt observation report instead
   const history=await readObservationHistory({repository:'owner/repo',currentRun:'7',api});
   assert.equal(history.length,1);assert.equal(history[0].observations[0].status,'failed');
 });
+
+test('index-only changes validate affected designs without requiring unrelated historical cleanup', async t => {
+  const f = await fixture(t);
+  const design = 'docs/design-docs/example.md', index = 'docs/design-docs/index.md';
+  const row = `| \`${design}\` | 已选定 | 已验证 |`;
+  const historical = '| `docs/design-docs/legacy-missing.md` | 历史占位 |';
+  await f.write(design, '---\ntitle: Example\ndecision_status: 已选定\nvalidation_status: 已验证\ndomains: []\narchitecture_layers: []\nrelated_specs: []\nrelated_plans: []\nupdated_at: 2026-11-01\n---\n# Example\n');
+  await f.write(index, `${historical}\n${row}\n`);
+  f.git('add', '.'); f.git('commit', '-qm', 'design baseline'); const base = f.git('rev-parse', 'HEAD');
+  const check = () => checkDocumentation({ root: f.root, paths: [index], base });
+  await f.write(index, `${historical}\n${row.replace('已验证', '验证中')}\n`);
+  assert.throws(check, /validation_status mismatch/);
+  await f.write(index, `${historical}\n`);
+  assert.throws(check, /missing from index/);
+  await f.write(index, `# Updated index\n${historical}\n${row}\n`);
+  assert.doesNotThrow(check);
+});
+
+test('deleting a design must remove its index entry in the same change', async t => {
+  const f = await fixture(t), design = 'docs/design-docs/deleted.md', index = 'docs/design-docs/index.md';
+  await f.write(index, `| \`${design}\` | 已选定 | 已验证 |\n`);
+  assert.throws(() => checkDocumentation({ root: f.root, paths: [design] }), /remains in index/);
+  await f.write(index, '# Index\n');
+  assert.doesNotThrow(() => checkDocumentation({ root: f.root, paths: [design, index] }));
+});

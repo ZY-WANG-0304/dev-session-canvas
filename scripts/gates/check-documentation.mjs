@@ -12,13 +12,28 @@ export function documentationLinks(text) {
   const prose = text.replace(/^(`{3,}|~{3,}).*\n[\s\S]*?^\1\s*$/gm, '').replace(/`[^`\n]+`/g, '');
   return [...prose.matchAll(/!?\[[^\]\n]*\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)/g)].map(match => match[1].replace(/^<|>$/g, ''));
 }
-export function checkDocumentation({ root = process.cwd(), paths }) {
+export function checkDocumentation({ root = process.cwd(), paths, base }) {
   const checked = [], deleted = paths.filter(file => file.endsWith('.md') && !fs.existsSync(path.join(root, file)));
   const indexPath = path.join(root, 'docs/design-docs/index.md');
   const index = fs.existsSync(indexPath) ? fs.readFileSync(indexPath, 'utf8') : '';
-  for (const file of paths.filter(file => file.endsWith('.md'))) {
+  const indexRows = text => new Map(text.split('\n').flatMap(row => {
+    const match = row.match(/`(docs\/design-docs\/[^`]+\.md)`/);
+    return match ? [[match[1], row]] : [];
+  }));
+  const rows = indexRows(index), affected = new Set(paths);
+  if (base && paths.includes('docs/design-docs/index.md')) {
+    const tracked = execFileSync('git', ['ls-tree', '--name-only', base, '--', 'docs/design-docs/index.md'], { cwd: root, encoding: 'utf8' }).trim();
+    const previous = indexRows(tracked ? execFileSync('git', ['show', `${base}:docs/design-docs/index.md`], { cwd: root, encoding: 'utf8' }) : '');
+    for (const file of new Set([...previous.keys(), ...rows.keys()])) {
+      if (previous.get(file) !== rows.get(file)) affected.add(file);
+    }
+  }
+  for (const file of [...affected].filter(file => file.endsWith('.md'))) {
     const location = path.join(root, file);
-    if (!fs.existsSync(location)) continue;
+    if (!fs.existsSync(location)) {
+      assert(!rows.has(file), `Deleted design remains in index: ${file}`);
+      continue;
+    }
     assert(fs.lstatSync(location).isFile() && !fs.lstatSync(location).isSymbolicLink(), `Documentation must be a regular file: ${file}`);
     const text = fs.readFileSync(location, 'utf8');
     for (const link of documentationLinks(text)) {
@@ -59,5 +74,5 @@ export function checkDocumentation({ root = process.cwd(), paths }) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { values } = parseArgs({ options: { base: { type: 'string' }, input: { type: 'string' } } });
   assert(values.base && values.input);
-  console.log(JSON.stringify(checkDocumentation({ paths: changedFiles(process.cwd(), values.base, values.input) })));
+  console.log(JSON.stringify(checkDocumentation({ base: values.base, paths: changedFiles(process.cwd(), values.base, values.input) })));
 }
