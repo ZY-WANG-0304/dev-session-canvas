@@ -6,7 +6,7 @@ domains: [VSCode 集成域, 执行编排域, 画布交互域]
 architecture_layers: [宿主集成层, 画布呈现层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/release-gate-redesign.md, docs/exec-plans/completed/release-gate-implementation.md, docs/exec-plans/active/incomplete-release-recovery.md]
-updated_at: 2026-10-31
+updated_at: 2026-11-02
 ---
 
 # CI与发布门禁重设计
@@ -426,3 +426,9 @@ PR341 在 run40686985978 attempt1（Windows x64 / macOS ARM64）及 run406913551
 该策略只作用于幂等的供应商 GET。真实模型回合、产品断言和清理失败不采用此机制。真实 localhost HTTP 回归覆盖临时服务错误、body 挂起/断开后的新请求、总期限、永久 HTTP 与 hash 不符；正式跨平台输入继续由新一轮 CI 验证。原失败保留。
 
 对照 run40694396583 在独立 runner 上出现同文件不足一秒完整下载与120秒只收到少量数据两类结果，Node与curl均出现差异，未确认读取API因果。`checkedDownload` 可使用独立的供应商文件缓存；每次仍从官方HTTPS重新获取checksum，以其SHA256作为缓存文件名，核验实际字节后才写本轮构建输入。缓存不存checksum权威、不包含编译产物或native-load回执；缓存不符视为未命中，重新下载后仍必须通过官方hash。CI仅在本目标native-load成功后保存完整供应商缓存，后续构建/加载与产物来源仍按新输入执行。
+
+## 2026-11-02：Note checklist smoke 等待真实 Webview 渲染
+
+PR #357 的 Release Preflight run `41375382036` 中，`packaged-host/canvas-notes--checklist` 失败：宿主 snapshot 已保存 `- [ ] 补齐 smoke`，但失败时 Webview probe 的 `bodyValue` 仍为空；smoke 随即尝试查询第 1 行 checkbox 并报错。该次失败 job 为 `125056482100`，证据 artifact 为 `gate-packaged-host-canvas-notes--checklist-41375382036-1`。此前同一场景在 run `41366315296`（job `125038874878`）成功。两次结果与测试未等待异步 Webview 渲染的时序差异一致，但目前样本不足以确定发生率，也不能据此认定是纯测试抖动或产品缺陷。
+
+候选修复只调整 smoke 同步边界：首次点击前通过 `waitForWebviewProbe` 确认真实 Note `bodyValue` 已包含 checklist，再触发 DOM checkbox action；产品交互与断言保持不变。该改动属于门禁测试修复，不改变 0.28.0 产品代码。PR #359 初始 head `c7ea9263` 的 run `41379430352` 在 `resolve-plan` 阶段因 `tests/vscode-smoke/extension-tests.cjs` 源码摘要未同步而失败，业务任务未启动。运行 `scripts/gates/build-smoke-budget.mjs` 后，清单仅将 checklist smoke 外层上限从 274 秒增至 282 秒，并登记新增 8 秒 Webview probe；其他场景上限不变。定向 renderer 单测已通过；独立 packaged-host checklist 门禁的最终结果仍须以修复 PR 的新 head CI 为准。在新回执通过前，不得把当前红灯写成已修复或已验收。
