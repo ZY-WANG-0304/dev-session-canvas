@@ -64,7 +64,7 @@
 
 ## 具体步骤
 
-工作目录：`/tmp/dsc-release-0-28-0`。分支 `release-0-28-0` 的发布范围基线为 `origin/main@efdc6cda`；当前 PR 分支已 rebase 到 `origin/main@2373a250`。
+工作目录：`/tmp/dsc-release-0-28-0`。分支 `release-0-28-0` 的发布范围最初基于 `origin/main@efdc6cda`；当前 PR 分支已 rebase 到 `origin/main@6b9f8104`（含 #358 / #359）。
 
 ```sh
 npm run release:preflight -- --version 0.28.0
