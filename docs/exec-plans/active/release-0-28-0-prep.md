@@ -24,8 +24,9 @@
 - [x] (2026-11-02) 按旧远端 head `90e23845` 使用 `--force-with-lease` 推送 rebase 后的 PR 分支；每次更新均须以 GitHub 最新 head 的全新 Release Preflight 与 `Verify release contract` 为准。
 - [x] (2026-11-02) PR head `778461f1` 的完整 Release Preflight（run `41366315296`）与 `Verify release contract` 均成功；结果只适用于该 head。
 - [x] (2026-11-02，历史证据) 当 PR #357 head 为 `389c6fad` 时，`npm run release:preflight -- --version 0.28.0`、`git diff --check` 和完整 Release Preflight（run `41402831210`）均通过，必需检查 `Verify release contract` 成功。独立观察 run `41402831188` 中，`surface-continuity--live-page-remount` 与 `verify-result` 失败；观察不属于 required gate 等待链。此结果仅适用于 `389c6fad`，不构成后续 PR head 的验收。
-- [ ] 当前 PR #357 head（包含本次记录修正）仍须通过 `npm run release:preflight -- --version 0.28.0`、`git diff --check`、完整 Release Preflight 与 `Verify release contract`；不得复用旧 head 结果。
-- [ ] PR #357 尚需完成最新 head 的独立 review；GitHub 当前 `reviewDecision=REVIEW_REQUIRED`，不得绕过所需审批。
+- [x] (2026-11-02，历史证据) PR #357 head `3198b4c4` 的 Release Preflight（run `41409651998`）完整通过，必需检查 `Verify release contract` 成功；该结果仅适用于此精确 SHA，后续 head 必须独立验收。
+- [x] (2026-11-02，历史证据) 子 Agent 对 head `3198b4c4` 复审未发现新的确定性 blocker；评审结论及发现修复记录已发布为 [PR 评论](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/357#issuecomment-6572126805)。该代码审查不代替 GitHub 所需审批。
+- [ ] PR #357 仍需取得 GitHub 要求的独立审批；当前 `reviewDecision=REVIEW_REQUIRED`，不得绕过。
 - [ ] PR 合并后固定最终产品 SHA，按 `docs/WORKFLOW.md` 运行 release batch 与发布渠道流程；如门禁、审批或渠道条件未满足，记录停点而不绕过。
 
 ## 意外与发现
@@ -83,6 +84,7 @@ git diff --stat
 - 用户文案精确说明标题编辑对象及只读边界；`Ctrl+/` 映射和真实 Codex TUI 缺口；旧自动活动派生状态清理、磁盘文件与独立文件能力保留。
 - `npm run release:preflight -- --version 0.28.0` 与 `git diff --check` 通过。
 - 最新真实预合并 SHA 的 Release Preflight 完整任务图及 `Verify release contract` 成功，PR review 满足规则；合并后的最终产品 SHA 另通过完整 `release-tag` 批次验收。
+- 合并时必须确认 PR 当前最新 head 的 Release Preflight 完整任务图与 `Verify release contract` 均成功，且 GitHub 独立审批满足规则；任何 head 更新均重新验收，不复用历史 SHA 结果。
 - 只有固定批次对必需渠道交付成功后，才可报告新版本已发布。
 
 ## 幂等性与恢复
