@@ -5287,16 +5287,7 @@ async function verifyInteractiveNoteChecklist(noteNodeId) {
     return Boolean(currentNote?.metadata?.note?.content === REAL_DOM_NOTE_CHECKLIST_BODY);
   });
   assert.strictEqual(findNodeById(snapshot, noteNodeId).metadata.note.content, REAL_DOM_NOTE_CHECKLIST_BODY);
-
-  let probe = await waitForWebviewProbe((currentProbe) => {
-    const currentNote = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
-    return Boolean(currentNote?.bodyValue === REAL_DOM_NOTE_CHECKLIST_BODY);
-  });
-  assert.strictEqual(
-    probe.nodes.find((node) => node.nodeId === noteNodeId)?.bodyValue,
-    REAL_DOM_NOTE_CHECKLIST_BODY
-  );
-
+  await waitForWebviewProbe((currentProbe) => currentProbe.nodes.some((node) => node.nodeId === noteNodeId && node.bodyValue === REAL_DOM_NOTE_CHECKLIST_BODY));
   await performWebviewDomAction({
     kind: 'toggleNoteChecklistItem',
     nodeId: noteNodeId,
@@ -5312,7 +5303,7 @@ async function verifyInteractiveNoteChecklist(noteNodeId) {
     REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED
   );
 
-  probe = await waitForWebviewProbe((currentProbe) => {
+  let probe = await waitForWebviewProbe((currentProbe) => {
     const currentNote = currentProbe.nodes.find((node) => node.nodeId === noteNodeId);
     return Boolean(currentNote?.bodyValue === REAL_DOM_NOTE_CHECKLIST_BODY_TOGGLED);
   });

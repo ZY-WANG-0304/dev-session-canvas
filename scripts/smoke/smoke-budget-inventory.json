@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceHashes": {
-    "tests/vscode-smoke/extension-tests.cjs": "e2e1317f5fb39c359b1cf1851e65d8479f39000b552ba1240736c24208dd1b84",
+    "tests/vscode-smoke/extension-tests.cjs": "56063eba87e3e91cdcb6231087a78e29fca105215fdfec660247224e61f50bbe",
     "tests/vscode-smoke/real-reopen-tests.cjs": "20b3a73c947f9031b7ac1cd4c0829fb8d9546b3caabd22f50fd27fcf20ce9856",
     "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "7bfa53d9714beacc83ead94e2bd594e782317051059ab251fe30d7b6ecfba28e",
     "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "abf93735a6bcc1ce666df1ee8e9c00e89a88880b4bb37dc1a83b77d9d66dad5d",
@@ -26402,7 +26402,7 @@
       ]
     },
     "canvas-notes/checklist": {
-      "timeoutMs": 274000,
+      "timeoutMs": 282000,
       "method": "Independent fixture and business call-site bounds; original product waits unchanged",
       "parts": [
         {
@@ -26620,7 +26620,7 @@
           ]
         },
         {
-          "timeoutMs": 96000,
+          "timeoutMs": 104000,
           "entry": "runIndependentChecklist",
           "file": "tests/vscode-smoke/extension-tests.cjs",
           "times": 1,
@@ -26645,6 +26645,17 @@
               "multiplier": 1,
               "detail": {
                 "callee": "waitForSnapshot",
+                "expression": "default"
+              }
+            },
+            {
+              "file": "tests/vscode-smoke/extension-tests.cjs",
+              "line": 5290,
+              "kind": "original-wait",
+              "timeoutMs": 8000,
+              "multiplier": 1,
+              "detail": {
+                "callee": "waitForWebviewProbe",
                 "expression": "default"
               }
             },
