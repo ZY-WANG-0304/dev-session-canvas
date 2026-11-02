@@ -20,7 +20,8 @@
 - [x] (2026-11-02) 将 #357 从原 head `90e23845` rebase 到 `origin/main@2373a250`；rebase 无冲突，最新 main 已成为 PR 分支祖先，发布范围未改变。
 - [x] (2026-11-02) rebase 后重新运行 `npm run release:preflight -- --version 0.28.0` 与 `git diff --check`，均通过。
 - [x] (2026-11-02) 按旧远端 head `90e23845` 使用 `--force-with-lease` 推送 rebase 后的 PR 分支；每次更新均须以 GitHub 最新 head 的全新 Release Preflight 与 `Verify release contract` 为准。
-- [ ] 等待最新 PR head 的完整 Release Preflight、`Verify release contract` 与必要 review；不复用旧 head 结果。
+- [x] (2026-11-02) PR head `778461f1` 的完整 Release Preflight（run `41366315296`）与 `Verify release contract` 均成功；结果只适用于该 head。
+- [ ] 本次同步 review follow-up 后的新 head 仍须完成完整 Release Preflight 与 `Verify release contract`，并取得必要的独立 review；不复用旧 head 结果。
 - [ ] PR 合并后固定最终产品 SHA，按 `docs/WORKFLOW.md` 运行 release batch 与发布渠道流程；如门禁、审批或渠道条件未满足，记录停点而不绕过。
 
 ## 意外与发现
