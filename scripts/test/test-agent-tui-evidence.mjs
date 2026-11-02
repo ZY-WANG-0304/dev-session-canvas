@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import evidence from '../../tests/vscode-smoke/agent-tui-evidence.cjs';
 import startup from '../../tests/vscode-smoke/agent-tui-startup.cjs';
+import startupPrompts from '../../tests/vscode-smoke/agent-startup-prompts.cjs';
 import { prepareAgentTuiSuite } from '../smoke/agent-tui-configuration.mjs';
 const { parseEvents, observeTurn, answerWithFooter, draftInComposer } = evidence;
 const receipt = 'receipt_' + 'a'.repeat(32);
@@ -75,6 +76,26 @@ test('Claude first-run No/Yes cursor cannot satisfy composer readiness or repeat
   const neverYes = new Set();
   for (let i = 0; i < 3; i++) startup.startupAction(menu, neverYes);
   assert.throws(() => startup.startupAction(menu, neverYes), /navigation limit/);
+});
+
+test('Codex theme help tip does not block interactive composer readiness', () => {
+  const visibleLines = [
+    '╭───────────────────────────────────────────────────╮',
+    '│ >_ OpenAI Codex (v0.157.1)                        │',
+    '│ model:     DeepSeek-Flash high   /model to change │',
+    '│ directory: /tmp/dsc-tui-workspace/codex           │',
+    '╰───────────────────────────────────────────────────╯',
+    'Tip: Use /theme to choose a syntax highlighting theme.',
+    '› Ask Codex to do anything',
+    'DeepSeek-Flash · Context 100% left'
+  ].join('\n');
+  const themeMenu = 'Choose a theme for the terminal\n❯ Dark\n  Light';
+  const accepted = new Set();
+  assert.equal(startupPrompts.hasThemeSelectionPrompt(visibleLines), false);
+  assert.equal(startupPrompts.hasThemeSelectionPrompt(themeMenu), true);
+  assert.deepEqual(startup.startupAction(visibleLines, accepted), { ready: true });
+  assert.equal(accepted.has('theme'), false);
+  assert.deepEqual(startup.startupAction(themeMenu, new Set()), { ready: false, id: 'theme', data: '\r' });
 });
 
 test('real MCP fixture holds the call until its exact external release and rejects duplicate calls', { timeout: 10000 }, async () => {

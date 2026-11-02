@@ -12,15 +12,20 @@ import windows from '../../tests/vscode-smoke/agent-candidate-windows-observer.c
 import processObserver from '../../tests/vscode-smoke/agent-candidate-process-observer.cjs';
 import cliHelpers from '../../tests/vscode-smoke/agent-candidate-cli.cjs';
 import storageContainment from '../../tests/vscode-smoke/runtime-storage-containment.cjs';
+import startupPrompts from '../../tests/vscode-smoke/agent-startup-prompts.cjs';
 import { createDeepSeekConfiguration } from '../smoke/agent-candidate-deepseek.mjs';
 
+const { hasThemeSelectionPrompt } = startupPrompts;
 const source = await fs.readFile('tests/vscode-smoke/agent-runtime-reload-driver.cjs', 'utf8');
 const ast = ts.createSourceFile('agent-runtime-reload-driver.cjs', source, ts.ScriptTarget.Latest, true);
 const functions = new Map(ast.statements.filter(ts.isFunctionDeclaration).map(node => [node.name.text, node.getText(ast)]));
 const resourceFunctions = ['startProcessObserver', 'releaseProcessObserver', 'assertOriginalResourcesLive', 'originalResourcesExited',
   'assertRuntimeOwnerBinding', 'captureSetupProcessObservation', 'recordStartupOwnership'];
-const compile = (names, context) => new Function(...Object.keys(context),
-  `${names.map(name => functions.get(name)).join('\n')}\nreturn { ${names.join(',')} };`)(...Object.values(context));
+const compile = (names, context) => {
+  const bindings = { hasThemeSelectionPrompt, ...context };
+  return new Function(...Object.keys(bindings),
+    `${names.map(name => functions.get(name)).join('\n')}\nreturn { ${names.join(',')} };`)(...Object.values(bindings));
+};
 const launcherSource = await fs.readFile('scripts/smoke/run-vscode-agent-runtime-reload-candidate.mjs', 'utf8');
 const launcherAst = ts.createSourceFile('reload-launcher.mjs', launcherSource, ts.ScriptTarget.Latest, true);
 const configureSource = launcherAst.statements.find(node => ts.isFunctionDeclaration(node) &&
@@ -489,6 +494,23 @@ test('Codex loading composer is not model readiness, and late onboarding still r
   await api.waitForAgentReady();
   assert.equal(cursor, screens.length, 'Confirmation must recheck readiness after late trust UI.');
   assert.deepEqual(inputs, [{ kind: 'sendExecutionInput', nodeId: 'node', data: '\r' }]);
+});
+
+test('Codex theme help tip does not fail Runtime reload composer confirmation', async () => {
+  const ready = 'DeepSeek-Flash high\n\u203a Ask Codex to do anything\n' +
+    'Tip: Use /theme to choose a syntax highlighting theme.';
+  let clock = 0;
+  let cursor = 0;
+  const inputs = [];
+  const api = compile(['hasLoadedAgentComposer', 'waitForAgentReady'], {
+    assert, config: { provider: 'codex' }, stripVt: value => value, control: { deadlineAt: 40000 }, currentNodeId: 'node',
+    Date: { now: () => clock }, sleep: async ms => { clock += ms; },
+    probe: async () => { cursor++; return ready; }, textOf: value => value,
+    dom: async action => inputs.push(action)
+  });
+  await api.waitForAgentReady();
+  assert.equal(cursor, 2, 'The composer must be confirmed without entering the help tip as a theme prompt.');
+  assert.deepEqual(inputs, []);
 });
 
 test('Windows sandbox onboarding must be completed before the loaded composer becomes ready', async () => {

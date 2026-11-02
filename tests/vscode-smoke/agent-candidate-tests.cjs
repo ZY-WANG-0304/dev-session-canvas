@@ -16,6 +16,7 @@ const { resolveExecutionSessionSpawnSpec } = require('./agent-candidate-spawn-sp
 const { resolveLegacyRuntimeSupervisorPaths,
   resolveSystemdUserRuntimeSupervisorPaths } = require('./agent-candidate-runtime-paths.cjs');
 const { assertRuntimeStorageContained } = require('./runtime-storage-containment.cjs');
+const { hasThemeSelectionPrompt } = require('./agent-startup-prompts.cjs');
 
 const command = (name, ...args) => vscode.commands.executeCommand(`devSessionCanvas.__test.${name}`, ...args);
 const snapshot = () => command('getDebugState');
@@ -477,11 +478,11 @@ async function interactAndStop() {
     const value = await probe();
     const text = textOf(value);
     for (const [name, pattern] of [['workspace-trust', /(?:Yes, I trust|Do you trust|Trust this (?:folder|directory))/i],
-      ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
+      ['theme', hasThemeSelectionPrompt],
       ['claude-api-key', /Detected a custom API key[\s\S]*Do you want to use this API key/i],
       ['claude-login-method', /Select login method:[\s\S]*Claude account with subscription/i],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i]]) {
-      if (pattern.test(text) && !seenPrompts.has(name)) {
+      if ((typeof pattern === 'function' ? pattern(text) : pattern.test(text)) && !seenPrompts.has(name)) {
         seenPrompts.add(name);
         actions.push({ at: Date.now(), type: 'accept-empty-workspace-setup', prompt: name });
         // Select the second entry explicitly; Escape continues the default update action.

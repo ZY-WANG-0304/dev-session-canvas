@@ -15,6 +15,7 @@ const { readIdentity, sameIdentity, sameLiveIdentity, exitedIdentity, closeWindo
 const { createRuntimeOwnerDescriptor, createRuntimeOwnerCompatibilityFingerprint, resolveRootRuntimeSupervisorGeneration,
   resolveRuntimeRootOwnerGlobalStoragePath } = require('./runtime-root-ownership.cjs');
 const { assertRuntimeStorageContained } = require('./runtime-storage-containment.cjs');
+const { hasThemeSelectionPrompt } = require('./agent-startup-prompts.cjs');
 
 const artifacts = process.env.DEV_SESSION_CANVAS_SMOKE_ARTIFACT_DIR;
 const controlPath = process.env.DEV_SESSION_CANVAS_AGENT_RELOAD_CONTROL;
@@ -340,7 +341,7 @@ async function waitForAgentReady() {
   let claudeTrustAffirmative = false;
   const startupPrompts = [
     /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i,
-    /(?:Choose the text style|Choose.*theme|Select.*theme)/i,
+    hasThemeSelectionPrompt,
     /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i,
     /Set up the Codex agent sandbox[\s\S]*1\.\s*Set up default sandbox[\s\S]*2\.\s*Use non-admin sandbox/i,
     ...(config.provider === 'claude' ? [/Detected a custom API key[\s\S]*Do you want to use this API key/i,
@@ -350,6 +351,8 @@ async function waitForAgentReady() {
   while (Date.now() < deadline) {
     const value = await probe();
     const text = textOf(value);
+    const matchesStartupPrompt = (prompt, candidateText) => typeof prompt === 'function'
+      ? prompt(candidateText) : prompt.test(candidateText);
     const previouslyAffirmative = claudeTrustAffirmative;
     claudeTrustAffirmative = false;
     if (config.provider === 'claude' && /Select login method:|Not logged in|Invalid API key/i.test(text)) {
@@ -357,12 +360,12 @@ async function waitForAgentReady() {
     }
     let handledPrompt = false;
     for (const [name, pattern] of [['workspace-trust', /(?:Yes,?\s*I\s*trust|Do\s*you\s*trust|Trust\s*this\s*(?:folder|directory))/i],
-      ['theme', /(?:Choose the text style|Choose.*theme|Select.*theme)/i],
+      ['theme', hasThemeSelectionPrompt],
       ['update', /Update available.*\n[\s\S]*\b1\.\s*Update now[\s\S]*\b2\.\s*Skip/i],
       ['windows-sandbox', startupPrompts[3]],
       ...(config.provider === 'claude' ? [['claude-api-key', startupPrompts[4]],
         ['claude-security-notes', startupPrompts[5]]] : [])]) {
-      if (pattern.test(text) && !prompts.has(name)) {
+      if (matchesStartupPrompt(pattern, text) && !prompts.has(name)) {
         let data = name === 'update' ? '\u001b[B\r' : '\r';
         if (name === 'workspace-trust' && config.provider === 'claude') {
           const selectedNo = /^[ \t]*\u276f[ \t]+No, exit[ \t]*\r?\n[ \t]+Yes, I trust this folder[ \t]*$/m.test(text);
@@ -397,14 +400,15 @@ async function waitForAgentReady() {
       }
     }
     if (handledPrompt) { await sleep(100); continue; }
-    if (startupPrompts.some(pattern => pattern.test(text))) {
+    if (startupPrompts.some(pattern => matchesStartupPrompt(pattern, text))) {
       await sleep(100);
       continue;
     }
     if (hasLoadedAgentComposer(text)) {
       await sleep(300);
       const confirmed = textOf(await probe());
-      if (hasLoadedAgentComposer(confirmed) && !startupPrompts.some(pattern => pattern.test(confirmed))) return;
+      if (hasLoadedAgentComposer(confirmed)
+        && !startupPrompts.some(pattern => matchesStartupPrompt(pattern, confirmed))) return;
     }
     await sleep(100);
   }
