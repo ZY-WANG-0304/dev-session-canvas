@@ -17,11 +17,13 @@
 - [x] (2026-11-02) 提交并推送发布准备分支，创建 main 目标非草稿 PR #357（https://github.com/ZY-WANG-0304/dev-session-canvas/pull/357）。
 - [x] (2026-11-02) 首轮 PR #357 Release Preflight（run `41340087830`，head `90e23845`）因 `agent-tui--input-during-work` 失败；普通 Codex `/theme` 提示被烟测夹具误判为主题菜单，测试重复发送 Enter 并在任务启动前超时。
 - [x] (2026-11-02) PR #358 已合入，merge commit 为 `2373a250`；它修正普通主题提示识别并保留 Runtime reload readiness。其 Release Preflight（run `41361910686`，head `d1f2333e`）通过。
-- [x] (2026-11-02) 将 #357 从原 head `90e23845` rebase 到 `origin/main@2373a250`；rebase 无冲突，最新 main 已成为 PR 分支祖先，发布范围未改变。
+- [x] (2026-11-02) PR #359 已合入，merge commit 为 `6b9f8104`；修复 smoke 在首次 DOM 操作前等待 Note checklist Webview 渲染，并同步 smoke budget。
+- [x] (2026-11-02) PR #359 head `db71fd30` 的 Release Preflight（run `41380401074`）268 个验证任务全部成功，`Verify release contract` 成功；该结果验证的是修复 PR，不替代 #357 的发布验收。
+- [x] (2026-11-02) 将 #357 从 head `11b4cd07` rebase 到 `origin/main@6b9f8104`（含 #359）；rebase 无冲突，最新 main 已成为 PR 分支祖先，发布范围未改变。
 - [x] (2026-11-02) rebase 后重新运行 `npm run release:preflight -- --version 0.28.0` 与 `git diff --check`，均通过。
 - [x] (2026-11-02) 按旧远端 head `90e23845` 使用 `--force-with-lease` 推送 rebase 后的 PR 分支；每次更新均须以 GitHub 最新 head 的全新 Release Preflight 与 `Verify release contract` 为准。
 - [x] (2026-11-02) PR head `778461f1` 的完整 Release Preflight（run `41366315296`）与 `Verify release contract` 均成功；结果只适用于该 head。
-- [ ] 本次同步 review follow-up 后的新 head 仍须完成完整 Release Preflight 与 `Verify release contract`，并取得必要的独立 review；不复用旧 head 结果。
+- [ ] #359 合并后的 #357 新 head 尚须完成 `npm run release:preflight -- --version 0.28.0`、`git diff --check`、完整 Release Preflight 与 `Verify release contract`，并取得必要的独立 review；不复用旧 head 结果。
 - [ ] PR 合并后固定最终产品 SHA，按 `docs/WORKFLOW.md` 运行 release batch 与发布渠道流程；如门禁、审批或渠道条件未满足，记录停点而不绕过。
 
 ## 意外与发现
@@ -30,6 +32,7 @@
 - #351 的真实 VS Code 键盘焦点 / 高对比主题 / 持久化人工验收仍需明示；#355 的真实 Codex CLI PTY 验证缺失，不得写成已通过。
 - #356 的兼容清理会移除旧自动文件活动派生状态，但保留磁盘文件、普通连线和独立文件操作能力。
 - PR #357 的首轮失败是烟测夹具误识别普通 `/theme` Tip 提示，不是发布文案或 0.28.0 产品变更导致；修复随 PR #358 合入。#357 rebase 后仍须重新完成自身的正式验收。
+- PR #357 的后续 packaged-host checklist 失败发生在 Host snapshot 已保存内容、但 Webview probe 尚未观察到渲染内容的时序窗口。PR #359 修复的是 smoke 的同步边界而非产品行为；其 268 项 CI 和稳定发布契约检查通过，但 #357 必须在包含该修复的最新 main 上重新完成完整验收。
 
 ## 决策记录
 
@@ -46,7 +49,7 @@
 
 ## 上下文与定向
 
-已发布基线 `v0.27.0` 对应发布 PR #345。发布范围最初基于 `origin/main@efdc6cda`（含 #351 / #355 / #356）确定；2026-11-02 已将 PR #357 rebase 到 `origin/main@2373a250`（含已合并的 #358），没有改变用户功能范围。主要静态输入为 `package.json`、主扩展 / notifier `package.json`、`package-lock.json`、双 `CHANGELOG.md`、英中文 root README 和 Marketplace README、两个发布手册、`docs/support.md`、`docs/design-docs/public-marketplace-release-readiness.md`、本设计文档及 `docs/release-contracts/v0.28.0.md`。
+已发布基线 `v0.27.0` 对应发布 PR #345。发布范围最初基于 `origin/main@efdc6cda`（含 #351 / #355 / #356）确定；2026-11-02 已将 PR #357 rebase 到 `origin/main@6b9f8104`（含已合并的 #358 / #359），没有改变用户功能范围。主要静态输入为 `package.json`、主扩展 / notifier `package.json`、`package-lock.json`、双 `CHANGELOG.md`、英中文 root README 和 Marketplace README、两个发布手册、`docs/support.md`、`docs/design-docs/public-marketplace-release-readiness.md`、本设计文档及 `docs/release-contracts/v0.28.0.md`。
 
 产品范围锚点为 `docs/design-docs/canvas-node-group-title-editing.md`、`docs/design-docs/execution-terminal-clipboard-shortcuts.md`、`docs/design-docs/canvas-file-activity-retirement.md` 及其规格 / 实施计划。文件活动退役只清理扩展旧派生状态，不删除磁盘文件或独立文件关联能力。真实 Codex CLI PTY 与真实 VS Code 部分宿主行为仍有已记录的验证边界。
 
