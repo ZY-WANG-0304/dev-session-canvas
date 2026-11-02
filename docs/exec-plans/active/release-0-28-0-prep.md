@@ -23,7 +23,8 @@
 - [x] (2026-11-02) rebase 后重新运行 `npm run release:preflight -- --version 0.28.0` 与 `git diff --check`，均通过。
 - [x] (2026-11-02) 按旧远端 head `90e23845` 使用 `--force-with-lease` 推送 rebase 后的 PR 分支；每次更新均须以 GitHub 最新 head 的全新 Release Preflight 与 `Verify release contract` 为准。
 - [x] (2026-11-02) PR head `778461f1` 的完整 Release Preflight（run `41366315296`）与 `Verify release contract` 均成功；结果只适用于该 head。
-- [x] (2026-11-02) #359 合并后的 PR #357 head `389c6fad` 通过 `npm run release:preflight -- --version 0.28.0`、`git diff --check` 及完整 Release Preflight（run `41402831210`）；必需检查 `Verify release contract` 成功。独立的非阻塞观察 run `41402831188` 中，`surface-continuity--live-page-remount` 与 `verify-result` 失败；按 `docs/workflows/CI.md`，观察不属于发布验收等待链，也不替代/否定本次必需门禁。
+- [x] (2026-11-02，历史证据) 当 PR #357 head 为 `389c6fad` 时，`npm run release:preflight -- --version 0.28.0`、`git diff --check` 和完整 Release Preflight（run `41402831210`）均通过，必需检查 `Verify release contract` 成功。独立观察 run `41402831188` 中，`surface-continuity--live-page-remount` 与 `verify-result` 失败；观察不属于 required gate 等待链。此结果仅适用于 `389c6fad`，不构成后续 PR head 的验收。
+- [ ] 当前 PR #357 head（包含本次记录修正）仍须通过 `npm run release:preflight -- --version 0.28.0`、`git diff --check`、完整 Release Preflight 与 `Verify release contract`；不得复用旧 head 结果。
 - [ ] PR #357 尚需完成最新 head 的独立 review；GitHub 当前 `reviewDecision=REVIEW_REQUIRED`，不得绕过所需审批。
 - [ ] PR 合并后固定最终产品 SHA，按 `docs/WORKFLOW.md` 运行 release batch 与发布渠道流程；如门禁、审批或渠道条件未满足，记录停点而不绕过。
 
@@ -34,7 +35,7 @@
 - #356 的兼容清理会移除旧自动文件活动派生状态，但保留磁盘文件、普通连线和独立文件操作能力。
 - PR #357 的首轮失败是烟测夹具误识别普通 `/theme` Tip 提示，不是发布文案或 0.28.0 产品变更导致；修复随 PR #358 合入。#357 rebase 后仍须重新完成自身的正式验收。
 - PR #357 的后续 packaged-host checklist 失败发生在 Host snapshot 已保存内容、但 Webview probe 尚未观察到渲染内容的时序窗口。PR #359 修复的是 smoke 的同步边界而非产品行为；其 268 项 CI 和稳定发布契约检查通过，但 #357 必须在包含该修复的最新 main 上重新完成完整验收。
-- PR #357 最新 head `389c6fad` 已在包含 #359 的 main 基线上完成正式发布验收（run `41402831210`，`Verify release contract` 成功）。同 SHA 的独立观察 run `41402831188` 有两项失败；它们不在 required gate 等待链，不能与正式验收失败混为一谈，仍如实保留观察结果。
+- PR #357 曾在 head `389c6fad`、包含 #359 的 main 基线上完成正式发布验收（run `41402831210`，`Verify release contract` 成功）。同 SHA 的独立观察 run `41402831188` 有两项失败；它们不在 required gate 等待链，不能与正式验收失败混为一谈。以上均为该历史 head 的证据，不代表后续 head 已通过；每次更新 PR 均须独立完成验收。
 
 ## 决策记录
 
