@@ -127,6 +127,25 @@ class ControlledSocket extends EventEmitter {
 try {
   const root = await fixture();
   const hello = rootHello(root.descriptor);
+  await test('client can attach a compatible previous release but cannot accept a different release owner', async () => {
+    const previous = await fixture({ generation: resolveRootRuntimeSupervisorGeneration(profile, '0.1.0') });
+    const other = await fixture({ generation: resolveRootRuntimeSupervisorGeneration(profile, '0.2.0') });
+    const client = track(new RuntimeSupervisorClient(clientOptions(previous)));
+    const socket = await connect(client, rootHello(previous.descriptor));
+    assert.deepEqual((await client.hello()).runtimeOwner, previous.descriptor);
+    assert.deepEqual(socket.messages.map(message => message.method), ['hello']);
+    const mismatched = track(new RuntimeSupervisorClient(clientOptions(other)));
+    await assert.rejects(connect(mismatched, rootHello(previous.descriptor)), /owner|handshake|profile|compatible/i);
+    assert.equal(effects.includes('start'), false);
+  });
+
+  await test('different release executable rejects startup before claim or cleanup', async () => {
+    const previous = await fixture({ generation: resolveRootRuntimeSupervisorGeneration(profile, '0.1.0') });
+    await assert.rejects(supervisor(previous).start(), /release.*executable/i);
+    assert.deepEqual(effects, []);
+    await assertRetained(previous);
+    await assert.rejects(readFile(previous.startedPath), { code: 'ENOENT' });
+  });
   await test('legacy hello remains valid and cannot adopt a root owner descriptor', async () => {
     const options = clientOptions(root);
     options.backend.paths.storageDir = path.join(directory, 'legacy', 'runtime-supervisor');

@@ -35,6 +35,7 @@ try {
         export { createRuntimeOwnerDescriptor, resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath }
           from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
         export { namespaceCanvasObjectId } from './extensions/vscode/dev-session-canvas/src/common/canvasMultiRootComposition';
+        export { resolveCurrentRootRuntimeSupervisorGeneration } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRelease';
         export { workspace as vscodeWorkspace } from 'vscode';
       `,
       resolveDir: process.cwd(),
@@ -149,6 +150,7 @@ try {
     reconcileDefaultExecutionMetadataCwd,
     reconcileRuntimeNodesInArray,
     resolveRootRuntimeSupervisorGeneration,
+    resolveCurrentRootRuntimeSupervisorGeneration,
     resolveRuntimeRootOwnerBaseStoragePath,
     resolveTerminalShellPathForConfigurationCwd,
     vscodeWorkspace
@@ -668,7 +670,8 @@ try {
       const newTarget = await host.resolveRuntimeCreationTarget(host.resolveExecutionNodeRuntimeRoot(newNode));
       assert.equal(newTarget.rootPath, rootA);
       assert.equal(newTarget.runtimeOwner.root.normalizedPath, rootA);
-      assert.equal(newTarget.runtimeOwner.generation, resolveRootRuntimeSupervisorGeneration(profile));
+      assert.equal(newTarget.runtimeOwner.generation, resolveCurrentRootRuntimeSupervisorGeneration(profile));
+      assert.notEqual(newTarget.runtimeOwner.generation, resolveRootRuntimeSupervisorGeneration(profile));
       assert.notEqual(newTarget.runtimeStoragePath, rootlessTarget.runtimeStoragePath,
         `${kind} adding a folder changes only the target for a new execution.`);
       host.state = hydrateRuntimeStoragePaths(normalizeState(host.state, 'codex'), currentWorkspaceSlot);

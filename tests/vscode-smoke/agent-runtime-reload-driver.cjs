@@ -124,7 +124,8 @@ async function assertRuntimeOwnerBinding(metadata, hello) {
   assert(typeof metadata.runtimeSessionId === 'string' && metadata.runtimeSessionId.length > 0);
   const expected = createRuntimeOwnerDescriptor({ environmentKey: owner.environmentKey,
     userStorageScopeKey: owner.userStorageScopeKey, rootPath: config.workspacePath,
-    generation: resolveRootRuntimeSupervisorGeneration(profile) });
+    generation: resolveRootRuntimeSupervisorGeneration(profile,
+      vscode.extensions.getExtension('devsessioncanvas.dev-session-canvas').packageJSON.version) });
   assert.deepEqual(owner, expected, 'The original owner must identify this workspace root and platform generation.');
   const globalStorage = resolveRuntimeRootOwnerGlobalStoragePath(runtimePaths(metadata).storageDir, owner);
   const expectedGlobalStorage = path.join(config.userDataDir, 'User', 'globalStorage', 'devsessioncanvas.dev-session-canvas');

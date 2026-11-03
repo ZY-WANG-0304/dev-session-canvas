@@ -106,7 +106,7 @@ Root 保留现有词法路径语义：使用执行端的绝对 workspace folder 
 
 新 root generation 的业务端点同样必须稳定，不能由窗口的 `XDG_RUNTIME_DIR`、`TMPDIR`、`XDG_STATE_HOME` 或 `HOME` 决定。POSIX 使用固定 `/tmp/dsc-root-<uid>` 内按 storage 摘要和 backend 区分的短 socket，Windows 保持按 storage 摘要命名的 pipe；不新增端点发现记录，也不把这些环境变量扩进 owner 身份。POSIX 目录必须属于当前 UID、为非 symlink 的 0700 目录，发现、连接及清理 socket 前分别验证；不安全时拒绝，不通过 chmod 接管已有目录。此调整只适用尚未发布的新 root generation，旧 workspace slot 的地址规则保持不变。持久 session 数据仍在用户私有 global storage，不回落临时目录。
 
-为三平台分别分配新的 root-owner generation，与 `terminal-current-state-*-v1` 区分；它包含 owner 握手及当前态能力，不按每个窗口、扩展 patch 版本或启动 UUID 派生。协议/provider 不兼容才换 generation，同一兼容代中的绝对扩展安装路径不参与 owner key。stock 显式对照也必须隔离，不借目录假装当前原生能力。
+为三平台分别分配 root-owner 协议 generation，与 `terminal-current-state-*-v1` 区分；它包含 owner 握手及当前态能力。2026-11-03 的发行隔离修订：新会话在协议前缀后增加 `-release-<SHA-256(version)>`，区分协议兼容性与新建实例的发行身份；同版同 root 跨窗口仍复用，不按窗口或启动 UUID 派生。绝对扩展安装路径不参与 owner key，历史无后缀 generation 和已有会话绑定不改写。具体实现与尚未完成的产品验收见 [Supervisor 发行隔离](runtime-supervisor-release-isolation.md)。stock 显式对照维持原规则。
 
 新 metadata 仍保存完整 `runtimeBackend + runtimeStoragePath + runtimeSessionId + executionKind`，并增加版本化 owner descriptor 或其可校验引用。`runtimeStoragePath` 仍指 generation base，不能混淆为内部 `runtime-supervisor` 目录。Owner 用于新建选路和防串接，完整 binding 用于所有已存在会话的 attach/input/resize/stop/delete，二者不能互相代替。会话 authority、epoch、reader 身份规则不变。
 

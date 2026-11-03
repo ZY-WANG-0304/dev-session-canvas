@@ -314,9 +314,10 @@ import {
   resolveRuntimeSupervisorExecutionProfile
 } from '../common/runtimeSupervisorPaths';
 import { createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, parseRuntimeOwnerDescriptor,
-  resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerBaseStoragePath,
+  resolveRuntimeRootOwnerBaseStoragePath,
   resolveRuntimeRootOwnerGlobalStoragePath, runtimeOwnerDescriptorsEqual,
   type RuntimeOwnerDescriptorV1 } from '../common/runtimeRootOwnership';
+import { resolveCurrentRootRuntimeSupervisorGeneration } from './runtimeRelease';
 import { readRuntimeExecutionEnvironment, type RuntimeExecutionEnvironment } from './runtimeExecutionEnvironment';
 import { prepareRootRuntimeSupervisor } from './runtimeRootSupervisorPreparation';
 import { prepareRuntimeGlobalStorage, RuntimeGlobalStorageError } from './runtimeGlobalStorage';
@@ -10946,7 +10947,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const runtimeOwner = createRuntimeOwnerDescriptor({ environmentKey: environment.environmentKey,
       userStorageScopeKey: createRuntimeUserStorageScopeKey(environment.userIdentity, canonicalGlobalStorage),
-      rootPath, generation: resolveRootRuntimeSupervisorGeneration(profile) });
+      rootPath, generation: resolveCurrentRootRuntimeSupervisorGeneration(profile) });
     return { rootPath, runtimeOwner,
       runtimeStoragePath: resolveRuntimeRootOwnerBaseStoragePath(canonicalGlobalStorage, runtimeOwner) };
   }

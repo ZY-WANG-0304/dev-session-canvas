@@ -48,14 +48,14 @@ import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
 import {
   assertExecutionCandidateRuntimeSupervisorStorageDir,
   isRootOwnerRuntimeSupervisorStorageDir,
-  isRuntimeRootStorageNamespace,
-  resolveRootRuntimeSupervisorGeneration
+  isRuntimeRootStorageNamespace
 } from '../common/runtimeSupervisorPaths';
 import {
   createRuntimeOwnerCompatibilityFingerprint,
   assertRuntimeOwnerDescriptor,
   runtimeOwnerDescriptorsEqual,
   resolveRuntimeRootOwnerGlobalStoragePath,
+  resolveRootRuntimeSupervisorProfileFromGeneration,
   type RuntimeOwnerDescriptorV1
 } from '../common/runtimeRootOwnership';
 
@@ -171,7 +171,7 @@ export class RuntimeSupervisorClient {
         throw new Error('Root runtime owner requires an explicit execution profile.');
       }
       assertRuntimeOwnerDescriptor(options.expectedRuntimeOwner);
-      if (options.expectedRuntimeOwner.generation !== resolveRootRuntimeSupervisorGeneration(options.executionProfile)) {
+      if (resolveRootRuntimeSupervisorProfileFromGeneration(options.expectedRuntimeOwner.generation) !== options.executionProfile) {
         throw new Error('Root runtime owner generation does not match its execution profile.');
       }
       resolveRuntimeRootOwnerGlobalStoragePath(storageDir!, options.expectedRuntimeOwner);

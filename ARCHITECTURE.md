@@ -17,7 +17,7 @@
 
 - `Extension Host`：持有 workspace 画布投影与节点到会话映射，负责命令、Webview 生命周期、workspace trust、持久化以及 Agent / Terminal 编排；开启模式的 root 结构由共享存储合并提交，Host 不以自身整图覆盖其他窗口。
 - `Webview`：负责画布渲染、节点交互、内嵌终端前端和局部 UI 状态。
-- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。正常运行时新会话使用当前协议代 Supervisor；扩展升级的退役窗口允许旧、新 Supervisor 按独立 storage / control endpoint 并行存在，每个会话始终只绑定其中一个进程。
+- `Runtime Supervisor`：仅在 `live-runtime` 持久化模式下参与；负责在 VSCode 生命周期之外托管执行会话，并作为该会话 terminal event、revision、checkpoint 与 journal 的唯一运行时权威。原生 folder-root 新会话使用当前发行版本的 Supervisor，实例命名空间区分协议代际与发行身份；升级时即使协议兼容也不把新执行分配给旧实例。旧、新 Supervisor 按独立 storage / control endpoint 并行存在，每个已有会话始终保持原完整绑定。实现与验证范围见 `docs/design-docs/runtime-supervisor-release-isolation.md`。
 - `Execution Provider`：正常构建默认按 Linux / macOS / Windows 选择 owned 原生 provider，由所在 Host 或 Supervisor 的 `ExecutionOwnerLifecycle` 持有执行、输出、消费者与资源结算责任；provider 在独立进程中操作 PTY / ConPTY。它不是用户的 Runtime Persistence 开关，也不使 `snapshot-only` 进程获得跨 Host 存活保证。
 
 主路径可以概括为：

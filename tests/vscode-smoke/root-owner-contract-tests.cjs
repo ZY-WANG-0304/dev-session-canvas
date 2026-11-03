@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { assertCase, assertBoundaryCase, assertContained, assertDriverProfileRegistration } = require('./root-owner-contract.cjs');
+const { assertCase, assertBoundaryCase, assertContained, assertDriverProfileRegistration, expectedReleaseGeneration } = require('./root-owner-contract.cjs');
 
 const identity = pid => ({ pid, startTicks: String(pid * 100), executable: '/fixture/node', state: 'S', ppid: 2 });
 const interaction = sessionId => ({ applied: true, marker: 'DSC_ROOT_REPLY_abcd-1234', sessionId });
@@ -14,8 +14,8 @@ function fixture() {
   const subject = (key, pid, sessionId) => {
     const runtimeOwner = { schema: 1, environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
       root: { kind: 'folder', pathPolicy: 'canvas-path-v1', normalizedPath: roots[key] },
-      generation: 'terminal-root-owner-linux-v1' };
-    return { binding: { runtimeBackend: 'legacy-detached', runtimeOwner, runtimeStoragePath: `/fixture/storage/${key}`,
+      generation: expectedReleaseGeneration('0.28.0') };
+    return { runtimeRelease: '0.28.0', binding: { runtimeBackend: 'legacy-detached', runtimeOwner, runtimeStoragePath: `/fixture/storage/${key}`,
       runtimeSessionId: sessionId }, hello: { pid, runtimeOwner }, supervisor: identity(pid),
       socketPath: `/fixture/sockets/${key}`, provider: identity(pid + 100), identity: identity(pid + 200),
       reader: { authorityId: `authority-${sessionId}`, readId: `reader-${sessionId}`, sessionId },

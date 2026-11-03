@@ -77,6 +77,7 @@ export function taskCatalog({ functional = false, artifact = false, release = fa
         ['prepare', 'action', 'assert', 'cleanup'], { required: release, calibration: !release }));
     }
     tasks.push(task('source-build', 'source-build', 'default', ['prepare', 'build', 'assert']));
+    tasks.push(task('source-build', 'runtime-release-upgrade', 'default', ['prepare', 'action', 'assert', 'cleanup']));
     for (const suite of smokeCatalog.filter(item => !item.diagnosticOnly)) {
       tasks.push(task('source-host', `smoke/${suite.id}`, suite.variant,
         ['prepare', 'action', 'assert', 'cleanup', 'host-exit'], { suite: suite.id, hostGroup: suite.group }));

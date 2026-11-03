@@ -31,6 +31,9 @@ import { prepareInstalledResizeViewport, selectInstalledResizeGesture, installed
   prepareInstalledLocalizedStop, findUniqueInstalledTerminalCreation } from '../smoke/installed-ui-observation.mjs';
 import { verifyBrowserReport } from '../gates/run-browser-tests.mjs';
 import { regressionScripts } from '../gates/catalog.mjs';
+import { assertRuntimeReleaseUpgradeEvidence, assertRuntimeReleaseUpgradeCleanup } from '../gates/runtime-release-evidence.mjs';
+import { buildRuntimeReleaseBaseline, runtimeReleaseBaselineCommit, runtimeReleaseBundles } from './runtime-release-baseline.mjs';
+import { observeOriginalProcesses, readLinuxProcess, signalOriginalProcess } from './runtime-release-processes.mjs';
 import { selectSmokeSuites, smokeHostContract, smokeCatalog } from '../smoke/smoke-catalog.mjs';
 import { smokeBudgetInventory, verifySmokeBudgetSources } from '../smoke/smoke-budget.mjs';
 import { collectHostEvidence } from '../smoke/host-evidence.mjs';
@@ -885,6 +888,11 @@ test('smoke migration detects a removed actual registration or causal completion
 test('formal plan retains foundation, independent cases, causal combinations and candidate pair',()=>{
   const docs=fixture();assert.equal(docs.plan.scope.functional,false);assert(docs.plan.tasks.some(t=>t.id==='webview-functional'));
   const code=fixture({changedPaths:['extensions/vscode/dev-session-canvas/src/panel/x.ts']});assert(code.plan.scope.functional);
+  assert.deepEqual(code.plan.tasks.filter(task => task.job === 'source-build').map(task => task.id),
+    ['source-build', 'runtime-release-upgrade']);
+  const upgrade = code.plan.tasks.find(task => task.id === 'runtime-release-upgrade');
+  assert.equal(upgrade.required, true);
+  assert.deepEqual(upgrade.stages, ['prepare', 'action', 'assert', 'cleanup']);
   assert.deepEqual(code.plan.tasks.filter(t=>t.job==='source-host'&&t.suite&&!t.suite.startsWith('notifier')&&t.suite!=='ui-copy-locale').map(t=>t.suite),
     smokeCatalog.filter(item=>!item.diagnosticOnly).map(item=>item.id));
   assert.deepEqual(smokeCatalog.filter(item=>item.kind==='legacy-suite'&&!item.diagnosticOnly).map(item=>item.id),
@@ -903,6 +911,132 @@ test('formal plan retains foundation, independent cases, causal combinations and
   assert.deepEqual(classifyChanges(['unknown/config']),{functional:true,artifact:true});
   assert.throws(()=>validateFrozenPlan({...release.plan,tasks:release.plan.tasks.slice(1)}));
   assert.throws(()=>validateFrozenPlan({...release.plan,scope:{functional:false,artifact:false,release:false}}));
+});
+function runtimeReleaseEvidenceFixture() {
+  let pid = 100;
+  return { schemaVersion: 2, platform: 'linux', realPty: true, realAgentCli: false, passed: true,
+    baseline: { kind: 'pinned-pre-fix-source', commit: runtimeReleaseBaselineCommit, sourceArchiveSha256: 'a'.repeat(64),
+      toolchain: { node: '22.23.3', esbuild: '0.25.0', lockfileSha256: 'b'.repeat(64) },
+      native: { origin: 'same-run-current-assets', sha256: 'c'.repeat(64) },
+      bundles: Object.fromEntries(runtimeReleaseBundles.map(file => [file, 'd'.repeat(64)])),
+      currentBundles: Object.fromEntries(runtimeReleaseBundles.map(file => [file, 'e'.repeat(64)])) },
+    runtimes: ['old-extension', 'current-extension', 'next-extension'].map((name, index) => {
+      const roles = index === 0 ? ['supervisor', 'provider', 'pty', 'provider', 'pty'] : ['supervisor', 'provider', 'pty'];
+      const originalProcesses = roles.map(role => ({ pid: ++pid, startTicks: String(pid * 10), executable: '/fixture/node', role }));
+      const absent = originalProcesses.map(identity => ({ ...identity, observed: 'absent' }));
+      return { name, originalProcesses, retirement: structuredClone(absent), cleanup: structuredClone(absent), retiredAt: new Date(900).toISOString() };
+    }),
+    forcedCleanup: [], cleanupErrors: [], cleanup: 'passed', actionCompletedAt: new Date(1000).toISOString(),
+    cleanupStartedAt: new Date(1100).toISOString(), cleanupCompletedAt: new Date(1200).toISOString(),
+    cases: ['deleted-installation-rejects-historical-create', 'release-isolation-and-live-reader-continuity',
+      'historical-retirement-preserves-new-executions', 'all-fixtures-retire-naturally'] };
+}
+test('release upgrade evidence rejects skipped cases, forced retirement and borrowed deadlines', () => {
+  const evidence = runtimeReleaseEvidenceFixture();
+  assertRuntimeReleaseUpgradeEvidence(evidence, 1000);
+  assertRuntimeReleaseUpgradeCleanup(evidence, 1200);
+  for (const changed of [{ passed: false }, { realPty: false }, { cases: evidence.cases.slice(1) },
+    { forcedCleanup: [123] }, { actionCompletedAt: new Date(1001).toISOString() }, { cleanupErrors: ['unreadable process'] }]) {
+    assert.throws(() => assertRuntimeReleaseUpgradeEvidence({ ...evidence, ...changed }, 1000));
+  }
+  for (const changed of [{ cleanup: 'failed' }, { cleanupCompletedAt: new Date(1201).toISOString() },
+    { cleanupStartedAt: new Date(1201).toISOString() }]) {
+    assert.throws(() => assertRuntimeReleaseUpgradeCleanup({ ...evidence, ...changed }, 1200));
+  }
+});
+test('release upgrade rejects unknown or current-code historical baselines and incomplete binary provenance', () => {
+  for (const mutate of [
+    evidence => { delete evidence.baseline; },
+    evidence => { evidence.baseline = 'historical-namespace'; },
+    evidence => { evidence.baseline.kind = 'external-baseline'; },
+    evidence => { evidence.baseline.commit = 'origin/main'; },
+    evidence => { evidence.baseline.commit = 'a'.repeat(40); },
+    evidence => { delete evidence.baseline.sourceArchiveSha256; },
+    evidence => { delete evidence.baseline.toolchain.lockfileSha256; },
+    evidence => { evidence.baseline.native.origin = 'unknown'; },
+    evidence => { delete evidence.baseline.bundles['linux-execution-provider.js']; },
+    evidence => { evidence.baseline.bundles = evidence.baseline.currentBundles; }
+  ]) {
+    const evidence = runtimeReleaseEvidenceFixture();
+    mutate(evidence);
+    assert.throws(() => assertRuntimeReleaseUpgradeEvidence(evidence, 1000));
+  }
+});
+test('release upgrade requires all three original trees in both retirement and final cleanup', () => {
+  for (const phase of ['retirement', 'cleanup']) {
+    const verify = phase === 'retirement' ? assertRuntimeReleaseUpgradeEvidence : assertRuntimeReleaseUpgradeCleanup;
+    for (const mutate of [
+      evidence => { delete evidence.runtimes; },
+      evidence => { evidence.runtimes.pop(); },
+      evidence => { evidence.runtimes[0].originalProcesses.pop(); },
+      evidence => { evidence.runtimes[1][phase].pop(); },
+      evidence => { evidence.runtimes[2][phase][1].observed = 'present'; },
+      evidence => { evidence.runtimes[0][phase][2].startTicks = '99999'; },
+      evidence => { evidence.runtimes[0][phase][1].observed = 'unknown'; }
+    ]) {
+      const evidence = runtimeReleaseEvidenceFixture();
+      mutate(evidence);
+      assert.throws(() => verify(evidence, 1200));
+    }
+  }
+  const late = runtimeReleaseEvidenceFixture();
+  late.runtimes[0].retiredAt = new Date(1001).toISOString();
+  assert.throws(() => assertRuntimeReleaseUpgradeEvidence(late, 1200));
+});
+test('release upgrade observes original descendants after parent exit and forced cleanup cannot repair business evidence', async () => {
+  const evidence = runtimeReleaseEvidenceFixture();
+  const runtime = evidence.runtimes[0];
+  const orphan = runtime.originalProcesses[2];
+  let alive = true;
+  const signals = [];
+  const read = async pid => pid === orphan.pid && alive ? { ...orphan, state: 'S', parentPid: 1 } : null;
+  runtime.retirement = await observeOriginalProcesses(runtime.originalProcesses, read);
+  assert.equal(runtime.retirement[0].observed, 'absent');
+  assert.equal(runtime.retirement[2].observed, 'present');
+  assert.throws(() => assertRuntimeReleaseUpgradeEvidence(evidence, 1000));
+  assert(await signalOriginalProcess(orphan, 'SIGTERM', { read, kill: (pid, signal) => { signals.push({ pid, signal }); alive = false; } }));
+  assert.deepEqual(signals, [{ pid: orphan.pid, signal: 'SIGTERM' }]);
+  evidence.forcedCleanup.push({ ...orphan, signal: 'SIGTERM' });
+  runtime.cleanup = await observeOriginalProcesses(runtime.originalProcesses, read);
+  assertRuntimeReleaseUpgradeCleanup(evidence, 1200);
+  assert.throws(() => assertRuntimeReleaseUpgradeEvidence(evidence, 1000));
+});
+test('release upgrade never mistakes a zombie, reused PID or unreadable identity for absence or signals an unverified PID', async () => {
+  const identity = { pid: 123, startTicks: '456', executable: '/fixture/node', role: 'pty' };
+  const signals = [];
+  const kill = (...args) => signals.push(args);
+  const zombie = async () => ({ ...identity, state: 'Z', parentPid: 1 });
+  assert.equal((await observeOriginalProcesses([identity], zombie))[0].observed, 'present');
+  assert.equal(await signalOriginalProcess(identity, 'SIGKILL', { read: zombie, kill }), false);
+  for (const read of [async () => ({ ...identity, startTicks: '789', state: 'S' }),
+    async () => { throw Object.assign(new Error('permission denied'), { code: 'EACCES' }); }]) {
+    await assert.rejects(observeOriginalProcesses([identity], read));
+    await assert.rejects(signalOriginalProcess(identity, 'SIGTERM', { read, kill }));
+  }
+  assert.equal(await signalOriginalProcess(identity, 'SIGTERM', { read: async () => null, kill }), false);
+  assert.deepEqual(signals, []);
+});
+test('release upgrade proc parser requires positive disappearance and valid start ticks', async () => {
+  const fields = ['Z', '1', ...Array(17).fill('0'), '456'];
+  const parsed = await readLinuxProcess(123, async () => `123 (fixture ) name) ${fields.join(' ')}`);
+  assert.deepEqual(parsed, { pid: 123, startTicks: '456', state: 'Z', parentPid: 1 });
+  assert.equal(await readLinuxProcess(123, async () => { throw Object.assign(new Error('gone'), { code: 'ENOENT' }); }), null);
+  await assert.rejects(readLinuxProcess(123, async () => 'malformed stat'));
+  await assert.rejects(readLinuxProcess(123, async () => { throw Object.assign(new Error('permission denied'), { code: 'EACCES' }); }));
+});
+test('release upgrade pinned baseline refuses wrong source, missing history, cancellation and expired work without fallback', async () => {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-upgrade-baseline-contract-'));
+  try {
+    const options = { directory: temporary, currentExtension: '/forbidden-current-fallback', deadline: Date.now() + 10000 };
+    await assert.rejects(buildRuntimeReleaseBaseline({ ...options, commit: 'HEAD' }), /pinned pre-fix commit/);
+    await assert.rejects(buildRuntimeReleaseBaseline({ ...options, repository: temporary }), /not a git repository/);
+    await fs.rm(path.join(temporary, 'baseline-source'), { recursive: true });
+    await assert.rejects(buildRuntimeReleaseBaseline({ ...options, deadline: Date.now() - 1 }), /work deadline/);
+    await fs.rm(path.join(temporary, 'baseline-source'), { recursive: true });
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(buildRuntimeReleaseBaseline({ ...options, signal: controller.signal }), /abort/i);
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 });
 test('passing aggregate requires actual receipt set, producer and same candidate pair',()=>{
   assert(aggregateResults(fixture()).acceptance);assert(aggregateResults(fixture({mode:'release-pr'})).acceptance);

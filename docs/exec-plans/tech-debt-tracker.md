@@ -2,6 +2,16 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-11-03：Supervisor 发行隔离的安装级验收与历史 Host 测试
+
+基于 `origin/main@da207a9f` 的发行隔离已实现；Linux 的删旧安装树、真实 Supervisor/provider/PTY、reader 连续性、并发准备与 systemd 复用通过，不操作用户已有会话。仍需隔离安装 VSIX 后验证真实 Agent/Fork、连续两次升级及 macOS/Windows，不能把 Node 回显夹具或纯路径测试当作该验收。新版 Host 可管理兼容旧 binding，不保证未升级的旧 Host 能读写新的 generation。后续范围、命令和验收步骤见 [正式设计](../design-docs/runtime-supervisor-release-isolation.md) 与 [实施计划](active/runtime-supervisor-release-isolation.md)。
+
+全量 `test-host-execution-owner-wiring.mjs` 在未修改主线对照仍于 reset 用例失败（第 534 行 `false !== true`），另有未初始化删除操作集合的历史夹具。此次新增具名升级路由回归只覆盖相关入口，不声称全文件通过，不顺手修复无关 reset/delete。发布前需独立收敛这些夹具/行为差异，并完成原有正式门禁；不能将本机定向通过代替完整 CI。
+
+Luna review 的两项自动化证据缺口已补齐：正式升级 gate 固定 `da207a9f` 未修改修前源码，用当前锁定工具链构建旧 Supervisor/launcher/provider，不再用当前代码冒充旧端；Node 22/25 均核对三代共 11 个原始进程自然消失，最终清理再核验，7 项定向契约拒绝残留子进程、复用 PID、未知观察和错误来源。此项仍不是原始历史 VSIX 或真实 Agent 的安装验收，不改变上方待办。
+
+同次复审的非阻塞风险：`scripts/test/runtime-release-processes.mjs` 异常清理先读 `/proc` 核对 PID/startTicks，再调用数字 PID signal；检查与发送之间仍有理论性 PID 复用竞态，现有测试不证明原子性。正常通过不发送信号；后续若引入 Linux pidfd 等原子进程句柄，应对这段错误清理补充竞态回归，不以二次读取冒充原子保证。本轮不添加平台原生依赖或操作用户 Supervisor。
+
 ## 2026-11-02：linger 登录独立性的真实主机验收
 
 资格检查、无输入框的原生操作对话框及确认后终端配置、生产 Linux 本地/Remote SSH 新建准入及旧会话保护已实现，本地定向测试、类型检查和构建通过。本机只读返回 Linger=no，未执行配置变更。能力/交互/服务端 mock、既有 fake-systemd、真实隔离 socket/PTY 和窗口重开均不能代证“最后一个登录结束后原执行仍活着”。正式设计保持验证中，不能将当前结果描述为已完成跨 logout 验收或已修复用户当前安装。
