@@ -138,5 +138,7 @@ updated_at: 2026-11-03
 7. 更新 Webview 与 VS Code smoke 中代表当前默认场景的 Agent / Terminal 夹具及 canvas/minimap 截图基线，并为扩大后的节点调整布局坐标。硬换行链接场景继续使用显式窄尺寸，以保留其要测试的换行输入；与换行无关的低置信度链接用例使用默认尺寸。其他测试中的旧尺寸是显式持久化状态、旧版状态或几何算法合成输入，不代表默认值，不随本次变更机械替换。
 8. 已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-node-placement`、`npm run typecheck`、5 项受影响 Webview 定向用例及完整 `npm run test:webview`（420 项）；全部通过。
 9. 已运行 `npm run test:ui-copy-locale-smoke`，以及限定 `session-history/codex-branch` 与 `session-history/claude-branch` 的 VS Code smoke；英文/简体中文本地化和两类 Agent 分支创建均通过。
+10. 更新 VS Code smoke 夹具后按门禁要求重新生成 `scripts/smoke/smoke-budget-inventory.json`；复核只有相关 smoke 源文件 hash 改变，各场景等待预算与循环界限均未变化。
+11. 运行 `node --test scripts/test/test-gate-contracts.mjs`，108 项通过，包含 smoke 源码摘要冻结检查。
 
 自动化测试验证模型默认尺寸、缺失尺寸回退、显式尺寸兼容、完整外框避碰、Webview 场景布局与现有交互回归；它们不等价于真实 VS Code 宿主中的可读性验收。仍需手动确认默认字体下长行换行减少、节点底部信息可见，再将验证状态更新为已验证。
