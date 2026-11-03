@@ -3433,8 +3433,8 @@ test('right-click create menu validates custom agent launch commands before crea
   await pane.click({
     button: 'right',
     position: {
-      x: 1060,
-      y: 520
+      x: 1200,
+      y: 650
     }
   });
 
@@ -3461,8 +3461,8 @@ test('right-click create menu validates custom agent launch commands before crea
   expect(await waitForCreateDemoNodePayload(page)).toEqual({
     kind: 'agent',
     preferredPosition: {
-      x: 780,
-      y: 305
+      x: 820,
+      y: 370
     },
     agentProvider: 'codex',
     agentLaunchPreset: 'custom',
@@ -3502,8 +3502,8 @@ test('right-click create menu blocks custom agent launch when provider default a
   await pane.click({
     button: 'right',
     position: {
-      x: 1060,
-      y: 520
+      x: 1200,
+      y: 650
     }
   });
 
@@ -3537,8 +3537,8 @@ test('right-click custom agent launch input ignores IME Enter before composition
   await pane.click({
     button: 'right',
     position: {
-      x: 1060,
-      y: 520
+      x: 1200,
+      y: 650
     }
   });
 
@@ -3569,8 +3569,8 @@ test('right-click custom agent launch input ignores IME Enter before composition
   expect(await waitForCreateDemoNodePayload(page)).toEqual({
     kind: 'agent',
     preferredPosition: {
-      x: 780,
-      y: 305
+      x: 820,
+      y: 370
     },
     agentProvider: 'codex',
     agentLaunchPreset: 'yolo'
@@ -3593,8 +3593,8 @@ test('right-click custom agent launch input closes before the menu backs out on 
   await pane.click({
     button: 'right',
     position: {
-      x: 1060,
-      y: 520
+      x: 1200,
+      y: 650
     }
   });
 
@@ -5632,7 +5632,7 @@ for (const executionKind of ['agent', 'terminal']) {
       const accepted = variant === 'continuation' || variant === 'wide-prefix';
       await openHarness(page);
       await page.evaluate(next => window.__devSessionCanvasHarness.setResolvedExecutionFileLinkTexts(next), [text]);
-      await bootstrap(page, createLiveExecutionNodeState(executionKind));
+      await bootstrap(page, createNarrowExecutionNodeState(executionKind));
       await waitForExecutionTerminalReady(page, nodeId);
       await dispatchExecutionSnapshot(page, {
         nodeId, kind: executionKind,
@@ -8019,7 +8019,7 @@ test('installed locale keeps genuine multiple creations rejected after the origi
   const state = createMultiLiveExecutionNodeState('terminal', 2);
   const closedTerminalIDs = state.nodes.map(node => node.id);
   const extraNodes = ['installed-locale-new-one', 'installed-locale-new-two'].map((id, index) => ({
-    ...createLiveExecutionNodeState('terminal').nodes[0], id, position: { x: 120 + (index + 2) * 620, y: 140 }
+    ...createLiveExecutionNodeState('terminal').nodes[0], id, position: { x: 120 + (index + 2) * 820, y: 140 }
   }));
   const evidence = [], deadline = Date.now() + 20000;
   let creates = 0;
@@ -11063,8 +11063,8 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   await pane.click({
     button: 'right',
     position: {
-      x: 1100,
-      y: 560
+      x: 1200,
+      y: 650
     }
   });
 
@@ -11104,8 +11104,8 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
   expect(await waitForCreateDemoNodePayload(page)).toEqual({
     kind: 'note',
     preferredPosition: {
-      x: 910,
-      y: 360
+      x: 1010,
+      y: 450
     }
   });
 });
@@ -11126,8 +11126,8 @@ test('canvas context menu can request layout arrangement without a completion to
   await page.locator('.react-flow__pane').click({
     button: 'right',
     position: {
-      x: 920,
-      y: 500
+      x: 1200,
+      y: 650
     }
   });
 
@@ -11493,8 +11493,8 @@ test('right-click create menu still shows execution entries in untrusted mode an
   await pane.click({
     button: 'right',
     position: {
-      x: 1100,
-      y: 560
+      x: 1200,
+      y: 650
     }
   });
 
@@ -11615,8 +11615,8 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   expect(createPayload).toMatchObject({
     kind: 'terminal',
     preferredPosition: {
-      x: 119,
-      y: 23
+      x: 9,
+      y: -47
     }
   });
 
@@ -14431,8 +14431,8 @@ test('right-click create menu can drill into agent launch modes and create claud
   await pane.click({
     button: 'right',
     position: {
-      x: 1040,
-      y: 520
+      x: 1200,
+      y: 650
     }
   });
 
@@ -14458,8 +14458,8 @@ test('right-click create menu can drill into agent launch modes and create claud
   expect(await waitForCreateDemoNodePayload(page)).toEqual({
     kind: 'agent',
     preferredPosition: {
-      x: 760,
-      y: 305
+      x: 820,
+      y: 370
     },
     agentProvider: 'claude',
     agentLaunchPreset: 'yolo'
@@ -14497,8 +14497,8 @@ test('right-click launch preset descriptions normalize conflicting default launc
   await pane.click({
     button: 'right',
     position: {
-      x: 1040,
-      y: 520
+      x: 1200,
+      y: 650
     }
   });
 
@@ -14550,8 +14550,8 @@ test('right-click create menu creates the default agent without opening the prov
   await pane.click({
     button: 'right',
     position: {
-      x: 1080,
-      y: 540
+      x: 1200,
+      y: 650
     }
   });
 
@@ -14562,8 +14562,8 @@ test('right-click create menu creates the default agent without opening the prov
   expect(await waitForCreateDemoNodePayload(page)).toEqual({
     kind: 'agent',
     preferredPosition: {
-      x: 800,
-      y: 325
+      x: 820,
+      y: 370
     },
     agentProvider: 'codex',
     agentLaunchPreset: 'default'
@@ -14589,8 +14589,8 @@ test('right-click create menu refreshes its default agent label after runtime co
   await pane.click({
     button: 'right',
     position: {
-      x: 1010,
-      y: 500
+      x: 1200,
+      y: 650
     }
   });
 
@@ -14603,8 +14603,8 @@ test('right-click create menu refreshes its default agent label after runtime co
   expect(await waitForCreateDemoNodePayload(page)).toEqual({
     kind: 'agent',
     preferredPosition: {
-      x: 730,
-      y: 285
+      x: 820,
+      y: 370
     },
     agentProvider: 'claude',
     agentLaunchPreset: 'default'
@@ -15183,8 +15183,8 @@ test('10-agent live output capacity benchmark stays lossless and keeps input res
   const state = createMultiLiveExecutionNodeState('agent', agentCount);
   state.nodes.forEach((node, index) => {
     node.position = {
-      x: 120 + (index % 5) * 620,
-      y: 140 + Math.floor(index / 5) * 500
+      x: 120 + (index % 5) * 820,
+      y: 140 + Math.floor(index / 5) * 620
     };
   });
   const nodeIds = state.nodes.map((node) => node.id);
@@ -17943,7 +17943,7 @@ test('Agent and Terminal render PTY terminal titles without changing static head
   const agent = agentState.nodes[0];
   const terminal = terminalState.nodes[0];
   agent.metadata.agent.lastLaunchCommandLine = 'codex --full-auto';
-  terminal.position = { x: 760, y: 140 };
+  terminal.position = { x: 940, y: 140 };
 
   await openHarness(page);
   await bootstrap(page, {
@@ -18863,7 +18863,7 @@ function createCanvasScreenshotState() {
         title: 'Terminal 1',
         status: 'draft',
         summary: '尚未启动嵌入式终端。',
-        position: { x: 700, y: 60 },
+        position: { x: 900, y: 60 },
         size: sizeFor('terminal'),
         metadata: {
           terminal: {
@@ -18882,7 +18882,7 @@ function createCanvasScreenshotState() {
         title: '回看 smoke test',
         status: 'ready',
         summary: '补齐真实 VS Code 宿主验证与截图回归。',
-        position: { x: 430, y: 420 },
+        position: { x: 710, y: 420 },
         size: sizeFor('note'),
         metadata: {
           note: {
@@ -19046,6 +19046,14 @@ function createLiveExecutionNodeState(kind) {
   return createMultiLiveExecutionNodeState(kind, 1);
 }
 
+function createNarrowExecutionNodeState(kind) {
+  const state = createLiveExecutionNodeState(kind);
+  state.nodes[0].size = kind === 'agent'
+    ? { width: 560, height: 430 }
+    : { width: 540, height: 420 };
+  return state;
+}
+
 function createMultiLiveExecutionNodeState(kind, count) {
   const common = {
     version: 1,
@@ -19055,7 +19063,7 @@ function createMultiLiveExecutionNodeState(kind, count) {
 
   for (let index = 0; index < count; index += 1) {
     const suffix = index === 0 ? 'zoom' : `zoom-${index + 1}`;
-    const position = { x: 120 + index * 620, y: 140 };
+    const position = { x: 120 + index * 820, y: 140 };
 
     if (kind === 'agent') {
       common.nodes.push({
@@ -19154,7 +19162,7 @@ function createRuntimeChromeState() {
         title: 'Runtime Terminal',
         status: 'live',
         summary: '验证 runtime chrome 收口。',
-        position: { x: 520, y: 140 },
+        position: { x: 940, y: 140 },
         size: sizeFor('terminal'),
         metadata: {
           terminal: {
@@ -19186,9 +19194,9 @@ function createScrollableTerminalOutput(lineCount) {
 function sizeFor(kind) {
   switch (kind) {
     case 'agent':
-      return { width: 560, height: 430 };
+      return { width: 760, height: 560 };
     case 'terminal':
-      return { width: 540, height: 420 };
+      return { width: 760, height: 560 };
     case 'note':
       return { width: 380, height: 400 };
     default:

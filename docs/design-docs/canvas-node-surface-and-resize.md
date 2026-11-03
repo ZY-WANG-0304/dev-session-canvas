@@ -106,7 +106,7 @@ updated_at: 2026-11-03
 - 风险：执行型节点高度缩小时，终端与浮层可能不可用。
   当前缓解：为不同节点类型设置最小宽高，并让正文区域按剩余空间滚动或裁切。
 
-## 7. 当前结论
+## 7. 正式方案
 
 当前收敛结论如下：
 
@@ -126,7 +126,7 @@ updated_at: 2026-11-03
 
 ## 8. 验证结果
 
-以下历史 resize 变更已完成对应验证；2026-11-03 初始尺寸调整的状态另见本节末尾：
+以下历史 resize 变更已完成对应验证；2026-11-03 初始尺寸调整的验证范围如下：
 
 1. 运行 `npm run test:webview`，浏览器 harness 已覆盖拖动 resize 手柄后节点外框变化与 `webview/resizeNode` 写路径，同时更新了窗口化 Task/Note 的截图基线。
 2. 运行 `npm run test:smoke`，真实 VS Code smoke 已覆盖四类节点的尺寸写回宿主、持久化和 reload 恢复。
@@ -134,4 +134,9 @@ updated_at: 2026-11-03
 4. 运行 `npm run build` 与 `npm run typecheck`，并通过 `npm run test:smoke` 中已有的 `Agent` / `Terminal` 主路径验证，确认执行型节点在 resize 后不破坏现有会话链路。
 5. 2026-05-24 运行 `npm run typecheck`、`npm run build` 和 Webview resize 定向回归，确认自定义 8 向 resize 控制点仍发送 `webview/resizeNode`，且右下边缘 resize 会触发画布自动平移并持续增长尺寸。
 
-2026-11-03 调整 Agent / Terminal 初始尺寸后，新增 `npm run test:canvas-node-groups` 回归断言；本次尚未运行自动化或真实 VS Code 手动验证，因此上述历史 resize 验证不代表新尺寸已验收。后续需确认默认终端字体下长行换行减少、节点底部内容可见，并运行该定向测试与 `npm run typecheck`。
+6. 新增 `npm run test:canvas-node-groups` 覆盖新建 Agent / Terminal 默认尺寸、旧状态缺失尺寸的回退、已有显式尺寸的保留，以及避碰使用完整默认外框；对应断言分别保护不同的状态路径，不合并成仅检查常量的单一断言。
+7. 更新 Webview 与 VS Code smoke 中代表当前默认场景的 Agent / Terminal 夹具及 canvas/minimap 截图基线，并为扩大后的节点调整布局坐标。硬换行链接场景继续使用显式窄尺寸，以保留其要测试的换行输入；与换行无关的低置信度链接用例使用默认尺寸。其他测试中的旧尺寸是显式持久化状态、旧版状态或几何算法合成输入，不代表默认值，不随本次变更机械替换。
+8. 已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-node-placement`、`npm run typecheck`、5 项受影响 Webview 定向用例及完整 `npm run test:webview`（420 项）；全部通过。
+9. 已运行 `npm run test:ui-copy-locale-smoke`，以及限定 `session-history/codex-branch` 与 `session-history/claude-branch` 的 VS Code smoke；英文/简体中文本地化和两类 Agent 分支创建均通过。
+
+自动化测试验证模型默认尺寸、缺失尺寸回退、显式尺寸兼容、完整外框避碰、Webview 场景布局与现有交互回归；它们不等价于真实 VS Code 宿主中的可读性验收。仍需手动确认默认字体下长行换行减少、节点底部信息可见，再将验证状态更新为已验证。

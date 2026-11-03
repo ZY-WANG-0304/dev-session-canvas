@@ -146,7 +146,7 @@ async function verifyLocalizedWebviewRuntime(expected) {
         status: 'idle',
         summary: '',
         position: { x: 120, y: 120 },
-        size: { width: 560, height: 430 },
+        size: { width: 760, height: 560 },
         metadata: {
           agent: {
             provider: 'codex',
@@ -161,8 +161,8 @@ async function verifyLocalizedWebviewRuntime(expected) {
         title: 'Locale Smoke Terminal',
         status: 'idle',
         summary: '',
-        position: { x: 740, y: 120 },
-        size: { width: 540, height: 420 },
+        position: { x: 940, y: 120 },
+        size: { width: 760, height: 560 },
         metadata: {
           terminal: {
             lifecycle: 'idle',

@@ -27,7 +27,7 @@ exports.start = function(manager, vscode, context, views) {
       else if (action === 'diagnostics') result = manager.testDiagnosticEvents;
       else if (action === 'open') { await manager.revealInEditor(); result = true; }
       else if (action === 'create') {
-        const node = manager.applyCreateNode('agent', { x: args.index * 560 + 30, y: 30 }, {
+        const node = manager.applyCreateNode('agent', { x: args.index * 820 + 30, y: 30 }, {
           agentProvider: 'codex', cwdOverride: path.join(config.workspace, `node${args.index}`),
           titleOverride: `Probe ${args.index}` });
         result = node?.id;
