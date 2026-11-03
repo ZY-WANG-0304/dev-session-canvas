@@ -3367,13 +3367,13 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
   switch (kind) {
     case 'agent':
       return {
-        width: 560,
-        height: 430
+        width: 760,
+        height: 560
       };
     case 'terminal':
       return {
-        width: 540,
-        height: 420
+        width: 760,
+        height: 560
       };
     case 'note':
       return {

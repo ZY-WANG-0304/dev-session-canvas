@@ -1,7 +1,7 @@
 ---
 title: 节点窗口表面与通用尺寸设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - 画布交互域
   - 协作对象域
@@ -15,7 +15,7 @@ related_specs:
   - docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-surface-and-resize-polish.md
-updated_at: 2026-05-24
+updated_at: 2026-11-03
 ---
 
 # 节点窗口表面与通用尺寸设计
@@ -115,6 +115,7 @@ updated_at: 2026-05-24
 - Webview 在 resize 过程中只维护本地草稿，结束后通过 `webview/resizeNode` 把最终位置与尺寸发回宿主；resize 左侧或上侧控制点时会同步改变节点 `position`。
 - 对 Agent / Terminal，Webview 本地 resize 草稿也不得逐帧改写 PTY 字符网格；手势期冻结现有 xterm `cols/rows`，结束后只提交最终稳定尺寸。普通布局抖动、纯位置拖动与本地 redraw 的详细边界见 `docs/design-docs/execution-terminal-resize-coalescing.md`。
 - 宿主在加载旧状态时补默认尺寸，在创建新节点和避碰时优先使用节点实际尺寸。
+- 新建 `Agent` 与 `Terminal` 的默认外框均为 `760 x 560`，由 `common/protocol.ts` 的 `estimatedCanvasNodeFootprint` 统一提供给创建、缺失尺寸回退和新节点避碰；已有显式尺寸及模板中显式保存的尺寸保持不变。该默认宽度为常见 80 列终端留出边距，高度则增加初始可见行数，减少 TUI 换行和底部信息被裁切。
 - `Task` / `Note` 继续保留节点内编辑，但改成窗口化内容面：
   - 头部继续使用窗口标题栏。
   - 标题输入作为主要标题区，而不是普通小表单字段。
@@ -125,10 +126,12 @@ updated_at: 2026-05-24
 
 ## 8. 验证结果
 
-本轮已完成以下验证，并据此将状态收口为“已验证”：
+以下历史 resize 变更已完成对应验证；2026-11-03 初始尺寸调整的状态另见本节末尾：
 
 1. 运行 `npm run test:webview`，浏览器 harness 已覆盖拖动 resize 手柄后节点外框变化与 `webview/resizeNode` 写路径，同时更新了窗口化 Task/Note 的截图基线。
 2. 运行 `npm run test:smoke`，真实 VS Code smoke 已覆盖四类节点的尺寸写回宿主、持久化和 reload 恢复。
 3. 运行 `npm run test:smoke`，确认 `Task` / `Note` 在新窗口化表面下仍可编辑标题、状态、负责人和正文，不回退成只读卡片。
 4. 运行 `npm run build` 与 `npm run typecheck`，并通过 `npm run test:smoke` 中已有的 `Agent` / `Terminal` 主路径验证，确认执行型节点在 resize 后不破坏现有会话链路。
 5. 2026-05-24 运行 `npm run typecheck`、`npm run build` 和 Webview resize 定向回归，确认自定义 8 向 resize 控制点仍发送 `webview/resizeNode`，且右下边缘 resize 会触发画布自动平移并持续增长尺寸。
+
+2026-11-03 调整 Agent / Terminal 初始尺寸后，新增 `npm run test:canvas-node-groups` 回归断言；本次尚未运行自动化或真实 VS Code 手动验证，因此上述历史 resize 验证不代表新尺寸已验收。后续需确认默认终端字体下长行换行减少、节点底部内容可见，并运行该定向测试与 `npm run typecheck`。

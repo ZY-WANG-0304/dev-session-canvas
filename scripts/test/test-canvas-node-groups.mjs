@@ -309,6 +309,11 @@ try {
   assert.ok(rectContainsRectForTest(rectForTestGroup(expandedCreationTarget), rectForTestNode(manuallyCreatedMember)));
   assertMemberInsetsForTest(expandedCreationTarget, [manuallyCreatedMember]);
 
+  const defaultAgentNode = createNextState(state(), 'agent').nodes[0];
+  const defaultTerminalNode = createNextState(state(), 'terminal').nodes[0];
+  assert.deepStrictEqual(defaultAgentNode.size, { width: 760, height: 560 });
+  assert.deepStrictEqual(defaultTerminalNode.size, { width: 760, height: 560 });
+
   const createdAcrossGroupBoundary = createNextState(
     state({
       nodes: [note('cross-group-blocker', { x: 130, y: 156 }, { groupId: 'another-group' })],
