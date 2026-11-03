@@ -43,6 +43,7 @@ try {
     export class Harness {
       context = { extensionMode: 2 }; activeSurface = 'panel';
       appliedStartupConfiguration = { defaultSurface: 'editor', runtimePersistenceEnabled: true };
+      runtimePersistenceSetup = { state: { status: 'unchecked' } };
       state = { nodes: [{ id: 'a' }, { id: 't' }] }; agentSessions = new Map([['a', {}]]); terminalSessions = new Map([['t', {}]]);
       enabledAttentionSignals = new Set(['osc9']); attentionNotificationBridgeMode = 'system';
       strongTerminalAttentionReminderMode = 'title'; agentAbnormalOutputTextNotificationMode = 'off';

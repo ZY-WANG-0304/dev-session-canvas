@@ -28,7 +28,9 @@ import {
   stripExecutionTerminalTitleMarkers,
   type ExecutionTerminalTitleRedactionState
 } from '../common/executionTerminalTitle';
-import { assertExecutionCandidateRuntimeSupervisorStorageDir, resolveLegacyRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
+import { assertExecutionCandidateRuntimeSupervisorStorageDir, resolveLegacyRuntimeSupervisorPathsFromStorageDir,
+  resolveSystemdUserRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
+import { inspectRuntimePersistenceCapability, verifyRuntimePersistenceUnit } from './runtimePersistenceCapability';
 import {
   SERIALIZED_TERMINAL_STATE_FORMAT,
   SERIALIZED_TERMINAL_CHECKPOINT_PROFILES,
@@ -699,6 +701,8 @@ export class RuntimeSupervisorServer {
                 )
               } : {}),
               capabilities: {
+                ...(process.platform === 'linux' && this.runtimeBackend === 'systemd-user'
+                  ? { loginIndependentPersistenceV1: true as const } : {}),
                 terminalSessionStreamV1: true,
                 terminalProjectionSnapshotV1: true,
                 terminalAppliedRevisionAckV1: true,
@@ -865,6 +869,23 @@ export class RuntimeSupervisorServer {
     const owner = this.executionOwner;
     let ownedExecution: OwnedExecution | undefined;
     try {
+      if (params.requireLoginIndependentPersistence !== undefined) {
+        if (params.requireLoginIndependentPersistence !== true || globalThis.process.platform !== 'linux'
+          || this.runtimeBackend !== 'systemd-user') {
+          throw createRuntimeSupervisorProtocolError({ id: 'persistenceNotReady' },
+            RUNTIME_SUPERVISOR_ERROR_CODES.persistenceNotReady);
+        }
+        const capability = await inspectRuntimePersistenceCapability();
+        const unitName = resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(this.paths.storageDir).unitName;
+        if (!await verifyRuntimePersistenceUnit(capability, unitName, globalThis.process.pid)) {
+          throw createRuntimeSupervisorProtocolError({ id: 'persistenceNotReady' },
+            RUNTIME_SUPERVISOR_ERROR_CODES.persistenceNotReady);
+        }
+        if (this.sessions.has(sessionId)) {
+          throw createRuntimeSupervisorProtocolError({ id: 'sessionAlreadyExists', params: { sessionId } },
+            RUNTIME_SUPERVISOR_ERROR_CODES.sessionAlreadyExists);
+        }
+      }
       this.assertOwnedAdmissionOpen();
       if (owner?.admissionLimits.executions === null) {
         owner.assertAdmission();
@@ -882,8 +903,6 @@ export class RuntimeSupervisorServer {
       }
       ownedExecution = owner?.reserve(sessionId, sessionId);
     } catch (error) {
-      // No await or resource acquisition precedes this rejection. An existing
-      // reservation may belong to an earlier, still unconfirmed create.
       if (owner && !owner.get(sessionId) && !this.sessions.has(sessionId)) {
         throw createRuntimeSupervisorCreateRejectedError(error, sessionId, params.kind);
       }

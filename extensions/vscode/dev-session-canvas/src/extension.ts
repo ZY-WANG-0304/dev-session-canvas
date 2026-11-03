@@ -11,6 +11,8 @@ import {
   locateCodexSessionId
 } from './common/codexSessionIdLocator';
 import { COMMAND_IDS, CONFIG_KEYS, EXTENSION_DISPLAY_NAME, TEST_COMMAND_IDS, VIEW_IDS } from './common/extensionIdentity';
+import { supportsLoginIndependentPersistence } from './panel/runtimePersistenceSetup';
+import { inspectRuntimePersistenceCapability } from './supervisor/runtimePersistenceCapability';
 import {
   isAgentLaunchPresetKind,
   isAgentProviderKind,
@@ -271,9 +273,14 @@ function describeTerminalShellConfigurationTarget(target: vscode.ConfigurationTa
     : vscode.l10n.t('the current device');
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const executionRuntime = resolveExecutionRuntimeSelection(context.extensionUri.fsPath);
-  const panelManager = new CanvasPanelManager(context, executionRuntime.ownerOptions, executionRuntime.profile);
+  const initialPersistenceCapability = context.extensionMode !== vscode.ExtensionMode.Test
+    && supportsLoginIndependentPersistence() && vscode.workspace.isTrusted
+    && vscode.workspace.getConfiguration().get<boolean>(CONFIG_KEYS.runtimePersistenceEnabled, false)
+    ? await inspectRuntimePersistenceCapability() : undefined;
+  const panelManager = new CanvasPanelManager(context, executionRuntime.ownerOptions, executionRuntime.profile,
+    initialPersistenceCapability);
   const templateMarketplaceClient = new TemplateMarketplaceClient(panelManager, context, context.extensionMode);
   const templateMarketplacePanel = new CanvasTemplateMarketplacePanelController(
     templateMarketplaceClient,
@@ -406,6 +413,21 @@ export function activate(context: vscode.ExtensionContext): void {
       '@ext:devsessioncanvas.dev-session-canvas devSessionCanvas'
     );
   });
+
+  registerCommand(context, COMMAND_IDS.configureRuntimePersistence, async () => {
+    await panelManager.configureRuntimePersistence();
+  });
+  registerCommand(context, COMMAND_IDS.checkRuntimePersistence, () => panelManager.configureRuntimePersistence('check'));
+  registerCommand(context, COMMAND_IDS.openRuntimePersistenceGuide, () => panelManager.openRuntimePersistenceGuide());
+  registerCommand(context, COMMAND_IDS.enableRuntimePersistenceLinger, () => panelManager.configureRuntimePersistence('enable'));
+  registerCommand(context, COMMAND_IDS.enableRuntimePersistenceLingerWithSudo, () => panelManager.configureRuntimePersistence('sudo'));
+  registerCommand(context, COMMAND_IDS.copyRuntimePersistenceLingerCommand, () => panelManager.configureRuntimePersistence('copy'));
+  registerCommand(context, COMMAND_IDS.openRuntimePersistenceSetting, () => panelManager.configureRuntimePersistence('settings'));
+  registerCommand(context, COMMAND_IDS.reloadRuntimePersistence, () => panelManager.configureRuntimePersistence('reload'));
+  registerCommand(context, COMMAND_IDS.disableRuntimePersistence, () => panelManager.configureRuntimePersistence('disable-guide'));
+  registerCommand(context, COMMAND_IDS.checkRuntimePersistenceDisabled, () => panelManager.configureRuntimePersistence('check-disable'));
+  registerCommand(context, COMMAND_IDS.reloadRuntimePersistenceDisabled, () => panelManager.configureRuntimePersistence('reload-disable'));
+  registerCommand(context, COMMAND_IDS.reviewRuntimePersistenceLingerRollback, () => panelManager.configureRuntimePersistence('review-linger-rollback'));
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMAND_IDS.applyTemplate, async (templateId?: unknown) => {

@@ -45,12 +45,56 @@ try {
   await esbuild.build({stdin:{contents:[ 'CanvasSidebarView','CanvasSidebarActionsView','CanvasSidebarNodeListView'].map(n=>`export * from './extensions/vscode/dev-session-canvas/src/sidebar/${n}';`).join('\n'),resolveDir:process.cwd(),loader:'ts'},
     outfile,bundle:true,platform:'node',format:'cjs',plugins:[{name:'vscode',setup(b){if(process.argv.includes('--baseline'))b.onLoad({filter:/src\/sidebar\/CanvasSidebar(?:View|ActionsView|NodeListView)\.ts$/},args=>({contents:execFileSync('git',['show','d4edaa71305d04c6e3565d83ac0ec4c9b2c00475:'+path.relative(process.cwd(),args.path)],{encoding:'utf8'}),loader:'ts',resolveDir:path.dirname(args.path)}));b.onResolve({filter:/^vscode$/},()=>({path:'vscode',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'module.exports = globalThis.__sidebarTest;'}));}}]});
   const {CanvasSidebarView,CanvasSidebarActionsView,CanvasSidebarNodeListView,getCanvasSidebarSummaryItems,getCanvasSidebarNodeListItems}=createRequire(import.meta.url)(outfile);
+  const capabilityCases = [
+    [{ status: 'eligible' }, 'Enabled · Environment ready', 'Turning on · Window reload required'],
+    [{ status: 'blocked', reason: 'linger-disabled' }, 'Enabled · Background services unavailable', 'Turning on · Setup required'],
+    [{ status: 'blocked', reason: 'manager-unavailable' }, 'Enabled · Background services unavailable', 'Turning on · Unavailable'],
+    [{ status: 'unknown', reason: 'observation-failed' }, 'Enabled · Could not verify', 'Turning on · Could not verify'],
+    [{ status: 'unknown', reason: 'unit-unverified' }, 'Enabled · Could not verify', 'Turning on · Could not verify'],
+    [{ status: 'checking' }, 'Enabled · Checking', 'Turning on · Checking'],
+    [{ status: 'unsupported', reason: 'unsupported-platform' }, 'Enabled · Best effort', 'Turning on · Best effort'],
+    [{ status: 'unchecked' }, 'Enabled · Not checked', 'Turning on · Not checked'],
+    [undefined, 'Enabled · Not checked', 'Turning on · Not checked']
+  ];
+  let persistenceCases = 0;
+  for (const requested of [false, true]) for (const applied of [false, true]) {
+    for (const [capability, enabledDescription, pendingDescription] of capabilityCases) for (const runningExecutionCount of [0, 3]) {
+      const item = getCanvasSidebarSummaryItems({ ...current, runtimePersistenceRequested: requested,
+        runtimePersistenceEnabled: applied, runtimePersistenceCapability: capability, runningExecutionCount,
+        nodeCount: runningExecutionCount }).find(candidate => candidate.id === 'summary/runtime-persistence');
+      assert.equal(item.contextValue, 'runtimePersistence');
+      assert.equal(item.description, requested ? applied ? enabledDescription : pendingDescription
+        : applied ? 'Turning off · Window reload required' : 'Disabled');
+      assert.equal(item.command.command, 'devSessionCanvas.__internal.openRuntimePersistenceGuide');
+      assert.equal(item.command.title, applied
+        ? requested ? 'Turn off Runtime Persistence' : 'Continue turning off Runtime Persistence'
+        : requested ? 'Continue enabling Runtime Persistence' : 'Enable Runtime Persistence');
+      assert.match(item.tooltip, applied ? /turn-off guide/ : /setup/);
+      assert.match(item.tooltip, /does not change settings, stop sessions or modify system linger/);
+      if (applied) assert.match(item.tooltip, /configure or repair background services/);
+      if (capability?.reason === 'linger-disabled' && (requested || applied)) assert.match(item.tooltip, /Linger is disabled/);
+      if (capability?.reason === 'manager-unavailable' && (requested || applied)) assert.match(item.tooltip, /manager is unavailable/);
+      if (!requested && !applied) assert(!item.tooltip.includes('Linger is disabled'), 'Off mode must not show an unrelated cached capability warning.');
+      persistenceCases += 1;
+    }
+  }
+  for (const applied of [false, true]) {
+    const item = getCanvasSidebarSummaryItems({ ...current, runtimePersistenceEnabled: applied,
+      runtimePersistenceRequested: undefined }).find(candidate => candidate.id === 'summary/runtime-persistence');
+    assert.equal(item.command.title, applied ? 'Turn off Runtime Persistence' : 'Enable Runtime Persistence');
+    assert(!item.description.includes('Turning'), 'Missing requested state falls back to the applied mode.');
+  }
+  console.log(`PASS Runtime Persistence sidebar: ${persistenceCases} mode/capability/session-count cases and legacy snapshots`);
   const summary=new CanvasSidebarView(manager);let changes=0;summary.onDidChangeTreeData(()=>changes++);
   assert.equal(summary.getChildren().length,getCanvasSidebarSummaryItems(current).length);assert.equal(reads,1);
   for(let i=0;i<50;i++){emit({creatableKinds:['agent']});summary.getChildren();}
   assert.equal(reads,1);assert.equal(changes,0,'unconsumed fields must not refresh the summary');
   for(const patch of [{nodeCount:2},{runningExecutionCount:0},{workspaceTrusted:false},{agentCodexCommand:'/new/codex'},
-    {terminalShellPath:'/bin/zsh'},{configuredSurface:'editor'}]) {
+    {terminalShellPath:'/bin/zsh'},{configuredSurface:'editor'},
+    {runtimePersistenceEnabled:false,runtimePersistenceRequested:true},
+    {runtimePersistenceEnabled:true,runtimePersistenceCapability:{status:'eligible'}},
+    {runtimePersistenceCapability:{status:'blocked',reason:'linger-disabled'}},
+    {runtimePersistenceRequested:false},{runtimePersistenceEnabled:false}]) {
     const before=changes;emit(patch);assert.equal(changes,before+1);assert.deepEqual(summary.getChildren().map(({id,label,description,tooltip,command,contextValue})=>({id,label,description,tooltip,...(command?{command}:{}),...(contextValue?{contextValue}:{})})),getCanvasSidebarSummaryItems(current));
   }
   summary.dispose();

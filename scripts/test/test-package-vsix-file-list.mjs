@@ -50,10 +50,14 @@ try {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const files = result.stdout.split(/\r?\n/u).map(line => line.trim().replace(/\\/g, '/')).filter(Boolean);
     assertRuntimeFileList(files, { production: Boolean(receipt) });
+    const walkthroughFiles = label === 'main' ? ['enable', 'configuration', 'apply', 'verify',
+      'disable-configuration', 'disable-apply', 'disable-verify'].flatMap(step =>
+      ['.md', '.zh-cn.md'].map(suffix => `walkthroughs/persistence-${step}${suffix}`)) : [];
+    for (const expected of walkthroughFiles) assert(files.includes(expected), `Missing walkthrough media: ${expected}`);
     assert(!files.some(file => file.endsWith('claude-file-event-hook.cjs')), 'Retired Claude file activity hook must not be packaged');
     if (inspected) {
       const stagedFiles = await treeHashes(stageRoot);
-      for (const relative of ['package.nls.json', 'package.nls.zh-cn.json', 'l10n/bundle.l10n.zh-cn.json']) {
+      for (const relative of ['package.nls.json', 'package.nls.zh-cn.json', 'l10n/bundle.l10n.zh-cn.json', ...walkthroughFiles]) {
         const actual = inspected.extensionFiles.find(file => file.path === relative);
         const expected = stagedFiles.find(file => file.path === relative);
         assert(actual && expected, `Localization file is missing from ${label} staging: ${relative}`);

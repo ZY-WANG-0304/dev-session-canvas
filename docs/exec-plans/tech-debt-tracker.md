@@ -2,6 +2,20 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-11-02：linger 登录独立性的真实主机验收
+
+资格检查、无输入框的原生操作对话框及确认后终端配置、生产 Linux 本地/Remote SSH 新建准入及旧会话保护已实现，本地定向测试、类型检查和构建通过。本机只读返回 Linger=no，未执行配置变更。能力/交互/服务端 mock、既有 fake-systemd、真实隔离 socket/PTY 和窗口重开均不能代证“最后一个登录结束后原执行仍活着”。正式设计保持验证中，不能将当前结果描述为已完成跨 logout 验收或已修复用户当前安装。
+
+2026-11-03 已补足隔离 Linux VS Code 的两层操作对话框布局与交互验证：中英文、640px/960px、普通/sudo 确认取消、返回与复制通过，系统观察和翻译为受控注入，未启动真实配置终端。此局部 UI 验证不替代下述真实远端授权或跨平台原生弹窗验收。
+
+发布新增强保证前，需要专用 VM 与不同 UID 的观察端，真正结束目标 UID 的全部登录，跨过有限 UserStopDelaySec，记录原 PID/starttime/InvocationID 和离线高输出推进，再由产品重附着同一执行；补足真实远端 Walkthrough/Output 与执行确认、普通权限/管理员授权流程、长离线 Agent 与资产清理验证。原生引导页本地 smoke 注入能力和翻译，不能代证远端授权、真实语言包加载、最低版本及跨平台 UI；明亮/高对比主题和完整键盘路径也尚未验收。完整配置流程的隔离宿主测试会实际勾选临时用户目录中的原生设置，但 applied 状态仍是注入，不代证真实远端重载；重载确认、取消和失败由实际 Manager 方法的受控测试覆盖。不得在开发账号通过 terminate-user 或注销做实验。旧 Supervisor 不自动重启；新 Host 保留其原会话控制，直到旧会话结束并由兼容 Supervisor 承载新建。见 [登录独立性设计](../design-docs/runtime-persistence-login-independence.md)、[初始实施计划](completed/runtime-persistence-linger-implementation.md)、[引导页实施计划](completed/runtime-persistence-walkthrough.md) 与 [配置闭环计划](completed/runtime-persistence-setup-completion.md)。
+
+2026-11-03 安全关闭引导已补齐：双语隔离 VS Code 实际取消勾选临时设置，待重载不误判已关闭，注入已关闭后才完成；未知系统状态不阻止关闭，可选 linger 撤销只展示人工命令。44 项宽窄按钮几何检查和 119 项控制器/实际 Manager 检查通过，共享画板 21/21 回归保留最后参与者清理语义。窗口 applied 值仍为注入，没有真实远端关闭/重载、系统撤销、零登录或跨平台 UI 验收，不据此宣称账号下所有服务已停止。命令面板驱动曾出现失焦/搜索值退回前缀，最终改用临时 fixture 快捷键完成测试；具体切焦来源未定位，不声称命令面板问题已修。工件与复现边界见 [关闭引导计划](completed/runtime-persistence-disable-guide.md)。
+
+2026-11-03 自动检查迭代：从扩展入口打开引导即检查，移除独立检查步骤；后台条件已满足时第一步保留并自动勾选。135 项控制器/实际 Manager 检查与双语完整流程、首开已就绪共 44 项布局检查通过，实际设置只写隔离用户目录。当前没有轮询或私有进度重置，宿主 Welcome 历史卡片切回不保证触发新的扩展检查；原生历史勾选不代表实时授权，外部状态改变需重新打开扩展入口或显式刷新。远端、最低版本、真实语言包和零登录等原验收边界不变。见 [自动检查计划](completed/runtime-persistence-automatic-guide-check.md)。
+
+2026-11-03 侧栏路由迭代：已应用模式点击进入关闭，未应用进入开启，待切换继续原方向；点击时从 Manager 取最新模式，系统资格与会话数量不改变方向，右键配置保留修复。72 项实际侧栏构造器状态矩阵与 151 项控制器/实际 Manager 检查通过；类型、双语、manifest、真实打包清单通过。本轮未安装到真实用户窗口，也未重新做侧栏主点击/右键菜单宿主 UI 验收；旧 44 项页面布局证据不覆盖新侧栏入口。手动验收路径与测试边界见 [侧栏路由计划](completed/runtime-persistence-sidebar-routing.md)。
+
 ## 2026-10-28：生产依赖安全公告第一轮修复
 
 基于 `origin/main` 的锁文件审计发现生产依赖公告：`markdown-it@14.3.2` 为 high、`zod@4.4.3` 为 high、`hono@4.13.7` 为 moderate，均有兼容的上游修复版本。本轮将主扩展的 `markdown-it` 更新至 `14.3.3`；notifier 同版声明为开发依赖，因为打包器将其并入扩展 bundle，不在 VSIX 运行时加载 node_modules。共享包 `zod` 更新至 `4.6.7`；模板市场 Worker 的 `hono` 更新至 `4.13.14`。更新后 `npm audit --omit=dev` 只剩 KaTeX 及 `micromark-extension-math` 关联的 2 项 low 公告，当前 registry 未提供修复版本。Note 渲染仍设置 `trust: false`；该限制不等于证明公告条件永远不成立，也没有项目内可利用路径证据。

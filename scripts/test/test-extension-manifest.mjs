@@ -518,6 +518,76 @@ const nlsPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas'
 const zhCnNlsPath = path.join(repoRoot, 'extensions', 'vscode', 'dev-session-canvas', 'package.nls.zh-cn.json');
 const nls = JSON.parse(await readFile(nlsPath, 'utf8'));
 const zhCnNls = JSON.parse(await readFile(zhCnNlsPath, 'utf8'));
+const persistenceWalkthrough = manifest.contributes.walkthroughs.find(entry => entry.id === 'runtimePersistence');
+assert.ok(persistenceWalkthrough);
+assert.deepEqual(persistenceWalkthrough.steps.map(step => step.id), ['enable', 'configuration', 'apply', 'verifyApplied']);
+assert.equal(persistenceWalkthrough.when, undefined, 'Opening must work before the automatic check.');
+assert.equal(persistenceWalkthrough.steps[0].when, undefined, 'Ready background services must stay visible with a checkmark.');
+const completionStates = {
+  enable: ['needs-configuration', 'needs-reload', 'ready'],
+  configuration: ['needs-reload', 'ready'],
+  apply: ['ready'], verifyApplied: ['ready']
+};
+const disableWalkthrough = manifest.contributes.walkthroughs.find(entry => entry.id === 'runtimePersistenceDisable');
+assert.ok(disableWalkthrough);
+assert.deepEqual(disableWalkthrough.steps.map(step => step.id), ['disableConfiguration', 'disableApply', 'verifyDisabled']);
+assert.equal(disableWalkthrough.when, undefined, 'Turning off must not depend on system capability contexts.');
+const disableCompletionStates = {
+  disableConfiguration: ['needs-reload', 'disabled'], disableApply: ['disabled'], verifyDisabled: ['disabled']
+};
+for (const [walkthrough, contextKey, states] of [
+  [persistenceWalkthrough, 'checkResult', completionStates],
+  [disableWalkthrough, 'disableCheckResult', disableCompletionStates]
+]) for (const step of walkthrough.steps) {
+  assert.deepEqual(step.completionEvents, ['onContext:' + states[step.id]
+    .map(state => `devSessionCanvas.runtimePersistence.${contextKey} == ${state}`).join(' || ')],
+  'Host readiness, requested configuration and applied mode must not share premature completion events.');
+  for (const bundle of [nls, zhCnNls]) {
+    const description = bundle[step.description.slice(1, -1)];
+    const primaryActions = description.split('\n').filter(line => /^\[[^\]]+\]\(command:[^)]+\)$/.test(line));
+    assert.equal(primaryActions.length, 1, 'Each step should have one primary action.');
+    for (const match of description.matchAll(/\(command:([^)?]+)\)/g)) {
+      assert.ok(manifest.contributes.commands.some(entry => entry.command === match[1]));
+      if (match[1].includes('.__internal.')) {
+        assert.ok(manifest.contributes.menus.commandPalette.some(entry => entry.command === match[1] && entry.when === 'false'));
+      }
+    }
+    const mediaPath = bundle[step.media.markdown.slice(1, -1)];
+    assert.ok(mediaPath.startsWith('walkthroughs/'));
+    assert.ok((await readFile(path.join(path.dirname(manifestPath), mediaPath), 'utf8')).length > 100);
+  }
+}
+assert.ok(manifest.contributes.commands.some(entry => entry.command === 'devSessionCanvas.disableRuntimePersistence'));
+assert.ok(!manifest.contributes.menus.commandPalette.some(entry => entry.command === 'devSessionCanvas.disableRuntimePersistence' && entry.when === 'false'));
+assert.ok(manifest.contributes.menus['view/item/context'].some(entry => entry.command === 'devSessionCanvas.disableRuntimePersistence'
+  && entry.when === 'view == devSessionCanvas.sidebar && viewItem == runtimePersistence'));
+assert.ok(manifest.contributes.menus['view/item/context'].some(entry => entry.command === 'devSessionCanvas.configureRuntimePersistence'
+  && entry.when === 'view == devSessionCanvas.sidebar && viewItem == runtimePersistence'), 'Applied windows must have an explicit repair/setup alternative.');
+assert.ok(manifest.contributes.commands.some(entry => entry.command === 'devSessionCanvas.__internal.openRuntimePersistenceGuide'));
+assert.ok(manifest.contributes.menus.commandPalette.some(entry => entry.command === 'devSessionCanvas.__internal.openRuntimePersistenceGuide'
+  && entry.when === 'false'), 'State-dependent routing is internal; public enable/disable commands retain explicit intent.');
+const runtimePersistenceSetting = manifest.contributes.configuration.properties['devSessionCanvas.runtimePersistence.enabled'];
+const runtimePersistenceDescriptionKey = 'configuration.runtimePersistence.enabled.description';
+assert.equal(runtimePersistenceSetting.markdownDescription, `%${runtimePersistenceDescriptionKey}%`);
+assert.ok(manifest.contributes.commands.some(entry => entry.command === 'devSessionCanvas.configureRuntimePersistence'));
+for (const [locale, bundle, checkboxWarning, setupAction, reloadWarning] of [
+  ['en', nls, /checking this box does not enable system linger/, 'Check again', /Window Reload.*clears/],
+  ['zh-cn', zhCnNls, /勾选此项不会自动开启系统 linger/, '重新检查', /重新加载窗口.*清空/]
+]) {
+  const description = bundle[runtimePersistenceDescriptionKey];
+  const paragraphs = description.split('\n\n');
+  assert.ok(paragraphs.length >= 3, `${locale}: settings guidance must be split into readable paragraphs.`);
+  const warning = paragraphs[0].match(/^\*\*([^*]+)\*\*/)?.[1];
+  assert.ok(warning, `${locale}: the linger prerequisite must be emphasized at the start of the setting.`);
+  assert.match(warning, checkboxWarning);
+  assert.ok(paragraphs[0].includes('`Linger=no`'));
+  assert.ok(description.includes(`**${bundle['command.configureRuntimePersistence.title']}**`),
+    `${locale}: settings guidance must include the exact localized Command Palette entry.`);
+  assert.ok(description.includes(`**${setupAction}**`));
+  assert.match(paragraphs.at(-1), /^\*\*[^*]+\*\*$/);
+  assert.match(paragraphs.at(-1), reloadWarning);
+  assert.ok(description.includes('best-effort'));
+}
 assert.deepEqual(
   [
     nls['configuration.notifications.agentAbnormalOutputTextNotifications.description']?.length > 0,

@@ -92,6 +92,32 @@ const candidateProfile = 'linux-owner-v1-candidate';
 const candidateHello = { ...hello, capabilities: { ...hello.capabilities, executionCandidateProfiles: [candidateProfile] } };
 const candidateStorageDir = path.resolve('controlled-only/runtime-supervisor-generations/terminal-current-state-linux-v1/runtime-supervisor');
 
+test('login-independent creation requires negotiation but legacy attachment stays available', async () => {
+  const socket = new ControlledSocket();
+  socket.respond = request => request.method === 'hello' ? hello : { sessionId: 'original' };
+  const { client } = await fixture(socket);
+  await assert.rejects(client.createSession({ requireLoginIndependentPersistence: true, kind: 'terminal' }), /login-independent/);
+  assert.equal(socket.messages.filter(message => message.method === 'createSession').length, 0);
+  assert.deepEqual(await client.attachSession({ sessionId: 'original', terminalStreamMode: 'paged' }), { sessionId: 'original' });
+  client.dispose();
+});
+
+test('login-independent create pins the negotiated socket and transmits its admission requirement once', async () => {
+  const socket = new ControlledSocket();
+  socket.respond = request => request.method === 'hello'
+    ? { ...hello, runtimeBackend: 'systemd-user', capabilities: { ...hello.capabilities, loginIndependentPersistenceV1: true } }
+    : { sessionId: request.params.sessionId };
+  const { client } = await fixture(socket);
+  assert.deepEqual(await client.createSession({ requireLoginIndependentPersistence: true, sessionId: 'new', kind: 'terminal' }),
+    { sessionId: 'new' });
+  const requests = socket.messages.filter(message => message.method === 'createSession');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].params.requireLoginIndependentPersistence, true);
+  client.dispose();
+  await assert.rejects(client.createSession({ requireLoginIndependentPersistence: true, kind: 'terminal' }));
+  assert.equal(socket.messages.filter(message => message.method === 'createSession').length, 1);
+});
+
 test('create rejection crosses the original socket with only a validated resource outcome', async () => {
   const valid = { kind: 'not-acquired', sessionId: 'rejected-session', sessionKind: 'agent' };
   for (const outcome of [valid, undefined, null, {}, 'not-acquired', { ...valid, kind: 'unconfirmed' },

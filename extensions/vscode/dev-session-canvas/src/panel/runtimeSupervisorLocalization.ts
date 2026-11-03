@@ -40,6 +40,8 @@ export function localizeRuntimeSupervisorMessageDescriptor(
 
   const params = descriptor.params ?? {};
   switch (descriptor.id) {
+    case 'persistenceNotReady':
+      return vscode.l10n.t('Background persistence is not ready. Check linger and the Supervisor service before starting a new session.');
     case 'parseError':
       return params.message
         ? vscode.l10n.t('Could not parse runtime supervisor message: {message}', { message: params.message })
