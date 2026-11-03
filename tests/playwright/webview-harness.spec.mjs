@@ -10802,34 +10802,39 @@ test('selected node resize affordance keeps type-colored edge highlight', async 
     const topLine = node.querySelector('.canvas-node-resize-line-top');
     const rightLine = node.querySelector('.canvas-node-resize-line-right');
     const cornerHandle = node.querySelector('[data-node-resize-direction="bottom-right"]');
+    const viewport = node.closest('.react-flow__viewport');
     if (
       !(topLine instanceof HTMLElement) ||
       !(rightLine instanceof HTMLElement) ||
-      !(cornerHandle instanceof HTMLElement)
+      !(cornerHandle instanceof HTMLElement) ||
+      !(viewport instanceof HTMLElement)
     ) {
       return null;
     }
 
+    const viewportTransform = new DOMMatrixReadOnly(window.getComputedStyle(viewport).transform);
     const topLineStyle = window.getComputedStyle(topLine);
     const rightLineStyle = window.getComputedStyle(rightLine);
     const cornerHandleStyle = window.getComputedStyle(cornerHandle, '::after');
 
     return {
+      viewportZoom: Math.hypot(viewportTransform.a, viewportTransform.b),
       topBorderColor: topLineStyle.borderTopColor,
-      topBorderWidth: topLineStyle.borderTopWidth,
+      topBorderWidth: Number.parseFloat(topLineStyle.borderTopWidth),
       rightBorderColor: rightLineStyle.borderRightColor,
-      rightBorderWidth: rightLineStyle.borderRightWidth,
+      rightBorderWidth: Number.parseFloat(rightLineStyle.borderRightWidth),
       handleBackground: cornerHandleStyle.backgroundColor
     };
   });
 
-  expect(resizeChrome).toEqual({
+  expect(resizeChrome).toMatchObject({
     topBorderColor: 'rgb(167, 139, 250)',
-    topBorderWidth: '2px',
     rightBorderColor: 'rgb(167, 139, 250)',
-    rightBorderWidth: '2px',
     handleBackground: 'rgb(167, 139, 250)'
   });
+  const expectedResizeLineWidth = Math.floor(Math.max(1, 2 / (resizeChrome?.viewportZoom ?? 1)));
+  expect(resizeChrome?.topBorderWidth).toBeCloseTo(expectedResizeLineWidth, 2);
+  expect(resizeChrome?.rightBorderWidth).toBeCloseTo(expectedResizeLineWidth, 2);
 });
 
 test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
