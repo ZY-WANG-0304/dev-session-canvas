@@ -432,6 +432,7 @@ export function createCanvasNodeChrome(deps: CanvasNodeChromeDependencies): Canv
         disabled={data.overviewInteractionsDisabled || data.deletionPending}
         deletionPending={data.deletionPending}
         deletionLabel={t('action.deleting')}
+        zoom={zoom}
         onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
       >
         <div

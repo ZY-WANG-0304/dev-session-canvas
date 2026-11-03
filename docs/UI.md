@@ -91,6 +91,7 @@ components:
   canvas-node:
     backgroundColor: "color-mix(in srgb, var(--vscode-editor-background) 96%, var(--vscode-sideBar-background) 4%)"
     borderColor: "{colors.border}"
+    borderWidth: "inverse canvas viewport zoom, with the browser's 1 CSS px border minimum"
     rounded: "{rounded.node}"
     shadow: "0 8px 20px rgba(0, 0, 0, 0.12)"
   window-chrome:
@@ -228,6 +229,12 @@ components:
 - workbench widget 使用浅阴影和 1px border，保持 VSCode 面板感。
 - 菜单和连线工具条可使用稍强阴影，但必须小面积、短生命周期。
 - 空间概览控件不使用高饱和节点阴影；视口内外区分优先靠遮罩和边界。
+
+### Zoom-Stable Boundaries
+
+- 画布节点外边框、选中态边缘和 resize 强调线按视口缩放反向补偿线宽，使不同类型节点缩小时仍保持清晰。
+- 选中态阴影边缘和 resize 强调线也按视口缩放反向补偿；CSS border 受浏览器至少 1 CSS px 的限制，因此放大时边缘仍会随画布变粗。
+- 边框颜色继续使用节点类型既有的主题色混合，不因缩放改变颜色语义。
 
 ### Decorative Depth
 

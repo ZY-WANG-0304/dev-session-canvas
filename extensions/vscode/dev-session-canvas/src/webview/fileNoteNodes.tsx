@@ -1076,6 +1076,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
       disabled={data.overviewInteractionsDisabled || data.deletionPending}
       deletionPending={data.deletionPending}
       deletionLabel={t('action.deleting')}
+      zoom={zoom}
       onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
     >
       <div

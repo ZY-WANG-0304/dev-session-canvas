@@ -19,9 +19,11 @@ export function CanvasNodeInteractionBoundary(props: {
   disabled: boolean;
   deletionPending?: boolean;
   deletionLabel?: string;
+  zoom: number;
   onModifierSelectNode: (nodeId: string) => void;
   children: JSX.Element;
 }): JSX.Element {
+  const nodeBoundaryStyle = createCanvasNodeBoundaryStyle(props.zoom);
   const handlePointerDownCapture = (event: React.PointerEvent): void => {
     if (event.button !== 0 || isModifierSelectionInteractiveTarget(event.target)) {
       return;
@@ -46,6 +48,10 @@ export function CanvasNodeInteractionBoundary(props: {
         'aria-label': props.deletionPending
           ? [props.children.props['aria-label'], props.deletionLabel].filter(Boolean).join(', ')
           : props.children.props['aria-label'],
+        style: {
+          ...props.children.props.style,
+          ...nodeBoundaryStyle
+        },
         'data-node-deletion-pending': props.deletionPending ? 'true' : undefined,
         'data-deletion-status-label': props.deletionPending ? props.deletionLabel : undefined,
         onPointerDownCapture: composeReactEventHandlers(
@@ -55,6 +61,18 @@ export function CanvasNodeInteractionBoundary(props: {
       })}
     </CanvasOverviewInteractionContext.Provider>
   );
+}
+
+function createCanvasNodeBoundaryStyle(zoom: number): React.CSSProperties {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const borderPixel = (value: number): string => `${Math.max(1, value / safeZoom)}px`;
+  const shadowPixel = (value: number): string => `${value / safeZoom}px`;
+  return {
+    '--canvas-node-border-width': borderPixel(1),
+    '--canvas-node-selection-outline-width': shadowPixel(1),
+    '--canvas-node-selection-halo-width': shadowPixel(4),
+    '--canvas-node-resize-line-width': borderPixel(2)
+  } as React.CSSProperties;
 }
 
 function composeReactEventHandlers<E extends React.SyntheticEvent>(

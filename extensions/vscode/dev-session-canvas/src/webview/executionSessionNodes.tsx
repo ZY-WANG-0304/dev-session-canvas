@@ -767,6 +767,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         disabled={data.overviewInteractionsDisabled || data.deletionPending}
         deletionPending={data.deletionPending}
         deletionLabel={deps.t('action.deleting')}
+        zoom={zoom}
         onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
       >
         <div
@@ -1484,6 +1485,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
         disabled={data.overviewInteractionsDisabled || data.deletionPending}
         deletionPending={data.deletionPending}
         deletionLabel={deps.t('action.deleting')}
+        zoom={zoom}
         onModifierSelectNode={(nodeId) => data.onModifierSelectNode?.(nodeId)}
       >
         <div
