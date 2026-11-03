@@ -88,6 +88,11 @@
       "title": "agent hard-wrapped styled path boundary accepts 4 lines before no-suffix"
     },
     {
+      "id": "a03daaf9564243b49609-059213dd28c1bf82f178",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas node boundaries compensate for viewport zoom 0.5"
+    },
+    {
       "id": "a03daaf9564243b49609-0688f5a1d3c7ee1bdf4d",
       "file": "webview-harness.spec.mjs",
       "title": "terminal Ctrl+C without terminal selection still reaches the PTY as interrupt"
@@ -426,6 +431,11 @@
       "id": "a03daaf9564243b49609-2f692bf70a446493fe54",
       "file": "webview-harness.spec.mjs",
       "title": "quick drag after selecting a group moves it and suppresses the following title double-click focus"
+    },
+    {
+      "id": "a03daaf9564243b49609-30dbe7fbf782759a31a9",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas node boundaries compensate for viewport zoom 1.8"
     },
     {
       "id": "a03daaf9564243b49609-31b4dda4959894dd757e",
