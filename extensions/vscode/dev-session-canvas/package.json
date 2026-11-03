@@ -51,6 +51,8 @@
     "onCommand:devSessionCanvas.openCanvasInEditor",
     "onCommand:devSessionCanvas.openCanvasInPanel",
     "onCommand:devSessionCanvas.openSettings",
+    "onCommand:devSessionCanvas.configureRuntimePersistence",
+    "onCommand:devSessionCanvas.disableRuntimePersistence",
     "onCommand:devSessionCanvas.selectTerminalShell",
     "onCommand:devSessionCanvas.selectCodexCli",
     "onCommand:devSessionCanvas.selectClaudeCli",
@@ -108,6 +110,71 @@
   },
   "main": "./dist/extension.js",
   "contributes": {
+    "walkthroughs": [
+      {
+        "id": "runtimePersistence",
+        "title": "%walkthrough.persistence.title%",
+        "description": "%walkthrough.persistence.description%",
+        "steps": [
+          {
+            "id": "enable",
+            "title": "%walkthrough.persistence.enable.title%",
+            "description": "%walkthrough.persistence.enable.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.checkResult == needs-configuration || devSessionCanvas.runtimePersistence.checkResult == needs-reload || devSessionCanvas.runtimePersistence.checkResult == ready"],
+            "media": { "markdown": "%walkthrough.persistence.enable.media%" }
+          },
+          {
+            "id": "configuration",
+            "title": "%walkthrough.persistence.configuration.title%",
+            "description": "%walkthrough.persistence.configuration.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.checkResult == needs-reload || devSessionCanvas.runtimePersistence.checkResult == ready"],
+            "media": { "markdown": "%walkthrough.persistence.configuration.media%" }
+          },
+          {
+            "id": "apply",
+            "title": "%walkthrough.persistence.apply.title%",
+            "description": "%walkthrough.persistence.apply.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.checkResult == ready"],
+            "media": { "markdown": "%walkthrough.persistence.apply.media%" }
+          },
+          {
+            "id": "verifyApplied",
+            "title": "%walkthrough.persistence.verify.title%",
+            "description": "%walkthrough.persistence.verify.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.checkResult == ready"],
+            "media": { "markdown": "%walkthrough.persistence.verify.media%" }
+          }
+        ]
+      },
+      {
+        "id": "runtimePersistenceDisable",
+        "title": "%walkthrough.persistence.disable.title%",
+        "description": "%walkthrough.persistence.disable.description%",
+        "steps": [
+          {
+            "id": "disableConfiguration",
+            "title": "%walkthrough.persistence.disable.configuration.title%",
+            "description": "%walkthrough.persistence.disable.configuration.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.disableCheckResult == needs-reload || devSessionCanvas.runtimePersistence.disableCheckResult == disabled"],
+            "media": { "markdown": "%walkthrough.persistence.disable.configuration.media%" }
+          },
+          {
+            "id": "disableApply",
+            "title": "%walkthrough.persistence.disable.apply.title%",
+            "description": "%walkthrough.persistence.disable.apply.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.disableCheckResult == disabled"],
+            "media": { "markdown": "%walkthrough.persistence.disable.apply.media%" }
+          },
+          {
+            "id": "verifyDisabled",
+            "title": "%walkthrough.persistence.disable.verify.title%",
+            "description": "%walkthrough.persistence.disable.verify.description%",
+            "completionEvents": ["onContext:devSessionCanvas.runtimePersistence.disableCheckResult == disabled"],
+            "media": { "markdown": "%walkthrough.persistence.disable.verify.media%" }
+          }
+        ]
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -184,6 +251,54 @@
         "command": "devSessionCanvas.openSettings",
         "title": "%command.openSettings.title%",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "devSessionCanvas.configureRuntimePersistence",
+        "title": "%command.configureRuntimePersistence.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.checkRuntimePersistence",
+        "title": "%command.checkRuntimePersistence.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.openRuntimePersistenceGuide",
+        "title": "%command.openRuntimePersistenceGuide.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.enableRuntimePersistenceLinger",
+        "title": "%command.enableRuntimePersistenceLinger.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.enableRuntimePersistenceLingerWithSudo",
+        "title": "%command.enableRuntimePersistenceLingerWithSudo.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.copyRuntimePersistenceLingerCommand",
+        "title": "%command.copyRuntimePersistenceLingerCommand.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.openRuntimePersistenceSetting",
+        "title": "%command.openRuntimePersistenceSetting.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.reloadRuntimePersistence",
+        "title": "%command.reloadRuntimePersistence.title%"
+      },
+      {
+        "command": "devSessionCanvas.disableRuntimePersistence",
+        "title": "%command.disableRuntimePersistence.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.checkRuntimePersistenceDisabled",
+        "title": "%command.checkRuntimePersistenceDisabled.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.reloadRuntimePersistenceDisabled",
+        "title": "%command.reloadRuntimePersistenceDisabled.title%"
+      },
+      {
+        "command": "devSessionCanvas.__internal.reviewRuntimePersistenceLingerRollback",
+        "title": "%command.reviewRuntimePersistenceLingerRollback.title%"
       },
       {
         "command": "devSessionCanvas.selectTerminalShell",
@@ -402,6 +517,16 @@
     ],
     "menus": {
       "commandPalette": [
+        { "command": "devSessionCanvas.__internal.checkRuntimePersistence", "when": "false" },
+        { "command": "devSessionCanvas.__internal.openRuntimePersistenceGuide", "when": "false" },
+        { "command": "devSessionCanvas.__internal.enableRuntimePersistenceLinger", "when": "false" },
+        { "command": "devSessionCanvas.__internal.enableRuntimePersistenceLingerWithSudo", "when": "false" },
+        { "command": "devSessionCanvas.__internal.copyRuntimePersistenceLingerCommand", "when": "false" },
+        { "command": "devSessionCanvas.__internal.openRuntimePersistenceSetting", "when": "false" },
+        { "command": "devSessionCanvas.__internal.reloadRuntimePersistence", "when": "false" },
+        { "command": "devSessionCanvas.__internal.checkRuntimePersistenceDisabled", "when": "false" },
+        { "command": "devSessionCanvas.__internal.reloadRuntimePersistenceDisabled", "when": "false" },
+        { "command": "devSessionCanvas.__internal.reviewRuntimePersistenceLingerRollback", "when": "false" },
         {
           "command": "devSessionCanvas.createWorktreeForRoot",
           "when": "false"
@@ -580,6 +705,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "devSessionCanvas.disableRuntimePersistence",
+          "when": "view == devSessionCanvas.sidebar && viewItem == runtimePersistence",
+          "group": "runtimePersistence@1"
+        },
+        {
+          "command": "devSessionCanvas.configureRuntimePersistence",
+          "when": "view == devSessionCanvas.sidebar && viewItem == runtimePersistence",
+          "group": "runtimePersistence@2"
+        },
         {
           "command": "devSessionCanvas.openCodexAuthFile",
           "when": "view == devSessionCanvas.sidebar && viewItem == codexCliConfig",

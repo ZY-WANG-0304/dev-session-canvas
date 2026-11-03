@@ -51,6 +51,7 @@ tsconfig.json
 .env
 .env.*
 *.md
+!walkthroughs/*.md
 !README.marketplace.md
 !CHANGELOG.md
 *.log

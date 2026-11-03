@@ -335,6 +335,8 @@ import {
   listPreferredRuntimeHostBackendKinds,
   type RuntimeHostBackend
 } from './runtimeHostBackend';
+import { RuntimePersistenceSetup, runtimePersistenceReason, supportsLoginIndependentPersistence, type RuntimePersistenceSetupAction, type RuntimePersistenceSetupState } from './runtimePersistenceSetup';
+import { shouldDeferRuntimePersistenceEnable, verifyRuntimePersistenceUnit, type RuntimePersistenceCapability } from '../supervisor/runtimePersistenceCapability';
 import type {
   ExecutionTerminalFileLinkCandidate,
   ExecutionTerminalDroppedResource,
@@ -1046,6 +1048,8 @@ export interface CanvasSidebarState {
   surfaceLocation: CanvasSurfaceLocation;
   configuredSurface: CanvasSurfaceLocation;
   runtimePersistenceEnabled: boolean;
+  runtimePersistenceCapability?: RuntimePersistenceSetupState;
+  runtimePersistenceRequested?: boolean;
   notificationBridgeMode: CanvasAttentionNotificationBridgeMode;
   enabledAttentionSignals: ExecutionAttentionSignalKind[];
   notificationStrongReminderMode: CanvasStrongTerminalAttentionReminderMode;
@@ -1510,6 +1514,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     owner: RuntimeOwnerDescriptorV1; kind: RuntimeHostBackendKind;
   }>();
   private runtimeExecutionEnvironmentPromise?: Promise<RuntimeExecutionEnvironment>;
+  private readonly runtimePersistenceSetup: RuntimePersistenceSetup;
   // Resolved CLI paths are observations of the current shell/workspace environment, not persisted user choices.
   private readonly agentCliResolutionCache: Record<string, AgentCliResolutionCacheEntry>;
   private readonly noteMarkdownFileWatchers = new Map<string, NoteMarkdownFileWatcher>();
@@ -1526,7 +1531,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
   public constructor(
     private readonly context: vscode.ExtensionContext,
     executionOwnerOptions?: ExecutionOwnerOptions,
-    private readonly executionCandidateProfile?: ExecutionCandidateProfile
+    private readonly executionCandidateProfile?: ExecutionCandidateProfile,
+    initialPersistenceCapability?: RuntimePersistenceCapability
   ) {
     if (executionCandidateProfile !== undefined) assertExecutionCandidateProfile(executionCandidateProfile);
     if (executionOwnerOptions) {
@@ -1546,11 +1552,21 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       buildCanvasTemplateStorageLocations(this.context)
     );
     this.appliedStartupConfiguration = this.readStartupConfiguration();
+    this.runtimePersistenceSetup = new RuntimePersistenceSetup(() => this.notifySidebarStateChanged(), undefined, () => ({
+      requested: this.readStartupConfiguration().runtimePersistenceEnabled,
+      applied: this.isRuntimePersistenceEnabled()
+    }));
+    if (initialPersistenceCapability) this.runtimePersistenceSetup.state = initialPersistenceCapability;
+    context.subscriptions.push(this.runtimePersistenceSetup);
     this.attentionNotificationBridgeMode = this.readAttentionNotificationBridgeMode();
     this.enabledAttentionSignals = this.readEnabledAttentionSignals();
     this.strongTerminalAttentionReminderMode = this.readStrongTerminalAttentionReminderMode();
     this.agentAbnormalOutputTextNotificationMode = this.readAgentAbnormalOutputTextNotificationMode();
     this.refreshStorageRecoverySelection();
+    if (initialPersistenceCapability && shouldDeferRuntimePersistenceEnable(this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      this.loadStoredRuntimePersistenceEnabled(this.loadPersistedCanvasSnapshot()), initialPersistenceCapability)) {
+      this.appliedStartupConfiguration = { ...this.appliedStartupConfiguration, runtimePersistenceEnabled: false };
+    }
     this.state = this.loadReconciledState();
     this.lastComposedWorkspaceRootPaths = this.getMultiRootWorkspaceFoldersForComposition().map((folder) => folder.path);
     this.canvasTemplateInitialized = this.readCanvasTemplateInitializedFlag(this.state);
@@ -1782,6 +1798,47 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     void this.refreshAllAssociatedMarkdownNotes();
     this.scheduleRestoreLiveRuntimeSessions();
     void this.notifyIfConfiguredTerminalShellUnavailable();
+    if (this.readStartupConfiguration().runtimePersistenceEnabled && this.requiresLoginIndependentPersistence()) {
+      void this.runtimePersistenceSetup.checkAndNotify();
+    }
+  }
+
+  public async openRuntimePersistenceGuide(): Promise<void> {
+    await this.runtimePersistenceSetup.show(this.isRuntimePersistenceEnabled() ? 'disable' : 'enable');
+  }
+
+  public async configureRuntimePersistence(action?: RuntimePersistenceSetupAction): Promise<void> {
+    const result = action ? await this.runtimePersistenceSetup.perform(action) : await this.runtimePersistenceSetup.show();
+    if (!vscode.workspace.isTrusted) return;
+    const requested = this.readStartupConfiguration().runtimePersistenceEnabled;
+    const applied = this.isRuntimePersistenceEnabled();
+    if ((result === 'reload-required' && this.runtimePersistenceSetup.state.status === 'eligible' && requested && !applied)
+      || (result === 'disable-reload-required' && !requested && applied)) {
+      await this.notifyReloadRequiredConfigurationChanged({ defaultSurfaceChanged: false, runtimePersistenceChanged: true });
+    }
+  }
+
+  private requiresLoginIndependentPersistence(): boolean {
+    return supportsLoginIndependentPersistence() && this.context.extensionMode !== vscode.ExtensionMode.Test;
+  }
+
+  private async requireRuntimePersistenceCapability(): Promise<RuntimePersistenceCapability | undefined> {
+    return this.requiresLoginIndependentPersistence() ? this.runtimePersistenceSetup.requireEligible() : undefined;
+  }
+
+  private async requireRuntimePersistenceUnit(connected: ConnectedRuntimeSupervisorClient,
+    capability: RuntimePersistenceCapability | undefined): Promise<void> {
+    if (!capability) return;
+    const hello = await connected.client.hello();
+    if (hello.capabilities?.loginIndependentPersistenceV1 !== true) {
+      this.runtimePersistenceSetup.markUnitUnverified(capability, true);
+      throw new Error(runtimePersistenceReason({ ...capability, reason: 'supervisor-upgrade-required' }));
+    }
+    if (connected.backend.kind !== 'systemd-user'
+      || !await verifyRuntimePersistenceUnit(capability, connected.backend.paths.unitName, hello.pid)) {
+      this.runtimePersistenceSetup.markUnitUnverified(capability);
+      throw new Error(vscode.l10n.t('The Supervisor service could not be verified. Existing sessions remain accessible.'));
+    }
   }
 
   public async revealOrCreate(surface: CanvasSurfaceLocation = this.getConfiguredSurface()): Promise<void> {
@@ -1813,6 +1870,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       surfaceLocation,
       configuredSurface,
       runtimePersistenceEnabled: this.appliedStartupConfiguration.runtimePersistenceEnabled,
+      runtimePersistenceCapability: this.runtimePersistenceSetup.state,
+      runtimePersistenceRequested: configuration.get<boolean>(CONFIG_KEYS.runtimePersistenceEnabled, false),
       notificationBridgeMode: this.attentionNotificationBridgeMode,
       enabledAttentionSignals: [...this.enabledAttentionSignals],
       notificationStrongReminderMode: this.strongTerminalAttentionReminderMode,
@@ -3968,6 +4027,14 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.modeSwitchProgress.completed || this.strictRuntimeMutationBoundary)) return this.modeSwitchCleanup;
     const next = this.readStartupConfiguration();
     if (!this.modeSwitchProgress && (next.runtimePersistenceEnabled === true) === this.isRuntimePersistenceEnabled()) return;
+    if (next.runtimePersistenceEnabled && !this.isRuntimePersistenceEnabled() && this.requiresLoginIndependentPersistence()) {
+      await this.requireRuntimePersistenceCapability();
+      if (this.readStartupConfiguration().runtimePersistenceEnabled !== next.runtimePersistenceEnabled) {
+        throw new Error(vscode.l10n.t('Runtime persistence settings changed while checking. Try again.'));
+      }
+      if (this.modeSwitchCleanup && (!this.modeSwitchProgress || this.modeSwitchProgress.running
+        || this.modeSwitchProgress.completed || this.strictRuntimeMutationBoundary)) return this.modeSwitchCleanup;
+    }
     const progress = this.modeSwitchProgress ??= { targetEnabled: next.runtimePersistenceEnabled === true,
       running: false, completed: false, boundarySettled: false, clearedRoots: new Set() };
     progress.running = true;
@@ -8449,6 +8516,12 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
 
     if (options.runtimePersistenceChanged) {
+      const requested = this.readStartupConfiguration().runtimePersistenceEnabled;
+      if (requested && this.requiresLoginIndependentPersistence()) {
+        try { await this.requireRuntimePersistenceCapability(); }
+        catch { return; }
+      }
+      if (!vscode.workspace.isTrusted || this.readStartupConfiguration().runtimePersistenceEnabled !== requested) return;
       const changedSettings = [
         options.defaultSurfaceChanged ? vscode.l10n.t('Default Surface') : undefined,
         options.runtimePersistenceChanged ? vscode.l10n.t('Runtime persistence') : undefined
@@ -8456,10 +8529,11 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const changeSummary = formatLocalizedList(changedSettings);
       const followUps = [
         options.runtimePersistenceChanged
-          ? this.readStartupConfiguration().runtimePersistenceEnabled
+          ? requested
             ? vscode.l10n.t('Enabling runtime persistence takes effect after restarting the Canvas. Current Canvas sessions and content will not be retained.')
             : vscode.l10n.t('Disabling runtime persistence takes effect after restarting the Canvas. This window will leave the shared Canvas and will not retain its sessions or content. Shared sessions and content are cleared, and the Supervisor exits, only when the last enabled window explicitly disables persistence.')
-          : undefined
+          : undefined,
+        !requested ? vscode.l10n.t('Cancelling reload does not undo the saved setting. It still applies when the Canvas or window closes or restarts. Recheck the setting to cancel a pending turn-off request.') : undefined
       ].filter((message): message is string => Boolean(message));
       const message = vscode.l10n.t('{settings} changes will take effect after reloading the window. {followUps}', {
         settings: changeSummary,
@@ -8468,7 +8542,19 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       const reloadWindowAction = vscode.l10n.t('Reload Window');
       const selection = await vscode.window.showWarningMessage(message, reloadWindowAction);
       if (selection === reloadWindowAction) {
-        await this.cleanupRuntimePersistenceModeSwitch();
+        if (!vscode.workspace.isTrusted || this.readStartupConfiguration().runtimePersistenceEnabled !== requested) {
+          await vscode.window.showWarningMessage(vscode.l10n.t('Runtime persistence settings changed while checking. Try again.'));
+          return;
+        }
+        try { await this.cleanupRuntimePersistenceModeSwitch(); }
+        catch (error) {
+          await vscode.window.showErrorMessage(formatUnknownError(error));
+          return;
+        }
+        if (!vscode.workspace.isTrusted || this.readStartupConfiguration().runtimePersistenceEnabled !== requested) {
+          await vscode.window.showWarningMessage(vscode.l10n.t('Runtime persistence settings changed while checking. Try again.'));
+          return;
+        }
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
       }
       return;
@@ -10882,7 +10968,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     }
     const prepared = await prepareRootRuntimeSupervisor({
       storageDir: path.join(target.runtimeStoragePath, 'runtime-supervisor'), owner, executionProfile: profile,
-      preferredBackends: listPreferredRuntimeHostBackendKinds({ baseStoragePath: target.runtimeStoragePath,
+      preferredBackends: this.requiresLoginIndependentPersistence() ? ['systemd-user'] : listPreferredRuntimeHostBackendKinds({ baseStoragePath: target.runtimeStoragePath,
         extensionMode: this.context.extensionMode }),
       supervisorScriptPath: this.getRuntimeSupervisorScriptPath(),
       supervisorLauncherScriptPath: this.getRuntimeSupervisorLauncherScriptPath()
@@ -11252,7 +11338,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       }
     }
 
-    const preferredKinds = listPreferredRuntimeHostBackendKinds({
+    const preferredKinds = this.requiresLoginIndependentPersistence() ? ['systemd-user'] as const : listPreferredRuntimeHostBackendKinds({
       baseStoragePath: target.runtimeStoragePath,
       extensionMode: this.context.extensionMode
     });
@@ -11307,6 +11393,10 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     client?: RuntimeSupervisorClient,
     preparedLocalExecution?: NonNativeHostExecution
   ): void {
+    if (mode === 'snapshot-only' && this.requiresLoginIndependentPersistence()
+      && this.readStartupConfiguration().runtimePersistenceEnabled && !this.isRuntimePersistenceEnabled()) {
+      throw new Error(vscode.l10n.t('Complete background persistence setup and reload the window before starting a new session. Existing sessions remain accessible.'));
+    }
     const profile = this.getExecutionCandidateProfile();
     if (!profile) return;
     assertExecutionCandidateProfile(profile);
@@ -16468,22 +16558,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'agent');
     const rootPath = this.resolveExecutionNodeRuntimeRoot(existingNode);
     const assertRootCurrent = (): void => this.assertExecutionRuntimeRootCurrent('agent', nodeId, operationToken, rootPath);
+    const persistenceCapability = await this.requireRuntimePersistenceCapability();
+    assertRootCurrent();
     const existingMetadata = ensureAgentMetadata(existingNode);
     const cwd = this.getExecutionNodeCwd(existingNode, 'agent');
     const executionEnv = await this.resolveExecutionEnvironment('agent', cwd);
     assertRootCurrent();
     const lifecycleStatus: AgentNodeStatus = launchMode === 'resume' ? 'resuming' : 'starting';
     const executionProfile = this.getExecutionCandidateProfile();
+    const target = await this.resolveRuntimeCreationTarget(rootPath);
+    assertRootCurrent();
+    const connected = await this.getPreferredRuntimeSupervisorClient(target, { allowRestart: true });
+    await this.requireRuntimePersistenceUnit(connected, persistenceCapability);
+    assertRootCurrent();
+    const { client, backend, runtimeStoragePath, runtimeOwner, fallbackReason } = connected;
+    this.assertExecutionCandidateAdmission('live-runtime', client);
     const historyRetirement = executionProfile
       ? await this.prepareNativeHistoryReplacementPreflight(existingNode, 'agent', operationToken) : undefined;
     assertRootCurrent();
     const currentViewport = executionProfile
       ? await this.prepareExecutionCandidateReplacement(existingNode, 'agent', operationToken, undefined, historyRetirement, assertRootCurrent)
       : undefined;
-    const target = await this.resolveRuntimeCreationTarget(rootPath);
-    assertRootCurrent();
-    const { client, backend, runtimeStoragePath, runtimeOwner, fallbackReason } =
-      await this.getPreferredRuntimeSupervisorClient(target, { allowRestart: true });
     assertRootCurrent();
     this.assertExecutionCandidateAdmission('live-runtime', client);
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
@@ -16603,6 +16698,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       assertRootCurrent();
       if (executionProfile) this.submitExecutionCandidateStart('agent', nodeId, candidateSessionId!, client);
       snapshot = await client.createSession({
+        ...(persistenceCapability ? { requireLoginIndependentPersistence: true as const } : {}),
         ...(executionProfile ? { executionProfile, sessionId: candidateSessionId } : {}),
         kind: 'agent',
         displayLabel: cliSpec.label,
@@ -16671,22 +16767,27 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     const existingNode = this.requireNode(nodeId, 'terminal');
     const rootPath = this.resolveExecutionNodeRuntimeRoot(existingNode);
     const assertRootCurrent = (): void => this.assertExecutionRuntimeRootCurrent('terminal', nodeId, operationToken, rootPath);
+    const persistenceCapability = await this.requireRuntimePersistenceCapability();
+    assertRootCurrent();
     const existingMetadata = ensureTerminalMetadata(existingNode);
     const shellPath = this.getTerminalShellPath();
     const cwd = this.getExecutionNodeCwd(existingNode, 'terminal');
     const executionEnv = await this.resolveExecutionEnvironment('terminal', cwd);
     assertRootCurrent();
     const executionProfile = this.getExecutionCandidateProfile();
+    const target = await this.resolveRuntimeCreationTarget(rootPath);
+    assertRootCurrent();
+    const connected = await this.getPreferredRuntimeSupervisorClient(target, { allowRestart: true });
+    await this.requireRuntimePersistenceUnit(connected, persistenceCapability);
+    assertRootCurrent();
+    const { client, backend, runtimeStoragePath, runtimeOwner, fallbackReason } = connected;
+    this.assertExecutionCandidateAdmission('live-runtime', client);
     const historyRetirement = executionProfile
       ? await this.prepareNativeHistoryReplacementPreflight(existingNode, 'terminal', operationToken) : undefined;
     assertRootCurrent();
     const currentViewport = executionProfile
       ? await this.prepareExecutionCandidateReplacement(existingNode, 'terminal', operationToken, undefined, historyRetirement, assertRootCurrent)
       : undefined;
-    const target = await this.resolveRuntimeCreationTarget(rootPath);
-    assertRootCurrent();
-    const { client, backend, runtimeStoragePath, runtimeOwner, fallbackReason } =
-      await this.getPreferredRuntimeSupervisorClient(target, { allowRestart: true });
     assertRootCurrent();
     this.assertExecutionCandidateAdmission('live-runtime', client);
     const candidateSessionId = executionProfile ? randomUUID() : undefined;
@@ -16782,6 +16883,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     assertRootCurrent();
     if (executionProfile) this.submitExecutionCandidateStart('terminal', nodeId, candidateSessionId!, client);
     const snapshot = await client.createSession({
+      ...(persistenceCapability ? { requireLoginIndependentPersistence: true as const } : {}),
       ...(executionProfile ? { executionProfile, sessionId: candidateSessionId } : {}),
       kind: 'terminal',
       displayLabel: shellPath,

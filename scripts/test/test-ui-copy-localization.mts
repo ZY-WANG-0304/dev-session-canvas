@@ -14,6 +14,7 @@ import {
 } from '../../extensions/vscode/dev-session-canvas/src/webview/i18n/webviewI18n.ts';
 
 const hostRuntimeSourceFiles = [
+  'extensions/vscode/dev-session-canvas/src/panel/runtimePersistenceSetup.ts',
   'extensions/vscode/dev-session-canvas/src/extension.ts',
   'extensions/vscode/dev-session-canvas/src/panel/CanvasPanelManager.ts',
   'extensions/vscode/dev-session-canvas/src/panel/agentLaunchLocalization.ts',

@@ -194,6 +194,54 @@ function makeHost() {
   return { host, session, persisted, diagnostics, remoteCalls, node };
 }
 
+if (!baselineRef && !reviewCase) {
+  for (const kind of ['Agent', 'Terminal']) {
+    const fixture = makeHost();
+    const before = structuredClone(fixture.host.state);
+    fixture.host.requireRuntimePersistenceCapability = async () => { throw new Error('linger-disabled'); };
+    fixture.host.beginExecutionSessionOperation = () => 1;
+    fixture.host.requireNode = () => fixture.node;
+    fixture.host.resolveExecutionNodeRuntimeRoot = () => undefined;
+    fixture.host.assertExecutionRuntimeRootCurrent = () => {};
+    fixture.host.prepareExecutionCandidateReplacement = () => assert.fail('Must reject before changing the old execution');
+    await assert.rejects(fixture.host[`start${kind}SessionWithSupervisorCore`]('terminal-1', 80, 24), /linger-disabled/);
+    assert.deepEqual(fixture.host.state, before);
+    assert.deepEqual(fixture.remoteCalls, []);
+    console.log(`PASS persistence admission protects existing ${kind} execution before replacement`);
+    const checking = deferred();
+    fixture.host.requireRuntimePersistenceCapability = () => checking.promise;
+    fixture.host.assertExecutionRuntimeRootCurrent = () => { throw new Error('launch superseded'); };
+    const starting = fixture.host[`start${kind}SessionWithSupervisorCore`]('terminal-1', 80, 24);
+    checking.resolve({ status: 'eligible' });
+    await assert.rejects(starting, /launch superseded/);
+    assert.deepEqual(fixture.host.state, before);
+    console.log(`PASS superseded ${kind} launch cannot continue after persistence qualification`);
+  }
+  const fixture = makeHost();
+  fixture.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: true });
+  fixture.host.requiresLoginIndependentPersistence = () => true;
+  assert.throws(() => fixture.host.assertExecutionCandidateAdmission('snapshot-only'), /Complete background persistence setup/);
+  assert.equal(fixture.host.state.nodes.length, 1);
+  console.log('PASS pending persistence enable cannot silently start a snapshot-only execution');
+  fixture.host.requireRuntimePersistenceCapability = async () => { throw new Error('linger-disabled'); };
+  fixture.host.captureModeSwitchRuntimeBindings = () => assert.fail('No cleanup before persistence qualification');
+  await assert.rejects(fixture.host.cleanupRuntimePersistenceModeSwitch(), /linger-disabled/);
+  assert.equal(fixture.host.state.nodes.length, 1);
+  assert.equal(fixture.host.modeSwitchCleanup, undefined);
+  console.log('PASS missing linger blocks mode-switch cleanup without clearing the Canvas');
+
+  const checking = deferred();
+  let enabled = true;
+  fixture.host.readStartupConfiguration = () => ({ runtimePersistenceEnabled: enabled });
+  fixture.host.requireRuntimePersistenceCapability = () => checking.promise;
+  const pending = fixture.host.cleanupRuntimePersistenceModeSwitch();
+  enabled = false;
+  checking.resolve();
+  await assert.rejects(pending, /settings changed/);
+  assert.equal(fixture.host.state.nodes.length, 1);
+  console.log('PASS changing the setting during persistence qualification cancels destructive cleanup');
+}
+
 async function modeSwitchFixture(shared) {
   const f = makeHost();
   f.host.appliedStartupConfiguration = { runtimePersistenceEnabled: true };

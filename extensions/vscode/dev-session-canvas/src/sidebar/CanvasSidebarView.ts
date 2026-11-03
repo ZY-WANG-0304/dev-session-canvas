@@ -4,6 +4,7 @@ import {
   strongTerminalAttentionReminderShowsTitleBar
 } from '../common/protocol';
 import { COMMAND_IDS } from '../common/extensionIdentity';
+import { runtimePersistenceReason, runtimePersistenceStatusLabel } from '../panel/runtimePersistenceSetup';
 import { shortenMiddle } from '../panel/agentCliSelection';
 import { type CanvasSidebarState, CanvasPanelManager } from '../panel/CanvasPanelManager';
 
@@ -82,6 +83,36 @@ function buildSummaryItems(summary: CanvasSidebarSummaryItemSnapshot[]): CanvasS
   );
 }
 
+function getRuntimePersistenceSummaryItem(state: CanvasSidebarState): CanvasSidebarSummaryItemSnapshot {
+  const applied = state.runtimePersistenceEnabled;
+  const requested = state.runtimePersistenceRequested ?? applied;
+  const capability = state.runtimePersistenceCapability;
+  const action = applied
+    ? requested ? vscode.l10n.t('Turn off Runtime Persistence') : vscode.l10n.t('Continue turning off Runtime Persistence')
+    : requested ? vscode.l10n.t('Continue enabling Runtime Persistence') : vscode.l10n.t('Enable Runtime Persistence');
+  const tooltip = applied
+    ? requested ? vscode.l10n.t('Runtime Persistence is applied in this window. Click to open the turn-off guide.')
+      : vscode.l10n.t('Turning off is pending. This window still uses Runtime Persistence. Click to continue the turn-off guide.')
+    : requested ? vscode.l10n.t('Turning on is pending. This window has not applied Runtime Persistence. Click to continue setup.')
+      : vscode.l10n.t('Runtime Persistence is off in this window. Click to open the setup guide.');
+  return {
+    id: 'summary/runtime-persistence',
+    label: vscode.l10n.t('Runtime Persistence'),
+    contextValue: 'runtimePersistence',
+    description: !requested
+      ? applied ? vscode.l10n.t('Turning off · Window reload required') : vscode.l10n.t('Disabled')
+      : runtimePersistenceStatusLabel(capability, applied),
+    command: { command: COMMAND_IDS.openRuntimePersistenceGuide, title: action },
+    tooltip: [
+      tooltip,
+      ...((requested || applied) && capability && (capability.status === 'blocked' || capability.status === 'unknown')
+        ? [runtimePersistenceReason(capability)] : []),
+      ...(applied ? [vscode.l10n.t('Right-click this item to configure or repair background services instead.')] : []),
+      vscode.l10n.t('Opening a guide does not change settings, stop sessions or modify system linger.')
+    ].join('\n\n')
+  };
+}
+
 export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasSidebarSummaryItemSnapshot[] {
   return [
     {
@@ -98,14 +129,7 @@ export function getCanvasSidebarSummaryItems(state: CanvasSidebarState): CanvasS
       description: formatCanvasSurfaceSummary(state),
       tooltip: buildCanvasSurfaceTooltip(state)
     },
-    {
-      id: 'summary/runtime-persistence',
-      label: vscode.l10n.t('Runtime Persistence'),
-      description: state.runtimePersistenceEnabled ? vscode.l10n.t('Enabled') : vscode.l10n.t('Disabled'),
-      tooltip: state.runtimePersistenceEnabled
-        ? vscode.l10n.t('Runtime persistence is enabled for this window. Agent and Terminal sessions are held by the dedicated runtime host backend when possible.')
-        : vscode.l10n.t('Runtime persistence is disabled for this window. Agent and Terminal sessions will not keep a live runtime host.')
-    },
+    getRuntimePersistenceSummaryItem(state),
     {
       id: 'summary/notification-mode',
       label: vscode.l10n.t('Notification Mode'),

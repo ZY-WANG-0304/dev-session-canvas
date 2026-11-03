@@ -172,7 +172,19 @@ npm run build
 - `Terminal` 节点：需要工作区侧可用的 shell 环境；macOS / Linux 默认继承受控 shell env patch，Windows 让真实 shell 自己执行 profile / AutoRun，可通过 `devSessionCanvas.terminal.inheritEnv` 与 `devSessionCanvas.terminal.shellArgs` 调整
 - `Note` 节点：普通 Note 的正文权威数据仍为画布内原始 Markdown 文本；关联 Markdown Note 以 `.md` / `.markdown` 磁盘文件为权威来源，预览态只允许安全白名单链接与当前 workspace 内文件目标
 - `devSessionCanvas.runtimePersistence.enabled = false`：基线能力，不承诺真实进程跨 VS Code 生命周期持续存在
-- `devSessionCanvas.runtimePersistence.enabled = true`：已具备较多自动化与人工验证证据，尤其覆盖 `Remote SSH` real-reopen 主路径；用户可见 guarantee 取决于 backend 与平台组合。Linux 本地与 `Remote SSH` 在 `systemd --user` 可用时优先尝试更强 guarantee，否则自动回退到 `best-effort`
+- `devSessionCanvas.runtimePersistence.enabled = true`：Linux 本地与 `Remote SSH` 新建持久会话前要求 linger 和可核验的用户服务托管。前提缺失或未知时阻止新建，不再静默回退到 detached。已有会话仍可访问；其他受支持环境保持 best-effort 行为。窗口重开测试不能单独证明最后一个系统登录结束后的存活。
+
+Linux 用户可从命令面板执行 **Dev Session Canvas: 配置后台持久运行**进入开启引导。打开引导时自动检查环境，定位下一待办：**允许服务后台运行 → 开启 Runtime Persistence → 重载以应用配置 → 确认配置生效**。不再单列检查主机步骤；环境已就绪时，**允许服务后台运行**保留并自动打钩。正常检查不额外打开面板，异常会展示诊断；通过**重新检查 / 查看详情**可在**后台持久运行**输出通道查看实际主机、用户、UID、系统状态、有效配置与当前窗口的应用状态。
+
+点击侧栏 **Runtime Persistence** 时，当前窗口已应用持久模式则进入关闭引导，未应用则进入开启引导；切换尚未完成时继续原请求方向。状态区分已开启、已关闭、待开启、待关闭及后台保障异常/无法验证，不把勾选配置当作已开启。没有运行会话或 linger 被撤销也不代表已应用的模式关闭。若只想修复前提而不关闭，可右键此项选择**配置后台持久运行**。打开引导不会修改设置、停止会话或变更 linger。
+
+**仅开启 linger 不会开启扩展配置。** 点击**打开配置项**，在原生设置页选择需要的作用域并勾选 **Runtime Persistence: Enabled**，然后回到引导继续检查。若已勾选但窗口尚未应用，引导提供**确认并重载…**，保留原有警告：切换模式会清空此窗口的画板会话和内容。主机、配置与运行窗口三者同时通过才表示配置验证完成。引导勾选是历史进度，不是实时状态；重载或切换主机后应点击**重新检查**。
+
+Linger 开启步骤仅有一个主要按钮，复制命令和 sudo 为次要文字链接。执行必须先确认准确目标与命令，随后使用独立的 VS Code 原生终端。默认不使用 sudo；管理员方式需要单独明确确认，密码只在终端输入，插件不收集。Linger 也影响该账号的其他用户服务，关闭或卸载扩展不会自动关闭它；它不保证主机重启后保留原进程。旧 Supervisor 继续服务已有会话，但需等它结束并启动兼容版本后才能接收新的登录独立会话，扩展不会自动重启它。
+
+不再需要持久运行时，可执行 **Dev Session Canvas: 关闭 Runtime Persistence…**，点击开启引导中的**关闭引导**链接，或使用侧栏 Runtime Persistence 条目的右键菜单。打开时自动检查配置与实际模式，在**取消勾选配置 → 确认影响并重载 → 确认当前窗口已关闭**三步中定位下一待办，无需单独点击检查状态。其他参与窗口仍在使用时保留共享会话；最后一个启用窗口明确关闭时才清空共享会话、内容并退出 Supervisor。取消重载不会恢复已保存的设置：之后关闭或重启画板/窗口仍会应用。重新勾选配置才会撤销尚未应用的请求。
+
+关闭扩展持久运行不修改系统 linger。最后一步提供可选的**只读**系统撤销报告，展示实际主机/账号与目标可核验时的人工命令，不执行命令，也不推断其他服务已经不再依赖 linger；请与管理员核对这些依赖。
 
 ## 反馈与交流
 

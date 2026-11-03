@@ -35,6 +35,7 @@ export interface RuntimeSupervisorHelloResult {
   executionProfile?: ExecutionCandidateProfile;
   ownerCompatibilityFingerprint?: string;
   capabilities?: {
+    loginIndependentPersistenceV1?: true;
     terminalSessionStreamV1?: true;
     terminalProjectionSnapshotV1?: true;
     terminalAppliedRevisionAckV1?: true;
@@ -109,6 +110,7 @@ export interface RuntimeSupervisorCreateSessionOutcome {
 }
 
 export const RUNTIME_SUPERVISOR_ERROR_CODES = {
+  persistenceNotReady: 'DEV_SESSION_CANVAS_RUNTIME_PERSISTENCE_NOT_READY',
   parseError: 'DEV_SESSION_CANVAS_RUNTIME_SUPERVISOR_PARSE_ERROR',
   sessionAlreadyExists: 'DEV_SESSION_CANVAS_RUNTIME_SESSION_ALREADY_EXISTS',
   sessionNotFound: 'DEV_SESSION_CANVAS_RUNTIME_SESSION_NOT_FOUND',
@@ -140,6 +142,7 @@ export type RuntimeSupervisorErrorCode =
   (typeof RUNTIME_SUPERVISOR_ERROR_CODES)[keyof typeof RUNTIME_SUPERVISOR_ERROR_CODES];
 
 export type RuntimeSupervisorMessageId =
+  | 'persistenceNotReady'
   | 'parseError'
   | 'sessionAlreadyExists'
   | 'sessionNotFound'
@@ -188,6 +191,7 @@ export interface RuntimeSupervisorMessageDescriptor {
 export type RuntimeTerminalStreamMode = 'paged' | 'paged-until-exit';
 
 export interface RuntimeSupervisorCreateSessionParams {
+  requireLoginIndependentPersistence?: true;
   executionProfile?: ExecutionCandidateProfile;
   kind: ExecutionNodeKind;
   sessionId?: string;
@@ -710,6 +714,8 @@ export function formatRuntimeSupervisorMessageDescriptor(
       );
     case 'supervisorMissingStorageDir':
       return 'Runtime supervisor failed to start: missing --storage-dir.';
+    case 'persistenceNotReady':
+      return 'Background persistence is not ready. Check linger and the Supervisor service before starting a new session.';
     case 'launcherMissingSupervisorScript':
       return 'Runtime supervisor launcher failed to start: missing --supervisor-script.';
     case 'launcherMissingStorageDir':
@@ -814,6 +820,7 @@ function isRuntimeSupervisorMessageId(value: string): value is RuntimeSupervisor
     case 'terminalExitedSignal':
     case 'terminalExitedCode':
     case 'supervisorMissingStorageDir':
+    case 'persistenceNotReady':
     case 'launcherMissingSupervisorScript':
     case 'launcherMissingStorageDir':
     case 'legacySocketPathUnavailable':

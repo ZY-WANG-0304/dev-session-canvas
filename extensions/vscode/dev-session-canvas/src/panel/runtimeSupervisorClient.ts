@@ -404,9 +404,13 @@ export class RuntimeSupervisorClient {
   public async createSession(
     params: RuntimeSupervisorCreateSessionParams
   ): Promise<RuntimeSupervisorSessionSnapshot> {
-    if (params.executionProfile !== undefined) {
+    if (params.requireLoginIndependentPersistence && this.helloResult?.capabilities?.loginIndependentPersistenceV1 !== true) {
+      throw new Error('The original runtime connection does not support login-independent persistence.');
+    }
+    if (params.executionProfile !== undefined || params.requireLoginIndependentPersistence) {
       const socket = this.socket;
-      if (!socket || socket.destroyed || this.disposed || !this.supportsExecutionCandidateProfile(params.executionProfile)) {
+      if (!socket || socket.destroyed || this.disposed || (params.executionProfile !== undefined
+        && !this.supportsExecutionCandidateProfile(params.executionProfile))) {
         throw new Error('The original runtime connection does not support the execution candidate profile.');
       }
       const result = await this.requestOnConnectedSocket<RuntimeSupervisorSessionSnapshot>('createSession', params, socket);
