@@ -67,7 +67,7 @@ async function activationFixture(compiledProfile, factoryError, host = { platfor
       ? `export class CanvasPanelManager { constructor(...args) { globalThis.observed.constructors.push(args); throw globalThis.stop; } }`
       : `export const ${name} = undefined;`).join('\n'));
   }
-  modules.set('vscode', 'module.exports = {};');
+  modules.set('vscode', 'module.exports = { ExtensionMode: { Test: 1 } };');
   const result = await esbuild.build({ entryPoints: [extensionFile], bundle: true, write: false, platform: 'node',
     format: 'cjs', define: { __DEV_SESSION_CANVAS_EXECUTION_PROFILE__: JSON.stringify(compiledProfile) ?? 'undefined' },
     plugins: [{ name: 'activation-boundaries', setup(build) {
@@ -167,7 +167,7 @@ try {
   });
   await test('explicit stock bundle activate ignores candidate-looking environment', async () => {
     const f = await activationFixture(undefined);
-    assert.throws(f.activate, error => error === f.stop);
+    await assert.rejects(f.activate(), error => error === f.stop);
     assert.equal(f.observed.factory.length, 0);
     assert.equal(f.observed.constructors.length, 1);
     const args = f.observed.constructors[0];
@@ -177,7 +177,7 @@ try {
   });
   await test('real candidate activate prepares local snapshot owner and passes same profile to Runtime routing', async () => {
     const f = await activationFixture(profile);
-    assert.throws(f.activate, error => error === f.stop);
+    await assert.rejects(f.activate(), error => error === f.stop);
     assert.equal(f.observed.factory.length, 1);
     assert.equal(f.observed.factory[0].extensionRoot, '/controlled/extension');
     assert.equal(f.observed.factory[0].mode, 'snapshot-only');
@@ -187,19 +187,19 @@ try {
   });
   await test('unknown compiled profile and rejected assets never construct a stock manager', async () => {
     const unknown = await activationFixture('unsupported');
-    assert.throws(unknown.activate, /Unknown compiled/);
+    await assert.rejects(unknown.activate(), /Unknown compiled/);
     assert.equal(unknown.observed.factory.length, 0);
     assert.equal(unknown.observed.constructors.length, 0);
     const error = new Error('Linux candidate runtime mismatch: modules.');
     const invalid = await activationFixture(profile, error);
-    assert.throws(invalid.activate, received => received === error);
+    await assert.rejects(invalid.activate(), received => received === error);
     assert.equal(invalid.observed.factory.length, 1);
     assert.equal(invalid.observed.constructors.length, 0);
   });
   await test('macOS activation selects the matching factory and preserves its distinct Runtime profile', async () => {
     const macProfile = 'macos-owner-v1-candidate';
     const f = await activationFixture(macProfile);
-    assert.throws(f.activate, error => error === f.stop);
+    await assert.rejects(f.activate(), error => error === f.stop);
     assert.equal(f.observed.factory.length, 1);
     assert.equal(f.observed.factory[0].profile, macProfile);
     assert.equal(f.observed.factory[0].mode, 'snapshot-only');
@@ -209,7 +209,7 @@ try {
   await test('Windows activation selects its factory and refuses incompatible assets without stock fallback', async () => {
     const windowsProfile = 'windows-owner-v1-candidate';
     const f = await activationFixture(windowsProfile);
-    assert.throws(f.activate, error => error === f.stop);
+    await assert.rejects(f.activate(), error => error === f.stop);
     assert.equal(f.observed.factory.length, 1);
     assert.equal(f.observed.factory[0].profile, windowsProfile);
     assert.equal(f.observed.factory[0].mode, 'snapshot-only');
@@ -217,7 +217,7 @@ try {
     assert.equal(f.observed.constructors[0][2], windowsProfile);
     const error = new Error('Windows candidate runtime mismatch: modules.');
     const invalid = await activationFixture(windowsProfile, error);
-    assert.throws(invalid.activate, received => received === error);
+    await assert.rejects(invalid.activate(), received => received === error);
     assert.equal(invalid.observed.factory.length, 1);
     assert.equal(invalid.observed.constructors.length, 0);
   });
@@ -228,7 +228,7 @@ try {
     ]) {
       for (const arch of ['x64', 'arm64']) {
         const f = await activationFixture('platform', undefined, { platform, arch });
-        assert.throws(f.activate, error => error === f.stop);
+        await assert.rejects(f.activate(), error => error === f.stop);
         assert.equal(f.observed.factory.length, 1);
         assert.equal(f.observed.factory[0].factoryKind, kind);
         assert.equal(f.observed.factory[0].profile, selectedProfile);
@@ -243,7 +243,7 @@ try {
     for (const host of [{ platform: 'freebsd', arch: 'x64' }, { platform: 'linux', arch: 'ia32' },
       { platform: 'darwin', arch: 'ppc64' }, { platform: 'win32', arch: 'ia32' }]) {
       const f = await activationFixture('platform', undefined, host);
-      assert.throws(f.activate, /Unsupported execution candidate/);
+      await assert.rejects(f.activate(), /Unsupported execution candidate/);
       assert.equal(f.observed.factory.length, 0);
       assert.equal(f.observed.constructors.length, 0);
     }
@@ -252,7 +252,7 @@ try {
     for (const platform of ['linux', 'darwin', 'win32']) {
       const error = new Error('Controlled candidate asset rejection.');
       const f = await activationFixture('platform', error, { platform, arch: 'arm64' });
-      assert.throws(f.activate, received => received === error);
+      await assert.rejects(f.activate(), received => received === error);
       assert.equal(f.observed.factory.length, 1);
       assert.equal(f.observed.constructors.length, 0);
     }
