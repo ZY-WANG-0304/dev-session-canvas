@@ -2240,6 +2240,83 @@ test('canvas node body padding follows unified spacing tokens', async ({ page })
   expect(padding.notePreview).toMatchObject({ top: '16px', right: '18px', bottom: '16px', left: '18px' });
 });
 
+for (const zoom of [0.5, 1.8]) {
+  test(`canvas node boundaries compensate for viewport zoom ${zoom}`, async ({ page }) => {
+    const state = createCanvasScreenshotState();
+    await openHarness(page, {
+      persistedState: {
+        selectedNodeId: 'agent-1',
+        selectedNodeIds: ['agent-1'],
+        viewport: { x: 0, y: 0, zoom }
+      }
+    });
+    await applyWorkbenchTheme(page, 'dark');
+    await bootstrap(page, state);
+    await settleWebview(page, 3);
+    await expect(nodeById(page, 'agent-1')).toHaveClass(/is-selected/);
+
+    const measurements = await page.evaluate(() => {
+      const viewport = document.querySelector('.react-flow__viewport');
+      if (!(viewport instanceof HTMLElement)) {
+        throw new Error('Canvas viewport is missing.');
+      }
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
+      const viewportZoom = Math.hypot(matrix.a, matrix.b);
+      return ['agent-1', 'terminal-1', 'note-1'].map((nodeId) => {
+        const node = document.querySelector(`[data-node-id="${nodeId}"]`);
+        if (!(node instanceof HTMLElement)) {
+          throw new Error(`Canvas node ${nodeId} is missing.`);
+        }
+        const style = getComputedStyle(node);
+        const resizeLine = node.querySelector('.canvas-node-resize-line-top');
+        const selectionOutline = style.boxShadow.match(/0px 0px 0px ([\d.]+)px/);
+        return {
+          nodeId,
+          viewportZoom,
+          configuredBorderWidth: node.style.getPropertyValue('--canvas-node-border-width'),
+          configuredResizeLineWidth: node.style.getPropertyValue('--canvas-node-resize-line-width'),
+          borderScreenWidth: Number.parseFloat(style.borderTopWidth) * viewportZoom,
+          selected: node.classList.contains('is-selected'),
+          selectionOutlineScreenWidth: selectionOutline
+            ? Number.parseFloat(selectionOutline[1]) * viewportZoom
+            : null,
+          resizeLineCssWidth: resizeLine
+            ? Number.parseFloat(getComputedStyle(resizeLine).borderTopWidth)
+            : null,
+          resizeLineScreenWidth: resizeLine
+            ? Number.parseFloat(getComputedStyle(resizeLine).borderTopWidth) * viewportZoom
+            : null
+        };
+      });
+    });
+
+    for (const measurement of measurements) {
+      const expectedConfiguredBorderWidth = Math.max(1, 1 / measurement.viewportZoom);
+      const expectedBorderWidth = Math.max(1, measurement.viewportZoom);
+      expect(
+        Math.abs(Number.parseFloat(measurement.configuredBorderWidth) - expectedConfiguredBorderWidth),
+        `${measurement.nodeId} configured border width`
+      ).toBeLessThan(0.05);
+      expect(
+        Math.abs(measurement.borderScreenWidth - expectedBorderWidth),
+        `${measurement.nodeId} border width at zoom ${measurement.viewportZoom}: ${measurement.borderScreenWidth}px (CSS ${measurement.configuredBorderWidth})`
+      ).toBeLessThan(0.05);
+    }
+    const selectedAgent = measurements.find(({ nodeId }) => nodeId === 'agent-1');
+    expect(selectedAgent?.selected).toBe(true);
+    expect(Math.abs((selectedAgent?.selectionOutlineScreenWidth ?? 0) - 1)).toBeLessThan(0.05);
+    const expectedConfiguredResizeLineWidth = Math.max(1, 2 / zoom);
+    expect(
+      Math.abs(Number.parseFloat(selectedAgent?.configuredResizeLineWidth ?? '0') - expectedConfiguredResizeLineWidth)
+    ).toBeLessThan(0.05);
+    const expectedResizeLineWidth = Math.floor(expectedConfiguredResizeLineWidth) * zoom;
+    expect(
+      Math.abs((selectedAgent?.resizeLineScreenWidth ?? 0) - expectedResizeLineWidth),
+      `resize line at zoom ${selectedAgent?.viewportZoom}: ${selectedAgent?.resizeLineScreenWidth}px (CSS ${selectedAgent?.resizeLineCssWidth}px)`
+    ).toBeLessThan(0.05);
+  });
+}
+
 test('edge label text color follows the rendered edge color', async ({ page }) => {
   const state = createCanvasScreenshotState();
   state.edges = [
@@ -10725,34 +10802,39 @@ test('selected node resize affordance keeps type-colored edge highlight', async 
     const topLine = node.querySelector('.canvas-node-resize-line-top');
     const rightLine = node.querySelector('.canvas-node-resize-line-right');
     const cornerHandle = node.querySelector('[data-node-resize-direction="bottom-right"]');
+    const viewport = node.closest('.react-flow__viewport');
     if (
       !(topLine instanceof HTMLElement) ||
       !(rightLine instanceof HTMLElement) ||
-      !(cornerHandle instanceof HTMLElement)
+      !(cornerHandle instanceof HTMLElement) ||
+      !(viewport instanceof HTMLElement)
     ) {
       return null;
     }
 
+    const viewportTransform = new DOMMatrixReadOnly(window.getComputedStyle(viewport).transform);
     const topLineStyle = window.getComputedStyle(topLine);
     const rightLineStyle = window.getComputedStyle(rightLine);
     const cornerHandleStyle = window.getComputedStyle(cornerHandle, '::after');
 
     return {
+      viewportZoom: Math.hypot(viewportTransform.a, viewportTransform.b),
       topBorderColor: topLineStyle.borderTopColor,
-      topBorderWidth: topLineStyle.borderTopWidth,
+      topBorderWidth: Number.parseFloat(topLineStyle.borderTopWidth),
       rightBorderColor: rightLineStyle.borderRightColor,
-      rightBorderWidth: rightLineStyle.borderRightWidth,
+      rightBorderWidth: Number.parseFloat(rightLineStyle.borderRightWidth),
       handleBackground: cornerHandleStyle.backgroundColor
     };
   });
 
-  expect(resizeChrome).toEqual({
+  expect(resizeChrome).toMatchObject({
     topBorderColor: 'rgb(167, 139, 250)',
-    topBorderWidth: '2px',
     rightBorderColor: 'rgb(167, 139, 250)',
-    rightBorderWidth: '2px',
     handleBackground: 'rgb(167, 139, 250)'
   });
+  const expectedResizeLineWidth = Math.floor(Math.max(1, 2 / (resizeChrome?.viewportZoom ?? 1)));
+  expect(resizeChrome?.topBorderWidth).toBeCloseTo(expectedResizeLineWidth, 2);
+  expect(resizeChrome?.rightBorderWidth).toBeCloseTo(expectedResizeLineWidth, 2);
 });
 
 test('dragging a resize handle posts resizeNode and updates the note frame size', async ({ page }) => {
