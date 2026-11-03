@@ -127,6 +127,19 @@ try {
     assert.equal(isRootOwnerRuntimeSupervisorStorageDir(storageDir, platform), true);
     const rootOptions = { platform, env: {}, homeDir: '/home/test', tmpDir: '/tmp', userId: 1000 };
     const rootPaths = resolveRuntimeSupervisorPathsFromStorageDir(storageDir, rootOptions);
+    const releasePaths = ['0.28.0', '0.29.0'].map(release => {
+      const releasedStorage = paths.join(paths.dirname(base), resolveRootRuntimeSupervisorGeneration(profile, release), 'runtime-supervisor');
+      assert.equal(resolveRuntimeSupervisorExecutionProfile(releasedStorage, platform), profile);
+      assert.equal(resolveRootRuntimeSupervisorExecutionProfile(releasedStorage, platform), profile);
+      return resolveRuntimeSupervisorPathsFromStorageDir(releasedStorage, rootOptions);
+    });
+    assert.equal(new Set([rootPaths, ...releasePaths].map(value => value.socketPath)).size, 3);
+    assert.equal(new Set([rootPaths, ...releasePaths].map(value => value.registryPath)).size, 3);
+    if (platform === 'linux') {
+      const services = [rootPaths, ...releasePaths].map(value => resolveSystemdUserRuntimeSupervisorPathsFromStorageDir(value.storageDir, rootOptions));
+      assert.equal(new Set(services.map(value => value.unitName)).size, 3);
+      assert.equal(new Set(services.map(value => value.socketPath)).size, 3);
+    }
     const rootDigest = createHash('sha1').update(storageDir).digest('hex').slice(0, 24);
     assert.equal(rootPaths.socketPath, platform === 'win32' ? `\\\\.\\pipe\\dev-session-canvas-${rootDigest}`
       : `/tmp/dsc-root-1000/d-${rootDigest}.sock`);

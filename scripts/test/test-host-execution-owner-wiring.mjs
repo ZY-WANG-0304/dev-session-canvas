@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFil
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 import esbuild from 'esbuild';
 import ts from 'typescript';
 
@@ -30,6 +31,7 @@ const bundled = await esbuild.build({
       export { testRootRuntimePreparation } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation';
       export { createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
         resolveRuntimeRootOwnerBaseStoragePath } from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+      export { resolveCurrentRootRuntimeSupervisorGeneration } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRelease';
     `,
     resolveDir: process.cwd(), sourcefile: 'host-owner-wiring-entry.ts'
   },
@@ -109,7 +111,7 @@ const { ExecutionFlowRecorder, mergeSharedCanvasState, composeMultiRootCanvasSta
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
   testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
-  createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
+  createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration, resolveCurrentRootRuntimeSupervisorGeneration,
   resolveRuntimeRootOwnerBaseStoragePath, testClaudeSessionFiles, locateClaudeSessionIdFromFiles } = loaded.exports;
 
 function deferred() {
@@ -3948,7 +3950,7 @@ async function withRootCandidateRuntimeFixture(run) {
   f.host.runtimeExecutionEnvironmentPromise = Promise.resolve(environment);
   const owner = createRuntimeOwnerDescriptor({ environmentKey: environment.environmentKey,
     userStorageScopeKey: createRuntimeUserStorageScopeKey(environment.userIdentity, globalStoragePath),
-    rootPath: roots[0].path, generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+    rootPath: roots[0].path, generation: resolveCurrentRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
   const target = { rootPath: roots[0].path, runtimeOwner: owner,
     runtimeStoragePath: resolveRuntimeRootOwnerBaseStoragePath(globalStoragePath, owner) };
   try { await run({ ...f, roots, owner, target, globalStoragePath }); }
@@ -3979,11 +3981,15 @@ for (const mode of [0o775, 0o770, 0o755]) {
 }
 
 for (const kind of ['terminal', 'agent']) {
-  test(`root ${kind} new creation routes its confirmed owner through preparation client metadata and subscription`, async () => {
+  for (const launchMode of kind === 'agent' ? ['start', 'resume'] : ['start']) test(`root ${kind} ${launchMode} routes the current release through preparation client metadata and subscription`, async () => {
     if (process.platform !== 'linux') return;
     await withRootCandidateRuntimeFixture(async f => {
       const preparations = [];
       f.host.getPreferredRuntimeSupervisorClient = CanvasPanelManager.prototype.getPreferredRuntimeSupervisorClient;
+      if (launchMode === 'resume') {
+        f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+        f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider', sessionId: 'resume-original' });
+      }
       testRootRuntimePreparation.run = async request => {
         preparations.push(request);
         assert.deepEqual(request.owner, f.owner);
@@ -3993,7 +3999,8 @@ for (const kind of ['terminal', 'agent']) {
       };
       try {
         await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
-          await completed(f.clock, f.start(kind), `${kind} root owner creation`);
+          const starting = launchMode === 'resume' ? f.host.startAgentSession('agent-1', 80, 24, undefined, true) : f.start(kind);
+          await completed(f.clock, starting, `${kind} root owner creation`);
           assert.deepEqual(f.errors, []);
           assert.equal(preparations.length, 1);
           assert.equal(connections.length, 1);
@@ -4002,6 +4009,7 @@ for (const kind of ['terminal', 'agent']) {
           assert.equal(connections[0].client.matchesRuntimeOwner(f.owner), true);
           assert.equal(creates.length, 1);
           assert.equal(creates[0].request.kind, kind);
+          assert.equal(creates[0].request.launchMode, launchMode);
           assert.equal(creates[0].request.launchSpec.cwd, '/controlled', 'execution cwd is not the runtime root identity');
           const metadata = f.host.state.nodes.find(node => node.kind === kind).metadata[kind];
           assert.deepEqual(metadata.runtimeOwner, f.owner);
@@ -4019,16 +4027,21 @@ for (const kind of ['terminal', 'agent']) {
     });
   });
 
-  test(`root ${kind} confirms its original binding cleanup before resolving or acquiring the new owner`, async () => {
+  for (const previousRelease of [undefined, '0.26.1']) test(`root ${kind} settles original ${previousRelease ?? 'historical'} binding before creating on the current release`, async () => {
     if (process.platform !== 'linux') return;
     await withRootCandidateRuntimeFixture(async f => {
       const previous = addCandidateLegacyBinding(f, kind);
-      const oldOwner = createRuntimeOwnerDescriptor({ ...f.owner, rootPath: '/controlled/previous-root' });
+      const oldOwner = createRuntimeOwnerDescriptor({ ...f.owner, rootPath: f.roots[0].path,
+        generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE, previousRelease) });
+      assert.notDeepEqual(oldOwner, f.owner);
+      f.host.unbindRuntimeSession(previous.sessionId, previous.runtimeStoragePath, kind, previous.backendKind);
       previous.runtimeOwner = oldOwner;
       previous.runtimeStoragePath = resolveRuntimeRootOwnerBaseStoragePath(f.globalStoragePath, oldOwner);
       const node = f.host.state.nodes.find(value => value.kind === kind);
-      Object.assign(node.metadata[kind], { runtimeOwner: oldOwner, runtimeStoragePath: previous.runtimeStoragePath });
-      f.host.bindRuntimeSession(node.id, kind, previous.sessionId, previous.runtimeStoragePath, previous.backendKind);
+      node.status = 'history-restored';
+      Object.assign(node.metadata[kind], { runtimeOwner: oldOwner, runtimeStoragePath: previous.runtimeStoragePath,
+        liveSession: false, attachmentState: 'history-restored', lifecycle: kind === 'agent' ? 'stopped' : 'closed' });
+      f.host.bindRuntimeSession(node.id, kind, previous.sessionId, previous.runtimeStoragePath, previous.backendKind, oldOwner);
       const cleanup = deferred();
       let outcome;
       const strict = candidateStrictDeletes(f, () => ({ first: cleanup.promise, current: () => outcome, submitted: true }));
@@ -4036,8 +4049,6 @@ for (const kind of ['terminal', 'agent']) {
       const preferred = f.host.getPreferredRuntimeSupervisorClient;
       const order = [];
       f.host.resolveRuntimeCreationTarget = async rootPath => {
-        assert.equal(outcome?.kind, 'legacy-acknowledged');
-        assert.equal(f.host.runtimeSessionBindings.size, 0);
         order.push('target');
         return resolveTarget(rootPath);
       };
@@ -4047,11 +4058,12 @@ for (const kind of ['terminal', 'agent']) {
         return preferred(target);
       };
       const starting = f.start(kind);
-      await until(f.clock, () => strict.calls.length === 1, `${kind} original owner deletion`);
+      await pump(f.clock, () => strict.calls.length === 1);
+      assert.equal(strict.calls.length, 1, JSON.stringify({ errors: f.errors, posted: f.posted, connections: strict.connections }));
       assert.equal(strict.calls[0].backend.runtimeStoragePath, previous.runtimeStoragePath);
       assert.equal(strict.calls[0].params.sessionId, previous.sessionId);
       assert.deepEqual(strict.connections[0].options.expectedRuntimeOwner, oldOwner);
-      assert.deepEqual(order, []);
+      assert.deepEqual(order, ['target', 'owner']);
       assert.equal(f.creates.length, 0);
       outcome = { kind: 'legacy-acknowledged' };
       cleanup.resolve(outcome);
@@ -4061,6 +4073,36 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(f.creates.length, 1);
       assert.notEqual(f.creates[0].sessionId, previous.sessionId);
       assert.deepEqual(f.host.state.nodes.find(value => value.kind === kind).metadata[kind].runtimeOwner, f.owner);
+    });
+  });
+
+  test(`root ${kind} current release preparation failure never falls back to a cached historical owner`, async () => {
+    if (process.platform !== 'linux') return;
+    await withRootCandidateRuntimeFixture(async fixture => {
+      const historicalOwner = createRuntimeOwnerDescriptor({ ...fixture.owner, rootPath: fixture.roots[0].path,
+        generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE) });
+      const historicalStorage = resolveRuntimeRootOwnerBaseStoragePath(fixture.globalStoragePath, historicalOwner);
+      fixture.host.preferredRootRuntimeBackends.set(historicalStorage, { owner: historicalOwner, kind: 'legacy-detached' });
+      fixture.host.getPreferredRuntimeSupervisorClient = CanvasPanelManager.prototype.getPreferredRuntimeSupervisorClient;
+      const preparations = [];
+      testRootRuntimePreparation.run = async request => {
+        preparations.push(request);
+        return { kind: 'unconfirmed', reason: 'Current release startup is unknown.' };
+      };
+      try {
+        await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
+          await completed(fixture.clock, fixture.start(kind), `${kind} release preparation rejection`);
+          assert.equal(preparations.length, 1);
+          assert.deepEqual(preparations[0].owner, fixture.owner);
+          assert.deepEqual(connections, []);
+          assert.deepEqual(creates, []);
+          assert(fixture.errors.includes('Current release startup is unknown.'));
+          assert.deepEqual(fixture.host.preferredRootRuntimeBackends.get(historicalStorage),
+            { owner: historicalOwner, kind: 'legacy-detached' });
+        });
+      } finally {
+        testRootRuntimePreparation.run = async () => { throw new Error('Unexpected root runtime preparation'); };
+      }
     });
   });
 
@@ -8625,7 +8667,8 @@ for (const kind of ['agent', 'terminal']) {
   });
 }
 
-const testNameFilter = process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
+const { values: testOptions } = parseArgs({ options: { 'name-pattern': { type: 'string' } } });
+const testNameFilter = testOptions['name-pattern'] ?? process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
 const selectedTests = testNamePattern ? tests.filter(({ name }) => testNamePattern.test(name)) : tests;
 assert(selectedTests.length > 0, 'Host test-name filter must select at least one test.');

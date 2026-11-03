@@ -6,10 +6,11 @@ import type { ExecutionCandidateProfile } from '../common/executionLifecycle';
 import type { RuntimeHostBackendKind } from '../common/protocol';
 import {
   parseRuntimeOwnerDescriptor,
-  resolveRootRuntimeSupervisorGeneration,
+  resolveRootRuntimeSupervisorProfileFromGeneration,
   resolveRuntimeRootOwnerGlobalStoragePath,
   type RuntimeOwnerDescriptorV1
 } from '../common/runtimeRootOwnership';
+import { assertRuntimeRootRelease } from './runtimeRelease';
 
 const PREPARATION_BUDGET_MS = 30_000;
 const HELPER_EXIT_BUDGET_MS = 1_000;
@@ -36,9 +37,10 @@ export async function prepareRootRuntimeSupervisor(
   let request: RootPreparationRequest;
   try {
     const owner = parseRuntimeOwnerDescriptor(options.owner);
-    if (owner.generation !== resolveRootRuntimeSupervisorGeneration(options.executionProfile)) {
+    if (resolveRootRuntimeSupervisorProfileFromGeneration(owner.generation) !== options.executionProfile) {
       throw new Error('Mismatched execution profile.');
     }
+    assertRuntimeRootRelease(owner.generation, options.executionProfile);
     resolveRuntimeRootOwnerGlobalStoragePath(options.storageDir, owner);
     if (![options.supervisorScriptPath, options.supervisorLauncherScriptPath].every(value =>
       typeof value === 'string' && path.isAbsolute(value) && !value.includes('\0'))

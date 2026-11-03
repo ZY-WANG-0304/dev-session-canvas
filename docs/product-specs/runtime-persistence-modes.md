@@ -65,6 +65,8 @@ Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` T
 
 默认执行实现与用户开关是两条独立选择：正常构建默认采用当前平台的 owned 原生 provider；`devSessionCanvas.runtimePersistence.enabled` 仍只决定由 Host 管理 `snapshot-only`，还是由 Supervisor 管理 `live-runtime`。关闭开关不回退 stock，也不会因为 provider 是独立进程就获得跨 Host 存活保证。原生资产缺失必须明确失败，不能静默换用旧执行实现；已有 live 绑定沿用原 backend / storage / session，不自动迁移。正常构建、打包及默认启用已实现；F-04 的有限资源模型和受影响 Runtime 验收已结账，最终序列化修正的真实 Agent、Webview、跨平台和安装包验收与整体审查单独结账，状态见第 10 节及 `docs/design-docs/runtime-exit-integrity-production-integration.md` §53。
 
+发行升级补充（2026-11-03，用户已确认）：原生 folder-root 的新执行进入当前扩展发行版本的 Supervisor，即使旧 Supervisor 协议兼容也不复用它创建新执行。存活会话重新连接、输入、resize 和停止保持原绑定；旧节点停止后 Start、需要新进程的 Resume/Fork 使用当前发行。升级不强停或迁移旧执行，新版启动失败不回退旧实例。rootless、stock 和同版不同开发构建不扩入本次修复。实现及验收状态见 `docs/design-docs/runtime-supervisor-release-isolation.md`。
+
 ## 5. 不在范围内
 
 - Supervisor 自身崩溃或机器重启（含断电）后的原进程恢复与终端历史恢复，2026-09-17 由用户确认不作保证；不要求为此新增灾备服务

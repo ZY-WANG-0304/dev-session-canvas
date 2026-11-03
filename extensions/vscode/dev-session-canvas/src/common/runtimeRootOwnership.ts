@@ -18,6 +18,7 @@ import {
 const ROOT_STORAGE_SUBDIR = 'runtime-roots-v1';
 const GENERATIONS_SUBDIR = 'runtime-supervisor-generations';
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const RELEASE_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
 
 const ROOT_GENERATIONS = Object.freeze({
   [EXECUTION_CANDIDATE_PROFILE]: 'terminal-root-owner-linux-v1',
@@ -37,14 +38,25 @@ export interface RuntimeOwnerDescriptorV1 {
   readonly generation: string;
 }
 
-export function resolveRootRuntimeSupervisorGeneration(profile: ExecutionCandidateProfile): string {
+export function resolveRootRuntimeSupervisorGeneration(profile: ExecutionCandidateProfile, runtimeRelease?: string): string {
   assertExecutionCandidateProfile(profile);
-  return ROOT_GENERATIONS[profile];
+  if (runtimeRelease === undefined) return ROOT_GENERATIONS[profile];
+  if (typeof runtimeRelease !== 'string' || runtimeRelease.length > 128 ||
+      RELEASE_PATTERN.exec(runtimeRelease)?.[0] !== runtimeRelease) {
+    throw new Error('Runtime release must be a bounded semantic version.');
+  }
+  return `${ROOT_GENERATIONS[profile]}-release-${createHash('sha256').update(runtimeRelease).digest('hex')}`;
 }
 
 export function resolveRootRuntimeSupervisorProfileFromGeneration(generation: unknown): ExecutionCandidateProfile | undefined {
+  if (typeof generation !== 'string') return undefined;
   return (Object.keys(ROOT_GENERATIONS) as ExecutionCandidateProfile[])
-    .find(profile => ROOT_GENERATIONS[profile] === generation);
+    .find(profile => {
+      const prefix = `${ROOT_GENERATIONS[profile]}-release-`;
+      const releaseHash = generation.slice(prefix.length);
+      return ROOT_GENERATIONS[profile] === generation ||
+        (generation.startsWith(prefix) && releaseHash.length === 64 && DIGEST_PATTERN.test(releaseHash));
+    });
 }
 
 export function createRuntimeOwnerDescriptor(input: {
@@ -156,7 +168,7 @@ export function createRuntimeOwnerCompatibilityFingerprint(
   profile: ExecutionCandidateProfile,
   admission: ExecutionAdmissionLimits = EXECUTION_PRODUCTION_ADMISSION
 ): string {
-  if (resolveRootRuntimeSupervisorGeneration(profile) !== generation) {
+  if (resolveRootRuntimeSupervisorProfileFromGeneration(generation) !== profile) {
     throw new Error('Runtime owner generation does not match its execution profile.');
   }
   const normalized = normalizeExecutionAdmissionLimits(admission);

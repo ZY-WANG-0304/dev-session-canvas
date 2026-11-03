@@ -1,7 +1,14 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 
 const bindingKeys = ['runtimeBackend', 'runtimeStoragePath', 'runtimeSessionId', 'runtimeOwner'];
+
+function expectedReleaseGeneration(version) {
+  assert.equal(typeof version, 'string');
+  assert(version.length > 0);
+  return `terminal-root-owner-linux-v1-release-${createHash('sha256').update(version).digest('hex')}`;
+}
 
 function assertDriverProfileRegistration(inventory, targetRoot) {
   assert(Array.isArray(inventory), 'The default extension profile must have an inventory.');
@@ -26,7 +33,7 @@ function assertSubject(subject, root) {
   const owner = subject.binding.runtimeOwner;
   assert.deepEqual(Object.keys(owner).sort(), ['environmentKey', 'generation', 'root', 'schema', 'userStorageScopeKey']);
   assert.equal(owner.schema, 1);
-  assert.equal(owner.generation, 'terminal-root-owner-linux-v1');
+  assert.equal(owner.generation, expectedReleaseGeneration(subject.runtimeRelease));
   assert.match(owner.environmentKey, /^[a-f0-9]{64}$/);
   assert.match(owner.userStorageScopeKey, /^[a-f0-9]{64}$/);
   assert.deepEqual(owner.root, { kind: 'folder', pathPolicy: 'canvas-path-v1', normalizedPath: root });
@@ -176,4 +183,4 @@ function assertBoundaryCase(single, multi, result) {
 }
 
 module.exports = { bindingKeys, assertBinding, assertContained, assertTopology, assertRestored, assertCase,
-  assertBoundaryCase, assertDriverProfileRegistration };
+  assertBoundaryCase, assertDriverProfileRegistration, expectedReleaseGeneration };

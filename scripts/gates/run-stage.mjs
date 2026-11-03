@@ -15,6 +15,8 @@ import { retireFormalSmokeRuntimes } from '../smoke/vscode-smoke-runner.mjs';
 import { assembleExecutionDistributionAssets } from '../build/assemble-execution-distribution-assets.mjs';
 import { validateReleasePreflight } from '../release/release-preflight.mjs';
 import { fileURLToPath } from 'node:url';
+import { assertRuntimeReleaseUpgradeEvidence, assertRuntimeReleaseUpgradeCleanup } from './runtime-release-evidence.mjs';
+import { runtimeReleaseBaselineCommit, runtimeBundleHashes } from '../test/runtime-release-baseline.mjs';
 
 export async function runStage() {
 const { values } = parseArgs({ options: { plan: { type: 'string' }, job: { type: 'string' }, variant: { type: 'string' },
@@ -157,8 +159,28 @@ for (const task of tasks) {
         assert(Date.parse(receipt.cleanupCompletedAt) >= Date.parse(receipt.cleanupStartedAt)
           && Date.parse(receipt.cleanupCompletedAt) <= receipt.cleanupDeadline, 'Native cleanup deadline is unconfirmed');
         return receipt.cleanup; } };
-  } else if (job === 'source-build') config = { action: sourceBuild,
-    assertResult: async result => { assert.equal(result.inputSHA, plan.inputSHA); return { source: objectDigest(result) }; } };
+  } else if (job === 'source-build') {
+    if (task.id === 'source-build') config = { action: sourceBuild,
+      assertResult: async result => { assert.equal(result.inputSHA, plan.inputSHA); return { source: objectDigest(result) }; } };
+    else {
+      assert.equal(task.id, 'runtime-release-upgrade');
+      const report = path.join(output, job, variant, 'runtime-release-upgrade.json');
+      config = { prepare: async () => {
+        const build = await readJSON(path.join(output, job, variant, 'source-build.task.json'));
+        assert.equal(build.status, 'passed');
+        assert.equal(build.inputSHA, plan.inputSHA);
+        assert.equal(build.planDigest, objectDigest(plan));
+      }, command: nodeCommand(['scripts/test/test-runtime-release-native.mjs', '--baseline-commit', runtimeReleaseBaselineCommit, '--output', report]),
+      assertResult: async (_result, receipt) => {
+        const evidence = assertRuntimeReleaseUpgradeEvidence(await readJSON(report), receipt.workDeadline);
+        assert.deepEqual(evidence.baseline.currentBundles, await runtimeBundleHashes(path.resolve('extensions/vscode/dev-session-canvas')));
+        assert.equal(evidence.baseline.toolchain.node, environmentPolicy.node);
+        assert.equal(evidence.baseline.toolchain.lockfileSha256, await fileDigest('package-lock.json'));
+        return evidence;
+      },
+      cleanup: async (_result, _receipt, deadline) => assertRuntimeReleaseUpgradeCleanup(await readJSON(report), deadline) };
+    }
+  }
   else if (job === 'package-clean') {
     if (task.id === 'package-clean') {
       const candidate = path.resolve('gate-transfer/release-candidate');

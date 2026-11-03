@@ -188,8 +188,9 @@ async function complete() {
       const owner = ownerApi.parseRuntimeOwnerDescriptor(metadata.runtimeOwner);
       const rootPath = path.resolve(vscode.workspace.workspaceFolders[0].uri.fsPath);
       assert.equal(owner.root.normalizedPath, process.platform === 'win32' ? rootPath.toLowerCase() : rootPath);
-      const platformName = { linux: 'linux', darwin: 'macos', win32: 'windows' }[process.platform];
-      assert.equal(owner.generation, `terminal-root-owner-${platformName}-v1`);
+      const profile = { linux: 'linux-owner-v1-candidate', darwin: 'macos-owner-v1-candidate', win32: 'windows-owner-v1-candidate' }[process.platform];
+      assert.equal(owner.generation, ownerApi.resolveRootRuntimeSupervisorGeneration(profile,
+        vscode.extensions.getExtension('devsessioncanvas.dev-session-canvas').packageJSON.version));
       const globalStorage = ownerApi.resolveRuntimeRootOwnerGlobalStoragePath(
         path.join(metadata.runtimeStoragePath, 'runtime-supervisor'), owner);
       assert.equal(path.relative(await fs.realpath(globalStorage), globalStorage), '');

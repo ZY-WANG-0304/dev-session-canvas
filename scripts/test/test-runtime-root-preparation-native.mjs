@@ -93,6 +93,7 @@ async function runTests() {
   try {
     await esbuild.build({ stdin: { contents: `
       export * from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+      export { RUNTIME_RELEASE_VERSION } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRelease';
       export * from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorPaths';
       export * from './extensions/vscode/dev-session-canvas/src/panel/runtimeExecutionEnvironment';
       export { prepareRootRuntimeSupervisor } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation';
@@ -119,7 +120,7 @@ async function runTests() {
     function root(name) {
       const owner = api.createRuntimeOwnerDescriptor({ environmentKey: environment.environmentKey,
         userStorageScopeKey: api.createRuntimeUserStorageScopeKey(environment.userIdentity, globalStorage),
-        rootPath: path.join(directory, name), generation: api.resolveRootRuntimeSupervisorGeneration(profile) });
+        rootPath: path.join(directory, name), generation: api.resolveRootRuntimeSupervisorGeneration(profile, api.RUNTIME_RELEASE_VERSION) });
       const base = api.resolveRuntimeRootOwnerBaseStoragePath(globalStorage, owner);
       const value = { owner, base, storageDir: path.join(base, 'runtime-supervisor'), attempted: false, pendingFixture: false };
       roots.push(value);

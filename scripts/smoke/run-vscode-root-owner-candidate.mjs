@@ -101,7 +101,7 @@ async function collectOwned(runtime, roots, ui) {
     if (!owned) { unconfirmed.push({ label, reason: 'No early ownership receipt; unknown resources are not signaled.' }); continue; }
     assertContained(runtime.userDataDir, owned.binding.runtimeStoragePath);
     assert(Object.values(roots).includes(owned.binding.runtimeOwner.root.normalizedPath));
-    assert.equal(owned.binding.runtimeOwner.generation, 'terminal-root-owner-linux-v1');
+    assert.equal(owned.binding.runtimeOwner.generation, contract.expectedReleaseGeneration(owned.runtimeRelease));
     add(owned.supervisor);
     const resources = await maybeRead(path.join(runtime.artifactsDir, `resources-${label}.json`));
     if (!resources) { unconfirmed.push({ label, reason: 'Subject/provider ownership was not confirmed.' }); continue; }

@@ -22,6 +22,7 @@ import {
   resolveRootRuntimeSupervisorExecutionProfile
 } from '../common/runtimeSupervisorPaths';
 import { readRuntimeExecutionEnvironment } from '../panel/runtimeExecutionEnvironment';
+import { assertRuntimeRootRelease } from '../panel/runtimeRelease';
 
 const MAX_OWNER_BYTES = 16 * 1024;
 
@@ -78,6 +79,7 @@ export async function readRuntimeRootOwner(
   assertPrivateStorage(ownerStat, 0o600);
   const descriptor: unknown = JSON.parse(await fs.readFile(ownerPath, 'utf8'));
   assertRuntimeOwnerDescriptor(descriptor);
+  assertRuntimeRootRelease(descriptor.generation, executionProfile);
   const globalStoragePath = resolveRuntimeRootOwnerGlobalStoragePath(storageDir, descriptor);
   const canonicalGlobalStoragePath = await fs.realpath(globalStoragePath);
   if (!samePath(globalStoragePath, canonicalGlobalStoragePath)) {

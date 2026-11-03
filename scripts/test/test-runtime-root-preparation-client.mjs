@@ -11,6 +11,7 @@ const { outputFiles } = await esbuild.build({
     export { prepareRootRuntimeSupervisor } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation';
     export { createRuntimeOwnerDescriptor, resolveRuntimeRootOwnerBaseStoragePath, resolveRootRuntimeSupervisorGeneration }
       from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
+    export { RUNTIME_RELEASE_VERSION } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRelease';
   `, resolveDir: process.cwd(), loader: 'ts' },
   bundle: true, platform: 'node', format: 'cjs', write: false, target: 'node18'
 });
@@ -46,7 +47,7 @@ class ControlledChild extends EventEmitter {
   kill() { assert.fail('Preparation must not signal a helper or a submitted Supervisor.'); }
 }
 
-function harness() {
+function harness(release = 'current') {
   let now = 0;
   let timerId = 0;
   const timers = new Map();
@@ -75,7 +76,8 @@ function harness() {
     win32: 'windows-owner-v1-candidate' })[process.platform];
   const owner = module.exports.createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64),
     userStorageScopeKey: 'b'.repeat(64), rootPath: path.resolve('controlled/project'),
-    generation: module.exports.resolveRootRuntimeSupervisorGeneration(profile) });
+    generation: module.exports.resolveRootRuntimeSupervisorGeneration(profile,
+      release === 'current' ? module.exports.RUNTIME_RELEASE_VERSION : release === 'legacy' ? undefined : release) });
   const options = {
     storageDir: path.join(module.exports.resolveRuntimeRootOwnerBaseStoragePath(path.resolve('controlled/global'), owner),
       'runtime-supervisor'), owner, executionProfile: profile, preferredBackends: ['systemd-user', 'legacy-detached'],
@@ -202,6 +204,24 @@ await test('invalid input rejects before acquiring a child', async () => {
   ]) assert.equal((await h.prepare(options)).kind, 'rejected');
   assert.deepEqual(h.spawns, []);
   assert.equal(h.timers.size, 0);
+});
+
+await test('a foreign release rejects before spawning or scheduling preparation', async () => {
+  const fixture = harness('999.0.1');
+  assert.equal((await fixture.prepare()).kind, 'rejected');
+  assert.deepEqual(fixture.spawns, []);
+  assert.equal(fixture.timers.size, 0);
+});
+
+await test('historical preparation remains readable without changing its namespace', async () => {
+  const fixture = harness('legacy');
+  const operation = fixture.prepare();
+  fixture.child.emit('spawn');
+  assert.deepEqual(fixture.child.sent[0].owner, fixture.options.owner);
+  fixture.child.emit('message', { kind: 'ready', backend: 'legacy-detached' });
+  fixture.child.emit('close', 0, null);
+  assert.deepEqual(await operation, { kind: 'ready', backend: 'legacy-detached' });
+  fixture.assertClean();
 });
 
 await test('synchronous spawn error is unconfirmed without exposing its error text', async () => {

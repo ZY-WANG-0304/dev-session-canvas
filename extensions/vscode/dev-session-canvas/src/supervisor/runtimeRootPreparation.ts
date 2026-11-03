@@ -6,7 +6,8 @@ import { promisify } from 'util';
 import { assertExecutionCandidateProfile } from '../common/executionLifecycle';
 import type { RuntimeHostBackendKind } from '../common/protocol';
 import { createRuntimeOwnerCompatibilityFingerprint, parseRuntimeOwnerDescriptor,
-  resolveRootRuntimeSupervisorGeneration, resolveRuntimeRootOwnerGlobalStoragePath } from '../common/runtimeRootOwnership';
+  resolveRootRuntimeSupervisorProfileFromGeneration, resolveRuntimeRootOwnerGlobalStoragePath } from '../common/runtimeRootOwnership';
+import { assertRuntimeRootRelease } from '../panel/runtimeRelease';
 import { resolveLegacyRuntimeSupervisorPathsFromStorageDir,
   resolveSystemdUserRuntimeSupervisorPathsFromStorageDir } from '../common/runtimeSupervisorPaths';
 import { createNativeExecutionOwnerOptions } from '../panel/executionOwnerFactory';
@@ -122,7 +123,8 @@ function validateRequest(input: RootPreparationRequest): RootPreparationRequest 
   if (!input || input.type !== 'prepare-root-runtime') throw new Error('Invalid request.');
   const owner = parseRuntimeOwnerDescriptor(input.owner);
   assertExecutionCandidateProfile(input.executionProfile);
-  if (owner.generation !== resolveRootRuntimeSupervisorGeneration(input.executionProfile)) throw new Error('Profile mismatch.');
+  if (resolveRootRuntimeSupervisorProfileFromGeneration(owner.generation) !== input.executionProfile) throw new Error('Profile mismatch.');
+  assertRuntimeRootRelease(owner.generation, input.executionProfile);
   resolveRuntimeRootOwnerGlobalStoragePath(input.storageDir, owner);
   for (const filename of [input.supervisorScriptPath, input.supervisorLauncherScriptPath]) {
     if (typeof filename !== 'string' || !path.isAbsolute(filename) || filename.includes('\0')) throw new Error('Invalid script.');

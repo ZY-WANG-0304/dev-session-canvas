@@ -50,6 +50,7 @@ const evaluate = (code, dependencies, extras = {}) => {
 try {
   const ioCode = await bundle(`
     export * from './${sourceRoot}/common/runtimeRootOwnership';
+    export { RUNTIME_RELEASE_VERSION } from './${sourceRoot}/panel/runtimeRelease';
     export * from './${sourceRoot}/supervisor/runtimeRootOwner';
     export * from './${sourceRoot}/supervisor/runtimeRootStartup';
     export { EXECUTION_PRODUCTION_ADMISSION } from './${sourceRoot}/common/executionLifecycle';
@@ -67,7 +68,8 @@ try {
     await mkdir(globalStorage, { mode: 0o700 });
     const owner = io.createRuntimeOwnerDescriptor({ environmentKey: environment.environmentKey,
       userStorageScopeKey: io.createRuntimeUserStorageScopeKey(environment.userIdentity, globalStorage),
-      rootPath: path.join(directory, 'project'), generation: io.resolveRootRuntimeSupervisorGeneration(profile) });
+      rootPath: path.join(directory, 'project'), generation: io.resolveRootRuntimeSupervisorGeneration(profile,
+        options.release === 'legacy' ? undefined : options.release ?? io.RUNTIME_RELEASE_VERSION) });
     const base = io.resolveRuntimeRootOwnerBaseStoragePath(globalStorage, owner);
     const request = { type: 'prepare-root-runtime', storageDir: path.join(base, 'runtime-supervisor'), owner,
       executionProfile: profile, preferredBackends: discoveryKinds,
@@ -177,6 +179,18 @@ try {
     const f = await fixture();
     assert.equal((await f.worker.prepareRuntimeRootSupervisor({ ...f.request, preferredBackends: [] }, () => false)).kind, 'rejected');
     assert.deepEqual(f.effects, []);
+  });
+  await test('foreign release is rejected before storage, discovery, claim or submission', async () => {
+    const fixtureValue = await fixture({ release: '999.0.1' });
+    assert.equal((await fixtureValue.run()).kind, 'rejected');
+    assert.deepEqual(fixtureValue.effects, []);
+    await assert.rejects(readFile(path.join(fixtureValue.base, 'owner.json')), { code: 'ENOENT' });
+  });
+  await test('historical namespace discovery preserves its owner and never submits', async () => {
+    const fixtureValue = await fixture({ release: 'legacy', existing: discoveryKinds[0] });
+    assert.deepEqual(await fixtureValue.run(), { kind: 'ready', backend: discoveryKinds[0] });
+    assertNoSubmission(fixtureValue);
+    assert.equal(fixtureValue.effects.includes('publish'), false);
   });
   await test('unsafe endpoint directory blocks discovery, claims, and launch submission', async () => {
     const f = await fixture({ unsafeSocketDirectory: true });

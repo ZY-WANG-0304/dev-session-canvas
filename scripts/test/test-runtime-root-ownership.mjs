@@ -23,6 +23,7 @@ try {
     runtimeOwnerDescriptorsEqual,
     createRuntimeUserStorageScopeKey,
     resolveRootRuntimeSupervisorGeneration,
+    resolveRootRuntimeSupervisorProfileFromGeneration,
     resolveRuntimeRootOwnerBaseStoragePath,
     resolveRuntimeRootOwnerGlobalStoragePath,
     createRuntimeOwnerCompatibilityFingerprint
@@ -128,6 +129,40 @@ try {
   assert.throws(() => resolveRuntimeRootOwnerBaseStoragePath('/global', valid, 'darwin'), /platform/);
   assert.throws(() => createRuntimeOwnerCompatibilityFingerprint(valid.generation, 'macos-owner-v1-candidate'), /profile/);
   assert.throws(() => resolveRootRuntimeSupervisorGeneration('future-profile'), /Unsupported/);
+  for (const [platform, profile, globalStorage, rootPath] of cases) {
+    const historical = resolveRootRuntimeSupervisorGeneration(profile);
+    const releases = ['0.28.0', '0.29.0', '0.29.1', '1.0.0-beta.1+build.2'];
+    const generations = releases.map(release => resolveRootRuntimeSupervisorGeneration(profile, release));
+    assert.equal(new Set([historical, ...generations]).size, releases.length + 1,
+      'Compatible releases must not reuse the historical or another release namespace.');
+    const input = { environmentKey, userStorageScopeKey: 'b'.repeat(64), rootPath, platform };
+    const owners = [historical, ...generations].map(generation => createRuntimeOwnerDescriptor({ ...input, generation }));
+    const storagePaths = owners.map(owner => resolveRuntimeRootOwnerBaseStoragePath(globalStorage, owner, platform));
+    assert.equal(new Set(storagePaths).size, owners.length);
+    for (const [index, generation] of generations.entries()) {
+      const release = releases[index];
+      assert.equal(generation, `${historical}-release-${createHash('sha256').update(release).digest('hex')}`);
+      assert.equal(generation, resolveRootRuntimeSupervisorGeneration(profile, release));
+      assert.equal(resolveRootRuntimeSupervisorProfileFromGeneration(generation), profile);
+      const owner = owners[index + 1];
+      assert.deepEqual(parseRuntimeOwnerDescriptor(owner), owner);
+      const paths = platform === 'win32' ? path.win32 : path.posix;
+      const expectedGlobal = platform === 'win32' ? paths.resolve(globalStorage).toLowerCase() : paths.resolve(globalStorage);
+      assert.equal(resolveRuntimeRootOwnerGlobalStoragePath(paths.join(storagePaths[index + 1], 'runtime-supervisor'),
+        owner, platform), expectedGlobal);
+      assert.equal(runtimeOwnerDescriptorsEqual(owner, owners[0]), false);
+      assert.notEqual(createRuntimeOwnerCompatibilityFingerprint(generation, profile),
+        createRuntimeOwnerCompatibilityFingerprint(historical, profile));
+    }
+    for (const generation of [`${historical}-release-`, `${historical}-release-${'a'.repeat(63)}`,
+      `${historical}-release-${'A'.repeat(64)}`, `${generations[0]}/extra`, `${generations[0]}-extra`]) {
+      assert.equal(resolveRootRuntimeSupervisorProfileFromGeneration(generation), undefined);
+      assert.throws(() => createRuntimeOwnerDescriptor({ ...input, generation }));
+    }
+    for (const release of ['', ' ', '../0.28.0', '0.28', 'v0.28.0', '00.28.0', '0.28.0\n', '0.28.0\0', null, 28]) {
+      assert.throws(() => resolveRootRuntimeSupervisorGeneration(profile, release), /release/i);
+    }
+  }
   console.log('runtimeRootOwnership tests passed');
 } finally {
   await rm(tempDir, { recursive: true, force: true });

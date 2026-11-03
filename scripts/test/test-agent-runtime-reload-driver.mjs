@@ -704,7 +704,7 @@ function rootBindingFixture() {
   const globalStorage = path.join(userDataDir, 'User', 'globalStorage', 'devsessioncanvas.dev-session-canvas');
   const runtimeOwner = ownership.createRuntimeOwnerDescriptor({ environmentKey: 'a'.repeat(64),
     userStorageScopeKey: 'b'.repeat(64), rootPath: workspacePath,
-    generation: ownership.resolveRootRuntimeSupervisorGeneration(profile) });
+    generation: ownership.resolveRootRuntimeSupervisorGeneration(profile, '0.28.0') });
   const metadata = { runtimeOwner, runtimeBackend: 'legacy-detached', runtimeGuarantee: 'best-effort',
     runtimeStoragePath: ownership.resolveRuntimeRootOwnerBaseStoragePath(globalStorage, runtimeOwner), runtimeSessionId: 'session' };
   const hello = { serverVersion: 1, pid: 20, runtimeOwner: structuredClone(runtimeOwner),
@@ -712,6 +712,7 @@ function rootBindingFixture() {
     ownerCompatibilityFingerprint: ownership.createRuntimeOwnerCompatibilityFingerprint(runtimeOwner.generation, profile),
     capabilities: { terminalCurrentStateV1: true, terminalHostOutputCreditV1: true, executionCandidateProfiles: [profile] } };
   const context = { assert, path, process, ...ownership,
+    vscode: { extensions: { getExtension: () => ({ packageJSON: { version: '0.28.0' } }) } },
     config: { rootOwner: true, userDataDir, workspacePath, permittedStorageRoots: [userDataDir] },
     fs: { realpath: async value => value },
     runtimePaths: value => ({ storageDir: path.join(value.runtimeStoragePath, 'runtime-supervisor') }),

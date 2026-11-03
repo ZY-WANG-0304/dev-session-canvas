@@ -78,7 +78,7 @@ async function run(context) {
   await vscode.commands.executeCommand('devSessionCanvas.openCanvasInPanel');
   await command('waitForCanvasReady', surface, 20000);
   environment = { host, workspaceRoots: roots, roots: control.roots, vscode: vscode.version,
-    versions: process.versions, installedVsix,
+    versions: process.versions, installedVsix, runtimeRelease: extension.packageJSON.version,
     globalStorage: path.join(path.dirname(context.globalStorageUri.fsPath), 'devsessioncanvas.dev-session-canvas') };
   await archive(`environment-${role}`, environment);
   if (control.boundaries) {
@@ -366,7 +366,7 @@ async function createSubject(label, rootPath) {
 async function inspectOwner(binding, rootPath) {
   assertRuntimeOwnerDescriptor(binding.runtimeOwner);
   assert.equal(binding.runtimeOwner.root.normalizedPath, rootPath);
-  assert.equal(binding.runtimeOwner.generation, 'terminal-root-owner-linux-v1');
+  assert.equal(binding.runtimeOwner.generation, require('./root-owner-contract.cjs').expectedReleaseGeneration(environment.runtimeRelease));
   const globalStorage = resolveRuntimeRootOwnerGlobalStoragePath(path.join(binding.runtimeStoragePath, 'runtime-supervisor'), binding.runtimeOwner);
   assert.equal(globalStorage, await fs.realpath(environment.globalStorage));
   assertContained(control.userDataDir, binding.runtimeStoragePath);
@@ -377,7 +377,7 @@ async function inspectOwner(binding, rootPath) {
   assert.deepEqual(hello.runtimeOwner, binding.runtimeOwner);
   const supervisor = await readIdentity(hello.pid);
   assert(supervisor?.executable && supervisor.startTicks);
-  return { supervisor, hello, socketPath: paths.socketPath };
+  return { supervisor, hello, socketPath: paths.socketPath, runtimeRelease: environment.runtimeRelease };
 }
 
 async function inspectSubject(node, rootPath, label, receiptPath) {
