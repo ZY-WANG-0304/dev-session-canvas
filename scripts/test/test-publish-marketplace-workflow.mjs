@@ -33,6 +33,9 @@ for (const job of Object.values(jobs)) {
   }
   for (const step of job.steps.filter(step => step.run)) assert(!/package-only|package:vsix|release:verify|--skip-package|--clobber|mtime/.test(step.run));
 }
+const prepareEvidence = jobs['prepare-release'].steps.find(step => step.name === 'Preserve prepare evidence');
+assert.match(prepareEvidence.with.path, /release-state-\*\.json/,
+  'Full internal release state remains in workflow artifacts, not public Release assets');
 assert(!JSON.stringify(workflow).includes('VSCE_PAT'));
 assert(!JSON.stringify(workflow).includes('publish-visual-studio'));
 const validation = await load('release-validation');

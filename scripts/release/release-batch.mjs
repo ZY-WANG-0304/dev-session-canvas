@@ -129,7 +129,7 @@ export async function verifyBatchRelease({ context, output, client = githubClien
     output: path.join(output, 'batch-source'), client });
   assert.equal(batch.original.releaseSHA, context.releaseSHA); assert.equal(batch.original.baseSHA, context.baseSHA);
   if (context.mode === 'channel-retry') {
-    await recover({ context, output, client });
+    await recover({ context, output, client, batch });
     // A caller cannot substitute another accepted build of the same source/version.
     for (const name of batchFiles) assert.deepEqual(await fs.readFile(path.join(output, name)),
       await fs.readFile(path.join(batch.input, name)), `Original release differs from selected batch: ${name}`);

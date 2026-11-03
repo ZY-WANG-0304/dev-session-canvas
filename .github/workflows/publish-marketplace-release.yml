@@ -142,6 +142,7 @@ jobs:
           path: |
             release-prepare/release-failure.json
             release-prepare/prepared/release-manifest-*.json
+            release-prepare/prepared/release-state-*.json
             release-prepare/prepared/state-*.json
             prepare-evidence
           retention-days: 90

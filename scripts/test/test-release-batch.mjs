@@ -121,6 +121,11 @@ async function delivery(t) {
     uploadAsset: async (_release, name, bytes) => { calls.push(`upload:${name}`);
       const asset = { id: assets.size + 100, name, state: 'uploaded' }; assets.set(name, { asset, bytes }); return asset; },
     downloadAsset: async asset => assets.get(asset.name).bytes,
+    replaceReleaseAsset: async (_id, name, bytes) => { calls.push(`manifest:${name}`);
+      const current = assets.get(name);
+      if (current) assets.delete(name);
+      const asset = { id: assets.size + 100, name, state: 'uploaded' };
+      assets.set(name, { asset, bytes }); return asset; },
     replaceStateAsset: async (_id, name, bytes) => { calls.push('state'); assets.set(name,
       { asset: { id: 90, name, state: 'uploaded' }, bytes }); } };
   return { ...f, batch, context, input, client, assets, calls, tags };
@@ -128,24 +133,47 @@ async function delivery(t) {
 
 test('first publication uses the accepted product and original text while tools run at another SHA', async t => {
   const f = await delivery(t);
-  await prepareRelease({ context: f.context, input: f.input, output: path.join(f.root, 'prepared'), client: f.client });
+  const prepared = path.join(f.root, 'prepared');
+  await prepareRelease({ context: f.context, input: f.input, output: prepared, client: f.client });
   assert.notEqual(f.context.run.headSHA, f.context.releaseSHA);
   assert.equal(f.tags.get('v1.2.3'), f.context.releaseSHA);
-  for (const name of batchFiles) assert.deepEqual(f.assets.get(name).bytes, await fs.readFile(path.join(f.batch.input, name)));
+  assert.deepEqual([...f.assets.keys()].sort(), [
+    'dev-session-canvas-1.2.3.vsix', 'dev-session-canvas-notifier-1.2.3.vsix', 'release-manifest-1.2.3.json'
+  ]);
+  for (const pkg of f.batch.identity.packages) {
+    const publicName = pkg.id.endsWith('-notifier')
+      ? 'dev-session-canvas-notifier-1.2.3.vsix' : 'dev-session-canvas-1.2.3.vsix';
+    assert.deepEqual(f.assets.get(publicName).bytes, await fs.readFile(path.join(f.batch.input, pkg.path)));
+  }
+  const publicManifest = JSON.parse(f.assets.get('release-manifest-1.2.3.json').bytes.toString());
+  assert.equal(publicManifest.identityDigest, objectDigest(f.batch.identity));
+  assert.equal(publicManifest.status, 'pending');
+  assert.equal(publicManifest.context, undefined);
+  assert.equal(publicManifest.state.file, 'release-state-1.2.3.json');
+  assert((await fs.readdir(prepared)).some(name => name.startsWith('state-')));
   const notes = buildReleaseNotes({ version: '1.2.3', changelog: path.join(f.root, 'prepared/release-changelog.md'),
     manifest: { context: f.context, releaseRef: f.context.releaseSHA } });
   assert.match(notes, /Original product highlights/);
   assert.match(notes, new RegExp(f.context.run.headSHA));
 });
 
-for (const interruption of ['main.vsix', 'gate-plan.json', 'original-release-context.json', 'release-changelog.md']) {
+for (const interruption of ['dev-session-canvas-1.2.3.vsix', 'dev-session-canvas-notifier-1.2.3.vsix',
+  'release-manifest-1.2.3.json']) {
   test(`new tool run resumes the identical batch after upload interruption at ${interruption}`, async t => {
     const f = await delivery(t); const upload = f.client.uploadAsset;
-    f.client.uploadAsset = async (release, name, bytes) => {
-      if (name === interruption) throw new Error('transport interrupted'); return upload(release, name, bytes);
-    };
-    await assert.rejects(() => prepareRelease({ context: f.context, input: f.input,
-      output: path.join(f.root, 'attempt-one'), client: f.client }), /transport interrupted/);
+    if (interruption === 'release-manifest-1.2.3.json') {
+      const replace = f.client.replaceReleaseAsset;
+      f.client.replaceReleaseAsset = async (...args) => { throw new Error('transport interrupted'); };
+      await assert.rejects(() => prepareRelease({ context: f.context, input: f.input,
+        output: path.join(f.root, 'attempt-one'), client: f.client }), /transport interrupted/);
+      f.client.replaceReleaseAsset = replace;
+    } else {
+      f.client.uploadAsset = async (release, name, bytes) => {
+        if (name === interruption) throw new Error('transport interrupted'); return upload(release, name, bytes);
+      };
+      await assert.rejects(() => prepareRelease({ context: f.context, input: f.input,
+        output: path.join(f.root, 'attempt-one'), client: f.client }), /transport interrupted/);
+    }
     const originalBytes = new Map([...f.assets].map(([name, item]) => [name, Buffer.from(item.bytes)]));
     const nextContext = { ...f.context, existingReleaseID: 21, run: { id: '100000', attempt: 1, headSHA: 'e'.repeat(40) } };
     const input = path.join(f.root, 'retry-input');
@@ -153,7 +181,14 @@ for (const interruption of ['main.vsix', 'gate-plan.json', 'original-release-con
     f.client.uploadAsset = upload;
     await prepareRelease({ context: nextContext, input, output: path.join(f.root, 'attempt-two'), client: f.client });
     for (const [name, bytes] of originalBytes) assert.deepEqual(f.assets.get(name).bytes, bytes);
-    for (const name of batchFiles) assert.deepEqual(f.assets.get(name).bytes, await fs.readFile(path.join(f.batch.input, name)));
+    assert.deepEqual([...f.assets.keys()].sort(), [
+      'dev-session-canvas-1.2.3.vsix', 'dev-session-canvas-notifier-1.2.3.vsix', 'release-manifest-1.2.3.json'
+    ]);
+    for (const pkg of f.batch.identity.packages) {
+      const publicName = pkg.id.endsWith('-notifier')
+        ? 'dev-session-canvas-notifier-1.2.3.vsix' : 'dev-session-canvas-1.2.3.vsix';
+      assert.deepEqual(f.assets.get(publicName).bytes, await fs.readFile(path.join(f.batch.input, pkg.path)));
+    }
     assert.equal(f.tags.get('v1.2.3'), f.context.releaseSHA);
     assert.equal(f.calls.filter(call => call === 'tag').length, 1);
     assert.equal(f.calls.filter(call => call === 'release').length, 1);
@@ -165,7 +200,8 @@ test('a conflicting existing late asset is rejected before uploading any earlier
   await f.client.createTag('v1.2.3', f.context.releaseSHA);
   await f.client.createRelease('v1.2.3', f.context.releaseSHA, 'Dev Session Canvas v1.2.3',
     `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${f.context.releaseSHA}`);
-  f.assets.set('release-changelog.md', { asset: { id: 50, name: 'release-changelog.md', state: 'uploaded' }, bytes: Buffer.from('other batch') });
+  f.assets.set('dev-session-canvas-notifier-1.2.3.vsix', {
+    asset: { id: 50, name: 'dev-session-canvas-notifier-1.2.3.vsix', state: 'uploaded' }, bytes: Buffer.from('other batch') });
   f.calls.length = 0;
   await assert.rejects(() => prepareRelease({ context: { ...f.context, existingReleaseID: 21 }, input: f.input,
     output: path.join(f.root, 'conflict'), client: f.client }), /differs; refuse clobber/);
@@ -220,6 +256,19 @@ test('a published batch survives full producer/state verification and another de
   };
   const readFiles = async (directory, names) => Object.fromEntries(await Promise.all(names.map(async name =>
     [name, await fs.readFile(path.join(directory, name))])));
+  const readTree = async directory => {
+    const files = {};
+    const visit = async (current, prefix = '') => {
+      for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+        const relative = path.posix.join(prefix, entry.name);
+        const file = path.join(current, entry.name);
+        if (entry.isDirectory()) await visit(file, relative);
+        else if (entry.isFile()) files[relative] = await fs.readFile(file);
+      }
+    };
+    await visit(directory);
+    return files;
+  };
   const originalRun = f.f.context.run;
   await add(originalRun, 'gate-acceptance', 'Gate verify-result (default)', await readFiles(f.batch.input,
     ['gate-plan.json','gate-result.json','gate-provenance.json','acceptance-receipt.json']));
@@ -247,7 +296,8 @@ test('a published batch survives full producer/state verification and another de
   const prepared = path.join(f.root, 'published');
   await prepareRelease({ context: f.context, input: f.input, output: prepared, client: f.client });
   await add(f.context.run, 'prepared-release', 'Release prepare-release', await readFiles(prepared, await fs.readdir(prepared)));
-  const stateFiles = (await fs.readdir(prepared)).filter(name => name.startsWith('state-') || name.startsWith('release-manifest-'));
+  const stateFiles = (await fs.readdir(prepared)).filter(name => name.startsWith('state-')
+    || name.startsWith('release-state-'));
   await add(f.context.run, 'release-prepare-evidence', 'Release prepare-release', await readFiles(prepared, stateFiles));
   // Both artifacts come from the same actual prepare job.
   const records = runs.get(f.context.run.id).jobs;
@@ -260,8 +310,17 @@ test('a published batch survives full producer/state verification and another de
   const finalOutput = path.join(f.root, 'finalized');
   const final = await finalizeRelease({ context: f.context, prepared, output: finalOutput, client: f.client });
   assert.equal(final.completion.status, 'complete');
-  await add(f.context.run, 'marketplace-release', 'Release finalize-release', await readFiles(finalOutput,
-    (await fs.readdir(finalOutput)).filter(name => name.startsWith('state-') || name.startsWith('release-manifest-'))));
+  assert.deepEqual(final.manifest.artifacts.map(artifact => artifact.path), [
+    'dev-session-canvas-1.2.3.vsix', 'dev-session-canvas-notifier-1.2.3.vsix'
+  ]);
+  const releaseNotes = await fs.readFile(path.join(finalOutput, 'release-notes.md'), 'utf8');
+  assert.match(releaseNotes, /dev-session-canvas-1\.2\.3\.vsix/u);
+  assert.match(releaseNotes, /dev-session-canvas-notifier-1\.2\.3\.vsix/u);
+  const stateName = `release-state-${f.context.version}.json`;
+  const nestedPreparedState = path.join(finalOutput, 'actual-results',
+    `prepared-release-${f.context.run.id}-${f.context.run.attempt}`, stateName);
+  assert.notDeepEqual(await fs.readFile(nestedPreparedState), await fs.readFile(path.join(finalOutput, stateName)));
+  await add(f.context.run, 'marketplace-release', 'Release finalize-release', await readTree(finalOutput));
   const next = { ...f.context, mode: 'channel-retry', existingReleaseID: 21,
     run: { id: '100001', attempt: 1, headSHA: 'e'.repeat(40) } };
   const collector = (plan, options) => collectGitHubProvenance(plan, { ...options,
@@ -271,11 +330,36 @@ test('a published batch survives full producer/state verification and another de
       if (relative.includes('/artifacts?')) return { artifacts: await f.client.pages(relative, 'artifacts') };
       return f.client.json(relative);
     }, log: async id => logs.get(id), download: async id => archives.get(id) });
+  assert.deepEqual([...f.assets.keys()].sort(), [
+    'dev-session-canvas-1.2.3.vsix', 'dev-session-canvas-notifier-1.2.3.vsix', 'release-manifest-1.2.3.json'
+  ]);
   const verified = path.join(f.root, 'verified-retry');
   await verifyBatchRelease({ context: next, output: verified, client: f.client, readBatch: async () => f.batch,
     recover: options => verifyRecoveredRelease({ ...options, collector }) });
+  const publicManifestAsset = f.assets.get('release-manifest-1.2.3.json');
+  const originalManifestBytes = Buffer.from(publicManifestAsset.bytes);
+  const tamperedManifest = JSON.parse(originalManifestBytes.toString());
+  tamperedManifest.status = 'failed';
+  publicManifestAsset.bytes = Buffer.from(JSON.stringify(tamperedManifest));
+  await assert.rejects(() => verifyBatchRelease({ context: next,
+    output: path.join(f.root, 'tampered-manifest'), client: f.client, readBatch: async () => f.batch,
+    recover: options => verifyRecoveredRelease({ ...options, collector }) }));
+  publicManifestAsset.bytes = originalManifestBytes;
+  const latestStateArtifact = [...artifacts.values()].find(artifact => artifact.name.startsWith('marketplace-release-'));
+  latestStateArtifact.expired = true;
+  await assert.rejects(() => verifyBatchRelease({ context: next,
+    output: path.join(f.root, 'expired-state-proof'), client: f.client, readBatch: async () => f.batch,
+    recover: options => verifyRecoveredRelease({ ...options, collector }) }));
+  latestStateArtifact.expired = false;
   await prepareRelease({ context: next, input: verified, output: path.join(f.root, 'retry-prepared'), client: f.client });
-  for (const name of batchFiles) assert.deepEqual(f.assets.get(name).bytes, await fs.readFile(path.join(f.batch.input, name)));
+  assert.deepEqual([...f.assets.keys()].sort(), [
+    'dev-session-canvas-1.2.3.vsix', 'dev-session-canvas-notifier-1.2.3.vsix', 'release-manifest-1.2.3.json'
+  ]);
+  for (const pkg of f.batch.identity.packages) {
+    const publicName = pkg.id.endsWith('-notifier')
+      ? 'dev-session-canvas-notifier-1.2.3.vsix' : 'dev-session-canvas-1.2.3.vsix';
+    assert.deepEqual(f.assets.get(publicName).bytes, await fs.readFile(path.join(f.batch.input, pkg.path)));
+  }
 });
 
 

@@ -2,6 +2,12 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-11-03：Release manifest 删除请求响应丢失时的恢复边界
+
+新批次替换 compact manifest 时，GitHub Releases API 需要先删除旧 asset 再上传新内容。`scripts/release/release-github.mjs` 的 `replaceReleaseAsset` 已对上传失败做旧字节回滚，但旧 asset 的 DELETE 请求仍在回滚 `try` 块外；如果远端删除成功而响应丢失，调用会直接失败，manifest 可能暂时缺失。该情况依赖特定传输故障，目前不是已复现的确定性 blocker。
+
+后续应将删除异常也纳入协调恢复：重新读取 Release assets，确认旧字节仍在、已缺失或出现未知内容，再决定安全恢复或明确失败；新增 DELETE 响应丢失故障注入测试，验证始终不留下错误 manifest 或重复 asset。关联 [Release assets 精简执行计划](completed/release-assets-streamline.md) 与 `scripts/test/test-release-delivery.mjs`。当前发布重试可从同批 Actions producer evidence 重验状态后重新写入 manifest；在该边界修复前不宣称删除操作具备端到端原子性。
+
 ## 2026-11-03：Supervisor 发行隔离的安装级验收与历史 Host 测试
 
 基于 `origin/main@da207a9f` 的发行隔离已实现；Linux 的删旧安装树、真实 Supervisor/provider/PTY、reader 连续性、并发准备与 systemd 复用通过，不操作用户已有会话。仍需隔离安装 VSIX 后验证真实 Agent/Fork、连续两次升级及 macOS/Windows，不能把 Node 回显夹具或纯路径测试当作该验收。新版 Host 可管理兼容旧 binding，不保证未升级的旧 Host 能读写新的 generation。后续范围、命令和验收步骤见 [正式设计](../design-docs/runtime-supervisor-release-isolation.md) 与 [实施计划](active/runtime-supervisor-release-isolation.md)。

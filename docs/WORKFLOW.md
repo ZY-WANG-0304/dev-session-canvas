@@ -59,8 +59,8 @@
 7. 首次上传中断时，修复工具并合入 main 后，用相同批次参数启动新的发布运行。无状态根时补齐同批缺失资产；所有已有资产先核字节，不同内容拒绝。已有 manifest/state 时复核原资产、验收和连通状态链，再走 channel-retry，不另建状态根。不得用新构建替换原批次，不能以旧 workflow 的 rerun 代替采用新工具的新 dispatch。
 8. 历史完整 Release 没有新批次时，可从 main 以 `version` 和 `target=all|open-vsx` 发起原包恢复；缺少完整资产或来源不支持时明确拒绝。新批次发布和恢复始终保留批次 run/attempt。旧 `recovery_source_run_id` / `recovery_previous_run_id` 参数属于历史工作流，新入口不再提供。历史 tag、版本契约和发布记录不重写。
 9. GitHub/Open VSX 为必需目标。Visual Studio Marketplace 已从当前发布 workflow 移除：resolver 固定 deferred，CI 不查询或提交 VSM；finalize 核实本次没有 VSM job 和结果工件。提交 unknown 先查询，同一内容 match 才能完成；当前失败不能被历史绿色覆盖。
-10. 发布后 manifest、GitHub Release assets 和 Release notes 是渠道结果的权威记录，包含产品身份、批次和工具运行来源，不提交回仓库或改写同版本 CHANGELOG。新流程不需要远端 publish tag；若历史同名临时 tag 存在，只在全部必需交付完成且身份一致时清理。
-11. 批次及 release-tag 验收/交付证明的 Actions 工件保留 90 天；超过仓库允许上限会失败，应先配置允许值。过期或删除后无法核验来源时拒绝恢复，不重打包冒充原包；长期证据归档边界见设计与技术债。主扩展/通知器手册提供两步命令。
+10. 发布后的 compact manifest 记录版本、产品 SHA、双包 SHA、渠道摘要和状态 producer 引用；Release notes 承载面向用户的产品说明。新批次 GitHub Release assets 只公开 `dev-session-canvas-X.Y.Z.vsix`、`dev-session-canvas-notifier-X.Y.Z.vsix` 与 `release-manifest-X.Y.Z.json`，内部验收、来源、完整状态链与快照保存在同批 Actions artifacts，不提交回仓库或改写同版本 CHANGELOG。历史 Release 保持旧文件名和旧资产合同，不迁移。新流程不需要远端 publish tag；若历史同名临时 tag 存在，只在全部必需交付完成且身份一致时清理。
+11. 批次、release-tag 验收/交付证明及状态快照的 Actions artifacts 保留 90 天；超过仓库允许上限会失败，应先配置允许值。过期或删除后无法核验来源时拒绝恢复，不重打包冒充原包；compact manifest 不是完整验收归档，长期证据归档边界见设计与技术债。主扩展/通知器手册提供两步命令。
 12. `npm run ci:verify` 与 `release:verify` 的本地入口继续输出 `acceptance: false`，不替代正式跨平台验收；定向 `ci:diagnose` 也不签发正式批次。
 
 ## 生产服务部署流程

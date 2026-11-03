@@ -5,8 +5,8 @@ validation_status: 验证中
 domains: [VSCode 集成域, 执行编排域]
 architecture_layers: [适配与基础设施层]
 related_specs: []
-related_plans: [docs/exec-plans/completed/release-product-decoupling.md]
-updated_at: 2026-11-01
+related_plans: [docs/exec-plans/completed/release-product-decoupling.md, docs/exec-plans/completed/release-assets-streamline.md]
+updated_at: 2026-11-03
 ---
 
 # 发布工具与产品内容解耦
@@ -67,3 +67,11 @@ Node v25.6.0 下，gate contracts、历史初始恢复与新批次回归合计 1
 完整 PR CI：[run 41226378995 / attempt 1](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41226378995)，对应代码 head `000757e92fbac6d1a82cc7ea78c623b3e549fb48`，277/277 jobs 成功，包括必需检查 `Verify release contract`。正式验收 artifact 为 `gate-acceptance-41226378995-1`（ID `13052298297`，digest `sha256:b78173e86877a5bb69b4b4869053e35a210f254714dc7d4ad1be083fe1555feb`）。该结果绑定这次代码提交，后续文档提交的检查以 GitHub 对应 head 为准。
 
 `validation_status: 验证中` 现在仅保留合并后首次从 main dispatch 的实际构建/交付验证边界；实施计划已完成归档。独立 review 未发现新的确定性 blocker，历史临时 tag 状态文案与长期证据保留限制已登记到 [技术债跟踪器](../exec-plans/tech-debt-tracker.md)，不表述为已修复。
+
+## 新批次公开 assets 收敛（2026-11-03）
+
+为降低 GitHub Release 下载区的内部文件噪音，带 `batchFormat: 1` 的新发布只公开三个 assets：`dev-session-canvas-X.Y.Z.vsix`、`dev-session-canvas-notifier-X.Y.Z.vsix` 与 `release-manifest-X.Y.Z.json`。两个版本化 VSIX 是批次内 `main.vsix` / `notifier.vsix` 的原字节映射，SHA-256 必须一致。compact manifest 仅包含版本与产品提交、两包身份/摘要、渠道聚合状态，以及用于定位并核验工作流状态记录的 producer/artifact 引用；它不复制验收计划、回执、来源上下文或完整渠道 history。
+
+新格式的完整状态链与快照、门禁/验收材料、产品 CHANGELOG 和恢复输入继续存于对应 Actions artifacts；`release-prepare-evidence` 必须显式包含 `release-state-X.Y.Z.json` 与 `state-*` 快照，finalize artifact 保存它们的连续历史。重试从公开 manifest 的 producer 引用定位真实 Actions run/job/artifact，验证下载摘要、状态文件、状态链以及 VSIX 与原批次字节。新格式不再把 `state-*` 快照当作公开 Release assets。历史 Release 沿用旧文件名、旧 assets 与旧恢复校验，不迁移、不覆盖。
+
+完整流程证据保留 90 天。到期、缺失、run/job/artifact 无法定位或摘要不匹配时，拒绝恢复；不得因证据过期而重新构建替代原包。公开 compact manifest 仍长期展示产品身份和渠道摘要，但不冒充完整验收归档。实现与回归验证见 [执行计划](../exec-plans/completed/release-assets-streamline.md)；本次文档更新不代表已用新合同实际发布版本。

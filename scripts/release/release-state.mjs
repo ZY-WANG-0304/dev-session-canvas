@@ -26,7 +26,7 @@ export async function saveReleaseState(directory, name, manifest) {
   return bytes;
 }
 
-function validateState(manifest, context, identity) {
+export function validateReleaseState(manifest, context, identity) {
   assert.equal(manifest.schemaVersion, 2, 'Release state has no supported schema');
   assert.equal(manifest.releaseRef, context.releaseSHA); assert.equal(manifest.version, context.version);
   assert.equal(manifest.identityDigest, objectDigest(identity));
@@ -48,8 +48,8 @@ function validateState(manifest, context, identity) {
 // Canonical may lag an uploaded successor. Only a unique, connected chain with
 // independently downloaded producer artifacts can identify the current state.
 export async function recoverReleaseState({ context, identity, assets, client, output, deadline,
-  collector = collectReleaseFacts }) {
-  const name = `release-manifest-${context.version}.json`;
+  collector = collectReleaseFacts, stateFileName = `release-manifest-${context.version}.json` }) {
+  const name = stateFileName;
   const snapshots = new RegExp(`^state-([a-f0-9]{64})-${name.replaceAll('.', '\\.')}\u0024`, 'u');
   const candidates = assets.filter(asset => asset.name === name || snapshots.test(asset.name));
   assert(candidates.length > 0, 'Original Release has no recoverable manifest');
@@ -61,7 +61,7 @@ export async function recoverReleaseState({ context, identity, assets, client, o
     const bytes = await client.downloadAsset(asset, deadline);
     const rawHash = digest(bytes), match = snapshots.exec(asset.name);
     if (match) assert.equal(match[1], rawHash, 'Release state snapshot filename does not match its bytes');
-    const manifest = JSON.parse(bytes.toString('utf8')); validateState(manifest, context, identity);
+    const manifest = JSON.parse(bytes.toString('utf8')); validateReleaseState(manifest, context, identity);
     const stateDigest = objectDigest(manifest);
     await fs.mkdir(output, { recursive: true });
     await fs.writeFile(path.join(output, asset.name), bytes, { flag: 'wx' });

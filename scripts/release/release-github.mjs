@@ -109,6 +109,41 @@ export function githubClient({ repository = process.env.GITHUB_REPOSITORY, token
       assert.equal(digest(await this.downloadAsset(saved, deadline)), digest(content));
       return saved;
     },
+    async replaceReleaseAsset(releaseID, name, content, deadline) {
+      const release = await json(`releases/${releaseID}`, { deadline });
+      const assets = await pages(`releases/${releaseID}/assets`, null, deadline);
+      const matches = assets.filter(asset => asset.name === name);
+      assert(matches.length <= 1, 'Ambiguous GitHub asset');
+      let previous = null;
+      if (matches.length) {
+        previous = await this.downloadAsset(matches[0], deadline);
+        if (digest(previous) === digest(content)) return matches[0];
+        await bytes(`releases/assets/${matches[0].id}`, { method: 'DELETE', deadline });
+      }
+      try {
+        const saved = await uploadAsset(release, name, content, deadline);
+        assert.equal(digest(await this.downloadAsset(saved, deadline)), digest(content));
+        return saved;
+      } catch (error) {
+        if (previous) {
+          try {
+            const current = (await pages(`releases/${releaseID}/assets`, null, deadline))
+              .filter(asset => asset.name === name);
+            assert(current.length <= 1, 'Ambiguous GitHub asset after failed replacement');
+            if (current.length) {
+              assert.equal(digest(await this.downloadAsset(current[0], deadline)), digest(previous),
+                'Unexpected Release manifest remains after failed replacement');
+            } else {
+              const restored = await uploadAsset(release, name, previous, deadline);
+              assert.equal(digest(await this.downloadAsset(restored, deadline)), digest(previous));
+            }
+          } catch (restoreError) {
+            throw new AggregateError([error, restoreError], 'Release manifest replacement and rollback failed');
+          }
+        }
+        throw error;
+      }
+    },
     async deleteTriggerTag(context, completion, deadline) {
       assert.equal(completion.status, 'complete'); assert.equal(completion.releaseSHA, context.releaseSHA);
       assert.equal(await this.readTag(context.finalTag, deadline), context.releaseSHA);

@@ -184,6 +184,43 @@ test('lost GitHub upload response queries original bytes without a second upload
   assert.equal(uploadHeaders['Content-Length'], String(content.byteLength));
 });
 
+test('compact public manifest replacement keeps one Release asset without publishing state snapshots', async () => {
+  const release = { id: 42, upload_url: 'http://127.0.0.1/upload{?name}' };
+  const assets = new Map(); let nextID = 1; let failNextUpload = false;
+  const client = githubClient({ repository: 'test/repo', apiURL: 'http://127.0.0.1', request: async (url, options) => {
+    if (url.pathname === '/repos/test/repo/releases/42' && options.method !== 'DELETE') return Buffer.from(JSON.stringify(release));
+    if (url.pathname === '/repos/test/repo/releases/42/assets') return Buffer.from(JSON.stringify([...assets.values()]));
+    if (url.pathname.startsWith('/repos/test/repo/releases/assets/')) {
+      const id = Number(url.pathname.split('/').at(-1));
+      if (options.method === 'DELETE') { assets.delete(id); return Buffer.alloc(0); }
+      return assets.get(id).bytes;
+    }
+    if (url.pathname === '/upload' && options.method === 'POST') {
+      if (failNextUpload) {
+        failNextUpload = false;
+        throw Object.assign(new Error('simulated upload interruption'), { status: 503 });
+      }
+      const asset = { id: nextID++, name: url.searchParams.get('name'), state: 'uploaded', bytes: options.body };
+      assets.set(asset.id, asset); return Buffer.from(JSON.stringify({ id: asset.id, name: asset.name, state: asset.state }));
+    }
+    assert.fail(`Unexpected request ${options.method} ${url.pathname}`);
+  } });
+  const name = 'release-manifest-1.2.3.json';
+  const first = Buffer.from('{"status":"pending"}\n');
+  const second = Buffer.from('{"status":"complete"}\n');
+  await client.replaceReleaseAsset(42, name, first, Date.now() + 5000);
+  await client.replaceReleaseAsset(42, name, second, Date.now() + 5000);
+  assert.equal(assets.size, 1);
+  assert.deepEqual([...assets.values()].map(asset => asset.name), [name]);
+  assert.deepEqual([...assets.values()][0].bytes, second);
+  failNextUpload = true;
+  await assert.rejects(() => client.replaceReleaseAsset(42, name, Buffer.from('{"status":"failed"}\n'), Date.now() + 5000),
+    /simulated upload interruption/u);
+  assert.equal(assets.size, 1);
+  assert.deepEqual([...assets.values()].map(asset => asset.name), [name]);
+  assert.deepEqual([...assets.values()][0].bytes, second);
+});
+
 test('GitHub asset upload sends the exact binary Content-Length on the wire', async t => {
   const content = Buffer.from([0x00, 0xff, 0x28, 0x80, 0x0a, 0x7f]);
   let received;

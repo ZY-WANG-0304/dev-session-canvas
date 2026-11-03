@@ -16,8 +16,67 @@ import { appendReleaseState, recoverReleaseState, saveReleaseState } from './rel
 export const immutableReleaseFiles = Object.freeze(['main.vsix', 'notifier.vsix', 'package-receipt.json',
   'gate-plan.json', 'gate-result.json', 'gate-provenance.json', 'acceptance-receipt.json',
   'release-identity.json', 'original-release-context.json']);
+const legacyReleaseFiles = Object.freeze([...immutableReleaseFiles]);
+const releaseManifestName = version => `release-manifest-${version}.json`;
+const releaseStateName = version => `release-state-${version}.json`;
 export const releaseFiles = context => context.batchFormat === 1
-  ? [...immutableReleaseFiles, 'release-changelog.md'] : [...immutableReleaseFiles];
+  ? [`dev-session-canvas-${context.version}.vsix`, `dev-session-canvas-notifier-${context.version}.vsix`,
+    releaseManifestName(context.version)]
+  : [...legacyReleaseFiles];
+const packageAssetName = (context, pkg) => context.batchFormat === 1
+  ? `${pkg.id.endsWith('-notifier') ? 'dev-session-canvas-notifier' : 'dev-session-canvas'}-${context.version}.vsix`
+  : pkg.path;
+const releaseStateArtifact = manifest => {
+  const chain = manifest.stateChain;
+  const run = manifest.context.run;
+  const stem = chain.phase === 'prepare' ? 'release-prepare-evidence' : 'marketplace-release';
+  return `${stem}-${run.id}-${run.attempt}`;
+};
+function compactReleaseManifest({ context, identity, manifest, stateBytes }) {
+  const aggregate = values => {
+    const statuses = [...new Set(Object.values(values ?? {}).map(value => value.status))];
+    return statuses.length === 0 ? 'pending' : statuses.length === 1 ? statuses[0] : 'mixed';
+  };
+  const producer = manifest.stateChain.producer;
+  return { schemaVersion: 1, version: context.version, releaseSHA: context.releaseSHA,
+    status: manifest.status, identityDigest: objectDigest(identity),
+    packages: identity.packages.map(pkg => ({ id: pkg.id, version: pkg.version,
+      name: packageAssetName(context, pkg), size: pkg.size, sha256: pkg.sha256 })),
+    channels: { githubRelease: manifest.githubRelease.status,
+      openVsx: aggregate(manifest.marketplaces.openVsx),
+      visualStudio: aggregate(manifest.marketplaces.visualStudio) },
+    state: { digest: objectDigest(manifest), file: releaseStateName(context.version),
+      snapshot: `state-${digest(stateBytes)}-${releaseStateName(context.version)}`,
+      artifact: releaseStateArtifact(manifest), producer: { runID: producer.runID,
+        attempt: producer.attempt, repository: producer.repository, job: producer.job,
+        headSHA: manifest.context.run.headSHA } } };
+}
+function validateCompactReleaseManifest(value, { context, identity }) {
+  assert.equal(value.schemaVersion, 1, 'Unknown compact Release manifest schema');
+  assert.equal(value.version, context.version); assert.equal(value.releaseSHA, context.releaseSHA);
+  assert.equal(value.identityDigest, objectDigest(identity));
+  assert(['pending', 'complete', 'failed'].includes(value.status));
+  assert.deepEqual(value.packages, identity.packages.map(pkg => ({ id: pkg.id, version: pkg.version,
+    name: packageAssetName(context, pkg), size: pkg.size, sha256: pkg.sha256 })));
+  assert.equal(value.channels?.githubRelease, 'content-verified');
+  assert(['pending', 'verified', 'reused-verified', 'already-published', 'deferred', 'mixed',
+    'content-mismatch', 'pending-verification'].includes(value.channels.openVsx));
+  assert(['pending', 'verified', 'reused-verified', 'already-published', 'deferred', 'mixed',
+    'content-mismatch', 'pending-verification'].includes(value.channels.visualStudio));
+  const state = value.state;
+  assert.equal(state.file, releaseStateName(context.version));
+  assert.match(state.digest ?? '', /^[a-f0-9]{64}$/u);
+  assert.match(state.snapshot ?? '', new RegExp(`^state-[a-f0-9]{64}-${releaseStateName(context.version)}$`, 'u'));
+  assert.match(state.artifact ?? '', /^(?:release-prepare-evidence|marketplace-release)-[1-9]\d*-[1-9]\d*$/u);
+  assert.match(String(state.producer.runID), /^[1-9]\d*$/u);
+  assert(Number.isSafeInteger(state.producer.attempt) && state.producer.attempt > 0);
+  assert.equal(state.producer.repository, context.repository);
+  assert(['prepare-release', 'finalize-release'].includes(state.producer.job));
+  assert.match(state.producer.headSHA ?? '', /^[a-f0-9]{40}$/u);
+  const expectedStem = state.producer.job === 'prepare-release' ? 'release-prepare-evidence' : 'marketplace-release';
+  assert.equal(state.artifact, `${expectedStem}-${state.producer.runID}-${state.producer.attempt}`);
+  return value;
+}
 const deferredMarketplaceTargets = () => ['visual-studio'];
 const assertHistoricalVisualStudioJobSkippedOrAbsent = jobs => {
   const visualStudioJobs = jobs.filter(job => job.name === 'Release publish-visual-studio'
@@ -206,8 +265,11 @@ async function validatePreviousRecoveryRun({ recoveryPreviousRunID, triggerTag, 
 }
 
 export async function verifyRecoveredRelease({ context, output, client = githubClient({ repository: context.repository }),
-  deadline = Date.now() + 600000, collector = collectGitHubProvenance, stateCollector = collectReleaseFacts }) {
+  deadline = Date.now() + 600000, collector = collectGitHubProvenance, stateCollector = collectReleaseFacts,
+  batch }) {
   validateReleaseContext(context); assert.equal(context.mode, 'channel-retry');
+  if (context.batchFormat === 1) return verifyRecoveredBatchRelease({ context, output, client, deadline,
+    stateCollector, batch });
   const lookup = await client.lookupRelease(context.finalTag, deadline); assert.equal(lookup.observation, 'present');
   assert.equal(lookup.release.id, context.existingReleaseID); assert.equal(await client.readTag(context.finalTag, deadline), context.releaseSHA);
   const assets = await client.pages(`releases/${lookup.release.id}/assets`, null, deadline);
@@ -282,6 +344,150 @@ export async function verifyRecoveredRelease({ context, output, client = githubC
   await writeJSON(path.join(output, 'recovery-verification.json'), receipt); return receipt;
 }
 
+async function findFiles(directory, predicate) {
+  const found = [];
+  for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) found.push(...await findFiles(file, predicate));
+    else if (entry.isFile() && predicate(entry.name)) found.push(file);
+  }
+  return found;
+}
+
+async function verifyRecoveredBatchRelease({ context, output, client, deadline, stateCollector, batch }) {
+  assert(batch?.input && batch.identity, 'A verified original release batch is required for recovery');
+  await fs.mkdir(output, { recursive: true });
+  const identity = batch.identity;
+  assert.equal(identity.releaseSHA, context.releaseSHA);
+  assert.equal(identity.version, context.version);
+  const lookup = await client.lookupRelease(context.finalTag, deadline); assert.equal(lookup.observation, 'present');
+  assert.equal(lookup.release.id, context.existingReleaseID);
+  assert.equal(await client.readTag(context.finalTag, deadline), context.releaseSHA);
+  const assets = await client.pages(`releases/${lookup.release.id}/assets`, null, deadline);
+  const allowedAssets = releaseFiles(context);
+  assert(assets.every(asset => allowedAssets.includes(asset.name)), 'Release contains unexpected public assets');
+  assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate Release assets are ambiguous');
+  const downloaded = [], packageBytes = new Map();
+  for (const pkg of identity.packages) {
+    const name = packageAssetName(context, pkg);
+    const matches = assets.filter(asset => asset.name === name); assert.equal(matches.length, 1, `Missing/ambiguous ${name}`);
+    assert.equal(matches[0].state, 'uploaded');
+    const bytes = await client.downloadAsset(matches[0], deadline);
+    assert.equal(digest(bytes), pkg.sha256, `Published package ${name} differs from accepted batch`);
+    assert.deepEqual(bytes, await fs.readFile(path.join(batch.input, pkg.path)),
+      `Published package ${name} is not the selected build batch`);
+    packageBytes.set(pkg.path, bytes);
+    downloaded.push({ name, assetID: matches[0].id, size: bytes.length, sha256: digest(bytes) });
+  }
+  const manifestAssetName = releaseManifestName(context.version);
+  const manifestMatches = assets.filter(asset => asset.name === manifestAssetName);
+  assert.equal(manifestMatches.length, 1, `Missing/ambiguous ${manifestAssetName}`);
+  assert.equal(manifestMatches[0].state, 'uploaded');
+  const manifestBytes = await client.downloadAsset(manifestMatches[0], deadline);
+  const publicManifest = validateCompactReleaseManifest(JSON.parse(manifestBytes.toString('utf8')), { context, identity });
+  downloaded.push({ name: manifestAssetName, assetID: manifestMatches[0].id,
+    size: manifestBytes.length, sha256: digest(manifestBytes) });
+
+  const stateRef = publicManifest.state;
+  const producerRun = { id: stateRef.producer.runID, attempt: stateRef.producer.attempt,
+    headSHA: stateRef.producer.headSHA };
+  const producerContext = { repository: context.repository, run: producerRun };
+  const producerOutput = path.join(output, 'release-state-provenance');
+  const producerFacts = await stateCollector(producerContext, { client, output: producerOutput, deadline,
+    allowedNames: [stateRef.artifact], namesForJobs: releaseArtifactJob, allowHistoricalRun: true });
+  assert.equal(producerFacts.artifacts.length, 1);
+  const producerArtifact = producerFacts.artifacts[0];
+  const producerJob = producerFacts.jobs.find(job => job.id === producerArtifact.jobID);
+  assert.equal(producerJob?.name, releaseJobName(stateRef.producer.job));
+  assert.equal(producerJob.status, 'completed');
+  assert(['success', 'failure'].includes(producerJob.conclusion), 'Release state producer was cancelled or unknown');
+  const producerRoot = path.join(producerOutput, stateRef.artifact);
+  const stateCandidates = await findFiles(producerRoot, name => name === stateRef.file);
+  const matchingStateFiles = [];
+  for (const file of stateCandidates) {
+    const bytes = await fs.readFile(file);
+    if (objectDigest(JSON.parse(bytes.toString('utf8'))) === stateRef.digest) matchingStateFiles.push({ file, bytes });
+  }
+  assert(matchingStateFiles.length > 0, 'Release state is absent from its producer artifact');
+  const latestStateFile = matchingStateFiles[0].file;
+  const latestStateBytes = matchingStateFiles[0].bytes;
+  assert(matchingStateFiles.every(candidate => candidate.bytes.equals(latestStateBytes)),
+    'Producer artifact has ambiguous copies of the latest release state');
+  assert(producerArtifact.receiptDigests.includes(stateRef.digest));
+  const latestSnapshotFiles = await findFiles(producerRoot, name => name === stateRef.snapshot);
+  assert(latestSnapshotFiles.length > 0, 'Release state snapshot is absent from its producer artifact');
+  for (const file of latestSnapshotFiles) assert.deepEqual(await fs.readFile(file), latestStateBytes);
+
+  const stateFiles = await findFiles(producerRoot, name => name === stateRef.file
+    || name === stateRef.snapshot || /^state-[a-f0-9]{64}-release-state-/u.test(name));
+  const uniqueStateFiles = new Map();
+  for (const file of stateFiles) {
+    const name = path.basename(file), bytes = await fs.readFile(file), previous = uniqueStateFiles.get(name);
+    if (name === stateRef.file && !bytes.equals(latestStateBytes)) {
+      const snapshotName = `state-${digest(bytes)}-${stateRef.file}`;
+      const snapshots = stateFiles.filter(candidate => path.basename(candidate) === snapshotName);
+      assert(snapshots.length > 0, 'Non-current canonical release state has no matching snapshot');
+      for (const snapshot of snapshots) assert.deepEqual(await fs.readFile(snapshot), bytes);
+      continue;
+    }
+    if (previous) assert.deepEqual(bytes, previous.bytes, `Producer artifact has conflicting copies of ${name}`);
+    else uniqueStateFiles.set(name, { file, bytes });
+  }
+  const stateAssets = [], stateBytesByID = new Map(), stateFilesByID = new Map();
+  for (const [index, [name, entry]] of [...uniqueStateFiles].entries()) {
+    const { file, bytes } = entry, id = index + 1;
+    stateAssets.push({ id, name, state: 'uploaded' }); stateBytesByID.set(id, bytes); stateFilesByID.set(id, file);
+  }
+  const state = await recoverReleaseState({ context, identity, assets: stateAssets,
+    client: { ...client, downloadAsset: async asset => stateBytesByID.get(asset.id) },
+    output: path.join(output, 'release-state-recovery'), deadline, collector: stateCollector,
+    stateFileName: stateRef.file });
+  assert.equal(state.stateDigest, stateRef.digest);
+  assert(stateRef.producer.job === 'prepare-release'
+    ? state.manifest.stateChain.phase === 'prepare'
+    : ['finalize', 'cleanup'].includes(state.manifest.stateChain.phase));
+  assert.deepEqual(publicManifest, compactReleaseManifest({ context, identity, manifest: state.manifest,
+    stateBytes: latestStateBytes }), 'Public Release summary differs from its verified workflow state');
+
+  const acceptanceFiles = [...immutableReleaseFiles, 'release-changelog.md'];
+  for (const name of acceptanceFiles) {
+    const source = path.join(batch.input, name);
+    await fs.copyFile(source, path.join(output, name));
+  }
+  for (const [name, bytes] of packageBytes) await fs.writeFile(path.join(output, name), bytes, { flag: 'w' });
+  await fs.writeFile(path.join(output, manifestAssetName), manifestBytes, { flag: 'wx' });
+  await fs.copyFile(latestStateFile, path.join(output, stateRef.file));
+  for (const asset of stateAssets.filter(asset => asset.name.startsWith('state-'))) {
+    await fs.copyFile(stateFilesByID.get(asset.id), path.join(output, asset.name));
+  }
+  await writeJSON(path.join(output, 'release-context.json'), context);
+  const history = state.manifest.channelHistory ?? {};
+  for (const target of marketplaceTargets.filter(target => !context.selectedTargets.includes(target))) {
+    const source = history[target]; if (!source) continue;
+    validateReleaseContext(source.context);
+    assert.equal(source.context.repository, context.repository);
+    assert.equal(source.context.releaseSHA, context.releaseSHA);
+    const facts = await collectReleaseFacts(source.context, { client, deadline,
+      output: path.join(output, `history-provenance-${target}`),
+      allowedNames: [`marketplace-result-${target}-${source.context.run.id}-${source.context.run.attempt}`],
+      namesForJobs: releaseArtifactJob });
+    const artifact = facts.artifacts[0], job = facts.jobs.find(item => item.id === artifact.jobID);
+    validateChannelPartial(source.partial, identity, { context: source.context, actualJob: job, artifact });
+    assert(source.partial.packages.every(entry => entry.content === 'match' && entry.evidenceUse === 'fresh'));
+  }
+  await writeJSON(path.join(output, 'validated-channel-history.json'), history);
+  const receipt = { schemaVersion: 1, status: 'passed', releaseSHA: context.releaseSHA,
+    version: context.version, identityDigest: objectDigest(identity),
+    originalBatchArtifactID: batch.source.artifactID,
+    downloaded, releaseState: { digest: state.stateDigest, chain: state.chain,
+      snapshots: state.downloaded.map(({ name, sha256, stateDigest }) => ({ name, sha256, stateDigest })),
+      producer: stateRef.producer, sourceArtifactID: producerArtifact.id },
+    producer: { runID: String(context.run.id), attempt: context.run.attempt,
+      repository: context.repository, job: 'verify-recovery' }, completedAt: new Date().toISOString() };
+  await writeJSON(path.join(output, 'recovery-verification.json'), receipt);
+  return receipt;
+}
+
 export async function prepareRelease({ context, input, output, client = githubClient({ repository: context.repository }),
   deadline = Date.now() + 1200000 }) {
   validateReleaseContext(context); await fs.mkdir(output, { recursive: true });
@@ -309,6 +515,8 @@ export async function prepareRelease({ context, input, output, client = githubCl
     assert.equal(recovery.status, 'passed'); assert.equal(recovery.identityDigest, objectDigest(identity));
     assert.equal(recovery.producer.runID, String(context.run.id)); assert.equal(recovery.producer.attempt, context.run.attempt);
   }
+  if (context.batchFormat === 1) return prepareBatchRelease({ context, input, output, client, deadline,
+    packageReceipt, plan, identity });
   for (const name of releaseFiles(context).filter(name => !['release-identity.json', 'original-release-context.json'].includes(name))) {
     await fs.copyFile(path.join(input, name), path.join(output, name));
   }
@@ -414,6 +622,133 @@ export async function prepareRelease({ context, input, output, client = githubCl
   return { identity, github };
 }
 
+async function prepareBatchRelease({ context, input, output, client, deadline, packageReceipt, plan, identity }) {
+  for (const name of [...immutableReleaseFiles, 'release-changelog.md']) {
+    if (['release-identity.json', 'original-release-context.json'].includes(name)) continue;
+    await fs.copyFile(path.join(input, name), path.join(output, name));
+  }
+  await writeJSON(path.join(output, 'release-context.json'), context);
+  await writeJSON(path.join(output, 'release-identity.json'), identity);
+  await fs.copyFile(path.join(input, 'original-release-context.json'), path.join(output, 'original-release-context.json'));
+  const history = context.mode === 'channel-retry'
+    ? await readJSON(path.join(input, 'validated-channel-history.json')) : {};
+  await writeJSON(path.join(output, 'validated-channel-history.json'), history);
+
+  let finalSHA = await client.readTag(context.finalTag, deadline);
+  if (!finalSHA) {
+    assert(['release-tag', 'artifact-release'].includes(context.mode));
+    await client.createTag(context.finalTag, context.releaseSHA, deadline);
+    finalSHA = await client.readTag(context.finalTag, deadline);
+  }
+  assert.equal(finalSHA, context.releaseSHA);
+  let lookup = await client.lookupRelease(context.finalTag, deadline);
+  if (lookup.observation === 'absent') {
+    assert(['release-tag', 'artifact-release'].includes(context.mode));
+    await client.createRelease(context.finalTag, context.releaseSHA, `Dev Session Canvas v${context.version}`,
+      `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${context.releaseSHA}`, deadline);
+    lookup = await client.lookupRelease(context.finalTag, deadline);
+  }
+  assert.equal(lookup.observation, 'present');
+  const release = lookup.release;
+  if (context.existingReleaseID !== null) assert.equal(release.id, context.existingReleaseID);
+  if (['incomplete-release-recovery', 'artifact-release'].includes(context.mode)) {
+    assert.equal(release.tag_name, context.finalTag);
+    assert.equal(release.target_commitish, context.releaseSHA);
+    assert.equal(release.name, `Dev Session Canvas v${context.version}`);
+    assert.equal(release.draft, false); assert.equal(release.prerelease, false);
+    assert.equal(release.body,
+      `已验收的主扩展与 notifier 双包；渠道交付进行中。\n\nRelease ref: ${context.releaseSHA}`);
+  }
+  const assets = await client.pages(`releases/${release.id}/assets`, null, deadline);
+  assert(assets.every(asset => releaseFiles(context).includes(asset.name)),
+    'Release contains state, gate, or unrelated assets outside the public contract');
+  assert.equal(new Set(assets.map(asset => asset.name)).size, assets.length, 'Duplicate GitHub assets are ambiguous');
+  assert(assets.every(asset => asset.state === 'uploaded'), 'Release contains an asset in an unknown state');
+  if (context.mode === 'channel-retry') assert(assets.some(asset => asset.name === releaseManifestName(context.version)));
+  else assert(!assets.some(asset => asset.name === releaseManifestName(context.version)),
+    'Existing manifest requires verified channel-retry recovery; refuse a second state root');
+
+  const existing = new Map();
+  for (const asset of assets) existing.set(asset.name, asset);
+  const stateName = releaseStateName(context.version), publicName = releaseManifestName(context.version);
+  let manifest, stateBytes;
+  if (context.mode === 'channel-retry') {
+    manifest = await readJSON(path.join(input, stateName));
+    const recovery = await readJSON(path.join(input, 'recovery-verification.json'));
+    assert.equal(objectDigest(manifest), recovery.releaseState?.digest,
+      'Prepared retry state differs from verified recovery');
+    stateBytes = await fs.readFile(path.join(input, stateName));
+    const existingManifest = existing.get(publicName);
+    assert(existingManifest, 'Verified public Release manifest disappeared before prepare');
+    const expectedPublicManifest = compactReleaseManifest({ context, identity, manifest, stateBytes });
+    const expectedPublicBytes = Buffer.from(`${JSON.stringify(expectedPublicManifest, null, 2)}\n`);
+    assert.equal(digest(await client.downloadAsset(existingManifest, deadline)), digest(expectedPublicBytes),
+      'Public Release manifest differs; refuse clobber');
+    await fs.copyFile(path.join(input, stateName), path.join(output, stateName));
+    for (const file of await fs.readdir(input)) if (file.startsWith('state-')
+      && file.endsWith(`-${stateName}`)) await fs.copyFile(path.join(input, file), path.join(output, file));
+  }
+  const packageInputs = [];
+  for (const pkg of identity.packages) {
+    const name = packageAssetName(context, pkg), bytes = await fs.readFile(path.join(input, pkg.path));
+    assert.equal(digest(bytes), pkg.sha256); assert.equal(bytes.length, pkg.size);
+    const asset = existing.get(name);
+    if (asset) {
+      assert.equal(asset.state, 'uploaded');
+      assert.equal(digest(await client.downloadAsset(asset, deadline)), pkg.sha256,
+        `GitHub asset ${name} differs; refuse clobber`);
+    }
+    packageInputs.push({ pkg, name, bytes, asset });
+  }
+  const deliveries = [];
+  for (const { pkg, name, bytes, asset: existingAsset } of packageInputs) {
+    let asset = existingAsset;
+    if (!asset) {
+      assert(['release-tag', 'incomplete-release-recovery', 'artifact-release'].includes(context.mode));
+      asset = await client.uploadAsset(release, name, bytes, deadline);
+    }
+    assert.equal(asset.state, 'uploaded');
+    const remote = await client.downloadAsset(asset, deadline);
+    assert.equal(digest(remote), pkg.sha256, `GitHub asset ${name} differs; refuse clobber`);
+    deliveries.push({ extensionID: pkg.id, sourcePackageHash: pkg.sha256,
+      remotePackageHash: digest(remote), observation: 'present', content: 'match',
+      assetID: asset.id, verifiedAt: new Date().toISOString() });
+  }
+  const producer = { runID: String(context.run.id), attempt: context.run.attempt,
+    repository: context.repository, job: 'prepare-release' };
+  const github = { schemaVersion: 1, identityDigest: objectDigest(identity), releaseID: release.id,
+    releaseSHA: context.releaseSHA, version: context.version, packages: deliveries, producer,
+    completedAt: new Date().toISOString() };
+  await writeJSON(path.join(output, 'github-delivery.json'), github);
+  await writeJSON(path.join(output, 'prepared-receipt.json'), { schemaVersion: 1, status: 'passed',
+    identityDigest: objectDigest(identity), githubDigest: objectDigest(github), producer });
+
+  if (context.mode !== 'channel-retry') {
+    assert(['release-tag', 'incomplete-release-recovery', 'artifact-release'].includes(context.mode));
+    const pending = { schemaVersion: 1, status: 'pending', releaseSHA: context.releaseSHA, version: context.version,
+      identityDigest: objectDigest(identity), requiredTargets: [...requiredTargets], github, channels: {},
+      errors: marketplaceTargets.map(target => ({ target, reason: 'Channel job has not reported its result' })),
+      visualStudioBlocking: false, completedAt: null };
+    manifest = appendReleaseState(releaseManifest(context, identity, github, pending, {}, {}), { phase: 'prepare' });
+    stateBytes = await saveReleaseState(output, stateName, manifest);
+  }
+  const publicManifest = compactReleaseManifest({ context, identity, manifest, stateBytes });
+  const publicBytes = Buffer.from(`${JSON.stringify(publicManifest, null, 2)}\n`);
+  await fs.writeFile(path.join(output, publicName), publicBytes, { flag: 'wx' });
+  const currentAsset = existing.get(publicName);
+  if (currentAsset) {
+    assert.equal(digest(await client.downloadAsset(currentAsset, deadline)), digest(publicBytes),
+      'Public Release manifest differs; refuse clobber');
+  } else {
+    await client.replaceReleaseAsset(release.id, publicName, publicBytes, deadline);
+  }
+  const publishedManifest = await client.pages(`releases/${release.id}/assets`, null, deadline);
+  const savedManifest = publishedManifest.find(asset => asset.name === publicName);
+  assert(savedManifest, 'Compact Release manifest was not uploaded');
+  assert.equal(digest(await client.downloadAsset(savedManifest, deadline)), digest(publicBytes));
+  return { identity, github };
+}
+
 function releaseManifest(context, identity, github, completion, channels, history) {
   const marketplaces = {};
   for (const target of marketplaceTargets) {
@@ -434,7 +769,7 @@ function releaseManifest(context, identity, github, completion, channels, histor
   return { schemaVersion: 2, version: context.version, releaseRef: context.releaseSHA,
     triggerTag: context.triggerTag, finalTag: context.finalTag, identityDigest: objectDigest(identity), status: completion.status,
     artifacts: identity.packages.map(pkg => ({ extension: pkg.id.endsWith('-notifier') ? 'notifier' : 'main',
-      fullId: pkg.id, path: pkg.path, sha256: pkg.sha256, version: pkg.version })),
+      fullId: pkg.id, path: packageAssetName(context, pkg), sha256: pkg.sha256, version: pkg.version })),
     githubRelease: { status: 'content-verified', receipt: github }, marketplaces, releaseCompletion: completion,
     channelHistory: history, context, tags: { finalTagStatus: 'present', triggerTagStatus: 'kept' } };
 }
@@ -526,13 +861,29 @@ export async function finalizeRelease({ context, prepared, output, client = gith
   for (const partial of partials) if (partial.packages.every(entry => entry.content === 'match' && entry.evidenceUse === 'fresh')) {
     history[partial.target] = { context, partial };
   }
-  const parent = await readJSON(path.join(actualPrepared, `release-manifest-${context.version}.json`));
+  const stateName = context.batchFormat === 1 ? releaseStateName(context.version) : releaseManifestName(context.version);
+  const parent = await readJSON(path.join(actualPrepared, stateName));
   assert.equal(parent.identityDigest, objectDigest(identity));
+  if (context.batchFormat === 1) {
+    await fs.mkdir(output, { recursive: true });
+    for (const file of await fs.readdir(actualPrepared)) if (file === stateName
+      || file.startsWith('state-') && file.endsWith(`-${stateName}`)) {
+      await fs.copyFile(path.join(actualPrepared, file), path.join(output, file));
+    }
+  }
   let manifest = appendReleaseState(releaseManifest(context, identity, github, completion, completion.channels, history),
     { phase: 'finalize', parent });
   await writeJSON(path.join(output, 'release-completion.json'), completion);
-  const manifestName = `release-manifest-${context.version}.json`;
-  await client.replaceStateAsset(github.releaseID, manifestName, await saveReleaseState(output, manifestName, manifest), deadline);
+  const persistState = async state => {
+    const bytes = await saveReleaseState(output, stateName, state);
+    if (context.batchFormat === 1) {
+      const summary = compactReleaseManifest({ context, identity, manifest: state, stateBytes: bytes });
+      await writeJSON(path.join(output, releaseManifestName(context.version)), summary);
+      await client.replaceReleaseAsset(github.releaseID, releaseManifestName(context.version),
+        await fs.readFile(path.join(output, releaseManifestName(context.version))), deadline);
+    } else await client.replaceStateAsset(github.releaseID, stateName, bytes, deadline);
+  };
+  await persistState(manifest);
   const notes = renderNotes(manifest);
   await fs.writeFile(path.join(output, 'release-notes.md'), notes, { flag: 'wx' });
   await client.updateNotes(github.releaseID, notes, deadline);
@@ -545,6 +896,6 @@ export async function finalizeRelease({ context, prepared, output, client = gith
     triggerTagStatus: cleanup.status === 'passed' ? 'deleted' : 'cleanup-failed' }, cleanup },
   { phase: 'cleanup', parent: manifest });
   await writeJSON(path.join(output, 'tag-cleanup.json'), cleanup);
-  await client.replaceStateAsset(github.releaseID, manifestName, await saveReleaseState(output, manifestName, manifest), deadline);
+  await persistState(manifest);
   return { completion, manifest, cleanup };
 }
