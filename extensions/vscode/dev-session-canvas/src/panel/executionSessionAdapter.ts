@@ -111,9 +111,10 @@ type Interaction = {
   view: InteractionObservation;
   current?: ExecutionInteractionResult;
   firstResolved: boolean;
+  deliveryUnknown?: boolean;
   resolve: (result: ExecutionInteractionResult) => void;
   cancelDeadline: () => void;
-  active?: { id: number; data?: string; bytes: number; confirmedBytes: number; sent: boolean };
+  active?: { id: number; data?: string; bytes: number; confirmedBytes?: number; sent: boolean };
 };
 
 const inputEncoder = new TextEncoder();
@@ -513,7 +514,7 @@ export class PreparedExecution {
       }
       message = { type: 'input', identity: this.identity, interactionId, data };
     }
-    interaction.active = { id: interactionId, sent: false, confirmedBytes: 0,
+    interaction.active = { id: interactionId, sent: false,
       bytes: message.type === 'input' ? inputEncoder.encode(message.data).byteLength : 0,
       ...(message.type === 'input' ? { data: message.data } : {}) };
     // At most one input and one resize frame are queued, leaving acknowledgement slots available.
@@ -522,7 +523,9 @@ export class PreparedExecution {
 
   private interactionFailure(interaction: Interaction, kind: 'cancelled' | 'failed' | 'unconfirmed', reason: string,
     writtenBytes = interaction.writtenBytes + (interaction.active?.confirmedBytes ?? 0)): ExecutionInteractionResult {
-    return Object.freeze({ kind, reason, ...(interaction.kind === 'input' ? { writtenBytes } : {}) });
+    const confirmedBytes = interaction.deliveryUnknown ? interaction.writtenBytes : writtenBytes;
+    return Object.freeze({ kind, reason,
+      ...(interaction.kind === 'input' && (!interaction.deliveryUnknown || confirmedBytes > 0) ? { writtenBytes: confirmedBytes } : {}) });
   }
 
   private publishInteraction(interaction: Interaction, result: ExecutionInteractionResult): void {
@@ -550,6 +553,7 @@ export class PreparedExecution {
 
   private expireInteraction(interaction: Interaction): void {
     if (!this.interactions.has(interaction) || this.dependencies.scheduler.now() < interaction.deadline) return;
+    if (interaction.active?.sent && interaction.active.confirmedBytes === undefined) interaction.deliveryUnknown = true;
     const result = this.interactionFailure(interaction, interaction.active?.sent ? 'unconfirmed' : 'cancelled',
       'Interaction observation deadline reached');
     if (interaction.active?.sent) this.publishInteraction(interaction, result);
@@ -560,7 +564,10 @@ export class PreparedExecution {
     this.interactionClosedReason ??= reason;
     for (const interaction of [...this.interactions]) {
       if (interaction.active?.sent) {
-        if (uncertain) this.publishInteraction(interaction, this.interactionFailure(interaction, 'unconfirmed', reason));
+        if (uncertain) {
+          if (interaction.kind === 'input' && interaction.active.confirmedBytes === undefined) interaction.deliveryUnknown = true;
+          this.publishInteraction(interaction, this.interactionFailure(interaction, 'unconfirmed', reason));
+        }
       } else this.finishInteraction(interaction, this.interactionFailure(interaction, 'cancelled', reason));
     }
   }
@@ -573,15 +580,29 @@ export class PreparedExecution {
     }
     const active = interaction.active;
     const bytes = 'writtenBytes' in result ? result.writtenBytes : undefined;
-    if ((interaction.kind === 'input' && (result.kind === 'resized' || bytes === undefined || bytes > active.bytes || bytes < active.confirmedBytes
-      || (result.kind === 'written' && bytes !== active.bytes)))
-      || (interaction.kind === 'resize' && (result.kind === 'written' || bytes !== undefined))) {
+    const invalidInputResult = interaction.kind === 'input' && (result.kind === 'resized' ||
+      (bytes === undefined && result.kind !== 'unconfirmed') ||
+      (bytes !== undefined && (bytes > active.bytes || bytes < (active.confirmedBytes ?? 0))) ||
+      (result.kind === 'written' && bytes !== active.bytes));
+    const invalidResizeResult = interaction.kind === 'resize' && (result.kind === 'written' || bytes !== undefined);
+    if (invalidInputResult || invalidResizeResult) {
       this.fault('Invalid terminal interaction result');
       return;
     }
+    if (interaction.kind === 'input' && result.kind === 'unconfirmed' && bytes === undefined) {
+      interaction.deliveryUnknown = true;
+    }
     if (this.dependencies.scheduler.now() >= interaction.deadline && !interaction.firstResolved) this.expireInteraction(interaction);
+    if (interaction.kind === 'input' && bytes !== undefined) interaction.deliveryUnknown = false;
     if (result.kind === 'unconfirmed') {
-      active.confirmedBytes = bytes ?? 0;
+      if (interaction.kind === 'input' && bytes === undefined) {
+        interaction.deliveryUnknown = true;
+        this.dependencies.authority.quarantine(result.reason);
+        this.interactionClosedReason ??= result.reason;
+        this.finishInteraction(interaction, this.interactionFailure(interaction, 'unconfirmed', result.reason));
+        return;
+      }
+      if (bytes !== undefined) active.confirmedBytes = bytes;
       this.publishInteraction(interaction, this.interactionFailure(interaction, 'unconfirmed', result.reason,
         interaction.writtenBytes + (bytes ?? 0)));
       return;

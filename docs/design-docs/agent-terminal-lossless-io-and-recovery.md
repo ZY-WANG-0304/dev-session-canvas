@@ -28,7 +28,7 @@ related_plans:
   - docs/exec-plans/completed/runtime-persistence-storage-reevaluation.md
   - docs/exec-plans/active/execution-input-responsiveness.md
   - docs/exec-plans/active/runtime-terminal-state-restore.md
-updated_at: 2026-10-25
+updated_at: 2026-11-04
 ---
 
 # Agent / Terminal 无损输入输出与恢复
@@ -468,6 +468,14 @@ Supervisor 的 open/read/close RPC 将读者绑定到 socket/session/surface。�
 读者保留下界是已消费位置之前最近的安全 checkpoint；它参与原 compact 的 retention floor。旧完整终态取仍活动读者中最早的 checkpoint，包含各读者剩余事件。新退出分页直接保留原 journal 和读者，不做来源转移；轻量终态保存后仍可继续读页，消费到 final revision 才显示退出并关闭读取；不从 metadata 恢复已结束历史，保存失败保留 Supervisor 来源。
 
 运行中分页模式断线保持原绑定、进入重连中并重试原 endpoint，不因传输失败自动恢复 Agent 或启动新 Supervisor。已结束读者在 socket 失效后不再恢复历史，明确报告当前读取中断。页面 RPC 无响应期限仍属于 F-01；旧协议/混合订阅的完整终态、Supervisor 到 Host 的实时在途队列、总回放与全量 open/compact 分配仍属于 F-04。F-05 已取消新 completed 内联；旧完整 wire 协议及直接 `snapshot-only` 不变。具体接口、证据及边界见 `docs/design-docs/runtime-paged-terminal-projection.md` 和 `runtime-paged-completion.md`。
+
+### 10.18 未知输入投递量的回执与隔离
+
+provider wire 上的 `ExecutionInteractionResult` 针对单个 input command chunk：`written` 携带该 chunk 完整且精确的 `writtenBytes`；`failed`、`cancelled` 或 `unconfirmed` 只能携带当前 chunk 已确认的前缀，不包含未知的在途字节，没有已确认前缀时省略该字段。adapter 返回给整条多 chunk input 的 `InteractionObservation` 会累加之前已完成 chunk 的确认长度；如果当前 chunk 未确认，只报告之前已完整确认的整体前缀（大于零时），不把当前 chunk 猜成零或加进总数。Windows `pipes.write()` Promise rejection 不能证明 PTY 收到零字节，也不能证明失败前没有部分投递；provider 必须发送 `{ kind: 'unconfirmed', reason }`，省略本 chunk 的计数，不能用 `{ kind: 'failed', writtenBytes: 0 }` 把未知写成零。类似地，已发送 input 的观察超时或 transport fault 也不能以“尚未收到 ACK”推断零字节；adapter 可以保留此前独立确认的 chunk 前缀，但不能把未确认 chunk 计入。
+
+`executionSessionAdapter.ts::receiveInteraction()` 对 input 接受无 `writtenBytes` 的 `unconfirmed`，将结果传给原交互观察者；如果此前 chunk 已完整确认，只报告那个前缀，否则省略计数。随后 adapter quarantine 同一 execution authority、关闭后续交互 admission，并取消尚未发送的交互；原 input 以一次 `unconfirmed` 结果结算，不以整条 input 或任一 chunk 自动重发，也不让交互槽永久挂起。已发送操作超时、transport fault 或非法回执导致当前 chunk 计数未知时同样只保留已确认前缀；若之后收到原 interaction 的合法迟到回执，adapter 才按该真实回执更新当前观察结果。未知交付必须可观察为未知，不能宣称 `writtenBytes: 0`。
+
+`scripts/test/test-execution-provider-channel.mjs` 还直接验证 provider channel 能接收无字节数的 `unconfirmed` 并释放对应 interaction record。该隔离只解决 provider 与 adapter 对“字节数未知”这一合法状态的协议不一致，不证明 PR #362 Windows attempt 3 就是由 pipe write rejection 触发；该次运行缺少原始 interaction request/result，必须维持未归因状态。
 
 ## 11. 正式方案必须满足的不变量
 

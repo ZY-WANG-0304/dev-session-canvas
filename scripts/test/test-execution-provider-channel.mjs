@@ -352,6 +352,19 @@ async function closeInteractionChannel(channel) {
 
 {
   const channel = await startNextChannel({ interactionV1: true });
+  providerProcess.emit('message', { type: 'input', identity, interactionId: 1, data: 'unknown write' });
+  const response = observe(channel.send({ type: 'interactionObservation', identity, interactionId: 1,
+    result: { kind: 'unconfirmed', reason: 'pipe delivery is unknown' } }));
+  await flush();
+  assert.equal(response.state, 'fulfilled', 'the channel accepts an explicit unknown delivery without a fabricated byte count');
+  assert.equal(channel.snapshot().pendingInteractions, 0);
+  assert.equal(channel.snapshot().pendingInputBytes, 0);
+  await closeInteractionChannel(channel);
+  console.log('PASS unconfirmed input retires with unknown delivery and no invented byte count');
+}
+
+{
+  const channel = await startNextChannel({ interactionV1: true });
   providerProcess.emit('message', { type: 'input', identity, interactionId: 1, data: 'held' });
   heldMessageType = 'interactionObservation';
   const response = observe(channel.send({ type: 'interactionObservation', identity, interactionId: 1,
@@ -389,4 +402,4 @@ for (const invalid of ['missing-capability', 'replay', 'pending-limit', 'wrong-r
   assert.equal(close.state, 'fulfilled');
   console.log(`PASS invalid interaction retains failure without replay: ${invalid}`);
 }
-console.log('executionProviderChannel interaction tests passed (6 pure cases; no real sockets)');
+console.log('executionProviderChannel interaction tests passed (7 pure cases; no real sockets)');
