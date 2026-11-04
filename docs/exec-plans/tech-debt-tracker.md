@@ -2,6 +2,22 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-11-04：PR362 工具等待误判与部分重跑的工件身份
+
+2026-11-05 进展：本地已实现当前终端工作画面保护、owned Host 的误等待恢复和转换/容量诊断；14 个计划消费者与最终 verifier 在下载前拒绝错 attempt 并提示完整重跑。Host 定向10、adapter105、Supervisor136、门禁211通过，121个原CI屏幕离线回放、类型和生产资产构建通过。状态仍是显示启发式，未知CLI/文案不能代证权威回合；固定CLI source/packaged与正式CI待验证。全量Host reset用例在未修改main同样失败，未混入修复；历史snapshot首败和原CI准确转换分支仍未关闭，见[修复计划](active/pr362-ci-failure-repair.md)。以下保留首轮调查事实。
+
+2026-11-05 独立 subagent review 的三项非阻塞后续事项由 repository-maintainers 跟进；受控复现与真实 CLI 自然出现必须分开，未确定实际发生频率。用户随后明确要求本轮修复独立提交 PR，以下风险随独立修复交付，不混入 #362 的尺寸改动：
+
+- P2，新增文本碰撞边界：最终正文若恰好是 `• Working (3s • esc to interrupt)` 并紧邻 composer/footer，`agentActivityHeuristics.ts::hasAgentWorkingIndicator` 无法与真实工作栏区分，实际 Host 受控输出后模拟60秒仍为running且不再轮询；未修改基线会等待。没有固定CLI自然复现，按现有低概率问题例外非阻塞保留，不能宣称已修。后续优先完善供应商工作区域和歧义识别；不得简单恢复统一静默超时，重新引入原误等待。
+- P2，既有恢复缺口：`runtimeSupervisorMain.ts::applySessionOutputActivity` 和等待评估入口排除waiting-input，普通启动行静默1800ms进入等待后，即使原tracker随后显示Working也不会恢复；未修改基线同样复现。legacy Host也未取得owned Host的新恢复能力。后续扩展恢复路径时须补同身份、stop/error/final结算回归；当前只承诺owned Host恢复，不把三个入口的屏幕保护写成三个入口都有恢复。
+- P3，当前检测窗口边界：`hasAgentWorkingIndicator` 只取末尾八个非空行，composer及八行草稿可将屏幕中仍可见的Working排除。函数级输入已验证，尚无固定CLI实际布局稳定复现。后续真实TUI验收补多行草稿、窄终端和重排，并基于结果改进区域检测；当前不外推为任意composer布局已通过。
+
+审查原评论见 [本地修复 review](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/362#issuecomment-6636455591)，它明确不是 #362 远端head批准。复现过程和结论见 [设计文档](../design-docs/pr362-ci-failure-investigation.md#独立审查与交付边界2026-11-05)，临时证据 `/tmp/pr362-review/` 不代替长期CI工件。
+
+负责人：repository-maintainers。最新 run `41775499320` attempt 3 唯一产品失败为 packaged-host `agent-tui/tool-network-silence`：真实工具未完成，产品先进入 waiting-input。已用实际 Host 受控复现静默 fallback 与 prompt/spinner 共存两条路径，并确认后续 Working 输出不恢复 running；原 CI 未记录转换原因，不能确定实际触发分支，也不能归因于 PR 的尺寸修改。后续先补转换与 interaction capacity 取证，再以固定 CLI 验证无输出工具等待、输入确认及完成重绘；当前门禁仍失败，登记不等于解除阻塞。
+
+同 run attempt 2 只重跑失败 jobs，消费者请求 `-2` 的 plan/control 工件，而成功 producer 未重建，下载失败。当前应完整重跑；若支持局部重跑，必须保留并独立核验 producer/输入身份，不能任意回退旧工件。attempt 1 的 source-host remount 前 snapshot 消息超时尚未定位，后续完整重跑成功不关闭其历史调查。证据与修复边界见 [PR362 调查](../design-docs/pr362-ci-failure-investigation.md) 和 [已完成调查计划](completed/pr362-ci-failure-investigation.md)。
+
 ## 2026-11-03：Release manifest 删除请求响应丢失时的恢复边界
 
 新批次替换 compact manifest 时，GitHub Releases API 需要先删除旧 asset 再上传新内容。`scripts/release/release-github.mjs` 的 `replaceReleaseAsset` 已对上传失败做旧字节回滚，但旧 asset 的 DELETE 请求仍在回滚 `try` 块外；如果远端删除成功而响应丢失，调用会直接失败，manifest 可能暂时缺失。该情况依赖特定传输故障，目前不是已复现的确定性 blocker。

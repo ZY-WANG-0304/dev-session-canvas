@@ -2802,7 +2802,8 @@ export class RuntimeSupervisorServer {
         return;
       }
 
-      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current), Date.now(),
+        current.terminalStateTracker.getVisibleLines() ?? null);
       if (evaluation.shouldTransition) {
         current.lifecycleTimer = undefined;
         if (current.lifecycle === 'resuming') {

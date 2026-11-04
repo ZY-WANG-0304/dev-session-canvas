@@ -2130,7 +2130,8 @@ try {
     await h.started();
     const calls = Array.from({ length: 4 }, (_, index) => h.session.write(`call-${index}`, 5000));
     assert.equal(EXECUTION_INTERACTION_LIMITS.pendingOperations, 4);
-    assert.throws(() => h.session.resize(90, 30, 5000), /capacity/);
+    assert.throws(() => h.session.resize(90, 30, 5000),
+      /capacity exhausted: pendingOperations=4, pendingInputs=4, pendingResizes=0, pendingInputBytes=24, requestedKind=resize, requestedInputBytes=0/);
     assert.equal(h.snapshot().interactions.pending, 4);
     for (let index = 0; index < calls.length; index++) {
       await settle(h.scheduler);

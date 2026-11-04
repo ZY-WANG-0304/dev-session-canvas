@@ -27,6 +27,7 @@ jobs:
       head_sha: ${{ steps.input.outputs.head_sha }}
       route: ${{ steps.control.outputs.route }}
       selection: ${{ steps.control.outputs.selection }}
+      producer_attempt: ${{ steps.input.outputs.producer_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,6 +57,7 @@ jobs:
             echo "input_sha=$input_sha"
             echo "base_sha=$base_sha"
             echo "head_sha=$head_sha"
+            echo "producer_attempt=$GITHUB_RUN_ATTEMPT"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
@@ -121,6 +123,10 @@ jobs:
         with:
           node-version: 22.23.3
           # The documentation path installs no workspace dependencies.
+      - name: Require same-attempt validation inputs
+        env:
+          GATE_PRODUCER_ATTEMPT: ${{ needs.resolve-input.outputs.producer_attempt }}
+        run: node scripts/gates/assert-workflow-attempt.mjs
       - name: Install acceptance verifier
         if: ${{ needs.resolve-input.outputs.route != 'documentation' }}
         run: node scripts/gates/run-infrastructure.mjs --kind install --profile plugin --output gate-results -- npm ci --no-audit --no-fund

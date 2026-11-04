@@ -5042,6 +5042,28 @@ for (const pending of [false, true]) {
       assert.equal(f.record.business.lifecycleStatus, pending ? 'running' : 'waiting-input');
       assert.equal(f.host.state.nodes.find(node => node.id === 'agent-1').status,
         pending ? 'running' : 'waiting-input');
+      if (pending) {
+        f.clock.advance(f.clock.now() + 3000);
+        assert.equal(f.record.business.lifecycleStatus, 'running', 'A static working indicator is not completion');
+        await output('\x1b[2J\x1b[H• Working (3s • esc to interrupt)\r\n› ');
+        f.clock.advance(f.clock.now() + 3000);
+        assert.equal(f.record.business.lifecycleStatus, 'running', 'An editable composer does not finish working');
+        await output('\x1b[2J\x1b[HFinal answer.\r\n› ');
+        f.clock.advance(f.clock.now() + 1800);
+        assert.equal(f.record.business.lifecycleStatus, 'waiting-input', 'Erased working chrome must not stay latched');
+        await output('\x1b[2J\x1b[HFinal answer.\r\n› ');
+        f.clock.advance(f.clock.now() + 3000);
+        assert.equal(f.record.business.lifecycleStatus, 'waiting-input', 'Completion redraw must stay completed');
+        await output('\x1b[2J\x1b[H• Working (4s • esc to interrupt)\r\n› draft');
+        f.clock.advance(f.clock.now() + 240);
+        assert.equal(f.record.business.lifecycleStatus, 'running', 'Current working chrome recovers an earlier waiting projection');
+        const observed = f.diagnostics.find(event => event.name === 'agent/workingIndicatorObserved');
+        assert.equal(observed.detail.executionSessionId, f.record.execution.identity.executionId);
+        const transition = f.diagnostics.find(event => event.name === 'agent/waitingInputHeuristicMatched');
+        assert.equal(transition.detail.previousStatus, 'running');
+        assert.equal(typeof transition.detail.quietMs, 'number');
+        assert.equal(typeof transition.detail.reason, 'string');
+      }
     } finally { await f.cleanup(); }
   });
 }

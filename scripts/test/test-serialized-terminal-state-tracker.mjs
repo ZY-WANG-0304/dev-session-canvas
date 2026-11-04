@@ -28,6 +28,25 @@ try {
     normalizeSerializedTerminalState
   } = require(outfile);
 
+  const activityTracker = new SerializedTerminalStateTracker(80, 6);
+  try {
+    activityTracker.write('• Working (3s • esc to interrupt)\r\n› ');
+    assert.equal(activityTracker.getVisibleLines(), undefined);
+    const draining = activityTracker.drain();
+    assert.equal(activityTracker.getVisibleLines(), undefined);
+    await draining;
+    assert.match(activityTracker.getVisibleLines().join('\n'), /Working/);
+    activityTracker.write('\x1b[2J\x1b[HFinal answer.\r\n› ');
+    assert.equal(activityTracker.getVisibleLines(), undefined);
+    await activityTracker.drain();
+    assert.doesNotMatch(activityTracker.getVisibleLines().join('\n'), /Working/);
+    activityTracker.write('\r\n' + Array.from({ length: 20 }, (_, index) => `line-${index}`).join('\r\n'));
+    await activityTracker.drain();
+    assert.equal(activityTracker.getVisibleLines().length, 6);
+    assert.doesNotMatch(activityTracker.getVisibleLines().join('\n'), /Final answer/);
+  } finally { activityTracker.dispose(); }
+  assert.equal(activityTracker.getVisibleLines(), undefined);
+
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /xterm-headless@6\.0\.0/u);
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /addon-serialize@0\.14\.0/u);
   assert.match(SERIALIZED_TERMINAL_CHECKPOINT_PRODUCER_PROFILE, /serialize-patch=bold-dim-v1/u);

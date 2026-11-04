@@ -16501,7 +16501,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         return;
       }
 
-      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current));
+      const evaluation = evaluateAgentWaitingInputTransition(this.ensureAgentActivityState(current), Date.now(),
+        current.terminalStateTracker.getVisibleLines() ?? null);
       if (evaluation.shouldTransition) {
         current.lifecycleTimer = undefined;
         if (current.lifecycleStatus === 'resuming') {
@@ -18874,11 +18875,29 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       business.cancelActivityPoll = undefined;
       if (!this.isNonNativeHostRecordCurrent(record) || record.finalRevision !== undefined ||
         record.execution.snapshot().stopRequested || !shouldRecordAgentOutputHeuristics(business.lifecycleStatus)) return;
-      const result = evaluateAgentWaitingInputTransition(business.agentActivity!, scheduler.now());
+      const now = scheduler.now();
+      const activity = business.agentActivity!;
+      const result = evaluateAgentWaitingInputTransition(activity, now, record.tracker.getVisibleLines() ?? null);
+      if (result.working && business.lifecycleStatus === 'waiting-input') {
+        business.lifecycleStatus = 'running';
+        this.projectNonNativeHostBusiness(record);
+        this.recordDiagnosticEvent('agent/workingIndicatorObserved', {
+          nodeId: record.nodeId, executionSessionId: record.execution.identity.executionId,
+          generation: record.execution.identity.generation
+        });
+      }
       if (result.shouldTransition) {
+        const previousStatus = business.lifecycleStatus;
         business.lifecycleStatus = 'waiting-input';
         business.resumePhaseActive = false;
         this.projectNonNativeHostBusiness(record);
+        if (previousStatus !== 'waiting-input') this.recordDiagnosticEvent('agent/waitingInputHeuristicMatched', {
+          nodeId: record.nodeId, executionSessionId: record.execution.identity.executionId,
+          generation: record.execution.identity.generation, previousStatus, reason: result.reason,
+          quietMs: typeof activity.lastOutputAtMs === 'number' ? now - activity.lastOutputAtMs : undefined,
+          spinnerAgeMs: typeof activity.lastSpinnerAtMs === 'number' ? now - activity.lastSpinnerAtMs : undefined,
+          promptAgeMs: typeof activity.lastPromptAtMs === 'number' ? now - activity.lastPromptAtMs : undefined
+        });
         void this.maybeConfirmNonNativeClaudeResumeSessionId(record, 'waiting-input');
       } else if (result.shouldKeepPolling) this.scheduleNonNativeAgentActivity(record);
     });
