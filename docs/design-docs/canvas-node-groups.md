@@ -15,10 +15,12 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/canvas-node-groups-design.md
   - docs/exec-plans/completed/canvas-spatial-fit-minimap.md
-updated_at: 2026-11-01
+updated_at: 2026-11-06
 ---
 
 # 画布节点分组设计
+
+> 2026-11-06：本文历史标题 tab、双段操作、未选中标题手势只选择、空组免确认和危险默认项已由 [分组等宽标题栏与统一操作](canvas-group-header-interactions.md) 的正式方案替代；成员模型和宿主几何法则不变。
 
 > 2026-11-01：自动文件节点及其分组规则已退役，见[退役设计](canvas-file-activity-retirement.md)。本文只约束当前 `agent`、`terminal`、`note` 节点与普通分组。
 

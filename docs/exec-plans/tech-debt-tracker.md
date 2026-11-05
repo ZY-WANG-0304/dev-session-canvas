@@ -48,6 +48,9 @@ PR1/PR2/PR3 已在 `runtime-resume-unreachable-replacement` 工作树实现：st
 新批次替换 compact manifest 时，GitHub Releases API 需要先删除旧 asset 再上传新内容。`scripts/release/release-github.mjs` 的 `replaceReleaseAsset` 已对上传失败做旧字节回滚，但旧 asset 的 DELETE 请求仍在回滚 `try` 块外；如果远端删除成功而响应丢失，调用会直接失败，manifest 可能暂时缺失。该情况依赖特定传输故障，目前不是已复现的确定性 blocker。
 
 后续应将删除异常也纳入协调恢复：重新读取 Release assets，确认旧字节仍在、已缺失或出现未知内容，再决定安全恢复或明确失败；新增 DELETE 响应丢失故障注入测试，验证始终不留下错误 manifest 或重复 asset。关联 [Release assets 精简执行计划](completed/release-assets-streamline.md) 与 `scripts/test/test-release-delivery.mjs`。当前发布重试可从同批 Actions producer evidence 重验状态后重新写入 manifest；在该边界修复前不宣称删除操作具备端到端原子性。
+## 2026-11-06：分组等宽标题栏的真实宿主验收
+
+等宽标题栏、首次拖动和统一删除入口已实现，Webview 56/56、宿主 mock 删除矩阵 9/9、分组几何与主题回归通过。当前机器缺少默认 execution assets，因此构建使用显式 stock 配置；未运行真实 VS Code 的原生 modal、运行会话递归删除、远程或高对比主题。后续在准备原生资产后的隔离 VS Code 验证空组/非空组取消与保留、停止真实组内会话、系统 root 保护及高对比 focus；不得用此次 mock/浏览器结果代替安装验收。范围与命令见 [实施记录](completed/canvas-group-header-interactions.md)。
 
 ## 2026-11-03：Supervisor 发行隔离的安装级验收与历史 Host 测试
 

@@ -1666,7 +1666,7 @@
         {
           "suite": "canvas-nodes/empty-group-delete",
           "step": "business",
-          "helper": "verifyEmptyGroupDeletionSkipsConfirmation",
+          "helper": "verifyEmptyGroupDeletionConfirmsChoice",
           "file": "tests/vscode-smoke/extension-tests.cjs",
           "source": true,
           "packaged": true,

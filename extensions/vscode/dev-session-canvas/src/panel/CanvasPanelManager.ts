@@ -22349,13 +22349,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       return;
     }
 
-    if (isEmptyCanvasGroup(this.state, groupId)) {
-      this.state = finalizeCanvasGroupState(deleteCanvasGroupKeepMembers(this.state, groupId));
-      this.persistState();
-      this.postState('host/stateUpdated');
-      return;
-    }
-
     const deleteImpact = collectCanvasGroupDeleteImpact(this.state, groupId);
     const groupsById = new Map((this.state.groups ?? []).map((currentGroup) => [currentGroup.id, currentGroup] as const));
     const containsWorkspaceRootGroup = [...deleteImpact.groupIds].some((impactGroupId) =>
@@ -22397,8 +22390,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         modal: true,
         detail: formatCanvasGroupDeleteImpactDetail(deleteImpact)
       },
-      deleteMembersAction,
-      keepMembersAction
+      keepMembersAction,
+      deleteMembersAction
     );
 
     if (!selection) {
@@ -26551,13 +26544,6 @@ function ungroupCanvasGroup(previousState: CanvasPrototypeState, groupId: string
 
 function deleteCanvasGroupKeepMembers(previousState: CanvasPrototypeState, groupId: string): CanvasPrototypeState {
   return ungroupCanvasGroup(previousState, groupId);
-}
-
-function isEmptyCanvasGroup(state: CanvasPrototypeState, groupId: string): boolean {
-  return (
-    !state.nodes.some((node) => node.groupId === groupId) &&
-    !(state.groups ?? []).some((group) => group.parentGroupId === groupId)
-  );
 }
 
 interface CanvasGroupDeleteImpact {

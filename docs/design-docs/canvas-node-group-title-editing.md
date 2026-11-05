@@ -12,10 +12,12 @@ related_specs:
   - docs/product-specs/canvas-node-groups.md
 related_plans:
   - docs/exec-plans/active/node-group-title-edit-action.md
-updated_at: 2026-11-01
+updated_at: 2026-11-06
 ---
 
 # 节点与分组标题编辑入口设计
+
+> 2026-11-06：分组标题栏宽度与拖动准入以 [分组等宽标题栏与统一操作](canvas-group-header-interactions.md) 为准：全宽标题栏、非控件区域首次拖动，不再要求按下前已选中。本文的节点标题与 edit 入口、编辑提交和双击隔离规则继续有效。
 
 ## 1. 背景
 

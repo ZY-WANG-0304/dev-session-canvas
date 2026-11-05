@@ -1131,7 +1131,7 @@ const independentCaseFunctions = {
   verifyWorkspaceRelativeTerminalShellPathUsesWorkspaceRoot, verifyCreateNodeCommandQuickPick,
   verifyExplorerResourceExecutionNodeCreation, verifyCreateNodeCommandUsesOpenCanvasSurface,
   verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits, verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent,
-  verifyPersistedStateFiltersLegacyTaskNodes, verifyEmptyGroupDeletionSkipsConfirmation,
+  verifyPersistedStateFiltersLegacyTaskNodes, verifyEmptyGroupDeletionConfirmsChoice,
   verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope, verifyCanvasLayoutArrangementPersists,
   runIndependentNoteHostUpdate, runIndependentDomEdit, runIndependentSavedSize, runIndependentDomDelete,
   runIndependentManualEdge, runIndependentSidebarList, runIndependentSidebarQuickPick, runIndependentSidebarUI,
@@ -1471,7 +1471,7 @@ async function getCanvasTemplateCatalog() {
   return vscode.commands.executeCommand(COMMAND_IDS.testGetCanvasTemplateItems);
 }
 
-async function verifyEmptyGroupDeletionSkipsConfirmation() {
+async function verifyEmptyGroupDeletionConfirmsChoice() {
   await setPersistedState({
     version: 1,
     updatedAt: '2026-05-23T04:30:00.000Z',
@@ -1488,7 +1488,6 @@ async function verifyEmptyGroupDeletionSkipsConfirmation() {
     suppressedAutomaticFileArtifactNodeIds: [],
     nextGroupSequence: 2
   });
-
   await withInterceptedWarningMessages(async (warningCalls) => {
     await dispatchWebviewMessage({
       type: 'webview/deleteGroup',
@@ -1499,8 +1498,9 @@ async function verifyEmptyGroupDeletionSkipsConfirmation() {
       10000
     );
     assert.strictEqual(snapshot.state.groups.length, 0);
-    assert.strictEqual(warningCalls.length, 0, 'Expected deleting an empty group to skip confirmation.');
-  });
+    assert.strictEqual(warningCalls.length, 1, 'Expected deleting an empty group to confirm the choice.');
+    assert.strictEqual(warningCalls[0].items[0].title, 'Delete Group Frame Only and Keep Contents');
+  }, ({ items }) => items[0]);
 }
 
 async function verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope() {

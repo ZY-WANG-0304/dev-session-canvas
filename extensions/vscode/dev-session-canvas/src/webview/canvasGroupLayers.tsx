@@ -68,7 +68,6 @@ export function CanvasGroupsViewportLayer(props: {
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
-  onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
   onDragPointerMove: (
     event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
@@ -92,7 +91,6 @@ export function CanvasGroupsViewportLayer(props: {
             <CanvasGroupBackgroundLayer
               groups={props.groups}
               workspaceRootWatermarksEnabled={props.workspaceRootWatermarksEnabled}
-              selectedGroupIds={props.selectedGroupIds}
               zoom={viewport.zoom}
               onSelectGroupBody={props.onSelectGroupBody}
               onFocusGroupInViewport={props.onFocusGroupInViewport}
@@ -121,7 +119,6 @@ function selectCanvasGroupForegroundPortalElement(state: ReactFlowState): HTMLDi
 function CanvasGroupBackgroundLayer(props: {
   groups: CanvasGroupSummary[];
   workspaceRootWatermarksEnabled: boolean;
-  selectedGroupIds?: readonly string[];
   zoom: number;
   onSelectGroupBody: (
     groupId: string,
@@ -131,14 +128,12 @@ function CanvasGroupBackgroundLayer(props: {
   onGroupBodyContextMenu: (event: React.MouseEvent, groupId: string) => void;
 }): JSX.Element {
   const orderedGroups = sortCanvasGroupsByDepthForWebview(props.groups);
-  const selectedGroupIds = new Set(props.selectedGroupIds ?? []);
   return (
     <div className="canvas-group-background-layer" aria-hidden="true">
       {orderedGroups.map((group) => (
         <CanvasGroupBackgroundFrame
           key={group.id}
           group={group}
-          selected={selectedGroupIds.has(group.id)}
           zoom={props.zoom}
           onSelectGroupBody={props.onSelectGroupBody}
           onFocusGroupInViewport={props.onFocusGroupInViewport}
@@ -148,7 +143,6 @@ function CanvasGroupBackgroundLayer(props: {
       <CanvasRootWatermarkLayer
         groups={orderedGroups}
         enabled={props.workspaceRootWatermarksEnabled}
-        selectedGroupIds={selectedGroupIds}
         zoom={props.zoom}
       />
     </div>
@@ -158,7 +152,6 @@ function CanvasGroupBackgroundLayer(props: {
 function CanvasRootWatermarkLayer(props: {
   groups: readonly CanvasGroupSummary[];
   enabled: boolean;
-  selectedGroupIds: ReadonlySet<string>;
   zoom: number;
 }): JSX.Element | null {
   if (!props.enabled) {
@@ -177,7 +170,7 @@ function CanvasRootWatermarkLayer(props: {
           key={`watermark-${group.id}`}
           className="canvas-root-watermark-frame"
           data-root-watermark-frame-id={group.id}
-          style={createCanvasGroupFrameStyle(group, props.zoom, props.selectedGroupIds.has(group.id), true)}
+          style={createCanvasGroupFrameStyle(group, props.zoom)}
         >
           <div
             className="canvas-root-watermark-tile"
@@ -194,7 +187,6 @@ function CanvasRootWatermarkLayer(props: {
 
 function CanvasGroupBackgroundFrame(props: {
   group: CanvasGroupSummary;
-  selected: boolean;
   zoom: number;
   onSelectGroupBody: (
     groupId: string,
@@ -209,7 +201,7 @@ function CanvasGroupBackgroundFrame(props: {
       className={`canvas-group-background-frame${isWorkspaceRootGroup ? ' is-workspace-root' : ''}`}
       data-group-background-id={props.group.id}
       data-group-background-role={isWorkspaceRootGroup ? 'workspace-root' : 'user'}
-      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected, false)}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, false)}
     >
       <div
         className="canvas-group-background-body-hit-area"
@@ -246,7 +238,6 @@ function CanvasGroupLayer(props: {
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
-  onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
   onDragPointerMove: (
     event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
@@ -289,7 +280,6 @@ function CanvasGroupLayer(props: {
           onMoveGroup={props.onMoveGroup}
           onResizeGroup={props.onResizeGroup}
           onUpdateGroupTitle={props.onUpdateGroupTitle}
-          onUngroup={props.onUngroup}
           onDeleteGroup={props.onDeleteGroup}
           onDragPointerMove={props.onDragPointerMove}
           onDragEnd={props.onDragEnd}
@@ -524,7 +514,6 @@ function CanvasGroupFrame(props: {
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
-  onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
   onDragPointerMove: (
     event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
@@ -572,7 +561,6 @@ function CanvasGroupFrame(props: {
     position: CanvasNodePosition;
     pointerPosition: CanvasNodePosition;
   } | null>(null);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
   const ignoreNextClickSelectionRef = useRef(false);
   const latestPropsRef = useRef(props);
 
@@ -926,10 +914,12 @@ function CanvasGroupFrame(props: {
     if (event.button !== 0) {
       return;
     }
-    if (isInteractiveTarget(event.target)) {
+    const continuesTitlebarClick = source === 'titlebar' && !event.ctrlKey && !event.metaKey &&
+      event.target instanceof HTMLElement && Boolean(event.target.closest('.canvas-group-toolbar')) &&
+      takeTitlebarDoubleClickPointerIntent(event);
+    if (isInteractiveTarget(event.target) && !continuesTitlebarClick) {
       if (source === 'titlebar') {
         clearTitlebarPointerClickMemory();
-        stopCanvasEvent(event);
       }
       return;
     }
@@ -944,21 +934,10 @@ function CanvasGroupFrame(props: {
 
     let isDoubleClickCandidate = false;
     if (source === 'titlebar') {
-      isDoubleClickCandidate = takeTitlebarDoubleClickPointerIntent(event);
-      const isTitleText = event.target instanceof HTMLElement &&
-        Boolean(event.target.closest('.window-title-text'));
-      if (!isTitleText || !props.selected) {
-        event.preventDefault();
-        stopCanvasEvent(event);
-        // Selection mounts resize controls above the titlebar. Keep this first
-        // click on the titlebar so a second press can reuse its click memory.
-        event.currentTarget.setPointerCapture(event.pointerId);
-        props.onSelectGroup(props.group.id);
-        clearTitlebarPointerClickMemory();
-        return;
-      }
+      isDoubleClickCandidate = continuesTitlebarClick || takeTitlebarDoubleClickPointerIntent(event);
     }
 
+    event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     stopCanvasEvent(event);
     props.onSelectGroup(props.group.id);
@@ -1065,7 +1044,7 @@ function CanvasGroupFrame(props: {
     <div
       className={`canvas-group-frame nodrag nopan${props.selected ? ' is-selected' : ''}`}
       data-group-id={props.group.id}
-      style={createCanvasGroupFrameStyle(props.group, props.zoom, props.selected)}
+      style={createCanvasGroupFrameStyle(props.group, props.zoom, false)}
       onPointerDownCapture={handleModifierSelectionPointerDownCapture}
       onClickCapture={(event) => {
         if (!ignoreNextClickSelectionRef.current) {
@@ -1100,7 +1079,7 @@ function CanvasGroupFrame(props: {
       <div className="canvas-group-body" aria-hidden="true" />
       <div
         className="canvas-group-titlebar"
-        onPointerDown={(event) => beginDrag(event, 'titlebar')}
+        onPointerDownCapture={(event) => beginDrag(event, 'titlebar')}
         onClick={(event) => {
           if (event.ctrlKey || event.metaKey || isGroupChromeFocusBlockedTarget(event.target)) {
             clearTitlebarPointerClickMemory();
@@ -1127,6 +1106,29 @@ function CanvasGroupFrame(props: {
           onSubmit={isWorkspaceRootGroup ? undefined : (title) => props.onUpdateGroupTitle(props.group.id, title)}
           onSelectNode={() => selectGroup()}
         />
+        {props.selected && !isWorkspaceRootGroup ? (
+          <div
+            className="canvas-group-toolbar"
+            data-group-toolbar="true"
+            data-node-interactive="true"
+            onPointerDown={stopCanvasEvent}
+            onMouseDown={stopCanvasEvent}
+            onClick={stopCanvasEvent}
+          >
+            <button
+              type="button"
+              className="action-button danger compact nodrag nopan"
+              onKeyDown={stopCanvasEvent}
+              onClick={(event) => {
+                stopCanvasEvent(event);
+                clearTitlebarPointerClickMemory();
+                props.onDeleteGroup(props.group.id);
+              }}
+            >
+              <span className="action-button-label">{props.t('group.action.delete')}</span>
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="canvas-group-border canvas-group-border-top" onPointerDown={(event) => beginDrag(event, 'border')} />
       <div className="canvas-group-border canvas-group-border-right" onPointerDown={(event) => beginDrag(event, 'border')} />
@@ -1154,38 +1156,6 @@ function CanvasGroupFrame(props: {
             />
           ))}
         </>
-      ) : null}
-      {props.selected && !isWorkspaceRootGroup ? (
-        <div
-          ref={toolbarRef}
-          className="canvas-group-toolbar"
-          data-group-toolbar="true"
-          data-node-interactive="true"
-          onPointerDown={stopCanvasEvent}
-          onMouseDown={stopCanvasEvent}
-          onClick={stopCanvasEvent}
-        >
-          <button
-            type="button"
-            className="canvas-group-split-primary"
-            onClick={(event) => {
-              stopCanvasEvent(event);
-              props.onUngroup(props.group.id);
-            }}
-          >
-            {props.t('group.action.ungroup')}
-          </button>
-          <button
-            type="button"
-            className="canvas-group-split-danger"
-            onClick={(event) => {
-              stopCanvasEvent(event);
-              props.onDeleteGroup(props.group.id);
-            }}
-          >
-            {props.t('group.action.delete')}
-          </button>
-        </div>
       ) : null}
     </div>
   );
