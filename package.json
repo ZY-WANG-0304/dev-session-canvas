@@ -80,6 +80,7 @@
     "test:runtime-persistence-walkthrough": "node scripts/smoke/run-runtime-persistence-walkthrough.mjs",
     "test:runtime-root-preparation": "npm run test:runtime-persistence-setup && node scripts/test/test-runtime-global-storage.mjs && node scripts/test/test-runtime-root-owner-storage.mjs && node scripts/test/test-runtime-root-preparation-client.mjs && node scripts/test/test-runtime-systemd-environment.mjs && node scripts/test/test-smoke-systemd-probe.mjs && node scripts/test/test-runtime-root-preparation.mjs",
     "test:runtime-supervisor-startup-profile": "node scripts/test/test-runtime-supervisor-startup-profile.mjs && node scripts/test/test-runtime-supervisor-reader-client.mjs",
+    "test:runtime-replacement-journal": "node scripts/test/test-runtime-replacement-journal.mjs",
     "test:runtime-supervisor-namespace": "node scripts/test/test-runtime-supervisor-namespace.mjs && node scripts/test/test-runtime-socket-listener.mjs",
     "test:execution-runtime-selection": "node scripts/test/test-execution-runtime-selection.mjs",
     "test:vscode-execution-candidate": "node scripts/smoke/run-vscode-execution-candidate.mjs",

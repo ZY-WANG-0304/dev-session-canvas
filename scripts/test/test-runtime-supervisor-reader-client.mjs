@@ -736,6 +736,35 @@ test('strict deletion connects without restart and rechecks the original deadlin
   }
 });
 
+test('all strict observations sharing one connection receive the handshake failure phase', async () => {
+  const clock = deleteClock();
+  const socket = new ControlledSocket();
+  socket.respond = request => request.method === 'hello' ? undefined : assert.fail(
+    'a failed handshake cannot submit deletion');
+  let acquisitions = 0;
+  controlledConnect = () => { acquisitions++; return socket; };
+  const client = new RuntimeSupervisorClient({ backend: { paths: { socketPath: '/controlled-only' },
+    startSupervisor: forbidden }, supervisorScriptPath: '/never', supervisorLauncherScriptPath: '/never' });
+  clients.push(client);
+  try {
+    const first = client.deleteSessionStrict({ sessionId: 'strict-shared-first' }, { deadline: 20, scheduler: clock });
+    const second = client.deleteSessionStrict({ sessionId: 'strict-shared-second' }, { deadline: 20, scheduler: clock });
+    assert.equal(acquisitions, 1);
+    socket.emit('connect');
+    await turns(8);
+    const handshakes = socket.messages.filter(message => message.method === 'hello');
+    assert.equal(handshakes.length, 1);
+    socket.emit('data', `${JSON.stringify({ type: 'response', id: handshakes[0].id, ok: false,
+      error: { message: 'controlled endpoint absent', code: 'ENOENT' } })}\n`);
+    const results = await Promise.all([first.first, second.first]);
+    assert.deepEqual(results.map(result => result.kind), ['unconfirmed', 'unconfirmed']);
+    assert.deepEqual([first.phase, second.phase], ['handshake', 'handshake'],
+      'a late observation cannot report connecting after the shared hello has started');
+    assert.deepEqual([first.submitted, second.submitted], [false, false]);
+    assert.equal(socket.messages.filter(message => message.method === 'deleteSession').length, 0);
+  } finally { client.dispose(); controlledConnect = undefined; }
+});
+
 test('candidate create requires both the announced profile and reader chain on the original connection', async () => {
   const profile = 'linux-owner-v1-candidate';
   for (const capability of ['none', 'profile-only', 'complete']) {

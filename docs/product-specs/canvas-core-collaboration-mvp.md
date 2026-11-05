@@ -172,7 +172,7 @@
 - 当 Webview 被隐藏后重新显示时，当前活跃终端仍可重新附着，而不是无声丢失。
 - 当 Webview 被隐藏、重新显示或 reload 后，画布不会无声丢失所有对象状态。
 - 当窗口重开或扩展重启后，系统至少能恢复关键上下文，而不是回到全新空白页。
-- 当扩展重载前存在带有 provider 原生显式 session identity 的 snapshot-only `Agent` 会话时，系统可自动尝试 provider resume；若没有该 identity，节点应退化为 `interrupted` 或历史态，而不是恢复“最近一次会话”。live-runtime reattach 失败只恢复历史态并保留原绑定；provider resume 必须由用户显式发起，且先结算已有执行绑定。
+- 当扩展重载前存在带有 provider 原生显式 session identity 的 snapshot-only `Agent` 会话时，系统可自动尝试 provider resume；若没有该 identity，节点应退化为 `interrupted` 或历史态，而不是恢复“最近一次会话”。live-runtime reattach 失败只恢复历史态并保留原绑定；provider resume 必须由用户显式发起，且先结算已有执行绑定。若原绑定明确连接不可用，不得声称已停止；仅在没有活动执行、读者或共享责任时，先持久记录停止未确认回执并提示风险，之后才可建立新的显式执行。新的替换还必须有可在重载后追踪的预留执行身份；结果未知时只能接回或 quarantine，不能静默生成第二个执行。
 - 在 Restricted Mode 或相关能力不可用时，执行型操作会被禁用或退化，并给出明确反馈。
 - 当用户把默认主画布承载面改为 `panel` 后，点开其他文件不会再从同一宿主区域挤走主画布。
 - 当非活动宿主 surface 被用户展开时，它不会变成第二个可交互画布，也不会附着第二份执行会话。

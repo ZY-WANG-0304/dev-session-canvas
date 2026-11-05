@@ -19,6 +19,13 @@
 负责人：repository-maintainers。最新 run `41775499320` attempt 3 唯一产品失败为 packaged-host `agent-tui/tool-network-silence`：真实工具未完成，产品先进入 waiting-input。已用实际 Host 受控复现静默 fallback 与 prompt/spinner 共存两条路径，并确认后续 Working 输出不恢复 running；原 CI 未记录转换原因，不能确定实际触发分支，也不能归因于 PR 的尺寸修改。后续先补转换与 interaction capacity 取证，再以固定 CLI 验证无输出工具等待、输入确认及完成重绘；当前门禁仍失败，登记不等于解除阻塞。
 
 同 run attempt 2 只重跑失败 jobs，消费者请求 `-2` 的 plan/control 工件，而成功 producer 未重建，下载失败。当前应完整重跑；若支持局部重跑，必须保留并独立核验 producer/输入身份，不能任意回退旧工件。attempt 1 的 source-host remount 前 snapshot 消息超时尚未定位，后续完整重跑成功不关闭其历史调查。证据与修复边界见 [PR362 调查](../design-docs/pr362-ci-failure-investigation.md) 和 [已完成调查计划](completed/pr362-ci-failure-investigation.md)。
+## 2026-11-04：Runtime 替换 journal 的完整门禁与损坏恢复边界
+
+PR1/PR2/PR3 已在 `runtime-resume-unreachable-replacement` 工作树实现：strict delete 阶段白名单、`runtime-replacements-v1` 创建栅栏、连接前 journal reconcile、prepared 回滚、`not-acquired` 已结算回滚、bound-missing/`boundConfirmed` 回退、quarantine、rootless 键隔离、单次有界复探及删除/清空回执均已接通。两轮复审后 journal 写入/删除共享 per-record 跨进程锁（仅死 PID 可回收，malformed 与残留回收标记失败关闭，回收由 generation 标记串行化），批量删除按 `{operationId, phase, updatedAt}` 条件清理，阶段推进先补回执并保留记录；同进程 in-flight creation 的重复 Start 不进入 journal recovery，调用结束后的未知 reservation 仍可受控 reconcile。Runtime replacement 定向 Host `71/71`、journal 单测、reader client、root ownership、协议、startup profile、真实 socket、类型、本地化和 diff check 通过。完整 `test-host-execution-owner-wiring.mjs` 仍在既有 `detached restored ... restart uses target evidence` 用例失败（`creates` 实际 0、期望 1）；该失败和 `retires confirmed history before rejecting an incompatible replacement`（`inspections` 实际 0、期望 1）都已在未修改的 `origin/main@23418301` 干净 worktree 复现，按既有 Host 夹具/行为边界保留，不能用定向通过宣称全文件或完整门禁通过。
+
+剩余风险：第一，尚未在真实 VS Code UI 重放截图中的 Resume，也未用真实 Claude/Codex 登录验证并发 provider 会话；Linux 真实 socket 与受控 Host 夹具不能代证 macOS、Windows、Remote SSH、机器重启或 Supervisor 崩溃。第二，共享责任资格只检查本 Host 和当前可见共享 store，不能证明不可达 peer 或其他机器不存在同一执行，警告与回执仍只表达未知责任。第三，`listRuntimeReplacements()` 遇到单个损坏 JSON 会停止整批 reconcile，orphan journal（例如节点被其他窗口删除，或在最终清理完成后才写入的新 operation）也没有自动 GC；需要独立设计损坏记录隔离、归属清理和跨窗口可见性，不能在恢复路径里静默丢弃未知创建。第四，journal 写入执行文件 `sync` 和原子 `rename`，但没有目录 `fsync`；进程崩溃后可保留，机器掉电/文件系统崩溃的持久性仍未验证。第五，批量删除仍不是覆盖整个操作期的 root lease；责任指纹条件清理已经避免误删阶段推进或新 journal，但另一窗口在节点删除提交后写出的新责任仍可能成为 orphan，需要独立的重读/冲突收口或更广的跨窗口准入。第六，journal 锁在 malformed owner、回收标记写入/`sync`/`close` 失败或回收者崩溃时会失败关闭并阻断该记录；没有可靠的跨平台原子比较删除原语，本轮不自动清理 malformed 锁或残留回收标记，优先选择失败关闭而不是抢占仍可能提交的 owner。人工处置边界是删除对应 `.lock` 或 `.reclaim-*` 文件；删除前必须先停止或隔离所有可能访问该记录的 Host/回收者，不能仅凭文件“很旧”判断安全，产品未提供自动 GC。
+
+后续收口时应增加：损坏 journal 的隔离与汇总诊断、节点远端删除后的 orphan 清理、目录级持久性验证、批量删除提交后新 operation 的冲突收口测试，以及真实 UI + 真实 provider + 跨平台的具名验收。上述风险不影响本轮已证明的 pre-submit 端点缺失恢复、条件清理和“未知创建不生成第二个 UUID”边界，但不能被写成全局已解决。
 
 ## 2026-11-03：Release manifest 删除请求响应丢失时的恢复边界
 

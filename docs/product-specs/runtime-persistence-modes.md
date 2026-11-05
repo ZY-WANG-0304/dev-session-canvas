@@ -42,6 +42,9 @@ Root 归属增量（2026-10-08，有限交付完成）：新建 `live-runtime` T
    - 若之前的真实进程仍活着，节点会重新附着到原会话，并切回真实生命周期状态。
    - 若 Supervisor 确认进程已结束，节点保持已结束状态，不恢复正文，也不自动 start/resume。
    - 若监督器不可达或重新附着失败，Terminal / Agent 均保留原绑定与错误，落入历史/未附着状态；不得自动启动替身 Supervisor 或降级到 provider resume，也不能仅凭断连认定进程已结束。旧协议同样遵循此规则。Supervisor 崩溃或机器重启后不保证历史恢复。
+   - 用户随后显式 Resume、Start 或 Fork 时，若原节点仍是历史态、原绑定明确连接不可用且没有活动执行、读者或共享责任，Host 可先持久写入停止未确认回执并提示后台进程可能仍在运行，再解绑原绑定并建立新执行；该结果不表示原进程已停止。live 绑定、共享责任、handshake 断连、已提交删除、权限/owner 冲突和服务端确认失败仍阻断。
+   - 替换创建前先等待启动 metadata 和持久 journal 写入；预留 session identity 一旦进入可能已提交阶段，重载后只能按同一身份查询、接回或进入 quarantine，不得生成第二个 UUID。查询无法证明目标不存在时继续阻止自动启动，并保留停止未确认/创建未确认责任。
+   - Supervisor 明确返回未取得资源时记录为已结算的 `not-acquired`，后续可安全回滚并允许用户重试；已确认 bound 的执行若查询暂时不可达，只保留阻断而不丢失后续 session-not-found 的恢复资格。节点删除/清空只能清理准备阶段观察到的同一 `{operationId, phase, updatedAt}` 责任指纹；同 operation 阶段推进或并发出现的新责任都必须保留并补写回执。
 6. 当扩展升级且旧版 Supervisor 仍持有 live 会话时：
    - 旧会话继续由旧 Supervisor 承载，允许降级 output、input、resize、stop 与 delete；界面明确提示旧协议不能证明完整终端历史。
    - 升级后新建的 Agent / Terminal 立即由当前协议代 Supervisor 承载，不等待旧会话结束。

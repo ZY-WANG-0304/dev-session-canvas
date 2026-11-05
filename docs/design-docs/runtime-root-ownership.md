@@ -16,7 +16,7 @@ related_specs:
 related_plans:
   - docs/exec-plans/completed/runtime-root-ownership.md
   - docs/exec-plans/completed/runtime-root-ownership-design.md
-updated_at: 2026-10-11
+updated_at: 2026-11-05
 ---
 
 # Root 稳定的 Runtime 归属
@@ -158,7 +158,7 @@ Linux 优先 systemd 的产品策略保持，但 backend 不是另一个 owner�
 
 `retireLegacyRuntimeSupervisorClientIfUnused()` 不再以“唯一 current path”区分新旧：当前 owner 集合按 root 维护，退休判断按实际 client 上的 live/reattaching session、reader、未决 RPC 和回调责任。Host 释放 client 不等于命令 Supervisor 退出；后者仍在所有连接、会话和未结责任均收敛后自行闲置退出。移除 root、关闭最后一个本地视图或 profile 改变，均不能推断其他窗口不存在。
 
-明确的 root/group clear、模板 reset 或节点 delete 只处理选定集合的完整绑定，允许正常共享 session 在其他窗口同步结束，不终止未选会话。保持旧历史清理的 fresh 原 owner 观察、目标级证据和 `unconfirmed` 保护；`history-restored` 或 registry 旧终态不能单独放宽新旧 owner 的安全边界。不清空整个旧 registry、不顺带退役其他 root。当前页面尾部、最终状态应用、读者取消与资源释放仍分别结算。
+明确的 root/group clear、模板 reset 或节点 delete 只处理选定集合的完整绑定，允许正常共享 session 在其他窗口同步结束，不终止未选会话。保持旧历史清理的 fresh 原 owner 观察、目标级证据和 `unconfirmed` 保护；`history-restored` 或 registry 旧终态不能单独放宽新旧 owner 的安全边界。显式 Resume/Start/Fork 遇到原绑定明确不可达时，只有在删除未提交、端点缺失白名单命中、无其他执行/读者/共享责任且先写入停止未确认回执后才可替换；替换 journal 以 canonical root + root-local node ID + kind 为键，并在共享 root lease 内完成 reconcile 与提交，具体见 [失联节点删除与通信入口恢复](runtime-socket-recovery.md)。rootless 画布改用 workspace-scoped storage，不能与其他 rootless 窗口共用 global storage 键。不清空整个旧 registry、不顺带退役其他 root。当前页面尾部、最终状态应用、读者取消与资源释放仍分别结算。
 
 不为本项新增历史目录自动 GC：旧记录可保留待现有精确清理或后续独立整理，不能把无引用猜测当作删除资格。版本回退不改新地址或强停新 live；旧扩展无法证明新 owner 能力时明确显示不兼容，旧数据备份仍可用于诊断，不承诺无损降级操控新协议。
 

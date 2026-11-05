@@ -12,7 +12,8 @@ related_specs:
   - docs/product-specs/runtime-persistence-modes.md
 related_plans:
   - docs/exec-plans/completed/runtime-legacy-reconnect-retirement.md
-updated_at: 2026-10-09
+  - docs/exec-plans/active/runtime-replacement-durable-recovery.md
+updated_at: 2026-11-05
 ---
 
 # 旧协议重连与退役语义统一
@@ -35,7 +36,11 @@ updated_at: 2026-10-09
 
 `CanvasPanelManager` 的初次恢复连接失败、attach 失败和非分页已附着会话断连，统一使用既有 history-restored 路径。保留 backend/storage/session/kind 及 owner、原错误和 provider resume 上下文，清除待自动启动意图；不推断原执行退出，不把历史态作为删除成功证据。删除 `maybeFallbackAgentLiveRuntimeToResume()` 的自动转换，正常分页重连和 snapshot-only 的既有恢复语义不变。
 
-加载旧 live-runtime 的 history-restored + pendingLaunch=resume 记录时取消该旧自动降级意图，包括旧版本已丢失 runtimeSessionId 的记录；缺 ID 的 live/reattaching 也不能落入 snapshot-only 自动恢复。不能猜回原 binding。取消旧意图时同步移除 summary 中的旧自动 resume 承诺，优先保留已有 Runtime 错误。provider identity 保留供用户显式 resume/fork。用户显式操作仍受已有旧绑定结算保护，未知旧执行不能直接覆盖；本次不增加新的 resume 消息或启动方式。
+加载旧 live-runtime 的 history-restored + pendingLaunch=resume 记录时取消该旧自动降级意图，包括旧版本已丢失 runtimeSessionId 的记录；缺 ID 的 live/reattaching 也不能落入 snapshot-only 自动恢复。不能猜回原 binding。取消旧意图时同步移除 summary 中的旧自动 resume 承诺，优先保留已有 Runtime 错误。provider identity 保留供用户显式 resume/fork。用户显式操作仍按原绑定逐项重新证明，未知旧执行不能在无回执时直接覆盖；本次不增加新的 resume 消息或启动方式。
+
+2026-11-04 补充：显式 Resume/Start/Fork 的旧 runtime 严格删除若得到明确的连接不可用（包括 root socket 目录缺失的 `ENOENT`），Host 只在删除 observation 未提交、已结算且阶段/错误码属于端点缺失白名单时，先持久写入 `unconfirmed-runtime-deletions-v1` 的 `runtime-replacement` 回执并提示后台进程可能仍在运行，再解绑旧绑定并建立新执行。该例外不推断原执行退出，不把不可达写成已停止；live 绑定、共享责任、handshake 断连、已提交 RPC、权限/owner 冲突和未分类删除失败继续阻断。
+
+新执行在提交 `createSession` 前必须先写 `runtime-replacements-v1` 的 `prepared` 和 `create-may-have-been-submitted` 记录并等待落盘，且节点启动 metadata 的保存也必须完成。进入提交未知阶段后，Host 只能按预留 session UUID 查询和接回；查询不明确、最终节点保存失败或身份不匹配时保持 quarantine，不能把 `sessionAlreadyExists` 或断连当作普通可重试失败，也不能生成第二个 UUID。目标 namespace 已不可达时允许在连接前 quarantine，不允许重启旧 Supervisor 或重建用户 socket 目录来“恢复”。
 
 ### 退役只释放已无本地责任的 client
 
@@ -60,3 +65,5 @@ client 的 hasPendingRequests 同时覆盖 connectPromise 和 strictDeleteConnec
 Linux / VS Code 1.117.0 的 `runtime-legacy-reconnect` 两场景通过：默认 native 构建中显式创建一个 Terminal 端点，缺失原会话的 Agent/Terminal 保留绑定，旧 pending resume 记录不自动启动。此处验证实际 Host/Webview 接线，旧传输竞态由受控 client 与 Host 用例覆盖，不把它写成历史二进制升级、真实 Codex/Claude 或跨平台验收。前三轮目录权限/夹具启动前置失败、第四轮通过和清理记录见 completed ExecPlan；历史失败保留，不用本轮结果追认旧平台通过。
 
 2026-10-09（PR #312 review 修复）：同 data 并行严格删除先红后绿。真实 Host 批量入口及真实 client 覆盖两条 success/sessionNotFound 的四种组合，最后观察结算后才退役；再次整批操作不重发。client 36/36、timeout 37/37、Host legacy reconnect/deactivation/completed、Host wiring 定向 15/15（选自 336 项）、类型、默认构建及 diff check 通过。独立复核通过；已结算未知记录不持有 client，deadline、迟到证据与 finalization 不变，未重复无影响的原生、Agent 或页面矩阵。
+
+2026-11-04/05：历史态断连替换完成 PR1/PR2/PR3，并按两轮 HORIZON-OG-Astra 复审补齐恢复后 reservation 结算、共享 strict handshake 阶段、`not-acquired` 已结算阶段、bound 瞬时断连、死 PID-only 锁回收（malformed 与残留回收标记失败关闭）、`operationId + phase + updatedAt` 责任指纹条件清理及 in-flight 重复 Start 拒绝。Runtime replacement 相关 Host 定向 71/71，覆盖显式 Resume/Start、live/共享/owner 冲突、pre-submit 有界复探、submitted/handshake/timeout 阻断、回执写入失败、prepared 回滚、bound-missing、连接前 quarantine、rootless 键隔离、组清空责任、批量删除交错、同 operation 阶段推进、in-flight 重复 Start，以及调用结束后未知 reservation 的受控 reconcile；journal 单测、reader client 39/39、root ownership 定向 19/19、协议、startup profile、真实 Unix socket 恢复、类型、本地化及 diff check 通过。未执行真实 VS Code UI Resume 重放；完整 Host 文件的既有 `detached restored ... restart uses target evidence` 失败已在 `origin/main@23418301` 独立复现，本次另将 `retires confirmed history before rejecting an incompatible replacement` 基线失败在同一干净基线复现，均不作为本次结果。

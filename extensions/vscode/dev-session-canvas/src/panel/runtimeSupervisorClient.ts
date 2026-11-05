@@ -77,10 +77,19 @@ export interface StrictRuntimeDeleteResult {
   readonly error?: Error;
 }
 
+export type StrictRuntimeDeletePhase =
+  | 'preparing'
+  | 'socket-directory'
+  | 'connecting'
+  | 'handshake'
+  | 'dispatching'
+  | 'submitted';
+
 export interface StrictRuntimeDeleteObservation {
   readonly first: Promise<StrictRuntimeDeleteResult>;
   readonly submitted: boolean;
   readonly attemptSettled: boolean;
+  readonly phase: StrictRuntimeDeletePhase;
   current(): StrictRuntimeDeleteResult | undefined;
 }
 
@@ -141,7 +150,11 @@ export class RuntimeSupervisorClient {
     preserveTerminalReads: boolean;
     observation: StrictRuntimeDeleteObservation;
   }>();
-  private strictDeleteConnection?: Promise<net.Socket>;
+  private strictDeleteConnection?: {
+    readonly promise: Promise<net.Socket>;
+    readonly phase: () => StrictRuntimeDeletePhase;
+    readonly listeners: Set<(phase: StrictRuntimeDeletePhase) => void>;
+  };
 
   public constructor(private readonly options: RuntimeSupervisorClientOptions) {
     const storageDir = options.backend.paths?.storageDir;
@@ -523,13 +536,15 @@ export class RuntimeSupervisorClient {
     const request = Object.freeze({ ...params });
     let submitted = false;
     let attemptSettled = false;
+    let phase: StrictRuntimeDeletePhase = 'preparing';
     let first: StrictRuntimeDeleteResult | undefined;
     let current: StrictRuntimeDeleteResult | undefined;
     let resolve!: (result: StrictRuntimeDeleteResult) => void;
     let cancelDeadline: (() => void) | undefined;
     const observation: StrictRuntimeDeleteObservation = Object.freeze({
       first: new Promise<StrictRuntimeDeleteResult>(done => { resolve = done; }),
-      get submitted() { return submitted; }, get attemptSettled() { return attemptSettled; }, current: () => current
+      get submitted() { return submitted; }, get attemptSettled() { return attemptSettled; },
+      get phase() { return phase; }, current: () => current
     });
     this.strictDeletes.set(request.sessionId, { preserveTerminalReads: request.preserveTerminalReads === true, observation });
     const recordFirst = (result: StrictRuntimeDeleteResult): void => {
@@ -560,6 +575,7 @@ export class RuntimeSupervisorClient {
     void (async () => {
       let socket: net.Socket | undefined;
       let responseError: Error | undefined;
+      let dispatchAttempted = false;
       try {
         if (!canSubmit()) {
           finish({ kind: 'unconfirmed', reason: 'The original deletion binding or deadline is no longer current.' });
@@ -567,20 +583,30 @@ export class RuntimeSupervisorClient {
         }
         socket = this.socket;
         if (!socket || socket.destroyed || !this.helloResult) {
-          socket = await this.connectForStrictDelete(deadline, scheduler);
+          phase = this.expectedRuntimeOwner ? 'socket-directory' : 'connecting';
+          socket = await this.connectForStrictDelete(deadline, scheduler, nextPhase => { phase = nextPhase; });
         }
         if (!canSubmit(socket)) {
           finish({ kind: 'unconfirmed', reason: 'The original deletion connection, binding or deadline changed before submission.' });
           return;
         }
-        submitted = true;
+        phase = 'dispatching';
         // The strict observation already has a deadline and must retain late evidence.
         await this.requestOnConnectedSocket('deleteSession', request, socket, error => { responseError = error; },
-          undefined, 'strict-delete');
+          undefined, 'strict-delete', undefined, () => {
+            submitted = true;
+            phase = 'submitted';
+          }, () => { dispatchAttempted = true; });
         finish(this.socket === socket && !socket.destroyed && !this.disposed
           ? { kind: 'legacy-acknowledged' }
           : { kind: 'unconfirmed', reason: 'The original deletion connection changed before its result was observed.' });
       } catch (error) {
+        if (dispatchAttempted) {
+          // A throwing socket write may still have accepted part of the request. Treat it
+          // as submitted-unknown so a later click cannot replay deletion or replace the
+          // predecessor through the pre-submit connection exception.
+          submitted = true;
+        }
         const normalized = error instanceof Error ? error : new Error(String(error));
         const originalResponse = responseError === error && socket === this.socket && !socket?.destroyed && !this.disposed;
         const absent = originalResponse && (normalized as Error & { code?: string }).code === RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound;
@@ -591,25 +617,51 @@ export class RuntimeSupervisorClient {
     return observation;
   }
 
-  private connectForStrictDelete(deadline: number, scheduler: ExecutionScheduler): Promise<net.Socket> {
-    if (this.strictDeleteConnection) return this.strictDeleteConnection;
+  private connectForStrictDelete(
+    deadline: number,
+    scheduler: ExecutionScheduler,
+    onPhase?: (phase: StrictRuntimeDeletePhase) => void
+  ): Promise<net.Socket> {
+    const existing = this.strictDeleteConnection;
+    if (existing) {
+      if (onPhase) {
+        existing.listeners.add(onPhase);
+        onPhase(existing.phase());
+        return existing.promise.finally(() => existing.listeners.delete(onPhase));
+      }
+      return existing.promise;
+    }
     if (this.connectPromise) return Promise.reject(new Error('An unrelated runtime connection attempt is already in flight.'));
+    let phase: StrictRuntimeDeletePhase = this.socket && !this.socket.destroyed ? 'connecting'
+      : this.expectedRuntimeOwner ? 'socket-directory' : 'connecting';
+    const listeners = new Set<(phase: StrictRuntimeDeletePhase) => void>();
+    if (onPhase) listeners.add(onPhase);
+    const updatePhase = (next: StrictRuntimeDeletePhase): void => {
+      phase = next;
+      for (const listener of listeners) listener(next);
+    };
     const operation = (async () => {
       let socket = this.socket;
       if (!socket || socket.destroyed) socket = await this.connectStrictDeleteSocket(deadline, scheduler);
       if (scheduler.now() >= deadline || this.disposed || this.socket !== socket || socket.destroyed) {
         throw new Error('The original strict connection deadline or identity is no longer current.');
       }
+      updatePhase('handshake');
       if (!this.helloResult) await this.performHelloHandshake();
       if (scheduler.now() >= deadline || this.disposed || this.socket !== socket || socket.destroyed) {
         throw new Error('The original strict handshake deadline or identity is no longer current.');
       }
       return socket;
     })();
-    this.strictDeleteConnection = operation;
-    const clear = (): void => { if (this.strictDeleteConnection === operation) this.strictDeleteConnection = undefined; };
+    const attempt = {
+      promise: operation,
+      phase: (): StrictRuntimeDeletePhase => phase,
+      listeners
+    };
+    this.strictDeleteConnection = attempt;
+    const clear = (): void => { if (this.strictDeleteConnection === attempt) this.strictDeleteConnection = undefined; };
     void operation.then(clear, clear);
-    return operation;
+    return onPhase ? operation.finally(() => listeners.delete(onPhase)) : operation;
   }
 
   private async connectStrictDeleteSocket(deadline: number, scheduler: ExecutionScheduler): Promise<net.Socket> {
@@ -697,7 +749,8 @@ export class RuntimeSupervisorClient {
   private requestOnConnectedSocket<T>(method: string, params?: unknown, expectedSocket?: net.Socket,
     responseError?: (error: Error) => void, responseResult?: (value: unknown) => void,
     deadline: number | 'strict-delete' = performance.now() + REQUEST_TIMEOUT_MS,
-    onTimeout?: (lateResponse: Promise<T>) => void): Promise<T> {
+    onTimeout?: (lateResponse: Promise<T>) => void, onSubmitted?: () => void,
+    onDispatchAttempt?: () => void): Promise<T> {
     const socket = this.socket;
     if (!socket || socket.destroyed || this.disposed || (expectedSocket && socket !== expectedSocket)) {
       throw createRuntimeSupervisorProtocolError({
@@ -768,7 +821,9 @@ export class RuntimeSupervisorClient {
       if (typeof deadline === 'number' && performance.now() >= deadline) {
         throw this.createRequestTimeoutError(method);
       }
+      onDispatchAttempt?.();
       socket.write(`${JSON.stringify(message)}\n`);
+      onSubmitted?.();
     } catch (error) {
       const pending = this.takePendingRequest(id);
       pending?.reject(error instanceof Error ? error : new Error(String(error)));
