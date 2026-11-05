@@ -39,6 +39,7 @@ import type {
   CanvasEdgeArrowMode,
   CanvasEdgeColor,
   CanvasEdgeSummary,
+  CanvasNodeCreationViewport,
   CanvasNodeKind,
   CanvasNodeFootprint,
   CanvasNodePosition,
@@ -105,7 +106,7 @@ import {
   type TerminalStreamAttachPayload
 } from '../common/terminalSessionStream';
 import {
-  estimatedCanvasNodeFootprint,
+  estimatedCanvasNodeFootprintForViewport,
   isCanvasNodeKind,
   normalizeCanvasNodeFootprint
 } from '../common/protocol';
@@ -4885,12 +4886,15 @@ function App(): JSX.Element {
           onCreate={(kind, agentProvider, agentLaunchPreset, agentCustomLaunchCommand) => {
             createNode(
               kind,
-              resolveCreateNodePreferredPositionFromFlowAnchor(kind, contextMenu.flowAnchor),
+              undefined,
               contextMenu.targetGroupId,
               agentProvider,
               agentLaunchPreset,
               agentCustomLaunchCommand,
-              { creationAnchor: { position: contextMenu.flowAnchor, zoom: contextMenu.zoom } }
+              {
+                creationAnchor: { position: contextMenu.flowAnchor, zoom: contextMenu.zoom },
+                preferredFlowAnchor: contextMenu.flowAnchor
+              }
             );
             closePaneContextMenu();
           }}
@@ -5069,6 +5073,8 @@ function App(): JSX.Element {
     options?: {
       skipWorkspaceTrustCheck?: boolean;
       cwd?: string;
+      creationViewport?: CanvasNodeCreationViewport;
+      preferredFlowAnchor?: CanvasNodePosition;
       useDefaultPlacement?: boolean;
       creationAnchor?: { position: CanvasNodePosition; zoom: number };
     }
@@ -5084,10 +5090,20 @@ function App(): JSX.Element {
     }
 
     const requestId = createManualNodeCreateRequestId();
+    const activeSurface = activeCanvasSurfaceRef.current;
+    const activeCanvasShell = activeSurface.shell ?? canvasShellRef.current;
+    const activeReactFlow = activeSurface.flow ?? reactFlowRef.current;
+    const creationViewport = options?.creationViewport ?? resolveCanvasNodeCreationViewport(
+      kind,
+      canvasViewportSize,
+      canvasShellRef.current
+    );
     const resolvedPreferredPosition =
       options?.useDefaultPlacement === true
         ? undefined
-        : preferredPosition ?? resolveCreateNodePreferredPosition(kind, reactFlowRef.current);
+        : preferredPosition ?? (options?.preferredFlowAnchor
+          ? resolveCreateNodePreferredPositionFromFlowAnchor(kind, options.preferredFlowAnchor, creationViewport)
+          : resolveCreateNodePreferredPosition(kind, activeReactFlow, creationViewport, activeCanvasShell));
     const resolvedAgentProvider = kind === 'agent' ? agentProvider ?? runtimeContext.defaultAgentProvider : undefined;
     const resolvedAgentLaunchPreset = kind === 'agent' ? agentLaunchPreset ?? 'default' : undefined;
     pendingManualCreateRequestRef.current = {
@@ -5109,6 +5125,7 @@ function App(): JSX.Element {
         kind,
         preferredPosition: resolvedPreferredPosition,
         ...(options?.creationAnchor ? { creationAnchor: options.creationAnchor } : {}),
+        creationViewport,
         targetGroupId,
         cwd: options?.cwd,
         agentProvider,
@@ -6834,30 +6851,55 @@ function shallowEqualCanvasNodeLayoutDrafts(
 
 function resolveCreateNodePreferredPosition(
   kind: CanvasCreatableNodeKind,
-  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null
+  reactFlowInstance: ReactFlowInstance<CanvasNodeData> | null,
+  creationViewport?: CanvasNodeCreationViewport,
+  canvasShellElement?: HTMLDivElement | null
 ): CanvasNodePosition | undefined {
   if (!reactFlowInstance || !reactFlowInstance.viewportInitialized) {
     return undefined;
   }
 
-  const viewportCenter = reactFlowInstance.screenToFlowPosition({
-    x: Math.round(window.innerWidth * 0.5),
-    y: Math.round(window.innerHeight * 0.55)
-  });
+  const canvasBounds = canvasShellElement?.getBoundingClientRect();
+  const viewportCenter = reactFlowInstance.screenToFlowPosition(
+    canvasBounds
+      ? {
+          x: Math.round(canvasBounds.left + canvasBounds.width * 0.5),
+          y: Math.round(canvasBounds.top + canvasBounds.height * 0.55)
+        }
+      : {
+          x: Math.round(window.innerWidth * 0.5),
+          y: Math.round(window.innerHeight * 0.55)
+        }
+  );
 
-  return resolveCreateNodePreferredPositionFromFlowAnchor(kind, viewportCenter);
+  return resolveCreateNodePreferredPositionFromFlowAnchor(kind, viewportCenter, creationViewport);
 }
 
 function resolveCreateNodePreferredPositionFromFlowAnchor(
   kind: CanvasCreatableNodeKind,
-  flowAnchor: CanvasNodePosition
+  flowAnchor: CanvasNodePosition,
+  creationViewport?: CanvasNodeCreationViewport
 ): CanvasNodePosition {
-  const footprint = estimatedCanvasNodeFootprint(kind);
+  const footprint = estimatedCanvasNodeFootprintForViewport(kind, creationViewport);
 
   return {
     x: Math.round(flowAnchor.x - footprint.width / 2),
     y: Math.round(flowAnchor.y - footprint.height / 2)
   };
+}
+
+function resolveCanvasNodeCreationViewport(
+  kind: CanvasCreatableNodeKind,
+  fallbackSize: CanvasViewportSize,
+  canvasShellElement: HTMLDivElement | null
+): CanvasNodeCreationViewport | undefined {
+  if (kind !== 'agent' && kind !== 'terminal') {
+    return undefined;
+  }
+
+  const width = Math.max(1, Math.round(canvasShellElement?.clientWidth || fallbackSize.width));
+  const height = Math.max(1, Math.round(canvasShellElement?.clientHeight || fallbackSize.height));
+  return { width, height };
 }
 
 function parseHandleAnchor(handleId: string | null | undefined): CanvasEdgeSummary['sourceAnchor'] | undefined {

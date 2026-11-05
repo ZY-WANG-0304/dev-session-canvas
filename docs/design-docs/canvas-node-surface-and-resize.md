@@ -15,7 +15,7 @@ related_specs:
   - docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-surface-and-resize-polish.md
-updated_at: 2026-11-04
+updated_at: 2026-11-05
 ---
 
 # 节点窗口表面与通用尺寸设计
@@ -116,7 +116,8 @@ updated_at: 2026-11-04
 - 对 Agent / Terminal，Webview 本地 resize 草稿也不得逐帧改写 PTY 字符网格；手势期冻结现有 xterm `cols/rows`，结束后只提交最终稳定尺寸。普通布局抖动、纯位置拖动与本地 redraw 的详细边界见 `docs/design-docs/execution-terminal-resize-coalescing.md`。
 - `executionSessionNodes.tsx` 中 Agent 与 Terminal 的 `fitTerminal()` 在应用首轮 `FitAddon.fit()` 后重新测量一次 proposal；若 cell metric 重测使 proposal 与 xterm 实际几何仍不同，最多再补一次 fit。每次 proposal 都必须通过现有快照恢复 shrink guard；单次调用最多两次 fit，不做无界循环，向 Host 上报最终 xterm 实际 `cols/rows`。
 - 宿主在加载旧状态时补默认尺寸，在创建新节点和避碰时优先使用节点实际尺寸。
-- 新建 `Agent` 与 `Terminal` 的默认外框均为 `760 x 560`，由 `common/protocol.ts` 的 `estimatedCanvasNodeFootprint` 统一提供给创建、缺失尺寸回退和新节点避碰；已有显式尺寸及模板中显式保存的尺寸保持不变。该默认宽度为常见 80 列终端留出边距，高度则增加初始可见行数，减少 TUI 换行和底部信息被裁切。
+- 新建 `Agent` 与 `Terminal` 使用两个初始尺寸档位：宽裕档 `760 x 560`、紧凑档 `680 x 500`。Webview 创建执行节点时，把主画布容器 `.canvas-shell` 的 CSS 像素宽高交给宿主；`common/protocol.ts` 的 `estimatedCanvasNodeFootprintForViewport` 按容器宽高选择档位：宽裕档的宽、高都不超过可视区域对应轴的 84% 时选宽裕档，否则选紧凑档。该规则使用 VS Code 当前可用画布区域而非显示器原生分辨率，也不受当前 pane/root zoom 影响，从而避免在 Pane Gallery 中按非目标 root 的活动 surface 误选档；尺寸仅在创建时计算一次。节点实际选中尺寸作为宿主权威状态持久化，并用于同一轮新建避碰。无可用画布 viewport 的宿主直建路径回退到宽裕档。已有显式尺寸、缺失尺寸兼容回退及模板中显式保存的尺寸不被本规则改写，`Note` 默认尺寸不变。
+- 紧凑档仍为终端字符网格留出比历史小尺寸更多的空间，但在窄画布或高 zoom 下仍可能发生 TUI 换行；自适应档位不承诺消除所有内容换行，也不会随窗口后续缩放自动重设既有节点。
 - `Task` / `Note` 继续保留节点内编辑，但改成窗口化内容面：
   - 头部继续使用窗口标题栏。
   - 标题输入作为主要标题区，而不是普通小表单字段。
@@ -135,12 +136,15 @@ updated_at: 2026-11-04
 4. 运行 `npm run build` 与 `npm run typecheck`，并通过 `npm run test:smoke` 中已有的 `Agent` / `Terminal` 主路径验证，确认执行型节点在 resize 后不破坏现有会话链路。
 5. 2026-05-24 运行 `npm run typecheck`、`npm run build` 和 Webview resize 定向回归，确认自定义 8 向 resize 控制点仍发送 `webview/resizeNode`，且右下边缘 resize 会触发画布自动平移并持续增长尺寸。
 
-6. 新增 `npm run test:canvas-node-groups` 覆盖新建 Agent / Terminal 默认尺寸、旧状态缺失尺寸的回退、已有显式尺寸的保留，以及避碰使用完整默认外框；对应断言分别保护不同的状态路径，不合并成仅检查常量的单一断言。
+6. `npm run test:canvas-node-groups` 覆盖新建 Agent / Terminal 默认尺寸、宽裕 / 紧凑档选择、画布宽度或高度触发紧凑档、Note 不受影响、紧凑档避碰使用实际外框、旧状态缺失尺寸回退及显式尺寸保留；对应断言分别保护不同状态路径，不合并成仅检查常量的单一断言。`npm run test:protocol-webview-messages` 覆盖创建 viewport 消息接受与非法尺寸拒绝。
 7. 更新 Webview 与 VS Code smoke 中代表当前默认场景的 Agent / Terminal 夹具及 canvas/minimap 截图基线，并为扩大后的节点调整布局坐标。硬换行链接场景继续使用显式窄尺寸，以保留其要测试的换行输入；与换行无关的低置信度链接用例使用默认尺寸。其他测试中的旧尺寸是显式持久化状态、旧版状态或几何算法合成输入，不代表默认值，不随本次变更机械替换。
 8. 已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-node-placement`、`npm run typecheck`、5 项受影响 Webview 定向用例及完整 `npm run test:webview`（420 项）；全部通过。
 9. 已运行 `npm run test:ui-copy-locale-smoke`，以及限定 `session-history/codex-branch` 与 `session-history/claude-branch` 的 VS Code smoke；英文/简体中文本地化和两类 Agent 分支创建均通过。
 10. 更新 VS Code smoke 夹具后按门禁要求重新生成 `scripts/smoke/smoke-budget-inventory.json`；复核只有相关 smoke 源文件 hash 改变，各场景等待预算与循环界限均未变化。
 11. 运行 `node --test scripts/test/test-gate-contracts.mjs`，108 项通过，包含 smoke 源码摘要冻结检查。
 12. 2026-11-04 CI 调查确认 Terminal 的单次 fit 可在 `terminal.resize()` 后因 cell metric 重测而落后一列；`legacy-supervisor-upgrade` 中要求 PTY 与 xterm 几何相等的严格断言属于必要产品契约，不放宽。新增 helper 的四项受控测试覆盖补偿收敛、单次调用最多两轮、shrink guard 和无 proposal；同日 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke` 通过（Legacy Supervisor upgrade smoke，VS Code 1.119.0 本地 runner）。这不替代 PR CI 固定 VS Code 1.142.0 的正式任务。
+13. 2026-11-05 两档尺寸实现与后续尺寸依据收敛后，重新运行完整 `npm run test:webview`，422 项全部通过（12.5 分钟）。首轮运行中紧凑档 Terminal 用例的旧 `760 x 560` 位置预期已更新为 `680 x 500`；另两项 fit-view 与 pane-gallery 时序失败未能复现，首轮失败根因未确认。
+14. PR #367 首轮正式 CI 的 `webview-function` 阶段 419 项行为测试全部通过，但随后因两个重命名测试的 ID / 标题未同步到 reviewed `scripts/gates/browser-catalog.json` 而失败。已按 CI 实际执行报告更新 catalogue；修正后的 PR head 仍需等待完整门禁重验，不把首轮结果写作 CI 通过。
+15. rebase 到 `origin/main` 的 PR #366 合并提交后，首次 `owned-canvas-reconciliation` smoke 因 Terminal 启动阶段出现 `Operation observation is unconfirmed`、随后等待 `Observation deadline reached` 而失败；同一命令立即重跑通过。触发根因未确认，已登记为非阻塞后续调查，不据单次失败认定两档尺寸回归；保持原尺寸及启动断言。
 
 自动化测试验证模型默认尺寸、缺失尺寸回退、显式尺寸兼容、完整外框避碰、Webview 场景布局与现有交互回归；它们不等价于真实 VS Code 宿主中的可读性验收。仍需手动确认默认字体下长行换行减少、节点底部信息可见，再将验证状态更新为已验证。

@@ -156,6 +156,11 @@ export interface CanvasNodeFootprint {
   height: number;
 }
 
+export interface CanvasNodeCreationViewport {
+  width: number;
+  height: number;
+}
+
 export type CanvasGroupRole = 'user' | 'workspace-root';
 
 export interface CanvasGroupSummary {
@@ -727,6 +732,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
         creationAnchor?: CanvasNodeCreationAnchor;
+        creationViewport?: CanvasNodeCreationViewport;
         targetGroupId?: string;
         cwd?: string;
         agentProvider?: AgentProviderKind;
@@ -2746,6 +2752,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
       (payload.creationAnchor !== undefined && !isCanvasNodeCreationAnchor(payload.creationAnchor)) ||
+      (payload.creationViewport !== undefined && !isCanvasNodeCreationViewport(payload.creationViewport)) ||
       (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       (payload.cwd !== undefined && typeof payload.cwd !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
@@ -2766,6 +2773,9 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         ...(isCanvasNodeCreationAnchor(payload.creationAnchor)
           ? { creationAnchor: { position: payload.creationAnchor.position, zoom: payload.creationAnchor.zoom } }
           : {}),
+        creationViewport: isCanvasNodeCreationViewport(payload.creationViewport)
+          ? payload.creationViewport
+          : undefined,
         targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
         cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
@@ -2986,6 +2996,20 @@ function isCanvasNodeFootprint(value: unknown): value is CanvasNodeFootprint {
     typeof value.height === 'number' &&
     Number.isFinite(value.height) &&
     value.height > 0
+  );
+}
+
+function isCanvasNodeCreationViewport(value: unknown): value is CanvasNodeCreationViewport {
+  return (
+    isRecord(value) &&
+    typeof value.width === 'number' &&
+    Number.isFinite(value.width) &&
+    value.width > 0 &&
+    value.width <= 100_000 &&
+    typeof value.height === 'number' &&
+    Number.isFinite(value.height) &&
+    value.height > 0 &&
+    value.height <= 100_000
   );
 }
 
@@ -3396,6 +3420,22 @@ export function estimatedCanvasNodeFootprint(kind: CanvasNodeKind): CanvasNodeFo
         height: 400
       };
   }
+}
+
+export function estimatedCanvasNodeFootprintForViewport(
+  kind: CanvasNodeKind,
+  viewport?: CanvasNodeCreationViewport
+): CanvasNodeFootprint {
+  const defaultFootprint = estimatedCanvasNodeFootprint(kind);
+  if ((kind !== 'agent' && kind !== 'terminal') || !isCanvasNodeCreationViewport(viewport)) {
+    return defaultFootprint;
+  }
+
+  const comfortableViewportRatio = 0.84;
+  const defaultFitsComfortably =
+    defaultFootprint.width <= viewport.width * comfortableViewportRatio &&
+    defaultFootprint.height <= viewport.height * comfortableViewportRatio;
+  return defaultFitsComfortably ? defaultFootprint : { width: 680, height: 500 };
 }
 
 export function resolveHorizontalCanvasEdgeAnchors(

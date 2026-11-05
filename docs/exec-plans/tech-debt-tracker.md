@@ -1146,3 +1146,11 @@ PR #352 本地完整合同在 head `d8d463c09d0b4f026161233119687208fdf8eb30`、
 远端后续证据：run 41270750500 的 regression shard-1 job 124743016743 在 CI 的 Node 22.23.3 环境完整合同 203/203 通过，该具名反例本轮通过。此证据只限定本轮结果，不证明 Node 版本是根因，不关闭上述时序/错误契约后续任务。
 
 2026-11-01 消费者映射 review 修复验证补充：完整本地合同 204/205；同一 `processIdentity` 期限取消路径在 `test-gate-contracts.mjs:1698` 的 snapshot Host 反例再次返回 AbortError/TimeoutError，而断言预期 `/exit/`。新增两项选测反例均通过（定向 22/22）。扩大本条后续任务到该断言，仍由 repository-maintainers 于 2026-11-15 复核；未据该文本差异推断退出误判或产品数据丢失。原始日志 `/tmp/dsc-ci-consumer-contracts.log`，不重跑覆盖本轮首败。
+
+## PR #367 rebase 后 Terminal 启动 smoke 单次观察超时（2026-11-05）
+
+在 PR #367 rebase 到 `origin/main` 的 `72275f0c` 后，Linux 本地 VS Code 1.119.0 首次运行 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=owned-canvas-reconciliation npm run test:smoke` 时，初始 Terminal 保持 `launching`，Host 报 `Operation observation is unconfirmed`，启动观察随后以 `Observation deadline reached` 结束；失败快照中 Agent 已 live、Terminal 尺寸为 `760 x 560` 且已取得 PTY 几何。相同命令立即再次运行通过。首轮原始 smoke 工件被复跑清理覆盖，当前仅保留控制台失败快照；因此不推断是否由并发 resize、owner 准入或新的 `main` 提交引起，也不据一次复跑宣称根因已修复。
+
+影响目前限于一次未重现的本地 smoke 首败；没有确认稳定产品回归。下次触发时应在复跑前保存原始 Host 消息、诊断事件与运行日志，并关联 `docs/exec-plans/tech-debt-tracker.md` 中 `owned-resize-failed` / resize admission 的既有待定位边界；保持当前 PTY 几何、失败状态及启动 deadline 断言，不通过延长等待、吞错或反复刷绿关闭本记录。PR #367 修正后的远端 head 仍需单独完成正式 CI 验收。
+
+2026-11-06 对 PR #367 最新 head `4b608fd6` 的复审未发现确定性 blocker；另记录一项非阻塞测试覆盖缺口：viewport 选档、创建锚点定位和 workspace-root local 坐标转换各有独立覆盖，但目前没有单个 Host 创建用例把紧凑档尺寸、`creationAnchor` 及 root-local 避碰组合起来。影响限于未来创建/坐标转换回归可能缺少组合检测；当前实现中已选尺寸传入定位与避碰，复审未发现错误路径。后续扩展 root-section 创建/避碰测试时补组合场景，关联 `CanvasPanelManager.ts` 的 `applyCreateNode` / `createNextState` 与 `scripts/test/test-canvas-node-groups.mjs`；在补测前保持为 follow-up，不阻塞当前改动。
