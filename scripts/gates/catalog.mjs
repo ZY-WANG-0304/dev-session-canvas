@@ -30,6 +30,7 @@ export const regressionScripts = Object.freeze([
   'test:webview-lifecycle-diagnostics', 'test:smoke-lifecycle-isolation', 'test:agent-cli-resolver',
   'test:agent-cli-selection', 'test:agent-settings-files', 'test:shell-environment-resolver',
   'test:execution-session-bridge', 'test:execution-output-scheduler', 'test:execution-output-sequence',
+  'test:terminal-fit-convergence',
   'test:extension-manifest', 'test:ui-copy-localization', 'test:package-vsix-command',
   'test:publish-marketplaces', 'test:publish-marketplace-workflow', 'test:marketplace-production-deploy-workflow',
   'test:sidebar-codicon-bundle', 'test:webview-build-xterm-entry', 'test:sidebar-list-colors',

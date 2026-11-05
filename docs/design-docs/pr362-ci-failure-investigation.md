@@ -2,8 +2,8 @@
 title: PR362 CI 失败分层与 Agent 工具等待误判调查
 decision_status: 已选定
 validation_status: 验证中
-domains: [执行编排域, VSCode 集成域]
-architecture_layers: [宿主集成层, 共享模型与编排层, 适配与基础设施层]
+domains: [执行编排域, VSCode 集成域, 画布交互域]
+architecture_layers: [宿主集成层, 共享模型与编排层, 适配与基础设施层, 画布呈现层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
 related_plans: [docs/exec-plans/completed/pr362-ci-failure-investigation.md, docs/exec-plans/active/pr362-ci-failure-repair.md]
 updated_at: 2026-11-05
@@ -13,7 +13,7 @@ updated_at: 2026-11-05
 
 ## 范围与输入
 
-2026-11-04 的调查只定位，不修改产品或 workflow；2026-11-05 用户授权后进入下述修复。两阶段均未推送或合并。调查分支 `ci-pr362-failure-investigation` 从 `origin/main` 的 `23418301f4e7496b9db5e4a89e34984b2ddd4b89` 创建，使用独立 worktree，原工作区未提交的调查记录不作事实来源。
+2026-11-04 的调查只定位，不修改产品或 workflow；2026-11-05 用户授权后进入下述修复，并以独立 PR #365 交付，尚未合并。调查分支 `ci-pr362-failure-investigation` 从 `origin/main` 的 `23418301f4e7496b9db5e4a89e34984b2ddd4b89` 创建，使用独立 worktree，原工作区未提交的调查记录不作事实来源。
 
 核对 [PR #362](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/362) head 为 `545036a38fa9468943bbde037a6d0e1a23536f99`。运行 `41775499320` 最新为 attempt 3；实际验证输入是预合并 SHA `0cc921f200fa2c9463dc795b300a9d6a041667f4`。下载的 attempt 1/3 packaged-host 工件 `evidence-manifest.json` 均记载此输入，不能把 PR head 与验证输入混为一谈。
 
@@ -131,6 +131,22 @@ owned Host 若已为 waiting-input 而当前画面明确仍工作，则在原执
 
 producer 与当前 attempt 必须是相等的正整数文本；空值、异常值或旧轮次一律失败，提示 **Re-run all jobs**，不消费任意旧工件。工件名、验真、任务集合和 acceptance 语义保持不变。这是明确不支持局部重跑的操作边界修复，不是跨轮次复用实现，也不令产品失败自动变绿。
 
+### PR365 新增卡点与 fit 正式方案
+
+独立 PR #365 首版 `290a5e13` 没有带入 #362 的 fit 修复。运行 `41892914304` attempt 1 因 darwin-arm64 hosted runner 未分配而缺少结果；完整重跑后的 attempt 2 已越过该基础设施故障，但仍有一个产品失败及两个下游红灯，不能再次当作 runner 故障重跑。
+
+[legacy source-host job 126967962258](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41892914304/job/126967962258) 在旧会话 resize 阶段等待20秒后失败：Terminal 外框为700×540，页面/PTY同为84×28，而当前 fit proposal 为85×28、pending=false；Agent82×26匹配。工件 `13377733129` 中 `legacy-upgrade-resize.json` 保存同一 session 的采样。当前现场没有 cell metric 的逐次 trace；它与 #362 已提交调查记录的同形失败、二次 fit 对照相符，但不凭当前末态反推每次字体测量时序。
+
+[verify-result job 126974323272](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41892914304/job/126974323272) 为358 passed、1 failed、0 not-run，唯一失败是上述 legacy 场景，cleanup/host-exit 未确认随失败保留。[required job 126975327857](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/41892914304/job/126975327857) 正确拒绝失败 verifier。source/packaged 的全部8个真实 Agent TUI场景通过，包含两种输入的 tool-network-silence；这是该输入的有效验证，不代表新head或所有启发式边界通过。
+
+本轮在同一个 #365 中补入 #362 的最小、与默认节点尺寸无关的 fit 修复：`extensions/vscode/dev-session-canvas/src/webview/terminalFitConvergence.ts::fitTerminalWithCorrection` 在一次调用内最多执行两次 proposal/fit；首次 resize 后重测，若 proposal 改变则补偿一次。`executionSessionNodes.tsx` 的 Agent/Terminal 两个入口共用该 helper；每次 proposal 都重新执行 snapshot shrink guard，最终只报告实际 terminal 行列。不改默认尺寸、Windows输入处理、几何断言或超时，不加入无限收敛循环。尚未稳定的多轮度量仍依赖既有后续布局事件，不宣称两次可解决任意抖动。
+
+新增7项受控回归覆盖84→85、首轮/次轮shrink保护、稳定/缺失proposal与两次上限，并纳入正式regression catalog。新head的完整CI仍为最终验收条件。#362 保留原分支，未来rebase时去重，不将其节点尺寸与Windows改动混入本PR。
+
+本地在既有 `290a5e13` 生产构建上直接执行原legacy smoke，复现相同20秒超时、84/85列差异；补丁重新构建后，同场景完整通过（`Legacy Supervisor upgrade smoke (5355e6a) passed`，exit 0），没有修改smoke断言。两个调用点与helper均与 #362 `545036a3` 的对应文件逐字一致；本轮另补首轮保护、稳定及缺失次轮proposal测试。使用VS Code1.119.0、Node25.6.0及既有六平台原生资产，不能代替CI固定VS Code1.142.0。过程与日志保留在 `/tmp/pr365-fit-repair/before.log`、`after.log`、`build.log`；成功日志中runtime reload边界存在client disconnected消息，但场景完成与退出均成功，不将日志中的每个error字符串算作独立失败。
+
+fit补充后的 `npm run test:terminal-fit-convergence` 7/7、`npm run test:ci-gates` 212/212、`npm run typecheck`、主扩展及notifier构建、七份文档检查与 `git diff --check` 通过。正式完整任务数从359增为360，增加的是fit回归，没有减少必跑任务。新head远端验收仍待完成。
+
 ## 修复验证（2026-11-05）
 
 修前扩展原 `owned Agent title-only` 测试：静态 Working 超过 3 秒后实际为 waiting-input，新增断言失败。修后同一实际 Host/owner/tracker 测试保持 running；带 composer 的工作静默、完成擦除、完成重绘、误等待恢复及身份绑定诊断均通过，没有删除独立 TUI 断言或放宽预算。
@@ -149,4 +165,4 @@ Hubble subagent 对相对 `23418301` 的全部本地修复及新增文件完成�
 
 审查确认三项非阻塞后续项：正文恰与工作行重合会反向卡在running（受控新增边界，真实CLI未复现）；Supervisor进入waiting-input后不随新Working恢复（基线同现，legacy Host也没有新恢复能力）；末尾八行可能漏掉长composer上方的工作提示（函数级边界，实际CLI布局待验）。它们已登记到 [技术债](../exec-plans/tech-debt-tracker.md)，不能将本次修复描述为所有误判均已解决。精确代码与临时复现保存在 `/tmp/pr362-review/worktree/scripts/test/`，结果位于 `/tmp/pr362-review/tests.log` 和 `probes.log`。
 
-用户明确要求独立改动提交PR：交付分支为 `ci-pr362-failure-investigation`，目标为main，只包含状态/CI修复、对应测试和证据文档，不包含 #362 的节点尺寸、fit及Windows输入修复。两者没有必须先合并 #362 的代码依赖；本修复合入main后，#362需重新rebase并取得自身的新CI，不能以本修复PR的成功替代 #362 验收。原评论虽然回贴 #362，但仅针对未提交补丁；独立PR承担后续修复审查和验收，不操作原分支或改写其未提交内容。
+用户明确要求独立改动提交PR：交付分支为 `ci-pr362-failure-investigation`，目标为main，首版只包含状态/CI修复、对应测试和证据文档，不包含 #362 的节点尺寸、fit及Windows输入修复。本轮因 #365 自身门禁卡点补入独立fit部分，仍排除节点尺寸及Windows输入修改。两者没有必须先合并 #362 的代码依赖；本修复合入main后，#362需重新rebase并取得自身的新CI，不能以本修复PR的成功替代 #362 验收。原评论虽然回贴 #362，但仅针对未提交补丁；独立PR承担后续修复审查和验收，不操作原分支或改写其未提交内容。既有subagent结论只覆盖首版，不能冒充新增fit提交已被该subagent复审。

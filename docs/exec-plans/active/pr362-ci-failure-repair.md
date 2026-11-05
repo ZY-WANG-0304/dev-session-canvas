@@ -17,7 +17,12 @@
 - [x] (2026-11-05) 七份文档通过链接/索引/frontmatter检查，`git diff --check`通过；删除临时依赖链接，确认原工作区未被修改。
 - [x] (2026-11-05) 独立subagent review未发现新的确定性blocker；三项非阻塞后续事项已写入技术债与设计文档。
 - [x] (2026-11-05) 用户明确授权将独立改动提交、推送并创建新PR；目标main，不修改 #362 分支。
-- [ ] 固定CLI source/packaged真实验收及独立修复PR的完整CI；计划保留active，不宣称门禁闭环。
+- [ ] 独立修复PR完整CI；旧head已取得固定CLI source/packaged真实验收，但计划保留active，不宣称门禁闭环。
+- [x] (2026-11-05) #365 attempt 2 取得全部8项source/packaged真实Agent TUI通过；358项通过、唯一legacy resize失败，两个verifier为连带红灯。
+- [ ] 在 #365 抽取独立fit补偿与回归，完成本地验证并推送；不改变 #362 节点尺寸、Windows输入或原分支。
+- [x] (2026-11-05) 首版既有构建复现84/85列卡点；补丁重新构建后原legacy smoke通过，7项fit回归通过，本地VS Code1.119.0不代替CI固定版本。
+- [x] (2026-11-05) fit补充后门禁合同212/212、typecheck、主扩展/notifier构建、七份文档检查和diff检查通过。
+- [ ] 等待包含fit补偿的新head完整CI；旧head成功项目不替代新head验收。
 
 ## 意外与发现
 
@@ -26,6 +31,8 @@
 首次类型检查发现 findLastIndex 超出当前 ES2022 lib，已改普通循环。新 worktree 默认构建缺少六平台生成资产，显式指定既有资产集合后通过，没有用stock降级。全量Host首败为未修改main同样失败的reset同步closing断言，与本次tracker/状态改动无关的基线证据已保存。
 
 ## 决策记录
+
+2026-11-05：#365首版明确排除了 #362 的fit修复，现同一发布门禁实际出现旧会话84/85列卡点，补入最小有界fit修复而非盲目重跑或整体引入 #362。新增helper单次最多两次proposal/fit，两次都遵守snapshot shrink guard；在两个Webview入口调用，只上报实际行列。测试加入regression catalog并更新精确任务数359→360；不放宽原legacy smoke断言。新head必须重新取得完整CI。
 
 2026-11-05：不把测试 hook 接到产品，不通过加长静默阈值修补。优先用当前终端明确的工作状态阻止启发式提前完成，当前屏幕尚有解析工作时不据旧屏幕转换；原静默降级仅适用于没有明确工作证据的情况。当前画面检测仍是启发式，不宣称获得供应商权威回合协议。
 
@@ -36,6 +43,8 @@
 2026-11-05：按用户明确指示独立交付修复PR，覆盖通用状态判定与CI重跑边界，不将改动推到 #362。分支从main切出，提交前远端main仍为23418301；推送前继续fetch/rebase，不合并main到主题分支。审查后只补三项后续债务和交付说明，没有改变已审查代码。
 
 ## 结果与复盘
+
+#365首版远端attempt 2已通过8项真实Agent TUI场景，仍被唯一legacy resize产品失败阻塞；旧结果不替代包含fit补偿的新head。本轮补丁在本地先复现旧构建的同形失败，再通过相同未改动的legacy smoke，保留独立PR范围。证据为 `/tmp/pr365-fit-repair/before.log`、`after.log` 和 `build.log`，主扩展生产资产与notifier构建通过；本地VS Code1.119.0与正式1.142.0的差异明确保留。
 
 本地实现、回归与文档已完成，正式方案见 `docs/design-docs/pr362-ci-failure-investigation.md`。原 CI 的具体转换分支缺失仍是历史事实；本次修复阻止已识别当前工作画面被静默/prompt覆盖，并补后续取证。实际CLI版本不符且缺少DEEPSEEK_API_KEY，尚未完成真实source/packaged与远端完整验收，不能称PR已绿色。用户已授权独立提交/推送；新PR需基于自己的准确输入完整运行，而非只重跑失败jobs。
 
@@ -48,6 +57,8 @@
 第一里程碑增加原始 CI 形状的当前终端工作/完成对照、长静默和 prompt/spinner 回归，记录修前失败。第二里程碑在现有 tracker 提供有界当前屏幕读取，在原判定边界使用明确工作状态并记录不含正文的转换原因；验证结束重绘不误恢复运行。第三里程碑补 producer attempt 前置拒绝及合同，然后运行相关测试、类型检查、构建与文档验证。
 
 ## 具体步骤
+
+fit补充在本工作区运行 `npm run test:terminal-fit-convergence`、`npm run test:ci-gates`、`npm run typecheck`、`npm run build -- --execution-assets-set ../dev-session-canvas4/generated/execution-assets`，再以 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke` 执行旧Supervisor真实场景。可显式使用本机缓存VS Code，记录实际版本，不冒充CI固定版本。原始CI证据在 `/tmp/pr365-attempt2/`，新本地证据单独存放，推送前fetch/rebase最新main。
 
 工作目录为相邻 `ci-pr362-failure-investigation`。使用原 workspace 锁文件一致的依赖，避免改变全局 CLI。优先运行 `node scripts/test/test-host-execution-owner-wiring.mjs --name-pattern 'Agent|agent'` 的更窄相关子集、`node scripts/test/test-execution-attention-signals.mjs`、`node scripts/test/test-serialized-terminal-state-tracker.mjs`；workflow 使用 `npm run test:ci-gates`。具体结果随推进补记。
 
