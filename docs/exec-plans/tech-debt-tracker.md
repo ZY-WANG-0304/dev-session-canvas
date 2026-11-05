@@ -4,6 +4,8 @@
 
 ## 2026-11-04：PR362 工具等待误判与部分重跑的工件身份
 
+2026-11-05 后续：独立PR #365的da217a50已通过legacy fit场景，run41952850152唯一失败为Claude回答省略receipt_，不是工作态提前等待。用户授权以PreToolUse/PostToolUse的同调用、原结果字节和时序替代模型复述，实际回答另与助手区域核对；13项受控回归、门禁212及类型检查通过，但新的固定CLI完整CI仍待验证，不能补造旧run缺失的接收事件。负责人repository-maintainers；收口需新head source/packaged四场景两provider均通过及required验收。模型未调用工具、认证/服务故障、未知Markdown呈现和其他CLI/平台仍不能降级通过，也不宣称验证模型回答的语义质量。正式范围与接口见 [真实TUI设计](../design-docs/smoke-real-tui-coverage.md)。
+
 2026-11-05 进展：本地已实现当前终端工作画面保护、owned Host 的误等待恢复和转换/容量诊断；14 个计划消费者与最终 verifier 在下载前拒绝错 attempt 并提示完整重跑。Host 定向10、adapter105、Supervisor136、门禁211通过，121个原CI屏幕离线回放、类型和生产资产构建通过。状态仍是显示启发式，未知CLI/文案不能代证权威回合；固定CLI source/packaged与正式CI待验证。全量Host reset用例在未修改main同样失败，未混入修复；历史snapshot首败和原CI准确转换分支仍未关闭，见[修复计划](active/pr362-ci-failure-repair.md)。以下保留首轮调查事实。
 
 2026-11-05 独立 subagent review 的三项非阻塞后续事项由 repository-maintainers 跟进；受控复现与真实 CLI 自然出现必须分开，未确定实际发生频率。用户随后明确要求本轮修复独立提交 PR，以下风险随独立修复交付，不混入 #362 的尺寸改动：

@@ -10,8 +10,13 @@ process.stdin.on('end', () => {
   const event = JSON.parse(input);
   const observed = { observedAt: Date.now(), observerPid: process.pid };
   for (const key of ['session_id', 'turn_id', 'hook_event_name', 'cwd', 'prompt',
-    'stop_hook_active', 'last_assistant_message', 'error', 'error_details']) {
+    'stop_hook_active', 'last_assistant_message', 'error', 'error_details', 'tool_name', 'tool_use_id']) {
     if (event[key] !== undefined) observed[key] = event[key];
+  }
+  if (event.tool_name === 'mcp__tui__wait_for_release') {
+    for (const key of ['tool_input', 'tool_response']) {
+      if (event[key] !== undefined) observed[key] = event[key];
+    }
   }
   fs.appendFileSync(process.argv[2], `${JSON.stringify(observed)}\n`, { mode: 0o600 });
   process.stdout.write('{}\n');

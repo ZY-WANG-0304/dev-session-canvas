@@ -149,6 +149,12 @@ fit补充后的 `npm run test:terminal-fit-convergence` 7/7、`npm run test:ci-g
 
 ## 修复验证（2026-11-05）
 
+### 后续真实 CI 与回执校验修复
+
+fit提交 `da217a50` 的run41952850152为359 passed、1 failed、0 not-run，legacy-supervisor-upgrade通过。唯一失败为source input-during-work的Claude通道：tool-end回执 `receipt_db742b96b367456eb1753739466c08d6`，Stop/页面回答省略 `receipt_`，导致原逐字包含断言失败；Codex和packaged同场景通过。Claude工作窗口29个样本均running，不是再次出现旧工作态误判；后续完成显示检查尚未执行，不能追认该任务成功。
+
+用户授权改为结构化工具接收证据，不要求模型复制nonce。正式合同、固定接口核对与13项本地回归见 [真实TUI设计](smoke-real-tui-coverage.md#pr365-回执复述耦合修复2026-11-05)。本轮仅修改验收夹具、对应测试和文档，不修改产品状态/fit或required规则，也不冒用首版subagent审查结论。新head完整CI待验，旧失败保留。
+
 修前扩展原 `owned Agent title-only` 测试：静态 Working 超过 3 秒后实际为 waiting-input，新增断言失败。修后同一实际 Host/owner/tracker 测试保持 running；带 composer 的工作静默、完成擦除、完成重绘、误等待恢复及身份绑定诊断均通过，没有删除独立 TUI 断言或放宽预算。
 
 `test-execution-attention-signals.mjs` 与 `test-serialized-terminal-state-tracker.mjs` 通过，覆盖工作/完成/正文误匹配、60 秒模拟静默、未解析屏幕、擦除和排除 scrollback。Host 定向 10/10、adapter 105 cases、Supervisor 136/136、`npm run test:ci-gates` 211/211、`npm run typecheck` 均通过；同轮次合同实际运行 setup 子进程，错误 attempt 不写环境文件，正确 attempt 继续。首次类型检查发现 ES2022 不支持 findLastIndex，已改为普通索引循环后通过。

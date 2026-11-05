@@ -137,8 +137,9 @@ async function runProvider(config, scenario, step) {
       }
       await releaseTool();
       toolEnd = await poll('real tool result', () => readJSON('tool-end.json'), Boolean, 5000);
+      report.toolEnd = toolEnd;
       turn = await poll('independent provider completion', observedTurn, value => value?.completed, 90000);
-      report.turn = turn; report.toolEnd = toolEnd;
+      report.turn = turn;
       // Completion and the product's bounded state convergence are distinct.
       await poll('product completed state', state, value => node(value)?.status === 'waiting-input', 5000);
       await poll('actual answer above real footer', probe,

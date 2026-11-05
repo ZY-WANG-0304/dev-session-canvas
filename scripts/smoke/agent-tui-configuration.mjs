@@ -35,8 +35,9 @@ export async function prepareAgentTui({ provider, directory, projectRoot, cliRoo
     const events = path.join(directory, 'events.jsonl');
     const observerCommand = [process.execPath, path.join(projectRoot, 'tests/vscode-smoke/agent-tui-hook.cjs'),
       events].map(shellQuote).join(' ');
-    const hooks = Object.fromEntries(['UserPromptSubmit', 'Stop', 'StopFailure', 'SessionEnd']
-      .filter(event => provider === 'claude' || event !== 'StopFailure')
+    const hooks = Object.fromEntries(['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop',
+      'StopFailure', 'PostToolUseFailure', 'SessionEnd']
+      .filter(event => provider === 'claude' || !['StopFailure', 'PostToolUseFailure'].includes(event))
       .map(event => [event, [{ hooks: [{ type: 'command', command: observerCommand, timeout: 5 }] }]]));
     const server = { command: process.execPath,
       args: [path.join(projectRoot, 'tests/vscode-smoke/agent-tui-tool.cjs'), directory] };
@@ -65,7 +66,7 @@ export async function prepareAgentTui({ provider, directory, projectRoot, cliRoo
         '--tools', '', '--permission-mode', 'dontAsk', '--session-id', sessionId];
     }
     const prompt = `Test ${randomUUID()}. Call the tui wait_for_release tool exactly once and wait for its result. `
-      + 'Then answer in one short plain English sentence containing the exact receipt returned by the tool. '
+      + 'Then give a short response in your own words. There is no need to repeat the receipt. '
       + 'Do not use other tools or write files. Do not respond before the tool returns.';
     // Codex's npm entry is JavaScript; the interactive shell may reset PATH.
     // Claude's fixed npm entry is a native executable and must run directly.
