@@ -5,8 +5,8 @@ validation_status: 验证中
 domains: [执行编排域, 项目状态域]
 architecture_layers: [宿主集成层, 适配与基础设施层]
 related_specs: [docs/product-specs/runtime-persistence-modes.md]
-related_plans: [docs/exec-plans/completed/runtime-socket-recovery.md]
-updated_at: 2026-10-28
+related_plans: [docs/exec-plans/completed/runtime-socket-recovery.md, docs/exec-plans/active/runtime-replacement-durable-recovery.md]
+updated_at: 2026-11-05
 ---
 
 # 失联节点删除与 Supervisor 通信入口恢复
@@ -24,6 +24,24 @@ updated_at: 2026-10-28
 移除前向 global storage 持久写入原节点与运行时身份、停止未确认原因和时间，不保存输出正文。写入失败不得继续删除。记录表达清理责任未确认，不是进程已停止或节点已提交的证明，也不授权按 PID 杀进程。旧 Supervisor 无法自修复时，后台可能继续运行，凭据保留供显式处理；本次不新增自动 orphan kill 或无限后台重试。
 
 节点移除沿既有共享 root 提交和 workspace 持久化路径完成，保存成功后才通过 `vscode.window.showWarningMessage` 显示 VS Code 右下角原生非模态警告，说明“节点已移除，但无法确认后台 Agent 或终端进程已停止，可能仍在运行，请手动检查并停止；停止未确认记录已保留，扩展不会自动清理进程或记录”。不再以画布内 `host/error` 承载该结果，避免画布隐藏时漏看或重复提示；不等待用户关闭通知，不增加删除确认步骤。正常确认停止、记录写入失败、节点保存失败或身份变化均不弹此移除成功警告。释放本 Host reader、订阅和映射；共享 peer 按已有结构删除释放自己的投影。已有删除优先规则保证旧编辑与迟到恢复不能复活节点。
+
+### 历史恢复态的显式替换
+
+`panel/CanvasPanelManager.ts` 的 `prepareExecutionCandidateReplacement()` 在显式 Resume、Start 或 Fork 建立新执行前，仍先按原 backend/storage/session/kind/owner 严格删除旧 runtime。`panel/runtimeSupervisorClient.ts` 的 strict delete 记录 `preparing`、`socket-directory`、`connecting`、`handshake`、`dispatching`、`submitted` 阶段。若删除返回连接不可用（包括 Root socket 目录缺失产生的 `ENOENT`）且 Host 将其识别为 `DisconnectedRuntimeNodeDeletionError`，只有同时满足以下条件才允许继续替换：删除 observation 已结算且未提交；阶段是 `socket-directory` 或 `connecting`，错误码是 `ENOENT` 或 `ECONNREFUSED`；当前节点仍是 `history-restored` 且 `liveSession:false`；原绑定、owner 和操作 token 未变化；本 Host 没有该节点的活动执行、终端读者或待刷新投影；同一 runtime 绑定没有被其他节点或其他本地 binding 引用。live/reattaching 绑定、共享责任、handshake 断连、已提交 RPC、权限/owner 冲突、服务端确认失败和其他不确定结果仍阻断新执行。
+
+允许继续前，Host 必须先向 `unconfirmed-runtime-deletions-v1` 写入同一会话身份的停止未确认记录，记录 `operation: runtime-replacement`、原 owner、原因和绑定；写入失败不得解绑或创建新执行。写入成功后以宿主原生非模态警告说明替换前无法确认原 Runtime 已停止、后台进程可能仍在运行且记录已保留，再解绑本节点旧绑定。该结果表示清理责任已留痕，不表示旧进程已结束，也不授权按 PID 清理；新执行只使用当前发行 generation 的正常创建路径。共享节点或仍在使用的 runtime 不能通过此例外被替换。
+
+替换本身由 `panel/runtimeReplacementJournal.ts` 的 `runtime-replacements-v1` 记录闭环。文件键使用 canonical runtime root + root-local node ID + kind，rootless 画布使用 workspace-scoped storage；不能只用当前窗口中可能带 namespace 的 `nodeId`，也不能让多个 rootless workspace 共用 global storage 键。记录保存原始节点快照和完整原绑定、目标 backend/storage/owner、预留 session UUID、launch mode、provider resume 引用、停止结果、证据、阶段与时间，写入采用私有目录中的临时文件、`sync` 和原子 `rename`。
+
+Agent/Terminal 在 `createSession` 前先写 `prepared` 并等待完成，再写 `create-may-have-been-submitted` 并等待完成；启动 metadata 的持久化也必须先等待。创建返回后应用 snapshot、保存节点并等待完成，最后标记 `bound`。创建结果未知或最终保存失败进入 `quarantined`，Host 重载或用户再次显式启动时必须按预留 UUID 查询，不得生成第二个 UUID。挂起的恢复在连接目标 Supervisor 前先读取 journal：`prepared` 恢复原始节点快照并普通重试；`bound` 且查询明确 session-not-found 时清除 target binding，回到可重试历史；其他查询失败或身份不匹配保持 quarantine。
+
+恢复、状态提交和 journal 更新在共享 root mutation lease 内执行，查询返回后重新核对节点完整 binding、operationId、canonical identity 和 phase。成功恢复并接回预留 session 后，Host 同时结算内存 `candidateRuntimeStarts` 中同一 sessionId/kind 的 reservation，避免持久记录已消失但删除/reset 仍被旧栅栏阻断。
+
+`not-acquired` 是独立已结算阶段，不降级为 `prepared`。Supervisor 明确未取得资源后，Host 先持久该阶段再清理 journal；若最终删除失败，后续 reconcile 接受节点缺失、原 binding 或 target binding，安全回滚后普通重试，而不是因外层 rollback 已清空 target 而误入 quarantine。严格删除的共享连接 attempt 会把 `socket-directory`/`connecting`/`handshake` 阶段广播给所有 observation；后加入者不能把 hello 失败记成 endpoint-missing。`bound` 或持久 `boundConfirmed:true` 的查询遇到瞬时连接失败只保留 blocked，不改写为 quarantine；连接恢复后明确 session-not-found 仍可清理 target binding 并回到可重试历史。
+
+节点删除、组清空和 reset 在删除可能已取得执行的记录（`create-may-have-been-submitted`、`quarantined`、`bound`）前先写 stop-unconfirmed 回执。最终清理记录准备阶段观察到的 `{operationId, phase, updatedAt}`，并与 journal 写入共享 per-record 锁做条件删除；任一字段变化都表示责任状态已经推进，Host 先为可能已取得的预留执行补写回执，再保留 journal 并记录诊断，不能按身份键无条件删除。start 准入只检查仍在执行中的 `candidateRuntimeStarts`；命中时沿用重复创建拒绝，不把本进程的 in-flight 创建栅栏当成待恢复 journal。调用已经结束但结果未知的 reservation 仍保留，下一次显式 Start/Resume 必须进入受控 reconcile，不能因为 reservation 存在就直接拒绝恢复。这里仍只证明当前可观察到的责任，不能证明其他机器或不可达 peer 不存在共享执行。
+
+per-record 锁 owner 保存 `pid/token/createdAtMs`，但锁年龄不构成 stale 证据：只有 owner PID 可证明已退出时才回收；无法解析 owner 的 malformed 锁一律失败关闭，不按年龄回收，避免暂停在“创建锁文件”和“发布 owner”之间的活 owner 失去互斥。写入 owner 后、进入临界区前还会重新核对路径上的 generation。回收者先以 `generation` 作用域的文件 `wx` 独占同一旧观察，再在标记内重新读取并核对 generation 与死 PID，才删除锁；因此并发回收者不能依据旧观察移走后继锁。回收标记本身不自动清理：按观察删除标记会把同一竞争移到标记上。标记写入、`sync`、`close` 失败或回收者崩溃都可能留下残留标记，此时该记录保守阻断而不是抢占活跃 owner；该失败没有可靠的跨平台原子比较删除原语，登记为残余可用性边界。人工移除残留标记前必须先停止或隔离所有可能访问该记录的 Host/回收者，不能仅凭文件年龄判断安全。
 
 ### Supervisor 自修复
 
@@ -88,3 +106,9 @@ Linux x64、Node 25.6.0、真实 Codex CLI 0.164.0 的独立 Supervisor/原生 P
 验证：12 项定向 Host 回归通过，覆盖 Agent/Terminal 的 ENOENT/ECONNREFUSED、保存等待期间不提前提醒、通知未关闭时删除仍完成、失败与身份替换不误报、正常确认停止不提醒；完整 Host 回归 646/646 通过。`npm run typecheck`、`npm run test:ui-copy-localization` 与 `git diff --check` 通过。本次未启动 VS Code UI，也未重跑真实 Codex/Supervisor 组合验收；此前运行时证据不变，原生测试夹具已同步通知断言。
 
 手动验证路径（待执行）：在隔离工作区使用无法重连的旧 Supervisor 会话删除单节点，确认节点保存后右下角出现本地化警告；不关闭通知仍可操作画布。对正常可停止会话删除时不应出现该警告。原生通知显示遵循 VS Code 的通知设置。
+
+### 历史态显式替换回归（2026-11-04）
+
+新增实际 `CanvasPanelManager` 和 strict-delete 结果边界的 Host 回归，覆盖 Agent Resume/Start、Terminal Start、live/共享/owner 冲突、节点状态不一致、pre-submit 有界复探、submitted/handshake/timeout 阻断、回执写入失败、prepared 回滚、bound-missing 回退、连接前 unreachable quarantine、rootless 键隔离、组清空回执，以及复审补充的恢复后删除、`not-acquired` 删除失败、bound 瞬时断连和批量删除交错。Runtime replacement 相关 Host 用例 42/42 通过，复审新增子集 9/9；root ownership 中相关 Host 用例 19/19，reader client 39/39；`runtime-replacement-journal`、`runtime-supervisor-protocol`、`runtime-supervisor-startup-profile`、真实 Unix socket 恢复、类型、本地化和 diff check 通过。
+
+本机完整 Host 文件仍会先在既有 `detached restored ... restart uses target evidence` 用例失败（`creates` 实际 0、期望 1）；同一用例在未修改的 `origin/main@23418301` 独立 worktree 复现，故不归因于本次替换修复。未启动真实 VS Code UI 重放截图中的 Resume，也未执行真实 Claude/Codex 登录下的并发 provider 会话；macOS、Windows、Remote SSH、机器重启和 Supervisor 崩溃后的 journal 恢复仍未验证。现场画布节点在检查时已由用户恢复为 running，不能把该节点当前状态当作故障现场证据。

@@ -1135,5 +1135,9 @@
   "The execution node changed in another window. Review its current state before trying again.": "执行节点已在另一个窗口发生变化，请查看当前状态后再试。",
   "This shared runtime belongs to Runtime Persistence mode. This private Canvas does not control it.": "该共享运行时属于运行时持久化模式，当前独立画布不会控制它。",
   "Execution trace started for 120 seconds. Reproduce the delay, then run Write Host Diagnostics to Disk.": "已开始执行链路诊断，最长采集 120 秒。请复现卡顿，然后运行“落盘当前宿主诊断”。",
-  "Node removed, but its background Agent or terminal process may still be running because stopping could not be confirmed. Check and stop it manually. The unconfirmed-stop record is retained; the extension does not automatically clean up the process or record.": "节点已移除，但无法确认后台 Agent 或终端进程已停止，可能仍在运行。请手动检查并停止。停止未确认记录已保留，扩展不会自动清理后台进程或该记录。"
+  "Node removed, but its background Agent or terminal process may still be running because stopping could not be confirmed. Check and stop it manually. The unconfirmed-stop record is retained; the extension does not automatically clean up the process or record.": "节点已移除，但无法确认后台 Agent 或终端进程已停止，可能仍在运行。请手动检查并停止。停止未确认记录已保留，扩展不会自动清理后台进程或该记录。",
+  "The original runtime could not be stopped before this new Runtime execution was prepared. A Resume or session-history launch starts a new Runtime execution and may continue the original provider conversation, but it does not revive the original PTY. The original background Agent or terminal process may still be running. Check and stop it manually. The unconfirmed-stop record is retained; the extension does not automatically clean up the process or record.": "准备新的 Runtime 执行前无法确认原 Runtime 已停止。Resume 或会话历史启动会建立新的 Runtime 执行，并可能继续原 provider 对话，但不会复活原 PTY。原后台 Agent 或终端进程可能仍在运行，请手动检查并停止。停止未确认记录已保留，扩展不会自动清理后台进程或该记录。",
+  "The previous Runtime replacement is in an unknown state. Review the node before starting another execution.": "上一个 Runtime 替换处于未知状态。请先检查该节点，再启动新的执行。",
+  "The previous Runtime replacement is no longer running. Start it again to create a new execution.": "上一个 Runtime 替换已不再运行。请重新启动以创建新的执行。",
+  "The original runtime creation is still pending or unconfirmed.": "原始运行时的创建仍处于等待或未确认状态。"
 }

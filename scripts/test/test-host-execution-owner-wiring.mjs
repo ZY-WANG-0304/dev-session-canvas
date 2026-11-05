@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { fork, spawn } from 'node:child_process';
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,13 +26,14 @@ const bundled = await esbuild.build({
       export { TerminalAvailableNotifications } from './extensions/vscode/dev-session-canvas/src/panel/terminalAvailableNotifications';
       export { parseWebviewMessage } from './extensions/vscode/dev-session-canvas/src/common/protocol';
       export { env as testEnvironment, window as testWindow, l10n as testL10n, workspace as testWorkspace, Uri as testUri } from 'vscode';
-      export { serializeRuntimeSupervisorError, createRuntimeSupervisorError } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
+      export { RUNTIME_SUPERVISOR_ERROR_CODES, serializeRuntimeSupervisorError, createRuntimeSupervisorError } from './extensions/vscode/dev-session-canvas/src/common/runtimeSupervisorProtocol';
       export { testLegacyHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/legacyRuntimeHistory';
       export { testNativeHistoryInspector } from './extensions/vscode/dev-session-canvas/src/panel/nativeRuntimeHistory';
       export { testRootRuntimePreparation } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRootSupervisorPreparation';
       export { createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration,
         resolveRuntimeRootOwnerBaseStoragePath } from './extensions/vscode/dev-session-canvas/src/common/runtimeRootOwnership';
       export { resolveCurrentRootRuntimeSupervisorGeneration } from './extensions/vscode/dev-session-canvas/src/panel/runtimeRelease';
+      export { createRuntimeReplacementOperation, readRuntimeReplacement, writeRuntimeReplacement } from './extensions/vscode/dev-session-canvas/src/panel/runtimeReplacementJournal';
     `,
     resolveDir: process.cwd(), sourcefile: 'host-owner-wiring-entry.ts'
   },
@@ -109,10 +111,19 @@ new Function('require', 'module', 'exports', '__filename', '__dirname', bundled.
 );
 const { ExecutionFlowRecorder, mergeSharedCanvasState, composeMultiRootCanvasState, decomposeMultiRootCanvasState, namespaceCanvasObjectId, CanvasPanelManager, ExecutionOwnerLifecycle, encodeOutputFrame,
   RuntimeTerminalReadRelay, RuntimeSupervisorClient, TerminalAvailableNotifications, parseWebviewMessage, EXECUTION_CANDIDATE_PROFILE, EXECUTION_CANDIDATE_BUDGETS, EXECUTION_PRODUCTION_ADMISSION, EXECUTION_INTERACTION_LIMITS,
-  testEnvironment, testWindow, testL10n, testWorkspace, testUri, serializeRuntimeSupervisorError, createRuntimeSupervisorError,
+  testEnvironment, testWindow, testL10n, testWorkspace, testUri, RUNTIME_SUPERVISOR_ERROR_CODES,
+  serializeRuntimeSupervisorError, createRuntimeSupervisorError,
   testLegacyHistoryInspector, testNativeHistoryInspector, testRootRuntimePreparation,
   createRuntimeOwnerDescriptor, createRuntimeUserStorageScopeKey, resolveRootRuntimeSupervisorGeneration, resolveCurrentRootRuntimeSupervisorGeneration,
-  resolveRuntimeRootOwnerBaseStoragePath, testClaudeSessionFiles, locateClaudeSessionIdFromFiles } = loaded.exports;
+  resolveRuntimeRootOwnerBaseStoragePath, testClaudeSessionFiles, locateClaudeSessionIdFromFiles,
+  createRuntimeReplacementOperation, readRuntimeReplacement, writeRuntimeReplacement } = loaded.exports;
+
+const candidateRuntimeGlobalStorageDirectories = [];
+process.on('exit', () => {
+  for (const directory of candidateRuntimeGlobalStorageDirectories) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 function deferred() {
   let resolve;
@@ -235,6 +246,8 @@ function fixture(options = {}) {
     agentSessions: new Map(), terminalSessions: new Map(), runtimeSessionBindings: new Map(),
     pendingTerminalInitialInputs: new Map(), pendingTerminalInitialInputDispatches: new Map(),
     executionSessionOperationTokens: new Map(), activeAssociatedNoteMarkdownEdits: new Map(),
+    pendingNodeDeletionOperations: new Map(), remotePendingNodeDeletionOperations: new Map(),
+    sharedRootCanvasStores: new Map(),
     state: { nodes, edges: [], groups: [] },
     terminalProjectionRefreshScheduler: { clearMatching() {} },
     assertExecutionAllowed: () => true,
@@ -2697,6 +2710,7 @@ for (const queuedResize of [false, true]) {
 function simulatedReloadFixture() {
   const f = candidateFixture();
   Object.assign(f.host, {
+    appliedStartupConfiguration: { runtimePersistenceEnabled: false },
     readStartupConfiguration: () => ({ ...f.host.appliedStartupConfiguration }),
     shouldPreserveLiveRuntimeAcrossHostBoundary: () => false,
     applyWorkbenchContextKeys() {}, refreshStorageRecoverySelection() {},
@@ -2922,6 +2936,9 @@ test('candidate Host retains both admitted preparations when production or finit
 
 function candidateRuntimeFixture(options = {}) {
   const f = candidateFixture(options);
+  const candidateGlobalStorage = mkdtempSync(path.join(os.tmpdir(), 'dsc-candidate-global-'));
+  candidateRuntimeGlobalStorageDirectories.push(candidateGlobalStorage);
+  f.host.context.globalStorageUri = { fsPath: candidateGlobalStorage };
   const creates = [];
   const applies = [];
   const subscriptions = [];
@@ -2952,6 +2969,7 @@ function candidateRuntimeFixture(options = {}) {
     isRuntimePersistenceEnabled: () => true,
     resolveRuntimeCreationTarget: async rootPath => ({ rootPath, runtimeStoragePath: '/controlled/new-runtime' }),
     getPreferredRuntimeSupervisorClient: async target => ({ client, backend, ...target }),
+    getRuntimeSupervisorClientForBackend: async () => client,
     disposeAgentFileActivitySession: async () => {},
     createConfiguredAgentFileActivitySession: () => ({ extraArgs: [], extraEnv: {}, dispose: async () => {} }),
     bindAgentFileActivitySession() {},
@@ -3251,8 +3269,8 @@ function candidateStrictDeletes(f, behavior) {
     paths: { storageDir: path.join(runtimeStoragePath, 'runtime-supervisor') } });
   f.host.getRuntimeSupervisorClientForBackend = async (backend, options) => {
     connections.push({ backend, options });
+    if (options?.deferConnection !== true) return f.client;
     assert.equal(options.allowRestart, false);
-    assert.equal(options.deferConnection, true);
     return {
       deleteSession: () => assert.fail('strict deletion must not enter ordinary RPC'),
       deleteSessionStrict(params, observed) {
@@ -3267,6 +3285,67 @@ function candidateStrictDeletes(f, behavior) {
 function settledLegacyDelete(kind, reason) {
   const result = Object.freeze({ kind, ...(reason ? { reason } : {}) });
   return { first: Promise.resolve(result), current: () => result, submitted: true };
+}
+
+function disconnectedLegacyDelete() {
+  const error = Object.assign(
+    new Error('ENOENT: no such file or directory, lstat /tmp/dsc-root-test'), { code: 'ENOENT' });
+  const result = Object.freeze({
+    kind: 'unconfirmed', reason: error.message, error
+  });
+  return { first: Promise.resolve(result), current: () => result, submitted: false, attemptSettled: true,
+    phase: 'socket-directory' };
+}
+
+function disconnectedDeleteAt(phase, code = 'ECONNRESET') {
+  const error = Object.assign(new Error(`controlled ${phase} disconnect`), { code });
+  const result = Object.freeze({ kind: 'unconfirmed', reason: error.message, error });
+  return {
+    first: Promise.resolve(result), current: () => result,
+    submitted: phase === 'submitted', attemptSettled: true, phase
+  };
+}
+
+async function runtimeReplacementRecords(f) {
+  const directory = path.join(f.host.context.globalStorageUri.fsPath, 'runtime-replacements-v1');
+  let files;
+  try { files = await readdir(directory); }
+  catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  return Promise.all(files.filter(file => file.endsWith('.json')).map(async file =>
+    JSON.parse(await readFile(path.join(directory, file), 'utf8'))));
+}
+
+async function seedRuntimeReplacement(f, {
+  kind, phase, targetSessionId, targetStoragePath = '/controlled/new-runtime',
+  originalBinding, originalNode, reason, launchMode = 'start'
+}) {
+  const node = f.host.state.nodes.find(value => value.kind === kind);
+  const identity = f.host.getRuntimeReplacementNodeIdentity(node, kind);
+  const operation = createRuntimeReplacementOperation({
+    rootPath: identity.rootPath,
+    localNodeId: identity.nodeId,
+    nodeId: node.id,
+    kind,
+    ...(originalNode ? { originalNode } : {}),
+    ...(originalBinding ? { originalBinding } : {}),
+    targetBinding: {
+      sessionId: targetSessionId, backendKind: 'legacy-detached',
+      runtimeStoragePath: targetStoragePath,
+      status: kind === 'agent' ? 'resuming' : 'launching',
+      attachmentState: 'attached-live',
+      lifecycle: kind === 'agent' ? 'resuming' : 'launching'
+    },
+    reservedSessionId: targetSessionId,
+    launchMode,
+    stop: 'confirmed',
+    evidence: 'controlled-test',
+    ...(reason ? { reason } : {})
+  });
+  await writeRuntimeReplacement(f.host.context.globalStorageUri.fsPath, { ...operation, phase });
+  return operation;
 }
 
 function addStoppedHistoryBinding(f, kind) {
@@ -3520,7 +3599,7 @@ for (const [runtimeStoragePath, kind] of [detachedHistoryStoragePath, ...unversi
         }
         if (action !== 'reset') assert.deepEqual(f.host.state.nodes.find(node => node.id === other.id), other);
         assert.equal(inspections, 2);
-        assert.equal(strict.calls.length, 1);
+        assert.equal(strict.calls.length, 1, 'historical evidence replaces a second strict delete attempt');
         assert.strictEqual(await observation.first, original);
         assert.equal(observation.current().kind, 'unconfirmed');
         assert.deepEqual(metadata, originalMetadata, 'restored history cleanup cannot synthesize an exit or EOF');
@@ -3945,6 +4024,7 @@ async function withRootCandidateRuntimeFixture(run) {
     globalStorageUri: { fsPath: globalStoragePath } };
   f.host.resolveRuntimeCreationTarget = CanvasPanelManager.prototype.resolveRuntimeCreationTarget;
   f.host.resolveRuntimeStoragePath = CanvasPanelManager.prototype.resolveRuntimeStoragePath;
+  f.host.getRuntimeSupervisorClientForBackend = CanvasPanelManager.prototype.getRuntimeSupervisorClientForBackend;
   f.host.getExtensionStoragePath = () => path.join(globalStoragePath, 'workspace-slot');
   const environment = { environmentKey: 'a'.repeat(64), userIdentity: 'controlled-test-user' };
   f.host.runtimeExecutionEnvironmentPromise = Promise.resolve(environment);
@@ -4626,7 +4706,789 @@ for (const kind of ['terminal', 'agent']) {
     assert.equal(f.persisted.length, 0);
     assert.equal(f.posted.some(message => message.type === 'host/error'), true);
   });
+
+  for (const launch of kind === 'agent' ? ['resume', 'start'] : ['start']) {
+    test(`S9 ${kind} disconnected history ${launch} records responsibility and permits replacement`, async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-replacement-stop-'));
+      const f = candidateRuntimeFixture();
+      f.host.context.globalStorageUri = { fsPath: directory };
+      const previous = addStoppedHistoryBinding(f, kind);
+      if (kind === 'agent') {
+        Object.assign(f.host.state.nodes.find(node => node.kind === kind).metadata.agent, {
+          resumeSupported: true, resumeStrategy: 'fake-provider',
+          resumeSessionId: 'original-resume', resumeStoragePath: directory
+        });
+        f.host.resolveAgentCli = async () => ({ command: '/controlled/agent', provider: 'codex', label: 'Codex' });
+        f.host.resolveAgentResumeContext = () => ({ supported: true, strategy: 'fake-provider',
+          sessionId: 'original-resume', storagePath: directory });
+      }
+      const strict = candidateStrictDeletes(f, () => disconnectedLegacyDelete());
+      const warningsBefore = testWindow.warningMessages.length;
+      try {
+        await completed(f.clock, launch === 'resume'
+          ? f.host.startAgentSession(previous.nodeId, 80, 24, undefined, true)
+          : f.start(kind), `${kind} disconnected ${launch}`);
+        assert.equal(strict.calls.length, 2, 'one bounded pre-submit re-probe reuses the same operation');
+        assert.equal(strict.calls[0].params.sessionId, previous.sessionId);
+        assert.equal(f.creates.length, 1);
+        assert.notEqual(f.creates[0].sessionId, previous.sessionId);
+        const metadata = f.host.state.nodes.find(node => node.id === previous.nodeId).metadata[kind];
+        assert.equal(metadata.runtimeSessionId, f.creates[0].sessionId);
+        assert.equal(metadata.runtimeStoragePath, '/controlled/new-runtime');
+        assert.equal([...f.host.runtimeSessionBindings.values()][0].runtimeSessionId, f.creates[0].sessionId);
+        const receipts = await readdir(path.join(directory, 'unconfirmed-runtime-deletions-v1'));
+        assert.equal(receipts.length, 1);
+        const receipt = JSON.parse(await readFile(path.join(directory, 'unconfirmed-runtime-deletions-v1', receipts[0]), 'utf8'));
+        assert.equal(receipt.status, 'runtime-stop-unconfirmed');
+        assert.equal(receipt.operation, 'runtime-replacement');
+        assert.equal(receipt.nodeId, previous.nodeId);
+        assert.equal(receipt.sessionId, previous.sessionId);
+        assert.equal(receipt.reason, 'ENOENT: no such file or directory, lstat /tmp/dsc-root-test');
+        assert.equal(testWindow.warningMessages.length, warningsBefore + 1);
+        assert.match(testWindow.warningMessages.at(-1)[0],
+          /could not be stopped.*new Runtime execution.*does not revive the original PTY/);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
+  for (const retained of ['live', 'shared', 'owner-conflict', 'status']) {
+    test(`S9 ${kind} disconnected ${retained} binding still blocks replacement`, async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-replacement-blocked-'));
+      const f = candidateRuntimeFixture();
+      f.host.context.globalStorageUri = { fsPath: directory };
+      const previous = retained === 'live'
+        ? addCandidateLegacyBinding(f, kind)
+        : addStoppedHistoryBinding(f, kind);
+      if (retained === 'shared') {
+        const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+        f.host.state.nodes.push({
+          ...structuredClone(node), id: `shared-${kind}`, position: { x: 900, y: 0 },
+          metadata: { [kind]: { ...node.metadata[kind] } }
+        });
+      } else if (retained === 'owner-conflict') {
+        const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+        f.host.state.nodes.push({
+          ...structuredClone(node), id: `owner-conflict-${kind}`, position: { x: 900, y: 0 },
+          metadata: { [kind]: { ...node.metadata[kind], runtimeOwner: createRuntimeOwnerDescriptor({
+            environmentKey: 'a'.repeat(64), userStorageScopeKey: 'b'.repeat(64),
+            rootPath: '/controlled/project-root',
+            generation: resolveRootRuntimeSupervisorGeneration(EXECUTION_CANDIDATE_PROFILE)
+          }) } }
+        });
+      } else if (retained === 'status') {
+        f.host.state.nodes.find(value => value.id === previous.nodeId).status = 'running';
+      }
+      const before = structuredClone(f.host.state);
+      const bindings = [...f.host.runtimeSessionBindings.entries()];
+      const strict = candidateStrictDeletes(f, () => disconnectedLegacyDelete());
+      const warningsBefore = testWindow.warningMessages.length;
+      try {
+        await completed(f.clock, f.start(kind), `${kind} disconnected ${retained} refusal`);
+        assert.equal(strict.calls.length, 1);
+        assert.equal(f.creates.length, 0);
+        assert.deepEqual(f.host.state, before);
+        assert.deepEqual([...f.host.runtimeSessionBindings.entries()], bindings);
+        await assert.rejects(readdir(path.join(directory, 'unconfirmed-runtime-deletions-v1')), { code: 'ENOENT' });
+        assert.equal(testWindow.warningMessages.length, warningsBefore);
+        assert.equal(f.posted.some(message => message.type === 'host/error'), true);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test(`S9 ${kind} disconnected replacement retains the original binding when its receipt cannot be written`, async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'dsc-replacement-receipt-'));
+    const globalStorage = path.join(directory, 'global-storage');
+    await mkdir(globalStorage, { mode: 0o700 });
+    await writeFile(path.join(globalStorage, 'unconfirmed-runtime-deletions-v1'), 'controlled obstruction');
+    const f = candidateRuntimeFixture();
+    f.host.context.globalStorageUri = { fsPath: globalStorage };
+    const previous = addStoppedHistoryBinding(f, kind);
+    const before = structuredClone(f.host.state);
+    const bindings = [...f.host.runtimeSessionBindings.entries()];
+    const strict = candidateStrictDeletes(f, () => disconnectedLegacyDelete());
+    const warningsBefore = testWindow.warningMessages.length;
+    try {
+      await completed(f.clock, f.start(kind), `${kind} disconnected receipt failure`);
+      assert.equal(strict.calls.length, 2, 'receipt failure follows the single bounded re-probe');
+      assert.equal(f.creates.length, 0);
+      assert.deepEqual(f.host.state, before);
+      assert.deepEqual([...f.host.runtimeSessionBindings.entries()], bindings);
+      assert.equal(f.host.state.nodes.find(node => node.id === previous.nodeId).metadata[kind].runtimeSessionId,
+        previous.sessionId);
+      assert.equal(testWindow.warningMessages.length, warningsBefore);
+      assert(f.posted.some(message => message.type === 'host/error'));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 }
+
+for (const kind of ['agent', 'terminal']) {
+  for (const scenario of ['submitted', 'handshake', 'timeout']) {
+    test(`S9 ${kind} ${scenario} strict-delete failure never enters disconnected replacement`, async () => {
+      const f = candidateRuntimeFixture();
+      const previous = addStoppedHistoryBinding(f, kind);
+      const before = structuredClone(f.host.state);
+      const bindings = [...f.host.runtimeSessionBindings.entries()];
+      const deletion = scenario === 'submitted' ? disconnectedDeleteAt('submitted', 'ENOENT')
+        : scenario === 'handshake' ? disconnectedDeleteAt('handshake', 'ECONNRESET')
+          : disconnectedDeleteAt('connecting', 'ETIMEDOUT');
+      const strict = candidateStrictDeletes(f, () => deletion);
+      const warningsBefore = testWindow.warningMessages.length;
+      await completed(f.clock, f.start(kind), `${kind} ${scenario} strict delete refusal`);
+      assert.equal(strict.calls.length, 1, 'a rejected phase/error combination cannot trigger the re-probe');
+      assert.equal(f.creates.length, 0);
+      assert.deepEqual(f.host.state, before);
+      assert.deepEqual([...f.host.runtimeSessionBindings.entries()], bindings);
+      await assert.rejects(readdir(path.join(f.host.context.globalStorageUri.fsPath,
+        'unconfirmed-runtime-deletions-v1')), { code: 'ENOENT' });
+      assert.equal(testWindow.warningMessages.length, warningsBefore);
+      assert(f.posted.some(message => message.type === 'host/error'));
+      assert.equal(f.host.state.nodes.find(node => node.id === previous.nodeId).metadata[kind].runtimeSessionId,
+        previous.sessionId);
+    });
+  }
+
+  test(`S9 ${kind} pre-submit missing endpoint re-probes once within the original deadline`, async () => {
+    const f = candidateRuntimeFixture();
+    const previous = addStoppedHistoryBinding(f, kind);
+    let calls = 0;
+    const strict = candidateStrictDeletes(f, () => ++calls === 1
+      ? disconnectedLegacyDelete() : settledLegacyDelete('legacy-acknowledged'));
+    const warningsBefore = testWindow.warningMessages.length;
+    await completed(f.clock, f.start(kind), `${kind} bounded re-probe success`);
+    assert.equal(strict.calls.length, 2);
+    assert.equal(strict.calls[0].observed.deadline, strict.calls[1].observed.deadline,
+      'the re-probe must not reset the original operation deadline');
+    assert.equal(f.creates.length, 1);
+    assert.equal(testWindow.warningMessages.length, warningsBefore);
+    await assert.rejects(readdir(path.join(f.host.context.globalStorageUri.fsPath,
+      'unconfirmed-runtime-deletions-v1')), { code: 'ENOENT' });
+    assert.equal(f.host.state.nodes.find(node => node.id === previous.nodeId).metadata[kind].runtimeSessionId,
+      f.creates[0].sessionId);
+  });
+}
+
+test('Agent launch awaits persisted state and a durable creation fence before createSession', async () => {
+  const f = candidateRuntimeFixture();
+  const persistence = deferred();
+  let launchPersisted;
+  const launchPersistedSeen = new Promise(resolve => { launchPersisted = resolve; });
+  f.host.persistState = options => {
+    if (options?.reason === 'agent-supervisor-launching') {
+      launchPersisted();
+      return persistence.promise;
+    }
+    return Promise.resolve();
+  };
+  const operation = f.start('agent');
+  await completed(f.clock, launchPersistedSeen, 'launching state persistence entered');
+  assert.equal(f.creates.length, 0, 'createSession must wait for the persisted launch state');
+  persistence.resolve();
+  await completed(f.clock, operation, 'Agent start after persisted launch state');
+  assert.equal(f.creates.length, 1);
+  assert.deepEqual(await runtimeReplacementRecords(f), [],
+    'a fully committed launch removes its durable creation fence');
+});
+
+test('Agent creation fence exposes the reserved identity before the response and survives a lost reply', async () => {
+  const f = candidateRuntimeFixture();
+  const entered = deferred();
+  const release = deferred();
+  const create = f.client.createSession;
+  f.client.createSession = async request => {
+    entered.resolve(request);
+    await release.promise;
+    return create(request);
+  };
+  const operation = f.start('agent');
+  await completed(f.clock, entered.promise, 'createSession entered');
+  const [record] = await runtimeReplacementRecords(f);
+  assert.equal(record.phase, 'create-may-have-been-submitted');
+  assert.equal(record.reservedSessionId, f.host.state.nodes.find(node => node.kind === 'agent').metadata.agent.runtimeSessionId);
+  assert.equal(record.targetBinding.sessionId, record.reservedSessionId);
+  assert.equal(record.localNodeId, 'agent-1');
+  assert.equal(record.rootPath, path.resolve(f.host.context.globalStorageUri.fsPath));
+  release.resolve();
+  await completed(f.clock, operation, 'Agent creation fence completion');
+  assert.deepEqual(await runtimeReplacementRecords(f), []);
+});
+
+test('Host reconciliation reattaches the reserved Agent identity without issuing a second create', async () => {
+  const f = candidateRuntimeFixture();
+  let snapshots = 0;
+  f.client.createSession = async request => {
+    f.creates.push(request);
+    throw Object.assign(new Error('controlled lost create response'), { code: 'ECONNRESET' });
+  };
+  f.client.getSessionSnapshot = async params => {
+    snapshots++;
+    return { sessionId: params.sessionId, kind: 'agent', runtimeBackend: 'legacy-detached',
+      live: true, lifecycle: 'running' };
+  };
+  await completed(f.clock, f.start('agent'), 'lost create response');
+  const [pending] = await runtimeReplacementRecords(f);
+  assert.equal(pending.phase, 'create-may-have-been-submitted');
+  await completed(f.clock, f.start('agent'), 'recover reserved Agent identity');
+  assert.equal(snapshots, 1);
+  assert.equal(f.creates.length, 1, 'recovery cannot issue a second createSession');
+  assert.equal(f.host.state.nodes.find(node => node.kind === 'agent').metadata.agent.runtimeSessionId,
+    pending.reservedSessionId);
+  assert.deepEqual(await runtimeReplacementRecords(f), []);
+  assert.equal(f.host.candidateRuntimeStarts.size, 0, 'successful recovery settles the original in-memory creation');
+  candidateStrictDeletes(f, () => settledLegacyDelete('legacy-acknowledged'));
+  await completed(f.clock, f.host.deleteNode('agent-1'), 'delete after recovered Agent creation');
+  assert.equal(f.host.state.nodes.some(node => node.kind === 'agent'), false);
+});
+
+test('Host reconciliation reattaches the reserved Terminal identity without issuing a second create', async () => {
+  const f = candidateRuntimeFixture();
+  let snapshots = 0;
+  f.client.createSession = async request => {
+    f.creates.push(request);
+    throw Object.assign(new Error('controlled lost terminal create response'), { code: 'ECONNRESET' });
+  };
+  f.client.getSessionSnapshot = async params => {
+    snapshots++;
+    return { sessionId: params.sessionId, kind: 'terminal', runtimeBackend: 'legacy-detached',
+      live: true, lifecycle: 'live' };
+  };
+  await completed(f.clock, f.start('terminal'), 'lost terminal create response');
+  const [pending] = await runtimeReplacementRecords(f);
+  assert.equal(pending.phase, 'create-may-have-been-submitted');
+  await completed(f.clock, f.start('terminal'), 'recover reserved Terminal identity');
+  assert.equal(snapshots, 1);
+  assert.equal(f.creates.length, 1);
+  assert.equal(f.host.state.nodes.find(node => node.kind === 'terminal').metadata.terminal.runtimeSessionId,
+    pending.reservedSessionId);
+  assert.deepEqual(await runtimeReplacementRecords(f), []);
+  assert.equal(f.host.candidateRuntimeStarts.size, 0, 'successful recovery settles the original in-memory creation');
+  candidateStrictDeletes(f, () => settledLegacyDelete('legacy-acknowledged'));
+  await completed(f.clock, f.host.deleteNode('terminal-1'), 'delete after recovered Terminal creation');
+  assert.equal(f.host.state.nodes.some(node => node.kind === 'terminal'), false);
+});
+
+test('Host reconciliation quarantines an unverifiable reserved Agent creation without retrying it', async () => {
+  const f = candidateRuntimeFixture();
+  f.client.createSession = async request => {
+    f.creates.push(request);
+    throw Object.assign(new Error('controlled lost create response'), { code: 'ECONNRESET' });
+  };
+  f.client.getSessionSnapshot = async () => {
+    throw Object.assign(new Error('controlled session not found'), { code: 'sessionNotFound' });
+  };
+  await completed(f.clock, f.start('agent'), 'lost create response before quarantine');
+  assert.equal(f.host.candidateRuntimeStarts.size, 1,
+    'an ended call retains its unknown creation reservation');
+  assert.equal([...f.host.candidateRuntimeStarts.values()][0].inFlight, false,
+    'the ended call is no longer an in-flight duplicate');
+  await completed(f.clock, f.start('agent'), 'quarantined Agent retry');
+  const [record] = await runtimeReplacementRecords(f);
+  assert.equal(record.phase, 'quarantined');
+  assert.equal(f.creates.length, 1, 'an unverifiable creation cannot be retried with a new UUID');
+  const node = f.host.state.nodes.find(value => value.kind === 'agent');
+  assert.equal(node.status, 'history-restored');
+  assert.equal(node.metadata.agent.runtimeSessionId, record.reservedSessionId);
+  assert.match(node.metadata.agent.lastRuntimeError, /could not be verified/);
+});
+
+test('Agent final snapshot failure quarantines a created execution instead of turning it into an ordinary retry', async () => {
+  const f = candidateRuntimeFixture();
+  f.host.applyRuntimeSupervisorSnapshot = async () => {
+    throw new Error('controlled final snapshot failure');
+  };
+  await completed(f.clock, f.start('agent'), 'Agent created without final snapshot');
+  const [record] = await runtimeReplacementRecords(f);
+  assert.equal(record.phase, 'quarantined');
+  assert.match(record.reason, /final snapshot failure/);
+  assert.equal(f.creates.length, 1);
+});
+
+for (const kind of ['agent', 'terminal']) {
+  test(`prepared ${kind} replacement rolls back its persisted target binding before reconnecting`, async () => {
+    const f = candidateRuntimeFixture();
+    const previous = addStoppedHistoryBinding(f, kind);
+    const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+    node.summary = `original ${kind} history`;
+    const originalMetadata = structuredClone(node.metadata[kind]);
+    const originalStatus = node.status;
+    node.status = kind === 'agent' ? 'resuming' : 'launching';
+    node.metadata[kind] = {
+      ...originalMetadata,
+      runtimeSessionId: 'reserved-prepared',
+      runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/controlled/new-runtime',
+      attachmentState: 'attached-live',
+      lifecycle: kind === 'agent' ? 'resuming' : 'launching',
+      liveSession: false
+    };
+    let observed;
+    const strict = candidateStrictDeletes(f, params => {
+      observed = {
+        deletedSessionId: params.sessionId,
+        nodeSessionId: f.host.state.nodes.find(value => value.id === previous.nodeId).metadata[kind].runtimeSessionId,
+        bindingSessionId: [...f.host.runtimeSessionBindings.values()][0]?.runtimeSessionId
+      };
+      return settledLegacyDelete('legacy-acknowledged');
+    });
+    await seedRuntimeReplacement(f, {
+      kind,
+      phase: 'prepared',
+      targetSessionId: 'reserved-prepared',
+      originalNode: {
+        status: originalStatus,
+        summary: node.summary,
+        metadata: originalMetadata
+      },
+      originalBinding: {
+        sessionId: previous.sessionId,
+        backendKind: previous.backendKind,
+        runtimeStoragePath: previous.runtimeStoragePath,
+        status: originalStatus,
+        attachmentState: originalMetadata.attachmentState,
+        lifecycle: originalMetadata.lifecycle
+      }
+    });
+
+    await completed(f.clock, f.start(kind), `prepared ${kind} replacement rollback`);
+
+    assert.equal(strict.calls.length, 1);
+    assert.deepEqual(observed, {
+      deletedSessionId: previous.sessionId,
+      nodeSessionId: previous.sessionId,
+      bindingSessionId: previous.sessionId
+    }, 'the pre-submit rollback restores the original binding before any delete');
+    assert.equal(f.creates.length, 1);
+    assert.notEqual(f.creates[0].sessionId, 'reserved-prepared');
+    assert.deepEqual(await runtimeReplacementRecords(f), []);
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`unreachable target reconciliation quarantines pending ${kind} creation before connecting`, async () => {
+    const f = candidateRuntimeFixture();
+    const previous = addStoppedHistoryBinding(f, kind);
+    const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+    const originalMetadata = structuredClone(node.metadata[kind]);
+    node.metadata[kind] = {
+      ...originalMetadata,
+      runtimeSessionId: 'reserved-unreachable',
+      runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/controlled/unreachable-runtime',
+      attachmentState: 'attached-live',
+      lifecycle: kind === 'agent' ? 'resuming' : 'launching',
+      liveSession: false
+    };
+    await seedRuntimeReplacement(f, {
+      kind,
+      phase: 'create-may-have-been-submitted',
+      targetSessionId: 'reserved-unreachable',
+      targetStoragePath: '/controlled/unreachable-runtime',
+      originalBinding: {
+        sessionId: previous.sessionId,
+        backendKind: previous.backendKind,
+        runtimeStoragePath: previous.runtimeStoragePath,
+        status: 'history-restored',
+        attachmentState: 'history-restored',
+        lifecycle: kind === 'agent' ? 'stopped' : 'closed'
+      }
+    });
+    f.host.getRuntimeSupervisorClientForBackend = async () => {
+      throw Object.assign(
+        new Error("ENOENT: no such file or directory, lstat '/tmp/dsc-root-unreachable'"), { code: 'ENOENT' });
+    };
+    f.host.getPreferredRuntimeSupervisorClient = () =>
+      assert.fail('an unreachable pending replacement must be resolved before selecting a new Supervisor');
+
+    await completed(f.clock, f.start(kind), `${kind} unreachable pending replacement`);
+
+    assert.equal(f.creates.length, 0);
+    const [record] = await runtimeReplacementRecords(f);
+    assert.equal(record.phase, 'quarantined');
+    assert.match(record.reason, /could not be verified/);
+    assert.equal(node.status, 'history-restored');
+    assert.equal(node.metadata[kind].runtimeSessionId, 'reserved-unreachable');
+    assert(f.posted.some(message => message.payload?.message
+      && /unknown state/i.test(message.payload.message)));
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`bound ${kind} replacement with a missing session returns to retryable history`, async () => {
+    const f = candidateRuntimeFixture();
+    const previous = addStoppedHistoryBinding(f, kind);
+    const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+    const originalMetadata = structuredClone(node.metadata[kind]);
+    node.status = kind === 'agent' ? 'running' : 'live';
+    node.metadata[kind] = {
+      ...originalMetadata,
+      runtimeSessionId: 'reserved-bound',
+      runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/controlled/new-runtime',
+      attachmentState: 'attached-live',
+      lifecycle: kind === 'agent' ? 'running' : 'live',
+      liveSession: true
+    };
+    await seedRuntimeReplacement(f, {
+      kind,
+      phase: 'bound',
+      targetSessionId: 'reserved-bound',
+      originalBinding: {
+        sessionId: previous.sessionId,
+        backendKind: previous.backendKind,
+        runtimeStoragePath: previous.runtimeStoragePath,
+        status: 'history-restored',
+        attachmentState: 'history-restored',
+        lifecycle: kind === 'agent' ? 'stopped' : 'closed'
+      }
+    });
+    f.client.getSessionSnapshot = async () => {
+      throw createRuntimeSupervisorError({ message: 'controlled missing bound session',
+        code: RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound });
+    };
+    const strict = candidateStrictDeletes(f, () => settledLegacyDelete('legacy-absent'));
+
+    await completed(f.clock, f.start(kind), `bound ${kind} retry after missing session`);
+
+    assert.equal(strict.calls.length, 1);
+    assert.equal(strict.calls[0].params.sessionId, 'reserved-bound');
+    assert.equal(f.creates.length, 1);
+    assert.notEqual(f.creates[0].sessionId, 'reserved-bound');
+    assert.deepEqual(await runtimeReplacementRecords(f), []);
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`not-acquired ${kind} replacement remains retryable after outer node rollback`, async () => {
+    const f = candidateRuntimeFixture();
+    const previous = addStoppedHistoryBinding(f, kind);
+    const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+    const originalMetadata = structuredClone(node.metadata[kind]);
+    node.metadata[kind] = {
+      ...originalMetadata,
+      runtimeSessionId: 'reserved-not-acquired',
+      runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/controlled/new-runtime',
+      attachmentState: 'attached-live',
+      lifecycle: kind === 'agent' ? 'resuming' : 'launching',
+      liveSession: false
+    };
+    await seedRuntimeReplacement(f, {
+      kind,
+      phase: 'not-acquired',
+      targetSessionId: 'reserved-not-acquired',
+      originalNode: {
+        status: 'history-restored',
+        summary: `original ${kind} history`,
+        metadata: originalMetadata
+      },
+      originalBinding: {
+        sessionId: previous.sessionId,
+        backendKind: previous.backendKind,
+        runtimeStoragePath: previous.runtimeStoragePath,
+        status: 'history-restored',
+        attachmentState: 'history-restored',
+        lifecycle: kind === 'agent' ? 'stopped' : 'closed'
+      },
+      reason: 'The Supervisor reported that the execution was not acquired.'
+    });
+    // Reproduce the outer start rollback after the typed not-acquired response.
+    node.status = 'error';
+    node.metadata[kind] = {
+      ...originalMetadata,
+      lifecycle: 'error',
+      attachmentState: 'history-restored',
+      runtimeBackend: undefined,
+      runtimeStoragePath: undefined,
+      runtimeOwner: undefined,
+      runtimeSessionId: undefined,
+      pendingLaunch: undefined,
+      liveSession: false,
+      lastRuntimeError: 'controlled not-acquired'
+    };
+
+    await completed(f.clock, f.start(kind), `${kind} retry from settled not-acquired`);
+
+    assert.equal(f.creates.length, 1);
+    assert.notEqual(f.creates[0].sessionId, 'reserved-not-acquired');
+    assert.deepEqual(await runtimeReplacementRecords(f), []);
+    assert.equal(f.posted.some(message => message.payload?.message
+      && /unknown state/i.test(message.payload.message)), false);
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`not-acquired ${kind} fence removal failure leaves a settled retryable journal`, async () => {
+    const fsPromises = createRequire(import.meta.url)('fs/promises');
+    const originalRemove = fsPromises.rm;
+    const f = candidateRuntimeFixture();
+    const nodeId = `${kind}-1`;
+    const journalDirectory = path.join(f.host.context.globalStorageUri.fsPath, 'runtime-replacements-v1');
+    let remainingFailures = 1;
+    fsPromises.rm = async (filename, ...args) => {
+      const value = String(filename);
+      if (remainingFailures > 0 && value.startsWith(journalDirectory) && value.endsWith('.json')) {
+        remainingFailures--;
+        throw Object.assign(new Error('controlled journal removal failure'), { code: 'EACCES' });
+      }
+      return originalRemove(filename, ...args);
+    };
+    try {
+      f.setRejectBeforeAcquire(true);
+      await completed(f.clock, f.start(kind), `${kind} typed not-acquired with removal failure`);
+      assert.equal(remainingFailures, 0);
+      const [settled] = await runtimeReplacementRecords(f);
+      assert.equal(settled.phase, 'not-acquired');
+      assert.ok(settled.reservedSessionId);
+      assert.equal(f.host.candidateRuntimeStarts.size, 0);
+      const node = f.host.state.nodes.find(node => node.id === nodeId);
+      assert.equal(node.status, 'error');
+      assert.equal(node.metadata[kind].runtimeSessionId, undefined);
+
+      f.setRejectBeforeAcquire(false);
+      await completed(f.clock, f.start(kind), `${kind} retry from not-acquired journal`);
+      assert.equal(f.creates.length, 1);
+      assert.notEqual(f.creates[0].sessionId, settled.reservedSessionId);
+      assert.deepEqual(await runtimeReplacementRecords(f), []);
+    } finally {
+      fsPromises.rm = originalRemove;
+    }
+  });
+}
+
+for (const kind of ['agent', 'terminal']) {
+  test(`bound ${kind} replacement retains confirmation across a transient verification failure`, async () => {
+    const f = candidateRuntimeFixture();
+    const previous = addStoppedHistoryBinding(f, kind);
+    const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+    const originalMetadata = structuredClone(node.metadata[kind]);
+    node.status = kind === 'agent' ? 'running' : 'live';
+    node.metadata[kind] = {
+      ...originalMetadata,
+      runtimeSessionId: 'reserved-bound-transient',
+      runtimeBackend: 'legacy-detached',
+      runtimeStoragePath: '/controlled/new-runtime',
+      attachmentState: 'attached-live',
+      lifecycle: kind === 'agent' ? 'running' : 'live',
+      liveSession: true
+    };
+    await seedRuntimeReplacement(f, {
+      kind,
+      phase: 'bound',
+      targetSessionId: 'reserved-bound-transient',
+      originalBinding: {
+        sessionId: previous.sessionId,
+        backendKind: previous.backendKind,
+        runtimeStoragePath: previous.runtimeStoragePath,
+        status: 'history-restored',
+        attachmentState: 'history-restored',
+        lifecycle: kind === 'agent' ? 'stopped' : 'closed'
+      }
+    });
+    f.client.getSessionSnapshot = async () => {
+      throw Object.assign(new Error('controlled transient endpoint refusal'), { code: 'ECONNREFUSED' });
+    };
+
+    await completed(f.clock, f.start(kind), `${kind} transient bound verification failure`);
+    assert.equal(f.creates.length, 0);
+    const [stillBound] = await runtimeReplacementRecords(f);
+    assert.equal(stillBound.phase, 'bound');
+    assert.notEqual(stillBound.phase, 'quarantined');
+
+    f.client.getSessionSnapshot = async () => {
+      throw createRuntimeSupervisorError({ message: 'controlled missing bound session after reconnect',
+        code: RUNTIME_SUPERVISOR_ERROR_CODES.sessionNotFound });
+    };
+    const strict = candidateStrictDeletes(f, () => settledLegacyDelete('legacy-absent'));
+    await completed(f.clock, f.start(kind), `${kind} retry after bound session becomes absent`);
+    assert.equal(strict.calls.length, 1);
+    assert.equal(strict.calls[0].params.sessionId, 'reserved-bound-transient');
+    assert.equal(f.creates.length, 1);
+    assert.deepEqual(await runtimeReplacementRecords(f), []);
+  });
+}
+
+test('rootless Runtime replacement identity follows workspace storage instead of global storage', async () => {
+  const f = candidateRuntimeFixture();
+  const node = f.host.state.nodes.find(value => value.kind === 'agent');
+  f.host.context.storageUri = { fsPath: '/controlled/workspace-a' };
+  const first = f.host.getRuntimeReplacementNodeIdentity(node, 'agent');
+  const repeated = f.host.getRuntimeReplacementNodeIdentity(node, 'agent');
+  f.host.context.storageUri = { fsPath: '/controlled/workspace-b' };
+  const second = f.host.getRuntimeReplacementNodeIdentity(node, 'agent');
+  assert.deepEqual(first, repeated);
+  assert.notEqual(first.rootPath, second.rootPath);
+  assert.equal(first.nodeId, second.nodeId);
+
+  f.host.context.storageUri = { fsPath: '/controlled/workspace-a' };
+  await seedRuntimeReplacement(f, {
+    kind: 'agent', phase: 'prepared', targetSessionId: 'reserved-rootless'
+  });
+  const sharedGlobalStorage = f.host.context.globalStorageUri.fsPath;
+  assert.equal((await readRuntimeReplacement(sharedGlobalStorage, first))?.reservedSessionId,
+    'reserved-rootless');
+  assert.equal(await readRuntimeReplacement(sharedGlobalStorage, second), undefined,
+    'another rootless workspace must not see this pending replacement');
+});
+
+test('group clear records unknown replacement responsibility before removing the node', async () => {
+  const f = candidateRuntimeFixture();
+  const previous = addStoppedHistoryBinding(f, 'agent');
+  const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+  const originalMetadata = structuredClone(node.metadata.agent);
+  node.groupId = 'group-clear';
+  f.host.state.groups = [{
+    id: 'group-clear', title: 'Controlled group',
+    position: { x: 0, y: 0 }, size: { width: 900, height: 600 }
+  }];
+  node.metadata.agent = {
+    ...originalMetadata,
+    runtimeSessionId: 'reserved-group',
+    runtimeBackend: 'legacy-detached',
+    runtimeStoragePath: '/controlled/new-runtime',
+    attachmentState: 'attached-live',
+    lifecycle: 'resuming',
+    liveSession: false
+  };
+  await seedRuntimeReplacement(f, {
+    kind: 'agent',
+    phase: 'create-may-have-been-submitted',
+    targetSessionId: 'reserved-group',
+    reason: 'controlled unknown group creation'
+  });
+  candidateStrictDeletes(f, () => settledLegacyDelete('legacy-absent'));
+
+  await completed(f.clock, f.host.clearCanvasGroupContents('group-clear',
+    { reason: 'controlled-group-clear' }), 'group clear with pending replacement');
+
+  assert(!f.host.state.nodes.some(value => value.id === previous.nodeId));
+  assert.deepEqual(await runtimeReplacementRecords(f), []);
+  const receipts = await readdir(path.join(f.host.context.globalStorageUri.fsPath,
+    'unconfirmed-runtime-deletions-v1'));
+  const receipt = JSON.parse(await readFile(path.join(f.host.context.globalStorageUri.fsPath,
+    'unconfirmed-runtime-deletions-v1', receipts[0]), 'utf8'));
+  assert.equal(receipt.sessionId, 'reserved-group');
+  assert.equal(receipt.operation, 'runtime-replacement');
+  assert.equal(receipt.reason, 'controlled unknown group creation');
+});
+
+test('group clear retains a replacement journal created after its deletion preparation', async () => {
+  const f = candidateRuntimeFixture();
+  const previous = addStoppedHistoryBinding(f, 'agent');
+  const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+  const originalMetadata = structuredClone(node.metadata.agent);
+  node.groupId = 'group-race';
+  f.host.state.groups = [{
+    id: 'group-race', title: 'Controlled race group',
+    position: { x: 0, y: 0 }, size: { width: 900, height: 600 }
+  }];
+  node.metadata.agent = {
+    ...originalMetadata,
+    runtimeSessionId: 'reserved-old-operation',
+    runtimeBackend: 'legacy-detached',
+    runtimeStoragePath: '/controlled/new-runtime',
+    attachmentState: 'attached-live',
+    lifecycle: 'resuming',
+    liveSession: false
+  };
+  await seedRuntimeReplacement(f, {
+    kind: 'agent',
+    phase: 'create-may-have-been-submitted',
+    targetSessionId: 'reserved-old-operation',
+    reason: 'controlled original unknown creation'
+  });
+  candidateStrictDeletes(f, () => settledLegacyDelete('legacy-absent'));
+  const terminate = f.host.terminateExecutionNodeForDeletion.bind(f.host);
+  let injected = false;
+  f.host.terminateExecutionNodeForDeletion = async (...args) => {
+    await terminate(...args);
+    if (!injected) {
+      injected = true;
+      await seedRuntimeReplacement(f, {
+        kind: 'agent',
+        phase: 'create-may-have-been-submitted',
+        targetSessionId: 'reserved-new-operation',
+        reason: 'controlled concurrent new creation'
+      });
+    }
+  };
+
+  await completed(f.clock, f.host.clearCanvasGroupContents('group-race',
+    { reason: 'controlled-group-clear-race' }), 'group clear with a concurrent replacement journal');
+
+  assert.equal(injected, true);
+  assert.equal(f.host.state.nodes.some(value => value.id === previous.nodeId), false);
+  const [retained] = await runtimeReplacementRecords(f);
+  assert.equal(retained.targetBinding.sessionId, 'reserved-new-operation',
+    'cleanup may remove only the operation observed before deletion');
+  assert.equal(retained.phase, 'create-may-have-been-submitted');
+  const receipts = await readdir(path.join(f.host.context.globalStorageUri.fsPath,
+    'unconfirmed-runtime-deletions-v1'));
+  const receiptRecords = await Promise.all(receipts.map(file => readFile(path.join(
+    f.host.context.globalStorageUri.fsPath, 'unconfirmed-runtime-deletions-v1', file), 'utf8')));
+  assert(receiptRecords.some(value => JSON.parse(value).sessionId === 'reserved-old-operation'));
+});
+
+test('group clear retains and receipts a replacement journal that advances within one operation', async () => {
+  const f = candidateRuntimeFixture();
+  const previous = addStoppedHistoryBinding(f, 'agent');
+  const node = f.host.state.nodes.find(value => value.id === previous.nodeId);
+  const originalMetadata = structuredClone(node.metadata.agent);
+  node.groupId = 'group-phase-advance';
+  f.host.state.groups = [{
+    id: 'group-phase-advance', title: 'Controlled phase advance group',
+    position: { x: 0, y: 0 }, size: { width: 900, height: 600 }
+  }];
+  node.metadata.agent = {
+    ...originalMetadata,
+    runtimeSessionId: 'reserved-phase-advance',
+    runtimeBackend: 'legacy-detached',
+    runtimeStoragePath: '/controlled/new-runtime',
+    attachmentState: 'attached-live',
+    lifecycle: 'resuming',
+    liveSession: false
+  };
+  const operation = await seedRuntimeReplacement(f, {
+    kind: 'agent',
+    phase: 'prepared',
+    targetSessionId: 'reserved-phase-advance',
+    reason: 'controlled phase advance'
+  });
+  candidateStrictDeletes(f, () => settledLegacyDelete('legacy-absent'));
+  const terminate = f.host.terminateExecutionNodeForDeletion.bind(f.host);
+  let advanced = false;
+  f.host.terminateExecutionNodeForDeletion = async (...args) => {
+    await terminate(...args);
+    if (!advanced) {
+      advanced = true;
+      await writeRuntimeReplacement(f.host.context.globalStorageUri.fsPath, {
+        ...operation,
+        phase: 'create-may-have-been-submitted',
+        updatedAt: new Date(Date.now() + 1_000).toISOString()
+      });
+    }
+  };
+
+  await completed(f.clock, f.host.clearCanvasGroupContents('group-phase-advance',
+    { reason: 'controlled-group-clear-phase-advance' }), 'group clear with a phase advance');
+
+  assert.equal(advanced, true);
+  assert.equal(f.host.state.nodes.some(value => value.id === previous.nodeId), false);
+  const [retained] = await runtimeReplacementRecords(f);
+  assert.equal(retained.operationId, operation.operationId,
+    'the advanced record belongs to the same operation');
+  assert.equal(retained.phase, 'create-may-have-been-submitted');
+  const receipts = await readdir(path.join(f.host.context.globalStorageUri.fsPath,
+    'unconfirmed-runtime-deletions-v1'));
+  const receiptRecords = await Promise.all(receipts.map(file => readFile(path.join(
+    f.host.context.globalStorageUri.fsPath, 'unconfirmed-runtime-deletions-v1', file), 'utf8')));
+  assert(receiptRecords.some(value => JSON.parse(value).sessionId === 'reserved-phase-advance'),
+    'the advanced creation responsibility must get a durable receipt');
+});
 
 test('S9 reset attempts both original backends but does not clear nodes or bindings after partial failure', async () => {
   const f = candidateFixture();

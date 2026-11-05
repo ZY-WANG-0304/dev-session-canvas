@@ -10,19 +10,20 @@ export function isRuntimeConnectionUnavailable(error: unknown): error is Error {
     RUNTIME_SUPERVISOR_ERROR_CODES.clientConnectionClosed].includes((error as NodeJS.ErrnoException).code ?? '');
 }
 
-export interface DisconnectedRuntimeDeletionRecord {
+export interface UnconfirmedRuntimeStopRecord {
   nodeId: string;
   kind: ExecutionNodeKind;
   sessionId: string;
   backendKind: RuntimeHostBackendKind;
   runtimeStoragePath: string;
   runtimeOwner?: RuntimeOwnerDescriptorV1;
+  operation: 'node-deletion' | 'runtime-replacement';
   reason: string;
 }
 
 /** A durable stop-unconfirmed receipt, not proof of node persistence or process exit. */
-export async function recordDisconnectedRuntimeDeletion(
-  globalStoragePath: string, record: DisconnectedRuntimeDeletionRecord
+export async function recordUnconfirmedRuntimeStop(
+  globalStoragePath: string, record: UnconfirmedRuntimeStopRecord
 ): Promise<string> {
   const directory = path.join(globalStoragePath, 'unconfirmed-runtime-deletions-v1');
   const digest = createHash('sha256').update(JSON.stringify([
