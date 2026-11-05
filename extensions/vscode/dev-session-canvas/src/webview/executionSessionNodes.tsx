@@ -28,6 +28,7 @@ import {
 import { canvasOverviewInertProps, CanvasNodeInteractionBoundary, ChromeTitleEditor } from './canvasUiSurface';
 import { stopCanvasEvent } from './canvasDomEvents';
 import { preserveExecutionLinkOnSelectionRedraw } from './executionTerminalSelectionLinkRendering';
+import { fitTerminalWithCorrection } from './terminalFitConvergence';
 import {
   setupExecutionTerminalNativeInteractions,
   type ExecutionTerminalNativeInteractionsHandle
@@ -526,28 +527,18 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         }
 
-        const proposedDimensions = fitAddon.proposeDimensions();
-        if (!proposedDimensions) {
-          return;
-        }
-
         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
-        const shouldDeferShrinkFit =
-          options.allowShrinkDuringRestore !== true &&
-          hasAppliedSnapshot &&
-          Date.now() < suppressShrinkFitUntilMs &&
-          (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
-        if (shouldDeferShrinkFit) {
-          scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
-        } else {
-          cancelDeferredShrinkFit();
-        }
-        if (
-          !shouldDeferShrinkFit &&
-          (terminal.cols !== proposedDimensions.cols || terminal.rows !== proposedDimensions.rows)
-        ) {
-          fitAddon.fit();
-        }
+        const shouldDeferShrinkFit = (proposedDimensions: { cols: number; rows: number }): boolean => {
+          const shouldDefer =
+            options.allowShrinkDuringRestore !== true &&
+            hasAppliedSnapshot &&
+            Date.now() < suppressShrinkFitUntilMs &&
+            (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
+          if (shouldDefer) scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
+          else cancelDeferredShrinkFit();
+          return shouldDefer;
+        };
+        if (!fitTerminalWithCorrection(terminal, fitAddon, shouldDeferShrinkFit)) return;
         terminalSizeRef.current = {
           cols: terminal.cols,
           rows: terminal.rows
@@ -1266,28 +1257,18 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
           }
         }
 
-        const proposedDimensions = fitAddon.proposeDimensions();
-        if (!proposedDimensions) {
-          return;
-        }
-
         const { hasAppliedSnapshot, suppressShrinkFitUntilMs } = snapshotRestoreRef.current;
-        const shouldDeferShrinkFit =
-          options.allowShrinkDuringRestore !== true &&
-          hasAppliedSnapshot &&
-          Date.now() < suppressShrinkFitUntilMs &&
-          (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
-        if (shouldDeferShrinkFit) {
-          scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
-        } else {
-          cancelDeferredShrinkFit();
-        }
-        if (
-          !shouldDeferShrinkFit &&
-          (terminal.cols !== proposedDimensions.cols || terminal.rows !== proposedDimensions.rows)
-        ) {
-          fitAddon.fit();
-        }
+        const shouldDeferShrinkFit = (proposedDimensions: { cols: number; rows: number }): boolean => {
+          const shouldDefer =
+            options.allowShrinkDuringRestore !== true &&
+            hasAppliedSnapshot &&
+            Date.now() < suppressShrinkFitUntilMs &&
+            (proposedDimensions.cols < terminal.cols || proposedDimensions.rows < terminal.rows);
+          if (shouldDefer) scheduleDeferredShrinkFit(suppressShrinkFitUntilMs - Date.now());
+          else cancelDeferredShrinkFit();
+          return shouldDefer;
+        };
+        if (!fitTerminalWithCorrection(terminal, fitAddon, shouldDeferShrinkFit)) return;
         terminalSizeRef.current = {
           cols: terminal.cols,
           rows: terminal.rows

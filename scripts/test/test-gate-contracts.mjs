@@ -1727,6 +1727,12 @@ test('snapshot Host contract requires both actual roles, final cleanup and origi
   await assert.rejects(() => waitForHostAbsence(original, Date.now() + 30), /exit/);
 });
 
+test('default regression includes terminal fit convergence', async () => {
+  assert(regressionScripts.includes('test:terminal-fit-convergence'));
+  const manifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.scripts['test:terminal-fit-convergence'], 'node scripts/test/test-terminal-fit-convergence.mjs');
+});
+
 test('default regression includes owner Stop failure and unknown-result responsibility', async () => {
   assert(regressionScripts.includes('test:execution-owner-lifecycle'));
   const manifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));

@@ -457,7 +457,10 @@ export class PreparedExecution {
     }
     if (this.interactions.size >= EXECUTION_INTERACTION_LIMITS.pendingOperations
       || this.interactionBytes + input.bytes > EXECUTION_INTERACTION_LIMITS.pendingInputBytes) {
-      throw new Error('Execution terminal interaction capacity exhausted');
+      const pendingInputs = [...this.interactions].filter(interaction => interaction.kind === 'input').length;
+      throw new Error(`Execution terminal interaction capacity exhausted: pendingOperations=${this.interactions.size}, ` +
+        `pendingInputs=${pendingInputs}, pendingResizes=${this.interactions.size - pendingInputs}, ` +
+        `pendingInputBytes=${this.interactionBytes}, requestedKind=${input.kind}, requestedInputBytes=${input.bytes}`);
     }
     let resolve!: (result: ExecutionInteractionResult) => void;
     const first = new Promise<ExecutionInteractionResult>(done => { resolve = done; });

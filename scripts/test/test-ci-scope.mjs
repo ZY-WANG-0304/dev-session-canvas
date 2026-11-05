@@ -13,11 +13,52 @@ import { summarizeObservations, readObservationHistory } from '../gates/report-o
 import { validateReuseCandidate, effectiveTree, prepareMerge, verifyMerge, policyUnchanged } from '../gates/merge-control.mjs';
 import { checkDocumentation } from '../gates/check-documentation.mjs';
 import { writeJSON } from '../gates/receipts.mjs';
+import { assertWorkflowAttempt } from '../gates/assert-workflow-attempt.mjs';
 const root = process.cwd();
 const baseArgs = { mode: 'pr', inputSHA: 'a'.repeat(40), headSHA: 'a'.repeat(40), baseSHA: 'b'.repeat(40), version: '0.27.0', selection: 'affected' };
 const planFor = (paths, extra = {}) => buildPlan({ ...baseArgs, changedPaths: paths, ...extra });
 const jobs = plan => new Set(plan.tasks.map(task => task.job));
 const full = planFor(['package-lock.json']);
+
+test('partial reruns fail before downloading another attempt input and explain full rerun', async () => {
+  assert.doesNotThrow(() => assertWorkflowAttempt('3', '3'));
+  for (const producer of [undefined, '', '0', '03', '1', 'NaN']) {
+    assert.throws(() => assertWorkflowAttempt(producer, '3'), /Re-run all jobs, not Re-run failed jobs/);
+  }
+  const workflow = yaml.load(await fs.readFile('.github/workflows/ci-validation.yml', 'utf8'));
+  assert.equal(workflow.jobs.resolve.outputs.producer_attempt, '${{ steps.plan.outputs.producer_attempt }}');
+  let consumers = 0;
+  for (const job of Object.values(workflow.jobs)) {
+    const download = job.steps.findIndex(step => step.name === 'Download frozen plan');
+    if (download < 0) continue;
+    consumers++;
+    const setup = job.steps.findIndex(step => step.run ===
+      'node scripts/gates/setup-environment.mjs "${{ needs.resolve.outputs.producer_attempt }}"');
+    assert(setup >= 0 && setup < download);
+    assert(job.needs.includes('resolve'));
+  }
+  assert.equal(consumers, 14);
+  const preflight = yaml.load(await fs.readFile('.github/workflows/release-preflight.yml', 'utf8'));
+  const producer = preflight.jobs['resolve-input'];
+  assert.equal(producer.outputs.producer_attempt, '${{ steps.input.outputs.producer_attempt }}');
+  assert.match(producer.steps.find(step => step.id === 'input').run, /producer_attempt=\$GITHUB_RUN_ATTEMPT/);
+  const steps = preflight.jobs['verify-release-contract'].steps;
+  const guard = steps.findIndex(step => step.run === 'node scripts/gates/assert-workflow-attempt.mjs');
+  assert(guard >= 0 && guard < steps.findIndex(step => step.uses === 'actions/download-artifact@v4'));
+  assert.equal(steps[guard].env.GATE_PRODUCER_ATTEMPT, '${{ needs.resolve-input.outputs.producer_attempt }}');
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-attempt-check-'));
+  try {
+    const envFile = path.join(folder, 'env');
+    const env = { ...process.env, GITHUB_ENV: envFile, RUNNER_TEMP: folder, GITHUB_RUN_ATTEMPT: '3' };
+    const failed = spawnSync(process.execPath, ['scripts/gates/setup-environment.mjs', '2'], { encoding: 'utf8', env });
+    assert.notEqual(failed.status, 0);
+    assert.match(failed.stderr, /Re-run all jobs/);
+    await assert.rejects(fs.stat(envFile), { code: 'ENOENT' });
+    const passed = spawnSync(process.execPath, ['scripts/gates/setup-environment.mjs', '3'], { encoding: 'utf8', env });
+    assert.equal(passed.status, 0, passed.stderr);
+    assert.match(await fs.readFile(envFile, 'utf8'), /PLAYWRIGHT_BROWSERS_PATH=/);
+  } finally { await fs.rm(folder, { recursive: true, force: true }); }
+});
 
 async function colorContractFixture(t) {
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'dsc-ci-color-consumers-'));
@@ -106,7 +147,7 @@ test('release modes retain every task, observation failure cannot reduce release
     const selected = planFor(['docs/workflows/COMMIT.md'], { mode });
     const original = planFor(['docs/workflows/COMMIT.md'], { mode, selection: undefined });
     assert.deepEqual(selected.tasks, original.tasks);
-    assert.equal(selected.tasks.length, 359); assert(selected.tasks.every(task => task.required));
+    assert.equal(selected.tasks.length, 360); assert(selected.tasks.every(task => task.required));
     assert.equal(selected.selectionResult, undefined);
   }
 });
@@ -258,7 +299,7 @@ test('literal documentation consumers in contract tests cannot silently enter th
 test('a gate-changing PR may reuse its prior full execution only after unchanged-code documentation follow-up', async t => {
   const f=await fixture(t,{policyChange:true});
   assert.equal(policyUnchanged(f.root,f.base,f.input),false);
-  assert.equal(f.previous.tasks.length,359);
+  assert.equal(f.previous.tasks.length,360);
   assert.doesNotThrow(()=>validateReuseCandidate(f));
   assert.throws(()=>validateReuseCandidate({...f,previous:{...f.previous,selection:'affected'}}),/full execution/);
 });

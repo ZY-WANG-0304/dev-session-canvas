@@ -46,4 +46,10 @@
 
 ## 验证与维护
 
+### 重跑必须保持同一轮次输入
+
+当前冻结计划、合并控制文件、producer 与验收均按 `run_id/run_attempt` 绑定。失败后使用 GitHub **Re-run all jobs** 或 `gh run rerun <run-id>` 完整重跑；不使用 **Re-run failed jobs** / `--failed`。消费者在下载前比较原 producer 输出的 attempt 与当前 attempt，不一致或缺失时明确失败并提示完整重跑，不任意回退旧工件。此限制不表示业务失败已修复，完整重跑结果仍须逐项验收。
+
+该检查由 `scripts/gates/assert-workflow-attempt.mjs` 执行，CI job 的 `setup-environment.mjs` 必须传入 `needs.resolve.outputs.producer_attempt`；最终合并 verifier 则核对 `resolve-input` 的输出。它是前置操作检查，不替代后续独立来源、精确任务集和产物验真。
+
 使用 `node --test scripts/test/test-ci-scope.mjs` 验证分类、依赖、输入等价、旧来源失效和观察统计；`npm run test:ci-gates` 验证与原门禁/发布回执兼容。修改作用域或观察策略需更新设计、测试和技术债记录。

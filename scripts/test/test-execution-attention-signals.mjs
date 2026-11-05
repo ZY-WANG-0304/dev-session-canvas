@@ -39,12 +39,43 @@ try {
   } = require(signalsOutfile);
   const {
     createAgentActivityHeuristicState,
+    evaluateAgentWaitingInputTransition,
+    hasAgentWorkingIndicator,
     extractAgentAbnormalStreamInterruptionMessage,
     recordAgentOutputHeuristics,
     resetAgentAbnormalStreamInterruptionHeuristics,
     resetAgentActivityHeuristics,
     normalizeAgentAbnormalStreamInterruptionSignature
   } = require(heuristicsOutfile);
+
+  const quietWork = createAgentActivityHeuristicState();
+  recordAgentOutputHeuristics(quietWork, '\r⠋ Working\r\n› ', '\r⠋ Working\r\n› ', 'codex', 100);
+  for (const screen of [
+    ['⠋ Working', '› '],
+    ['• Calling tui.wait_for_release({})', '• Working (3s • esc to interrupt)', '› Ask Codex', 'model · Context 100% left'],
+    ['✢ Effecting…', '● high · /effort', '──────────', '❯ ', '──────────',
+      "⏵⏵ don't ask on (shift+tab to cycle) · esc to interrupt · ← for agents"]
+  ]) {
+    assert.equal(hasAgentWorkingIndicator(screen), true);
+    for (const now of [340, 4000, 60000]) {
+      assert.deepEqual(evaluateAgentWaitingInputTransition(quietWork, now, screen),
+        { shouldTransition: false, shouldKeepPolling: false, working: true });
+    }
+  }
+  assert.equal(evaluateAgentWaitingInputTransition(quietWork, 340).shouldTransition, false,
+    'A recent spinner must also protect the raw prompt path');
+  assert.equal(evaluateAgentWaitingInputTransition(quietWork, 60000, null).shouldTransition, false,
+    'Pending screen parsing must not fall back to stale state');
+  for (const screen of [
+    ['Final answer.', '› '],
+    ['The phrase esc to interrupt describes a keyboard shortcut.', '› '],
+    ['⠋ Working', 'Final answer.', '› '],
+    ['• Working (3s • esc to interrupt)', 'Final answer.', '› '],
+    ['Tip: press esc to interrupt.', '› ']
+  ]) {
+    assert.equal(hasAgentWorkingIndicator(screen), false);
+    assert.equal(evaluateAgentWaitingInputTransition(quietWork, 4000, screen).shouldTransition, true);
+  }
 
   const osc9 = parseExecutionAttentionSignals('\u001b]9;Build finished\u0007');
   assert.equal(osc9.notificationCount, 1);

@@ -35,6 +35,7 @@ export interface AgentWaitingInputEvaluation {
   shouldTransition: boolean;
   shouldKeepPolling: boolean;
   reason?: AgentWaitingInputTransitionReason;
+  working?: boolean;
 }
 
 export const AGENT_WAITING_INPUT_POLL_INTERVAL_MS = 120;
@@ -316,8 +317,15 @@ function isCodexFinalErrorLine(line: string): boolean {
 
 export function evaluateAgentWaitingInputTransition(
   state: AgentActivityHeuristicState,
-  now: number = Date.now()
+  now: number = Date.now(),
+  visibleLines?: readonly string[] | null
 ): AgentWaitingInputEvaluation {
+  if (visibleLines === null) {
+    return { shouldTransition: false, shouldKeepPolling: true };
+  }
+  if (visibleLines && hasAgentWorkingIndicator(visibleLines)) {
+    return { shouldTransition: false, shouldKeepPolling: false, working: true };
+  }
   if (typeof state.lastOutputAtMs !== 'number') {
     return {
       shouldTransition: false,
@@ -330,7 +338,8 @@ export function evaluateAgentWaitingInputTransition(
     typeof state.lastSpinnerAtMs === 'number' &&
     now - state.lastSpinnerAtMs < AGENT_WAITING_INPUT_SPINNER_GRACE_MS;
 
-  if (typeof state.lastPromptAtMs === 'number' && quietMs >= AGENT_WAITING_INPUT_PROMPT_QUIET_MS) {
+  if ((visibleLines !== undefined || !spinnerRecentlyActive) &&
+    typeof state.lastPromptAtMs === 'number' && quietMs >= AGENT_WAITING_INPUT_PROMPT_QUIET_MS) {
     return {
       shouldTransition: true,
       shouldKeepPolling: false,
@@ -364,6 +373,19 @@ export function evaluateAgentWaitingInputTransition(
     shouldTransition: false,
     shouldKeepPolling: true
   };
+}
+
+export function hasAgentWorkingIndicator(visibleLines: readonly string[]): boolean {
+  const tail = visibleLines.map(line => line.trim()).filter(Boolean).slice(-8);
+  const lastLine = tail.at(-1) ?? '';
+  if (/^(?:[⏵▶]+\s+.*[·•]\s*)?esc to interrupt(?:\s*[·•].*)?$/iu.test(lastLine)) return true;
+  let promptIndex = -1;
+  for (let index = 0; index < tail.length; index++) {
+    if (/^[›❯>](?:\s|$)/u.test(tail[index])) promptIndex = index;
+  }
+  const workLine = promptIndex > 0 ? tail[promptIndex - 1] : tail.at(-1) ?? '';
+  return /^[•·]\s+[^\n]+\([^)]*\besc to interrupt[^)]*\)$/iu.test(workLine) ||
+    /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏◐◓◑◒]\s+Working\b/iu.test(workLine);
 }
 
 export function stripTerminalControlSequences(value: string): string {

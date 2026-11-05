@@ -123,6 +123,7 @@ export class SerializedTerminalStateTracker {
   private serializeAddon: SerializeAddon;
   private scrollback: number;
   private operationChain: Promise<void> = Promise.resolve();
+  private pendingOperations = 0;
   private pendingWriteData = '';
   private pendingWriteOutputSequence: number | undefined;
   private outputSequence: number | undefined;
@@ -277,6 +278,13 @@ export class SerializedTerminalStateTracker {
     };
   }
 
+  public getVisibleLines(): string[] | undefined {
+    if (this.disposed || this.operationError || this.pendingOperations > 0 || this.pendingWriteData) return undefined;
+    const buffer = this.terminal.buffer.active;
+    return Array.from({ length: this.terminal.rows }, (_, index) =>
+      buffer.getLine(buffer.baseY + index)?.translateToString(true) ?? '');
+  }
+
   /** Wait for accepted parser work without materializing a new recovery snapshot. */
   public async drain(): Promise<void> {
     if (this.disposed) throw new Error('Cannot consume a disposed terminal state tracker.');
@@ -378,6 +386,7 @@ export class SerializedTerminalStateTracker {
   }
 
   private enqueueOperation(operation: () => Promise<void> | void): void {
+    this.pendingOperations += 1;
     this.operationChain = this.operationChain
       .then(() => {
         if (this.disposed || this.operationError) {
@@ -388,7 +397,8 @@ export class SerializedTerminalStateTracker {
       })
       .catch((error) => {
         this.operationError = error instanceof Error ? error : new Error(String(error));
-      });
+      })
+      .finally(() => { this.pendingOperations -= 1; });
   }
 
   private schedulePendingWriteDrain(): void {

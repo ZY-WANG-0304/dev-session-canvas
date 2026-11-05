@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { assertWorkflowAttempt } from './assert-workflow-attempt.mjs';
+
+assertWorkflowAttempt(process.argv[2], process.env.GITHUB_RUN_ATTEMPT);
 
 // runner.temp is unavailable in a job-level env expression. Resolve the actual
 // runner directory after setup-node so this also works in PowerShell jobs.

@@ -195,7 +195,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     } : undefined });
   await writeJSON(values.output, plan);
   if (process.env.GITHUB_OUTPUT) await fs.appendFile(process.env.GITHUB_OUTPUT,
-    `mode=${plan.mode}\nversion=${plan.version}\ninput_sha=${plan.inputSHA}\nfunctional=${plan.scope.functional}\nartifact=${plan.scope.artifact}\nplan_digest=${objectDigest(plan)}\n`
+    `producer_attempt=${plan.run?.attempt ?? ''}\nmode=${plan.mode}\nversion=${plan.version}\ninput_sha=${plan.inputSHA}\nfunctional=${plan.scope.functional}\nartifact=${plan.scope.artifact}\nplan_digest=${objectDigest(plan)}\n`
     + Object.entries(planJobs(plan)).map(([job,data])=>`${job.replaceAll('-','_')}=${JSON.stringify(data)}\n`).join(''));
   console.log(JSON.stringify({ mode: plan.mode, scope: plan.scope, tasks: plan.tasks.length, catalogDelta: plan.catalogDelta }));
 }
