@@ -8536,14 +8536,32 @@ test('double-clicking the title input keeps the current viewport unchanged', asy
   await bootstrap(page, createCanvasScreenshotState());
   await settleWebview(page, 4);
 
-  const beforeState = await readPersistedUiState(page);
+  const beforeEditState = await readPersistedUiState(page);
+  const agentNode = nodeById(page, 'agent-1');
+  expect(await agentNode.locator('.window-title-edit-button').evaluate((button) => {
+    const bounds = button.getBoundingClientRect();
+    const flow = button.closest('.react-flow').getBoundingClientRect();
+    return bounds.right <= flow.left || bounds.bottom <= flow.top;
+  })).toBe(true);
 
-  const titleInput = await enterTitleEditMode(nodeById(page, 'agent-1'), { pointer: false });
-  await titleInput.dispatchEvent('dblclick', { bubbles: true, cancelable: true, composed: true });
+  const titleInput = await enterTitleEditMode(agentNode, { pointer: false });
+  await expectCanvasFocusVisible(titleInput);
+  await settleWebview(page, 4);
+  const beforeState = await readPersistedUiState(page);
+  const beforeTransform = await readCanvasViewportTransform(page);
+  expect(beforeState.viewport).not.toEqual(beforeEditState.viewport);
+  expect(beforeState.viewport.zoom).toBe(beforeEditState.viewport.zoom);
+
+  await titleInput.dblclick();
   await settleWebview(page, 4);
 
   const afterState = await readPersistedUiState(page);
   expect(afterState.viewport).toEqual(beforeState.viewport);
+  expect(await readCanvasViewportTransform(page)).toBe(beforeTransform);
+  await expect(titleInput).toBeFocused();
+  const scrollOffsets = await page.locator('.react-flow, .react-flow__renderer, .react-flow__pane')
+    .evaluateAll((elements) => elements.map((element) => [element.scrollLeft, element.scrollTop]));
+  expect(scrollOffsets).toEqual([[0, 0], [0, 0], [0, 0]]);
 });
 
 test('editing a note body posts updateNoteNode', async ({ page }) => {

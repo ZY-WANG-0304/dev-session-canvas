@@ -15,6 +15,8 @@ Tab / Shift+Tab 到屏外节点或分组控件时，目标应进入视野，背�
 - [x] (2026-11-05 Asia/Shanghai) 29 项定向与相邻浏览器回归通过；补充隐藏测量框与过时焦点保护后，新用例两轮 20/20 通过。构建、类型检查、分组脚本和 diff 检查通过，目录核对 432 项真实 ID 一致。
 - [x] (2026-11-05 Asia/Shanghai) CI 选测 23/23、浏览器门禁合同 2/2 通过；额外完整 gate-contracts + ci-scope 为 131/132，未改动的 residual process group 断言失败，另行登记而不扩展修复范围。
 - [x] (2026-11-06 Asia/Shanghai) 创建 PR 前复核已 rebase 到 origin/main `cdca3297`，无冲突；rebase 后类型检查、构建和十项焦点回归通过。合入主线新增用例后，目录重新核对为 433 项真实 ID 一致。
+- [x] (2026-11-06 Asia/Shanghai) PR #369 首轮 CI 只有一个原始失败：旧标题双击用例把进入编辑的焦点导航混入比较；其余 429 个功能用例通过，verify-result 与最终契约检查连带拒绝。原用例在本地同样失败，分阶段观察确认双击自身不移动。
+- [x] (2026-11-06 Asia/Shanghai) 修正原用例的阶段边界：独立验证屏外聚焦导航、真实鼠标双击不移动、zoom 与三层 scroll 不变。该用例及十项焦点回归 11/11 通过，完整功能集 430/430 通过，433 项目录身份保持一致；本轮更新同一 PR，远端新轮次待验。
 
 ## 意外与发现
 
@@ -23,6 +25,8 @@ Tab / Shift+Tab 到屏外节点或分组控件时，目标应进入视野，背�
 当前 React Flow 根元素内联写入 overflow:hidden，普通 CSS 无法覆盖，因此仅根元素使用 `overflow:clip !important`。固定依赖的 ZoomPane end handler 跳过无 sourceEvent 的变更，程序化 setViewport 不触发 onMoveEnd；初轮修后测试确实发现视口保存仍为旧值，改为显式调用既有保存函数后八项通过。
 
 可见性测试最初把节点放在 (5,5)，选择后的 resize 控件实际延伸到屏外，导航属于正确行为；将节点放在 (8,8) 保证全部焦点目标真实可见后验证不移动。实现仅在超出实际可视边界时导航，不因进入 12px 留白区就移动。
+
+PR #369 的 run `42060940222` / attempt 1 在 `double-clicking the title input keeps the current viewport unchanged` 失败。旧测试在进入编辑之前保存视口，随后用程序化 focus/click 操作屏外标题，将正常焦点导航误算为双击移动。本地分阶段观察为：编辑前 (-320,-160,0.62)，聚焦后 (-45.040008544921875,-42.27906799316406,0.62)，双击后不变；三层 scroll 始终为零。此前 29 项定向回归漏掉这个节点标题用例，只包含了分组标题用例。
 
 ## 决策记录
 
@@ -36,11 +40,13 @@ Tab / Shift+Tab 到屏外节点或分组控件时，目标应进入视野，背�
 
 2026-11-05：焦点桥接收 onViewportCommit 回调，rootGroups 接 persistCanvasViewport，paneGallery 接所属 root 与 viewportRole 的 onSavePaneViewport。理由是程序化导航不能依赖只处理真实输入事件的 onMoveEnd；该变更不新增保存状态。
 
+2026-11-06：修正旧用例，不修改产品焦点导航或放宽双击断言。先明确初始标题在屏外，进入编辑后验证焦点可见、已导航且 zoom 不变，再冻结视口与 DOM transform，用真实鼠标双击验证两者完全不变；同时确认画布 DOM 不滚动。用例名称和门禁目录身份保持不变。先复跑该用例与十项焦点回归，再执行完整功能集，避免再次用定向验证替代全集。
+
 ## 结果与复盘
 
-已交付不可滚动边界、实例局部焦点导航、显式视口保存与十项新回归。当前源码的四项原生 Tab 故障先红后绿，分组/多窗格/内部滚动/输入/隐藏与过时焦点边界通过；未改用户画布、安装包或其他 worktree，未提交。
+已交付不可滚动边界、实例局部焦点导航、显式视口保存与十项新回归。当前源码的四项原生 Tab 故障先红后绿，分组/多窗格/内部滚动/输入/隐藏与过时焦点边界通过；未改用户画布、安装包或其他 worktree。初轮本地交付后，按用户要求提交到 PR #369。
 
-范围限定于 Linux Chromium harness 与本地类型/构建/合同检查；未执行全部 432 项浏览器用例或跨平台真实 VS Code 安装验收。不能据此反推旧截图的唯一原因。额外完整合同的进程清理反例失败登记到 `docs/exec-plans/tech-debt-tracker.md`，不归因为本次 UI 改动，也不把整体门禁标为通过。
+初轮本地验证范围限定于 Linux Chromium harness 与类型/构建/合同检查，没有执行当时全部 432 项浏览器用例。2026-11-06 CI 跟进仅修正旧标题测试，补跑与 CI 同筛选范围的完整功能集 430/430 通过；目录另含三项视觉测试，本地未在本轮重跑。不能据此反推旧截图的唯一原因，也不把本地功能全集通过当作新 head 的远端完整验收。额外完整合同的历史进程清理反例失败仍登记在 `docs/exec-plans/tech-debt-tracker.md`，不被本次结果覆盖。
 
 ## 上下文与定向
 
@@ -62,6 +68,8 @@ Tab / Shift+Tab 到屏外节点或分组控件时，目标应进入视野，背�
 
 相邻回归命令为 `node scripts/test/run-playwright-webview.mjs --grep 'canvas focus navigation|canvas groups do not create document scrollbars|canvas group (drag|body drag|title and action|border stroke)|canvas zoom keeps group|overview mode keeps hidden|note body editor supports tab|note body edit mode restores|snapshot restore still responds to wheel|terminal handles vi-style|right click keeps xterm|double-clicking group title input|pane gallery (keeps panes scrollable|restores the saved main viewport|overflowing thumbnail rails)' --workers=1`，本轮 29 项通过。
 
+2026-11-06 CI 跟进先执行 `npm run build` 与 `node scripts/test/run-playwright-webview.mjs --grep 'double-clicking the title input keeps the current viewport unchanged|canvas focus navigation' --workers=1`，11/11 通过。完整功能集使用 `node scripts/test/run-playwright-webview.mjs --grep-invert 'webview bundle emits ready and matches the baseline screenshot|minimap viewport contrast stays readable' --workers=2`，430/430 通过；该筛选与 CI 功能门禁一致，不排除任何功能用例。类型检查、文档检查、目录一致性和 `git diff --check` 均通过。
+
 ## 验证与验收
 
 核心回归只用原生 Tab / Shift+Tab 触发，不用 CSS 改写或 scrollLeft=0 修饰结果。核对三层和 document 滚动值为零、图层坐标关系不变、焦点进入本实例边界、zoom 不变、视口保存和节点几何不变。程序化 focus 的额外用例不冒充原生键盘复现。
@@ -80,6 +88,14 @@ Tab / Shift+Tab 到屏外节点或分组控件时，目标应进入视野，背�
 
 额外完整合同记录：`node --test scripts/test/test-gate-contracts.mjs scripts/test/test-ci-scope.mjs` 为 131/132，`test-gate-contracts.mjs:1490` 的 `assert(result.residualGroup)` 返回 false；未修改该测试或其执行器，没有用后续定向绿色覆盖原失败。
 
+CI 跟进记录：原用例在本地修改前同样失败；仅修正测试后：
+
+    11 passed (21.6s)
+    430 passed (12.1m)
+    Browser catalogue matches 433 actual tests
+
+本地完整功能日志保留于 `.debug/pr369-ci/focus-followup-functional.log`；旧 CI run `42060940222` 的单个原始失败与两级连带拒绝保留，不重写为通过。
+
 ## 接口与依赖
 
 沿用 React / React Flow 和 focusin、requestAnimationFrame、getBoundingClientRect。`CanvasFocusNavigation({ onViewportCommit })` 用 useStore 获取实例 DOM，用 useReactFlow 的 getViewport / setViewport 导航，回调显式保存，不新增依赖或跨 Host 消息。
@@ -91,3 +107,5 @@ Tab / Shift+Tab 到屏外节点或分组控件时，目标应进入视野，背�
 修订：2026-11-05 完成十项新增用例和相邻回归，登记完整合同的范围外失败，归档计划。
 
 修订：2026-11-06 创建 PR 前追加主线 rebase、复验和 433 项目录一致性记录，保留此前完整合同失败而不改写为通过。
+
+修订：2026-11-06 追加 PR #369 唯一原始 CI 失败及分阶段证据，修正测试比较边界并完成 11 项定向与 430 项完整功能验证；新 head 的远端门禁结果仍待运行。
