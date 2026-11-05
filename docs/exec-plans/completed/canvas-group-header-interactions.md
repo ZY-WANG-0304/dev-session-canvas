@@ -94,3 +94,11 @@
 主线程最终 `node scripts/test/run-playwright-webview.mjs --grep 'group|pane gallery|editing node titles|pressing Enter in the title'` 为 78/78 通过（2.4m），日志 `/tmp/canvas5-group-doubleclick-regression-final.log`。typecheck、显式 stock 构建、文档检查与 `git diff --check` 均通过；真实宿主的既有验证边界不变。
 
 同时检查正式浏览器门禁，发现 `scripts/gates/browser-catalog.json` 尚未登记本功能先前 9 项和本轮 7 项测试；依据 Playwright `--list --reporter=json` 的实际 ID、文件与完整标题补齐，438 项与实际集合完全一致，未删除旧项或修改门禁逻辑。该一致性检查只证明测试注册，不冒充全量 438 项执行通过。
+
+## 创建 PR 前同步与复验
+
+2026-11-06 用户授权创建 PR。原节点边界分支已通过 PR #364 合并，本任务单独建立 `canvas-group-header-interactions`，只提交分组相关的 24 个文件；OSC 研究文档、索引条目及本地图片不进入 PR。主题提交 rebase 到 `origin/main@809f75124ca98d24a4a5fca657a128eb51141be3`；文档索引和技术债冲突保留双方内容，smoke budget 按合并后源码重新生成，仅涉及两个 hash、入口重命名及一处行号，不调整等待预算。
+
+rebase 后 `npm run typecheck`、`npm run build -- --execution-profile=stock`、`npm run test:canvas-node-groups`、`npm run test:theme-color-tokens`、宿主删除矩阵 9/9 和原 78 项 Webview 回归再次通过。日志为 `/tmp/canvas5-pr-typecheck.log`、`/tmp/canvas5-pr-build.log`、`/tmp/canvas5-pr-browser.log`。文档检查及 diff check 通过；实际浏览器注册与合并后目录的 439 项 ID、文件和完整标题集合一致，smoke source hash 与 153 个实现映射通过。439 项仅为目录一致性，不代表全量执行。
+
+Schrodinger 针对 `56190a3e51a7f1d422e889c264163586ff68ab2c` 静态复审确认未发现新的确定性 blocker：上游创建锚点、视口尺寸、节点尺寸及递归删除准备/失败处理/replacement journal 路径保留，原双击和 Space 修复保留。本次不替代真实 VS Code 安装或正式跨平台门禁验收，也不包含合并授权。
