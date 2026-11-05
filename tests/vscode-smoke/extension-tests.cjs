@@ -4808,10 +4808,10 @@ async function verifyOwnedCanvasReconciliation() {
       && message.payload.nodeId === mappedTerminalId).map(message => message.payload.chunk ?? message.payload.serializedTerminalState?.data ?? message.payload.output ?? '').join('').includes('DSC_RECONCILED_INPUT'));
     const rootGroup = snapshot.state.groups.find(group => group.workspaceRootPath === extraRoot);
     assert.ok(rootGroup);
-    await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'terminal', targetGroupId: rootGroup.id, cwd: extraRoot } });
+    await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'terminal', targetGroupId: rootGroup.id, cwd: extraRoot, creationViewport: { width: 900, height: 700 } } });
     snapshot = await waitForSnapshot(current => current.state.nodes.filter(node => node.kind === 'terminal').length === 2);
-    const removedTerminalId = snapshot.state.nodes.find(node => node.kind === 'terminal' && node.id !== mappedTerminalId).id;
-    await waitForTerminalLive(removedTerminalId);
+    const removedTerminalId = snapshot.state.nodes.find(node => node.kind === 'terminal' && node.id !== mappedTerminalId).id; assert.deepStrictEqual(snapshot.state.nodes.find(node => node.id === removedTerminalId).size, { width: 680, height: 500 }, 'Execution node creation must persist the host-selected compact viewport tier.');
+    await waitForTerminalLive(removedTerminalId); snapshot = await reloadPersistedState(); assert.deepStrictEqual(snapshot.state.nodes.find(node => node.id === removedTerminalId).size, { width: 680, height: 500 }, 'The compact creation tier must survive a persisted-state reload.');
     await stepBoundary('root-remap','passed');
     await stepBoundary('remove-root','started');
     await changeFolders(1, []);

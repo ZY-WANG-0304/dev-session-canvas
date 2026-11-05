@@ -102,6 +102,7 @@ import {
   type CanvasEdgeSummary,
   type CanvasAttentionNotificationBridgeMode,
   type CanvasAgentAbnormalOutputTextNotificationMode,
+  type CanvasNodeCreationViewport,
   type CanvasSurfaceLocation,
   type CanvasSurfaceMode,
   type CanvasLinkOpenMode,
@@ -141,6 +142,7 @@ import {
   EXECUTION_PERFORMANCE_DIAGNOSTICS_SCHEMA_VERSION,
   NOTE_EMBEDDED_CONTENT_MAX_LENGTH,
   estimatedCanvasNodeFootprint,
+  estimatedCanvasNodeFootprintForViewport,
   isCanvasCreatableNodeKind,
   isCanvasNodeKind,
   extractWebviewMessageLifecycle,
@@ -192,8 +194,7 @@ import {
   resolveForkLayerNodePosition,
   resolveAlignedNonOverlappingNodePosition,
   snapCanvasPosition,
-  type CanvasForkPlacementDirection,
-  type CanvasNodePlacementPreference
+  type CanvasForkPlacementDirection
 } from '../common/canvasNodePlacement';
 import {
   buildAgentBranchCommandLine as buildAgentProviderBranchCommandLine,
@@ -495,6 +496,7 @@ interface ExecutionSnapshotAttachOptions {
 
 interface CreateNodeOptions {
   requestId?: string;
+  creationViewport?: CanvasNodeCreationViewport;
   agentProvider?: AgentProviderKind;
   agentLaunchPreset?: AgentLaunchPresetKind;
   agentCustomLaunchCommand?: string;
@@ -15588,6 +15590,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
           requestId: parsedMessage.payload.requestId,
           creationAnchor: parsedMessage.payload.creationAnchor,
+          creationViewport: parsedMessage.payload.creationViewport,
+          creationAnchor: parsedMessage.payload.creationAnchor,
           agentProvider: parsedMessage.payload.agentProvider,
           agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
           agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand,
@@ -24289,7 +24293,8 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
             ...options.creationAnchor,
             position: translateComposedCanvasPositionToRootLocal(options.creationAnchor.position, targetRootGroupFromGroup)
           }
-        : targetRootGroup ? undefined : options?.creationAnchor
+        : targetRootGroup ? undefined : options?.creationAnchor,
+      options?.creationViewport
     );
     const composedNextState = targetRootGroup
       ? this.namespaceWorkspaceRootLocalCreateState(nextState, targetRootGroup)
@@ -25315,10 +25320,18 @@ function createNextState(
   targetGroupId?: string,
   cwdOverride?: string,
   placementStrategy?: CreateNodePlacementStrategy,
-  creationAnchor?: CanvasNodeCreationAnchor
+  creationAnchor?: CanvasNodeCreationAnchor,
+  creationViewport?: CanvasNodeCreationViewport
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
-  const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
+  const nextNode = createNode(
+    kind,
+    nextIndex,
+    agentProvider,
+    agentLaunchPreset,
+    agentCustomLaunchCommand,
+    creationViewport
+  );
   const forkSourceNode = placementStrategy?.kind === 'fork-layer'
     ? previousState.nodes.find((node) => node.id === placementStrategy.sourceNodeId)
     : undefined;
@@ -25333,7 +25346,8 @@ function createNextState(
         previousState.nodes,
         kind,
         preferredPosition ?? nextNode.position,
-        creationAnchor
+        creationAnchor,
+        nextNode.size
       );
   const placementTargetGroupId = placementStrategy?.kind === 'fork-layer'
     ? forkSourceNode?.groupId
@@ -25393,7 +25407,8 @@ function createNode(
   sequence: number,
   agentProvider: AgentProviderKind = 'codex',
   agentLaunchPreset: AgentLaunchPresetKind = 'default',
-  agentCustomLaunchCommand?: string
+  agentCustomLaunchCommand?: string,
+  creationViewport?: CanvasNodeCreationViewport
 ): CanvasNodeSummary {
   const titlePrefix = {
     agent: 'Agent',
@@ -25409,7 +25424,7 @@ function createNode(
     status: defaultStatusForKind(kind),
     summary: defaultSummaryForKind(kind),
     position: createNodePosition(sequence),
-    size: estimatedCanvasNodeFootprint(kind),
+    size: estimatedCanvasNodeFootprintForViewport(kind, creationViewport),
     metadata: createNodeMetadata(kind, id, agentProvider, agentLaunchPreset, agentCustomLaunchCommand)
   };
 }
@@ -25470,11 +25485,12 @@ function resolveNewNodePosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
   anchor: CanvasNodePosition,
-  creationAnchor?: CanvasNodeCreationAnchor
+  creationAnchor?: CanvasNodeCreationAnchor,
+  targetSize: CanvasNodeFootprint = estimatedCanvasNodeFootprint(kind)
 ): CanvasNodePosition {
   return resolveAlignedNonOverlappingNodePosition({
     occupiedNodes: existingNodes,
-    targetSize: estimatedCanvasNodeFootprint(kind),
+    targetSize,
     anchor,
     creationAnchor
   });

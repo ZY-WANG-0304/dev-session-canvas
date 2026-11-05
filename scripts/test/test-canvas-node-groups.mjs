@@ -334,6 +334,59 @@ try {
   assert.deepStrictEqual(defaultAgentNode.size, { width: 760, height: 560 });
   assert.deepStrictEqual(defaultTerminalNode.size, { width: 760, height: 560 });
 
+  const createAtViewport = (kind, viewport) => createNextState(
+    state(),
+    kind,
+    'codex',
+    'default',
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    viewport
+  ).nodes[0];
+  const roomyCreationViewport = { width: 1200, height: 800 };
+  const compactCreationViewport = { width: 900, height: 700 };
+  const heightLimitedCreationViewport = { width: 1200, height: 650 };
+  assert.deepStrictEqual(createAtViewport('agent', roomyCreationViewport).size, { width: 760, height: 560 });
+  assert.deepStrictEqual(createAtViewport('terminal', roomyCreationViewport).size, { width: 760, height: 560 });
+  assert.deepStrictEqual(createAtViewport('agent', compactCreationViewport).size, { width: 680, height: 500 });
+  assert.deepStrictEqual(createAtViewport('terminal', heightLimitedCreationViewport).size, { width: 680, height: 500 });
+  assert.deepStrictEqual(createAtViewport('note', compactCreationViewport).size, { width: 380, height: 400 });
+
+  const compactNodeNearViewportBlocker = createNextState(
+    state({
+      nodes: [note('compact-size-blocker', { x: 900, y: 100 }, {
+        size: { width: 120, height: 120 }
+      })]
+    }),
+    'agent',
+    'codex',
+    'default',
+    undefined,
+    { x: 0, y: 100 },
+    undefined,
+    undefined,
+    undefined,
+    compactCreationViewport
+  ).nodes.at(-1);
+  assert.deepStrictEqual(compactNodeNearViewportBlocker.size, { width: 680, height: 500 });
+  assert.deepStrictEqual(compactNodeNearViewportBlocker.position, { x: 120, y: 200 });
+  const roomyNodeNearSameBlocker = createNextState(
+    state({
+      nodes: [note('roomy-size-blocker', { x: 900, y: 100 }, {
+        size: { width: 120, height: 120 }
+      })]
+    }),
+    'agent',
+    'codex',
+    'default',
+    undefined,
+    { x: 0, y: 100 }
+  ).nodes.at(-1);
+  assert.deepStrictEqual(roomyNodeNearSameBlocker.position, { x: 120, y: 300 });
+
   const persistedAgentWithoutSize = agent('persisted-agent-without-size', { x: 0, y: 0 });
   delete persistedAgentWithoutSize.size;
   const persistedTerminalWithoutSize = {

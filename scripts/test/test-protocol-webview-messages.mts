@@ -602,6 +602,7 @@ const createDemoNodeInGroupMessage = {
     requestId: 'create-in-group',
     kind: 'agent',
     preferredPosition: { x: 180, y: 220 },
+    creationViewport: { width: 1200, height: 800 },
     cwd: '/workspace/src',
     targetGroupId: 'group-parent',
     agentProvider: 'codex',
@@ -621,6 +622,18 @@ assert.equal(
   }),
   null,
   'webview/createDemoNode.cwd 必须是字符串。'
+);
+assert.equal(
+  parseWebviewMessage({
+    type: 'webview/createDemoNode',
+    payload: {
+      requestId: 'invalid-creation-viewport',
+      kind: 'terminal',
+      creationViewport: { width: 0, height: 700 }
+    }
+  }),
+  null,
+  'webview/createDemoNode.creationViewport 必须包含有效的画布宽高。'
 );
 
 const createEmptyGroupMessage = {

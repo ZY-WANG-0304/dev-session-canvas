@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceHashes": {
-    "tests/vscode-smoke/extension-tests.cjs": "02991a48f256ba057922eb345e2125b1d5c6f352207af1412d45855c0571eafa",
+    "tests/vscode-smoke/extension-tests.cjs": "3610dfdf82807c9a6b36cc19eeb3588dd8e9443f99fe3d1d19cf2ccc24a7741e",
     "tests/vscode-smoke/real-reopen-tests.cjs": "20b3a73c947f9031b7ac1cd4c0829fb8d9546b3caabd22f50fd27fcf20ce9856",
     "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "7bfa53d9714beacc83ead94e2bd594e782317051059ab251fe30d7b6ecfba28e",
     "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "abf93735a6bcc1ce666df1ee8e9c00e89a88880b4bb37dc1a83b77d9d66dad5d",
@@ -53208,7 +53208,7 @@
       ]
     },
     "owned-canvas-reconciliation": {
-      "timeoutMs": 704000,
+      "timeoutMs": 709000,
       "entry": "run",
       "file": "tests/vscode-smoke/extension-tests.cjs",
       "times": 1,
@@ -53571,6 +53571,17 @@
             "callee": "waitForTerminalLive",
             "expression": "removedTerminalId",
             "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "line": 11811,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testReloadPersistedState",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
           }
         },
         {

@@ -11602,7 +11602,7 @@ test('manually created nodes recenter without zooming when they already fully fi
   expect(Math.abs(noteBox.y + noteBox.height / 2 - viewportSize.height / 2)).toBeLessThanOrEqual(18);
 });
 
-test('manually created nodes can zoom to fit before recentering when the node overflows the viewport', async ({ page }) => {
+test('manually created compact terminals zoom to fit before recentering when the node overflows the viewport', async ({ page }) => {
   await page.setViewportSize({
     width: 960,
     height: 540
@@ -11632,17 +11632,23 @@ test('manually created nodes can zoom to fit before recentering when the node ov
   const menu = page.locator('[data-context-menu="true"]');
   await menu.locator('[data-context-menu-kind="terminal"]').click();
 
-  const createPayload = await waitForCreateDemoNodePayload(page);
+  const createPayload = await waitForCreateDemoNodePayload(page, { includeCreationViewport: true });
   expect(createPayload).toMatchObject({
     kind: 'terminal',
     preferredPosition: {
-      x: 9,
-      y: -47
+      x: 49,
+      y: -17
+    },
+    creationViewport: {
+      width: 960,
+      height: 540
     }
   });
 
   const nextState = createEmptyCanvasState();
-  nextState.nodes.push(createManualTerminalNode('terminal-1', createPayload.preferredPosition));
+  const compactTerminal = createManualTerminalNode('terminal-1', createPayload.preferredPosition);
+  compactTerminal.size = { width: 680, height: 500 };
+  nextState.nodes.push(compactTerminal);
   await updateHostState(page, nextState);
   await waitForNodeFocusAnimation(page);
 
@@ -14259,7 +14265,7 @@ test('host-triggered manual node creation snapshots existing nodes before resolv
   expect(afterState.selectedNodeId).toBe('note-2');
 });
 
-test('host-triggered agent creation bypasses stale webview workspace trust gate', async ({ page }) => {
+test('host-triggered agent creation includes current canvas viewport and bypasses stale trust gate', async ({ page }) => {
   await openHarness(page);
   const runtime = createRuntimeContext({ workspaceTrusted: true });
 
@@ -14291,13 +14297,17 @@ test('host-triggered agent creation bypasses stale webview workspace trust gate'
     }
   );
 
-  await expect(waitForCreateDemoNodePayload(page)).resolves.toEqual(
-    expect.objectContaining({
-      kind: 'agent',
-      agentProvider: 'claude',
-      agentLaunchPreset: 'yolo'
-    })
-  );
+  const createPayload = await waitForCreateDemoNodePayload(page, { includeCreationViewport: true });
+  expect(createPayload).toEqual(expect.objectContaining({
+    kind: 'agent',
+    agentProvider: 'claude',
+    agentLaunchPreset: 'yolo'
+  }));
+  const canvasShellSize = await page.locator('.canvas-shell').evaluate((element) => ({
+    width: Math.max(1, Math.round(element.clientWidth)),
+    height: Math.max(1, Math.round(element.clientHeight))
+  }));
+  expect(createPayload.creationViewport).toEqual(expect.objectContaining(canvasShellSize));
   expect(await readPostedMessagesByType(page, 'webview/showCreateNodeBlockedReason')).toEqual([]);
 });
 
@@ -18677,16 +18687,18 @@ async function waitForCreateDemoNodePayload(page, options = {}) {
 
   return options.includeRequestId === true
     ? payload
-    : normalizeCreateDemoNodePayloadForAssertion(payload);
+    : normalizeCreateDemoNodePayloadForAssertion(payload, options);
 }
 
-function normalizeCreateDemoNodePayloadForAssertion(payload) {
+function normalizeCreateDemoNodePayloadForAssertion(payload, options = {}) {
   if (!payload || typeof payload !== 'object') {
     return payload;
   }
 
-  const { requestId: _requestId, ...rest } = payload;
-  return rest;
+  const { requestId: _requestId, creationViewport, ...rest } = payload;
+  return options.includeCreationViewport === true && creationViewport
+    ? { ...rest, creationViewport }
+    : rest;
 }
 
 function createManualNoteNode(nodeId, position) {
