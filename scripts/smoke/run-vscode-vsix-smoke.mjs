@@ -86,6 +86,12 @@ async function main() {
       workspacePath = path.join(debugRoot, 'owned-canvas.code-workspace');
       await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }), 'utf8');
     }
+    if (scenario === 'canvas-nodes/creation-root') {
+      const siblingRoot = path.join(debugRoot, 'creation-root-sibling');
+      await fs.mkdir(siblingRoot, { recursive: true });
+      workspacePath = path.join(debugRoot, 'creation-root.code-workspace');
+      await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }, { path: siblingRoot }] }));
+    }
     const options = {
       projectRoot,
       debugRoot: path.join(debugRoot, scenario),

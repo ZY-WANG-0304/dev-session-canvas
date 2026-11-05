@@ -2,6 +2,12 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-11-05：本地门禁回归 child-owned cleanup 的计时失败
+
+`canvas-node-creation-alignment` rebase 到 `72275f0c` 后，两次 `npm run test:ci-gates` 均为 212/213，分别在 `scripts/test/test-gate-contracts.mjs` 的 `child-owned cleanup may finish inside its separate reserve`、`child-owned cleanup cannot hide late business` 失败，断言为外层 action 应通过但实际 failed。两个用例及其等待阈值与 main 一致；首个用例单独运行通过，随后两项一起定向运行 2/2 通过。尚未确认全量运行与单独运行差异的根因，不把它定性为已修复、环境误报或确定的产品缺陷。
+
+影响范围是本地 CI 回归可信度；本次不放宽等待、不修改无关清理逻辑，不将定向通过代替全量验收。repository-maintainers 在正式 PR CI 再现时优先保留 child/task deadline、进程启动和退出的原始回执，比较是否出现调度延迟或真实清理越界，再决定是否修复。此记录不豁免 required CI，也不授权合并。原始与复跑记录见 [创建对齐验证记录](../design-docs/canvas-node-creation-alignment.md#验证记录) 及对应 ExecPlan；本地日志为 `.debug/alignment-pr-ci-gates.log`、`.debug/alignment-pr-ci-gates-repeat.log`、`.debug/alignment-pr-cleanup-isolated.log`。
+
 ## 2026-11-04：PR362 工具等待误判与部分重跑的工件身份
 
 2026-11-05 后续：独立PR #365的da217a50已通过legacy fit场景，run41952850152唯一失败为Claude回答省略receipt_，不是工作态提前等待。用户授权以PreToolUse/PostToolUse的同调用、原结果字节和时序替代模型复述，实际回答另与助手区域核对；13项受控回归、门禁212及类型检查通过，但新的固定CLI完整CI仍待验证，不能补造旧run缺失的接收事件。负责人repository-maintainers；收口需新head source/packaged四场景两provider均通过及required验收。模型未调用工具、认证/服务故障、未知Markdown呈现和其他CLI/平台仍不能降级通过，也不宣称验证模型回答的语义质量。正式范围与接口见 [真实TUI设计](../design-docs/smoke-real-tui-coverage.md)。

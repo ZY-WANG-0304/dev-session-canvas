@@ -844,8 +844,8 @@ test('actual Host cleanup observes an already retired graph without a competing 
 });
 test('smoke migration resolves actual registered helpers and causal steps without claiming unimplemented gaps', async () => {
   const result = await verifySmokeImplementationSources();
-  assert.equal(result.designDestinations, 150);
-  assert.equal(result.mappedDestinations, 150);
+  assert.equal(result.designDestinations, 153);
+  assert.equal(result.mappedDestinations, 153);
   assert.equal(result.unimplemented.length, 0);
   assert.deepEqual(result.retired, ['execution-file-activity/views', 'execution-file-activity/read-exit-drain']);
   assert.equal(result.reviewedAssertionReplacements, 16);
@@ -861,6 +861,24 @@ test('smoke migration rejects missing destinations, invented coverage and focuse
     map => { map.routes[0].destinations.pop(); },
     map => { map.cases[0].status = 'verified'; }]) {
     const map = structuredClone(original); mutate(map); assert.throws(() => validateSmokeImplementationMap(map));
+  }
+});
+
+test('creation alignment smoke stays in source and packaged plans with independent fixtures and bounded waits', () => {
+  const { plan } = fixture({ mode: 'release-pr', changedPaths: ['tests/vscode-smoke/extension-tests.cjs'] });
+  const map = readSmokeImplementationMap();
+  for (const suffix of ['alignment', 'group', 'root']) {
+    const id = `canvas-nodes/creation-${suffix}`;
+    const suite = smokeCatalog.find(entry => entry.id === id);
+    assert.equal(suite.prepare, 'prepareIndependentEmpty');
+    assert.equal(suite.kind, 'product-case');
+    assert.deepEqual(suite.steps, ['fixture', 'business', 'owned-resize-errors']);
+    assert(map.cases.find(entry => entry.id === id).destinations.some(entry => entry.source && entry.packaged));
+    for (const job of ['source-host', 'packaged-host']) {
+      const task = plan.tasks.find(entry => entry.job === job && entry.suite === id);
+      assert(task?.required);
+      assert(Number.isSafeInteger(task.timeoutMs) && task.timeoutMs > 0);
+    }
   }
 });
 test('smoke migration rejects helpers that exist but are unreachable from the declared case', async () => {

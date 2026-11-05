@@ -1,5 +1,6 @@
 import type {
   CanvasEdgeAnchor,
+  CanvasNodeCreationAnchor,
   CanvasNodeFootprint,
   CanvasNodePosition,
   CanvasNodeSummary
@@ -10,6 +11,7 @@ export const CANVAS_NODE_PLACEMENT_STEP_X = 120;
 export const CANVAS_NODE_PLACEMENT_STEP_Y = 96;
 export const CANVAS_NODE_PLACEMENT_SEARCH_RADIUS = 8;
 export const CANVAS_POSITION_GRID_SIZE = 20;
+export const CANVAS_NODE_CREATION_REGION_DEPTH = 160;
 export const CANVAS_FORK_LAYER_GAP = CANVAS_NODE_PLACEMENT_PADDING * 2;
 
 export type CanvasNodePlacementPreference = 'left-up' | 'right-down';
@@ -104,6 +106,101 @@ export function resolveNearbyNonOverlappingNodePosition(options: {
     preference,
     padding: options.padding ?? CANVAS_NODE_PLACEMENT_PADDING
   });
+}
+
+export function resolveAlignedNonOverlappingNodePosition(options: {
+  occupiedNodes: readonly (CanvasPlacementNode & { id: string })[];
+  targetSize: CanvasNodeFootprint;
+  anchor: CanvasNodePosition;
+  creationAnchor?: CanvasNodeCreationAnchor;
+}): CanvasNodePosition {
+  const reference = options.creationAnchor
+    ? resolvePointerNodePlacementReference(options.occupiedNodes, options.creationAnchor)
+    : undefined;
+  if (reference) {
+    return resolveDirectionalNodePosition(options.occupiedNodes, options.targetSize, reference);
+  }
+  const anchor = snapCanvasPosition(options.creationAnchor ? {
+    x: options.creationAnchor.position.x - options.targetSize.width / 2,
+    y: options.creationAnchor.position.y - options.targetSize.height / 2
+  } : options.anchor);
+  const collides = (position: CanvasNodePosition) => doesCanvasNodePlacementCollide({
+    ...options,
+    targetPosition: position
+  });
+  let fallback = collides(anchor) ? resolveNearbyNonOverlappingNodePosition({ ...options, anchor }) : anchor;
+  if (collides(fallback)) {
+    fallback = {
+      x: options.occupiedNodes.reduce((right, node) => Math.max(right, node.position.x + node.size.width), -Infinity)
+        + CANVAS_NODE_PLACEMENT_PADDING,
+      y: fallback.y
+    };
+  }
+  return fallback;
+}
+
+type PointerPlacementDirection = 'right' | 'down' | 'left' | 'up';
+interface PointerPlacementReference {
+  node: CanvasPlacementNode & { id: string };
+  direction: PointerPlacementDirection;
+}
+
+export function resolvePointerNodePlacementReference(
+  occupiedNodes: readonly (CanvasPlacementNode & { id: string })[],
+  anchor: CanvasNodeCreationAnchor
+): PointerPlacementReference | undefined {
+  const depth = CANVAS_NODE_CREATION_REGION_DEPTH / anchor.zoom;
+  const pointer = anchor.position;
+  const directions: PointerPlacementDirection[] = ['right', 'down', 'left', 'up'];
+  const candidates: Array<PointerPlacementReference & { distance: number; rank: number }> = [];
+  for (const node of occupiedNodes) {
+    const rect = createCanvasPlacementRect(node.position, node.size);
+    const distances = [pointer.x - rect.right, pointer.y - rect.bottom, rect.left - pointer.x, rect.top - pointer.y];
+    for (const [rank, direction] of directions.entries()) {
+      const withinSide = direction === 'right' || direction === 'left'
+        ? pointer.y >= rect.top && pointer.y <= rect.bottom
+        : pointer.x >= rect.left && pointer.x <= rect.right;
+      if (withinSide && distances[rank] > 0 && distances[rank] <= depth) {
+        candidates.push({ node, direction, rank, distance: distances[rank] });
+      }
+    }
+  }
+  candidates.sort((left, right) => left.distance - right.distance || left.rank - right.rank
+    || (left.node.id < right.node.id ? -1 : left.node.id > right.node.id ? 1 : 0));
+  return candidates[0];
+}
+
+function resolveDirectionalNodePosition(
+  occupiedNodes: readonly CanvasPlacementNode[],
+  targetSize: CanvasNodeFootprint,
+  reference: PointerPlacementReference
+): CanvasNodePosition {
+  const padding = CANVAS_NODE_PLACEMENT_PADDING;
+  const rect = createCanvasPlacementRect(reference.node.position, reference.node.size);
+  const direction = reference.direction;
+  const position = {
+    x: direction === 'right' ? rect.right + padding
+      : direction === 'left' ? rect.left - targetSize.width - padding : rect.left,
+    y: direction === 'down' ? rect.bottom + padding
+      : direction === 'up' ? rect.top - targetSize.height - padding : rect.top
+  };
+  const horizontal = direction === 'right' || direction === 'left';
+  const forward = direction === 'right' || direction === 'down';
+  const obstacles = occupiedNodes.map((node) => createCanvasPlacementRect(node.position, node.size))
+    .sort((left, right) => forward
+      ? (horizontal ? left.left - right.left : left.top - right.top)
+      : (horizontal ? right.right - left.right : right.bottom - left.bottom));
+  for (const obstacle of obstacles) {
+    if (!canvasPlacementRectsOverlap(createCanvasPlacementRect(position, targetSize), obstacle, padding)) {
+      continue;
+    }
+    if (horizontal) {
+      position.x = forward ? obstacle.right + padding : obstacle.left - targetSize.width - padding;
+    } else {
+      position.y = forward ? obstacle.bottom + padding : obstacle.top - targetSize.height - padding;
+    }
+  }
+  return position;
 }
 
 export function buildNearbyPlacementCandidates(

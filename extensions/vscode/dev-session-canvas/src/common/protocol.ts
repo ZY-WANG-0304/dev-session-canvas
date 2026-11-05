@@ -146,6 +146,11 @@ export interface CanvasNodePosition {
   y: number;
 }
 
+export interface CanvasNodeCreationAnchor {
+  position: CanvasNodePosition;
+  zoom: number;
+}
+
 export interface CanvasNodeFootprint {
   width: number;
   height: number;
@@ -721,6 +726,7 @@ export type WebviewToHostMessage = WebviewLifecycleEnvelope & (
         requestId?: string;
         kind: CanvasCreatableNodeKind;
         preferredPosition?: CanvasNodePosition;
+        creationAnchor?: CanvasNodeCreationAnchor;
         targetGroupId?: string;
         cwd?: string;
         agentProvider?: AgentProviderKind;
@@ -2739,6 +2745,7 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
       (payload.requestId !== undefined && typeof payload.requestId !== 'string') ||
       !isCanvasCreatableNodeKind(payload.kind) ||
       (payload.preferredPosition !== undefined && !isCanvasNodePosition(payload.preferredPosition)) ||
+      (payload.creationAnchor !== undefined && !isCanvasNodeCreationAnchor(payload.creationAnchor)) ||
       (payload.targetGroupId !== undefined && typeof payload.targetGroupId !== 'string') ||
       (payload.cwd !== undefined && typeof payload.cwd !== 'string') ||
       (payload.agentProvider !== undefined && !isAgentProviderKind(payload.agentProvider)) ||
@@ -2756,6 +2763,9 @@ export function parseWebviewMessage(value: unknown): WebviewToHostMessage | null
         preferredPosition: isCanvasNodePosition(payload.preferredPosition)
           ? payload.preferredPosition
           : undefined,
+        ...(isCanvasNodeCreationAnchor(payload.creationAnchor)
+          ? { creationAnchor: { position: payload.creationAnchor.position, zoom: payload.creationAnchor.zoom } }
+          : {}),
         targetGroupId: typeof payload.targetGroupId === 'string' ? payload.targetGroupId : undefined,
         cwd: typeof payload.cwd === 'string' ? payload.cwd : undefined,
         agentProvider: isAgentProviderKind(payload.agentProvider) ? payload.agentProvider : undefined,
@@ -2950,6 +2960,11 @@ function isWebviewNodeActionId(value: unknown): value is WebviewNodeActionId {
     value === 'open-associated-markdown-file' ||
     value === 'save-as-markdown'
   );
+}
+
+function isCanvasNodeCreationAnchor(value: unknown): value is CanvasNodeCreationAnchor {
+  return isRecord(value) && isCanvasNodePosition(value.position)
+    && typeof value.zoom === 'number' && Number.isFinite(value.zoom) && value.zoom > 0;
 }
 
 function isCanvasNodePosition(value: unknown): value is CanvasNodePosition {

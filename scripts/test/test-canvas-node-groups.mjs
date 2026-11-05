@@ -292,6 +292,26 @@ try {
   assert.strictEqual(mismatchedContextSelection.groups.length, 1);
   assert.strictEqual(mismatchedContextSelection.nodes.find((candidate) => candidate.id === 'note-a').groupId, undefined);
 
+  for (const kind of ['agent', 'terminal', 'note']) {
+    const initial = createNextState(state({}), kind, 'codex', 'default', undefined, { x: 0, y: 0 });
+    const first = initial.nodes.at(-1);
+    assert.deepEqual(first.position, { x: 0, y: 0 }, 'Empty canvas creation should retain its anchor.');
+    const creationAnchor = { position: { x: first.size.width + 10, y: 20 }, zoom: 1 };
+    const next = createNextState(initial, kind, 'codex', 'default', undefined, { x: 0, y: 0 },
+      undefined, undefined, undefined, creationAnchor);
+    const created = next.nodes.at(-1);
+    assert.deepEqual(created.position, { x: first.size.width + 40, y: 0 },
+      'Host creation should use P to align the new node to its neighbor’s right.');
+    assert.deepEqual(next.nodes[0].position, first.position);
+    const moved = moveNode(next, created.id, { x: 17, y: 31 });
+    assert.deepEqual(moved.nodes.find((candidate) => candidate.id === created.id).position, { x: 17, y: 31 },
+      'Manual movement should remain free, including off-grid overlap.');
+    const afterAnotherCreate = createNextState(moved, kind, 'codex', 'default', undefined, { x: 0, y: 0 },
+      undefined, undefined, undefined, creationAnchor);
+    assert.deepEqual(afterAnotherCreate.nodes.find((candidate) => candidate.id === created.id).position, { x: 17, y: 31 },
+      'Later creation must preserve the manually moved node.');
+  }
+
   const createdNodeInGroup = createNextState(
     state({
       groups: [group('group-parent', { x: 120, y: 120 }, { width: 360, height: 240 })]
@@ -404,6 +424,22 @@ try {
   );
 
   const forkLayerSourcePosition = { x: 220, y: 400 };
+  const groupedPointerState = state({
+    nodes: [agent('pointer-source', forkLayerSourcePosition, {
+      size: { width: 560, height: 430 }, groupId: 'pointer-group'
+    })],
+    groups: [group('pointer-group', { x: 0, y: 0 }, { width: 1000, height: 1000 })]
+  });
+  const pointerCreated = createNextState(groupedPointerState, 'note', 'codex', 'default', undefined,
+    undefined, 'pointer-group', undefined, undefined,
+    { position: { x: 230, y: 390 }, zoom: 1 });
+  assert.deepEqual(pointerCreated.nodes[0].position, forkLayerSourcePosition,
+    'Creating above a group member must expand the group without moving the source.');
+  assert.deepEqual(pointerCreated.nodes.at(-1).position, {
+    x: 220, y: 400 - pointerCreated.nodes.at(-1).size.height - 40
+  });
+  assert.equal(pointerCreated.nodes.at(-1).groupId, 'pointer-group');
+
   let forkLayerState = state({
     nodes: [agent('fork-layer-source', forkLayerSourcePosition, {
       size: { width: 560, height: 430 },

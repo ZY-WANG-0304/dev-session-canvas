@@ -110,6 +110,12 @@ async function main() {
       workspacePath = path.join(runtime.debugRoot, 'owned-canvas.code-workspace');
       await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }] }));
     }
+    if (scenario.name === 'canvas-nodes/creation-root') {
+      const siblingRoot = path.join(runtime.runtimeDir, 'creation-root-sibling');
+      await fs.mkdir(siblingRoot, { recursive: true });
+      workspacePath = path.join(runtime.debugRoot, 'creation-root.code-workspace');
+      await fs.writeFile(workspacePath, JSON.stringify({ folders: [{ path: projectRoot }, { path: siblingRoot }] }));
+    }
     const launch = async extraEnv => launchPreparedVSCodeScenario({
       projectRoot,
       runtime,

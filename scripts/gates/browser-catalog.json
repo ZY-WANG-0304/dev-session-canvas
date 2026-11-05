@@ -1878,6 +1878,11 @@
       "title": "workspace root group body renders a tiled non-interactive root name watermark"
     },
     {
+      "id": "a03daaf9564243b49609-e23203555752bd938911",
+      "file": "webview-harness.spec.mjs",
+      "title": "right-click creation retains the original P and zoom when the menu shifts at the window edge"
+    },
+    {
       "id": "a03daaf9564243b49609-e287dbddaf1e38b21e0a",
       "file": "webview-harness.spec.mjs",
       "title": "pane gallery current-state bootstrap restores a remounted thumbnail root without replay"

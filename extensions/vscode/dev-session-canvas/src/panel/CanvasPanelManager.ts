@@ -112,6 +112,7 @@ import {
   type CanvasNodeKind,
   type CanvasNodeMetadata,
   type CanvasNodePosition,
+  type CanvasNodeCreationAnchor,
   type CanvasRuntimeContext,
   type WebviewClipboardTextSource,
   type CanvasTemplateMenuEntry,
@@ -189,7 +190,7 @@ import {
   normalizeCanvasForkPlacementDirection,
   resolveForkEdgeAnchors,
   resolveForkLayerNodePosition,
-  resolveNearbyNonOverlappingNodePosition,
+  resolveAlignedNonOverlappingNodePosition,
   snapCanvasPosition,
   type CanvasForkPlacementDirection,
   type CanvasNodePlacementPreference
@@ -502,6 +503,7 @@ interface CreateNodeOptions {
   targetGroupId?: string;
   titleOverride?: string;
   placementStrategy?: CreateNodePlacementStrategy;
+  creationAnchor?: CanvasNodeCreationAnchor;
 }
 
 type CreateNodePlacementStrategy = {
@@ -4015,6 +4017,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     await this.queuePersistedCanvasSnapshotWrite({
       version: 1,
       state: this.state,
+      multiRootOverlay: this.multiRootOverlay,
       activeSurface: this.activeSurface
     }, {
       workspaceStateMode: 'full',
@@ -15584,6 +15587,7 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       case 'webview/createDemoNode':
         this.applyCreateNode(parsedMessage.payload.kind, parsedMessage.payload.preferredPosition, {
           requestId: parsedMessage.payload.requestId,
+          creationAnchor: parsedMessage.payload.creationAnchor,
           agentProvider: parsedMessage.payload.agentProvider,
           agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
           agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand,
@@ -24279,7 +24283,13 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       preferredPositionInTargetRoot,
       targetGroupIdForCreate,
       resolvedCwdOverride,
-      placementStrategyForCreate
+      placementStrategyForCreate,
+      options?.creationAnchor && targetRootGroupFromGroup
+        ? {
+            ...options.creationAnchor,
+            position: translateComposedCanvasPositionToRootLocal(options.creationAnchor.position, targetRootGroupFromGroup)
+          }
+        : targetRootGroup ? undefined : options?.creationAnchor
     );
     const composedNextState = targetRootGroup
       ? this.namespaceWorkspaceRootLocalCreateState(nextState, targetRootGroup)
@@ -25304,7 +25314,8 @@ function createNextState(
   preferredPosition?: CanvasNodePosition,
   targetGroupId?: string,
   cwdOverride?: string,
-  placementStrategy?: CreateNodePlacementStrategy
+  placementStrategy?: CreateNodePlacementStrategy,
+  creationAnchor?: CanvasNodeCreationAnchor
 ): CanvasPrototypeState {
   const nextIndex = readNextNodeSequence(previousState.nodes);
   const nextNode = createNode(kind, nextIndex, agentProvider, agentLaunchPreset, agentCustomLaunchCommand);
@@ -25321,7 +25332,8 @@ function createNextState(
     : resolveNewNodePosition(
         previousState.nodes,
         kind,
-        preferredPosition ?? nextNode.position
+        preferredPosition ?? nextNode.position,
+        creationAnchor
       );
   const placementTargetGroupId = placementStrategy?.kind === 'fork-layer'
     ? forkSourceNode?.groupId
@@ -25342,7 +25354,7 @@ function createNextState(
 
   return finalizeCanvasGroupState(
     nextState,
-    placementStrategy?.kind === 'fork-layer' && validTargetGroupId
+    (placementStrategy?.kind === 'fork-layer' || creationAnchor) && validTargetGroupId
       ? {
           pinnedGroupIds: resolveGroupAncestorChain(
             previousState.groups ?? [],
@@ -25458,13 +25470,13 @@ function resolveNewNodePosition(
   existingNodes: CanvasNodeSummary[],
   kind: CanvasNodeKind,
   anchor: CanvasNodePosition,
-  preference: CanvasNodePlacementPreference = 'right-down'
+  creationAnchor?: CanvasNodeCreationAnchor
 ): CanvasNodePosition {
-  return resolveNearbyNonOverlappingNodePosition({
+  return resolveAlignedNonOverlappingNodePosition({
     occupiedNodes: existingNodes,
     targetSize: estimatedCanvasNodeFootprint(kind),
     anchor,
-    preference
+    creationAnchor
   });
 }
 

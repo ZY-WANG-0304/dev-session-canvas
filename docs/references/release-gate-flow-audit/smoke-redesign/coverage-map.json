@@ -1506,6 +1506,39 @@
       "fixtureRule": "每case自建前提；有限组合内部具名步骤保持原身份"
     },
     {
+      "id": "canvas-nodes/creation-alignment",
+      "scenario": "canvas-nodes",
+      "case": "creation-alignment",
+      "title": "三类创建对齐、定向避障和自由位置保存",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "独立空画布；真实 Host 消息创建并停止本用例执行；保存重读验证，不声称鼠标端到端"
+    },
+    {
+      "id": "canvas-nodes/creation-group",
+      "scenario": "canvas-nodes",
+      "case": "creation-group",
+      "title": "Panel 嵌套组创建向上扩容和持久化",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "独立创建 Note 与嵌套普通组；在 Panel 派发带 P 创建，校验旧节点不动与祖先扩容"
+    },
+    {
+      "id": "canvas-nodes/creation-root",
+      "scenario": "canvas-nodes",
+      "case": "creation-root",
+      "title": "组合 root 创建坐标转换和持久化",
+      "status": "implementation-target",
+      "currentRoutes": [],
+      "proposedSourceDefault": true,
+      "proposedPackagedDefault": true,
+      "fixtureRule": "runner 打开真实双 root 窗口，用产品 root ID 和移动消息建立偏移；校验创建只转换一次、其他 root 不变及保存重读；不模拟 Host 重启"
+    },
+    {
       "id": "canvas-nodes/layout",
       "scenario": "canvas-nodes",
       "case": "layout",

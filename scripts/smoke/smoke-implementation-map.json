@@ -1690,6 +1690,51 @@
       ]
     },
     {
+      "id": "canvas-nodes/creation-alignment",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/creation-alignment",
+          "step": "business",
+          "helper": "runIndependentCreationAlignment",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/creation-group",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/creation-group",
+          "step": "business",
+          "helper": "runIndependentCreationGroup",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
+      "id": "canvas-nodes/creation-root",
+      "status": "implemented-unverified",
+      "destinations": [
+        {
+          "suite": "canvas-nodes/creation-root",
+          "step": "business",
+          "helper": "runIndependentCreationRoot",
+          "file": "tests/vscode-smoke/extension-tests.cjs",
+          "source": true,
+          "packaged": true,
+          "diagnosticOnly": false
+        }
+      ]
+    },
+    {
       "id": "canvas-nodes/layout",
       "status": "implemented-unverified",
       "destinations": [

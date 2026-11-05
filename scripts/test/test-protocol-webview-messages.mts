@@ -27,6 +27,20 @@ assert.equal(
 );
 
 const mouseDiagnostic = { nodeId: 'agent', kind: 'agent', detail: { phase: 'terminal-onData', sequence: 12, eventId: null } };
+const creationAnchor = { position: { x: -13.5, y: 257.25 }, zoom: 0.5 };
+const anchoredCreate = parseWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', creationAnchor } });
+assert.equal(anchoredCreate?.type, 'webview/createDemoNode');
+if (anchoredCreate?.type === 'webview/createDemoNode') {
+  assert.deepEqual(anchoredCreate.payload.creationAnchor, creationAnchor);
+}
+for (const invalid of [null, {}, { position: { x: NaN, y: 0 }, zoom: 1 },
+  { position: { x: 0, y: Infinity }, zoom: 1 }, ...[0, -1, Infinity, NaN, '1'].map(zoom => ({
+    position: { x: 0, y: 0 }, zoom
+  }))]) {
+  assert.equal(parseWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note', creationAnchor: invalid } }), null);
+}
+assert.equal(parseWebviewMessage({ type: 'webview/createDemoNode', payload: { kind: 'note' } })?.type,
+  'webview/createDemoNode', '旧创建消息仍可解析。');
 assert.deepEqual(parseWebviewMessage({ type: 'webview/executionMouseDiagnostic', payload: mouseDiagnostic }),
   { type: 'webview/executionMouseDiagnostic', payload: mouseDiagnostic });
 for (const patch of [{ nodeId: 12 }, { kind: 'note' }, { detail: [] }, { detail: null }]) {

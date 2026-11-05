@@ -326,6 +326,143 @@ async function prepareIndependentAgent() {
   return { agent: await createIndependentNode('agent', { x: 40, y: 40 }) };
 }
 
+async function createPlacementSmokeNode(payload, surface = 'editor') {
+  const before = await getDebugSnapshot();
+  const ids = new Set(before.state.nodes.map(node => node.id));
+  await dispatchWebviewMessage({ type: 'webview/createDemoNode', payload }, surface);
+  const snapshot = await waitForSnapshot(current => current.state.nodes.some(node => !ids.has(node.id)));
+  const created = snapshot.state.nodes.filter(node => !ids.has(node.id));
+  assert.strictEqual(created.length, 1, 'Placement smoke must create exactly one node');
+  const node = created[0];
+  assert.strictEqual(node.kind, payload.kind);
+  if (node.kind !== 'note') {
+    await waitForLocalExecutionStarted(node.kind, node.id);
+    if (node.kind === 'agent') await ensureAgentStopped(node.id);
+    else await ensureTerminalStopped(node.id);
+  }
+  return findNodeById(await getDebugSnapshot(), node.id);
+}
+
+function placementSmokeGeometry(snapshot) {
+  return {
+    nodes: snapshot.state.nodes.map(({ id, position, size, groupId }) => ({ id, position, size, groupId }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+    groups: (snapshot.state.groups ?? []).map(({ id, position, size, parentGroupId, role, workspaceRootPath }) =>
+      ({ id, position, size, parentGroupId, role, workspaceRootPath })).sort((left, right) => left.id.localeCompare(right.id))
+  };
+}
+
+async function verifyPlacementSmokePersistence() {
+  const expected = placementSmokeGeometry(await getDebugSnapshot());
+  await vscode.commands.executeCommand(COMMAND_IDS.testFlushPersistedState);
+  assert.deepStrictEqual(placementSmokeGeometry(await reloadPersistedState()), expected,
+    'Saved creation geometry and group membership must survive a Host state reread');
+}
+
+async function runIndependentCreationAlignment() {
+  const source = await createPlacementSmokeNode({ kind: 'note', preferredPosition: { x: 200, y: 200 } });
+  assert.deepStrictEqual(source.position, { x: 200, y: 200 }, 'No-P empty creation must retain the preferred grid position');
+  const creationAnchor = { position: { x: source.position.x + source.size.width + 10, y: 220 }, zoom: 0.5 };
+  let nextRight = source.position.x + source.size.width + 40;
+  for (const kind of ['agent', 'terminal', 'note']) {
+    const before = placementSmokeGeometry(await getDebugSnapshot());
+    const created = await createPlacementSmokeNode({ kind, agentProvider: kind === 'agent' ? 'codex' : undefined,
+      preferredPosition: { x: -9999, y: -9999 }, creationAnchor });
+    assert.deepStrictEqual(created.position, { x: nextRight, y: source.position.y },
+      `${kind} must align right and pass earlier obstacles without changing row`);
+    const after = placementSmokeGeometry(await getDebugSnapshot());
+    assert.deepStrictEqual(after.nodes.filter(node => node.id !== created.id), before.nodes,
+      'Creation must not arrange or resize existing nodes');
+    nextRight = created.position.x + created.size.width + 40;
+  }
+  for (const direction of ['left', 'up', 'down']) {
+    const pointer = direction === 'left' ? { x: source.position.x - 10, y: 220 }
+      : { x: 220, y: direction === 'up' ? source.position.y - 10 : source.position.y + source.size.height + 10 };
+    const created = await createPlacementSmokeNode({ kind: 'note', creationAnchor: { position: pointer, zoom: 1 } });
+    const expected = direction === 'left' ? { x: source.position.x - created.size.width - 40, y: source.position.y }
+      : { x: source.position.x, y: direction === 'up' ? source.position.y - created.size.height - 40
+        : source.position.y + source.size.height + 40 };
+    assert.deepStrictEqual(created.position, expected, `Creation must align on the ${direction} side`);
+  }
+  const far = await createPlacementSmokeNode({ kind: 'note',
+    creationAnchor: { position: { x: 10000, y: 10000 }, zoom: 1 } });
+  assert.deepStrictEqual(far.position, {
+    x: Math.round((10000 - far.size.width / 2) / 20) * 20,
+    y: Math.round((10000 - far.size.height / 2) / 20) * 20
+  }, 'Outside every P region, use the pointer-centered grid position');
+  const freePosition = { x: 10017, y: 10031 };
+  await dispatchWebviewMessage({ type: 'webview/moveNode', payload: { id: far.id, position: freePosition } });
+  const legacy = await createPlacementSmokeNode({ kind: 'note', preferredPosition: { x: -4000, y: 4000 } });
+  assert.deepStrictEqual(legacy.position, { x: -4000, y: 4000 }, 'Old messages must not invent a pointer or offset an empty slot');
+  await createPlacementSmokeNode({ kind: 'note', creationAnchor });
+  assert.deepStrictEqual(findNodeById(await getDebugSnapshot(), far.id).position, freePosition,
+    'Subsequent pointer creation must preserve the manually moved off-grid node');
+  await verifyPlacementSmokePersistence();
+}
+
+async function runIndependentCreationGroup() {
+  const source = await createPlacementSmokeNode({ kind: 'note', preferredPosition: { x: 500, y: 600 } });
+  const initial = await getDebugSnapshot();
+  await setPersistedState({ ...initial.state,
+    nodes: [{ ...source, groupId: 'placement-child' }],
+    groups: [
+      { id: 'placement-parent', title: 'Placement parent', position: { x: 300, y: 400 }, size: { width: 900, height: 1000 } },
+      { id: 'placement-child', title: 'Placement child', position: { x: 400, y: 500 },
+        size: { width: 700, height: 800 }, parentGroupId: 'placement-parent' }
+    ]
+  });
+  await vscode.commands.executeCommand(COMMAND_IDS.openCanvasInPanel);
+  await vscode.commands.executeCommand(COMMAND_IDS.testWaitForCanvasReady, 'panel', 20000);
+  const before = await getDebugSnapshot();
+  const reference = findNodeById(before, source.id);
+  const created = await createPlacementSmokeNode({ kind: 'note', targetGroupId: 'placement-child',
+    creationAnchor: { position: { x: reference.position.x + 10, y: reference.position.y - 10 }, zoom: 0.8 } }, 'panel');
+  assert.deepStrictEqual(created.position, { x: reference.position.x, y: reference.position.y - created.size.height - 40 });
+  assert.strictEqual(created.groupId, 'placement-child');
+  const after = await getDebugSnapshot();
+  assert.deepStrictEqual(findNodeById(after, reference.id).position, reference.position,
+    'Group expansion must not translate the reference node');
+  for (const id of ['placement-child', 'placement-parent']) {
+    const previous = findGroupById(before, id);
+    const expanded = findGroupById(after, id);
+    assert.ok(expanded.position.y < previous.position.y, 'Creation above the group must expand its top edge');
+    assert.ok(expanded.size.height > previous.size.height, 'The group and ancestor must grow, not shift the subtree');
+  }
+  await verifyPlacementSmokePersistence();
+}
+
+async function runIndependentCreationRoot() {
+  const initial = await getDebugSnapshot();
+  assert.strictEqual(vscode.workspace.workspaceFolders.length, 2, 'The runner must open a real two-root workspace');
+  const roots = vscode.workspace.workspaceFolders.map(folder => initial.state.groups.find(group =>
+    group.role === 'workspace-root' && group.workspaceRootPath === folder.uri.fsPath));
+  assert.ok(roots.every(Boolean), 'Both roots must have product-created sections');
+  await dispatchWebviewMessage({ type: 'webview/moveGroup', payload: {
+    groupId: roots[0].id, position: { x: 1200, y: 900 }
+  } });
+  await dispatchWebviewMessage({ type: 'webview/moveGroup', payload: {
+    groupId: roots[1].id, position: { x: 5000, y: 900 }
+  } });
+  const reference = await createPlacementSmokeNode({ kind: 'note', targetGroupId: roots[0].id,
+    preferredPosition: { x: 1400, y: 1100 } });
+  await createPlacementSmokeNode({ kind: 'note', targetGroupId: roots[1].id,
+    preferredPosition: { x: 5200, y: 1100 } });
+  const before = placementSmokeGeometry(await getDebugSnapshot());
+  const created = await createPlacementSmokeNode({ kind: 'note', targetGroupId: roots[0].id,
+    preferredPosition: { x: -9999, y: -9999 }, creationAnchor: {
+      position: { x: reference.position.x + reference.size.width + 30, y: reference.position.y + 80 }, zoom: 0.5
+    } });
+  assert.deepStrictEqual(created.position, { x: reference.position.x + reference.size.width + 40, y: reference.position.y },
+    'Composed P must translate to root-local once and the result back once');
+  assert.strictEqual(created.groupId, roots[0].id);
+  const after = placementSmokeGeometry(await getDebugSnapshot());
+  assert.deepStrictEqual(after.nodes.filter(node => node.id !== created.id), before.nodes,
+    'Creation must preserve both roots’ existing nodes');
+  assert.deepStrictEqual(after.groups.find(group => group.id === roots[1].id),
+    before.groups.find(group => group.id === roots[1].id), 'Creation must not change the other root section');
+  await verifyPlacementSmokePersistence();
+}
+
 async function prepareIndependentAgentPrompt() {
   const fixture = await prepareIndependentAgent();
   await waitForSnapshot(value => findNodeById(value, fixture.agent.nodeId).status === 'waiting-input');
@@ -962,6 +1099,7 @@ async function runIndependentHostBoundary(fixture) {
 }
 
 const independentCaseFunctions = {
+  runIndependentCreationAlignment, runIndependentCreationGroup, runIndependentCreationRoot,
   prepareIndependentHostBoundary, runIndependentHostBoundary,
   prepareIndependentGeometrySubject, runIndependentTerminalNatural, runIndependentTerminalError,
   runIndependentTerminalRestart, runIndependentLivePageRemount, runIndependentNativeCrash,
