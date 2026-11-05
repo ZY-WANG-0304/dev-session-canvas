@@ -45,10 +45,13 @@ body {
   --execution-attention-flash-easing: ease-in-out;
 }
 
-.canvas-shell .react-flow,
+.canvas-shell .react-flow {
+  overflow: clip !important;
+}
+
 .canvas-shell .react-flow__renderer,
 .canvas-shell .react-flow__pane {
-  overflow: hidden;
+  overflow: clip;
 }
 
 .canvas-corner-panel {

@@ -128,6 +128,7 @@ import {
   parseDroppedStringArray
 } from './droppedResources';
 import { isWorkspaceRootCanvasGroupRole } from './canvasGroupFrameStyles';
+import { CanvasFocusNavigation } from './canvasFocusNavigation';
 import { createCanvasEdgeTypes, resolveCanvasEdgeStrokeColor } from './canvasEdges';
 import { isImeComposingKeyboardEvent, stopCanvasEvent } from './canvasDomEvents';
 import {
@@ -4786,6 +4787,7 @@ function App(): JSX.Element {
           onMoveEnd={handleMoveEnd}
           proOptions={{ hideAttribution: true }}
         >
+          <CanvasFocusNavigation onViewportCommit={persistCanvasViewport} />
           <CanvasOverviewModeBridge
             mode={runtimeContext.overviewMode}
             threshold={runtimeContext.overviewZoomThreshold}

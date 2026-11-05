@@ -271,6 +271,7 @@ components:
 
 - widget 使用 VSCode token、1px border、小圆角和轻阴影。
 - 常驻 widget 只能服务导航、定位或当前状态理解。
+- 画布外层不可因焦点发生 DOM 隐式滚动；屏外对象焦点由所属 React Flow 实例平移至可见，不改变 zoom 或对象几何。终端和正文保留内部滚动与键盘语义，边界见 `docs/design-docs/canvas-focus-navigation.md`。
 - 菜单、toolbar、tooltip 和编辑浮层应短生命周期、小面积、低装饰。
 
 ### Feature-Specific Surfaces

@@ -48,6 +48,11 @@
       "title": "agent mixed hard-wrapped styled paths respect missing-indent"
     },
     {
+      "id": "a03daaf9564243b49609-022181b04b87d7d01871",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation reveals group chrome without moving geometry"
+    },
+    {
       "id": "a03daaf9564243b49609-02ac7f531b8bf80b56ed",
       "file": "webview-harness.spec.mjs",
       "title": "agent right click keeps xterm textarea aligned under zoomed React Flow"
@@ -123,6 +128,11 @@
       "title": "canvas context menu can request layout arrangement without a completion toast"
     },
     {
+      "id": "a03daaf9564243b49609-0a3695b59c2afad8dd81",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation keeps layers aligned with native Tab at 0.4 horizontal"
+    },
+    {
       "id": "a03daaf9564243b49609-0a6bb4492cd6546f8c21",
       "file": "webview-harness.spec.mjs",
       "title": "terminal refreshes negative file link cache while live output continues"
@@ -183,6 +193,11 @@
       "title": "agent hard-wrapped URL detector does not merge adjacent URL lines"
     },
     {
+      "id": "a03daaf9564243b49609-11eb15d6efc6480ece74",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation preserves agent terminal Tab input"
+    },
+    {
       "id": "a03daaf9564243b49609-125e5b08a1be0c57466c",
       "file": "webview-harness.spec.mjs",
       "title": "workspace root watermark keeps overview-scale text when the title chrome is width-capped"
@@ -203,6 +218,11 @@
       "title": "pane gallery lower-left mode control switches layouts and canvas thumbnails"
     },
     {
+      "id": "a03daaf9564243b49609-137d5bdb5acc04f7d49a",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation keeps layers aligned with native Tab at 1 vertical"
+    },
+    {
       "id": "a03daaf9564243b49609-144c13cfecb892db65a3",
       "file": "webview-harness.spec.mjs",
       "title": "pane gallery thumbnail rail follows workspace root order after switching active root"
@@ -216,6 +236,11 @@
       "id": "a03daaf9564243b49609-15123116ee67fc8da80b",
       "file": "webview-harness.spec.mjs",
       "title": "agent movement abort releases the terminal resize gate"
+    },
+    {
+      "id": "a03daaf9564243b49609-158a97b39dcdb2a7932a",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation keeps layers aligned with native Tab at 0.4 vertical"
     },
     {
       "id": "a03daaf9564243b49609-15ae88f624f748fecc35",
@@ -246,6 +271,11 @@
       "id": "a03daaf9564243b49609-17c1004fd0d397b122c4",
       "file": "webview-harness.spec.mjs",
       "title": "agent terminal paste response survives a delayed host confirmation"
+    },
+    {
+      "id": "a03daaf9564243b49609-193da88c02f8586c64c3",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation keeps layers aligned with native Tab at 1 horizontal"
     },
     {
       "id": "a03daaf9564243b49609-19c4ee383049d84fd8e9",
@@ -431,6 +461,11 @@
       "id": "a03daaf9564243b49609-2f692bf70a446493fe54",
       "file": "webview-harness.spec.mjs",
       "title": "quick drag after selecting a group moves it and suppresses the following title double-click focus"
+    },
+    {
+      "id": "a03daaf9564243b49609-30336a5f88a56f11e0bb",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation only pans and saves the owning gallery pane"
     },
     {
       "id": "a03daaf9564243b49609-30dbe7fbf782759a31a9",
@@ -1218,6 +1253,11 @@
       "title": "pane gallery restores the saved main viewport when switching thumbnail roots"
     },
     {
+      "id": "a03daaf9564243b49609-99f65df4584d421102a4",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation keeps visible targets and fixed controls stationary"
+    },
+    {
       "id": "a03daaf9564243b49609-9a8316b75f12114d9127",
       "file": "webview-harness.spec.mjs",
       "title": "terminal staggers snapshot hydrates and prioritizes the node with recent input"
@@ -1601,6 +1641,11 @@
       "id": "a03daaf9564243b49609-c310619bbce9de62be19",
       "file": "webview-harness.spec.mjs",
       "title": "agent mixed hard-wrapped styled paths respect wide-prefix"
+    },
+    {
+      "id": "a03daaf9564243b49609-c3dc0b6bd82702dff62f",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation preserves note internal scrolling and indentation"
     },
     {
       "id": "a03daaf9564243b49609-c3de03833ee1c3890181",
@@ -2046,6 +2091,11 @@
       "id": "a03daaf9564243b49609-f544af49519844cbbe1f",
       "file": "webview-harness.spec.mjs",
       "title": "note preview and editor scope select-all locally while copy and edit shortcuts still reach the host"
+    },
+    {
+      "id": "a03daaf9564243b49609-f54c34a676de4b7a8fc6",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation preserves terminal terminal Tab input"
     },
     {
       "id": "a03daaf9564243b49609-f5b3d2e800fd470e49c2",

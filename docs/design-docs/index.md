@@ -23,6 +23,7 @@
 
 | 文档 | 主题 | 关联域/架构层 | 决策状态 | 验证状态 | 关联规格/计划 | 最后更新 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/design-docs/canvas-focus-navigation.md` | Tab 分层错位修复与视口保存；PR369 旧标题用例拆分聚焦/双击断言，11 项定向与完整功能集 430 项通过，新 head 远端待验，历史进程合同失败保留 | 画布交互域 / 画布呈现层 | 已选定 | 已验证 | `docs/product-specs/canvas-node-groups.md`、`docs/exec-plans/completed/canvas-focus-navigation.md` | 2026-11-06 |
 | `docs/design-docs/pr362-ci-failure-investigation.md` | PR362/365：工作画面保护与同轮次拒绝；fit已通过真实CI，后续回执复述卡点改用结构化接收，新head待验 | 执行编排域、VSCode 集成域、画布交互域 / 宿主集成层、共享模型与编排层、适配与基础设施层、画布呈现层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/completed/pr362-ci-failure-investigation.md`、`docs/exec-plans/active/pr362-ci-failure-repair.md` | 2026-11-05 |
 | `docs/design-docs/canvas-node-creation-alignment.md` | 已 rebase 默认尺寸改动；17 项浏览器与三项新建源码 smoke 通过，source/VSIX 目录同步；当前全量 CI 清理计时失败待定位，真实手感与同批 VSIX 待验 | 画布交互域、协作对象域 / 宿主集成层、画布呈现层、共享模型与编排层 | 已选定 | 验证中 | `docs/product-specs/canvas-core-collaboration-mvp.md`、`docs/exec-plans/completed/canvas-node-creation-alignment.md`、`docs/exec-plans/completed/canvas-node-creation-alignment-smoke.md` | 2026-11-05 |
 | `docs/design-docs/runtime-supervisor-release-isolation.md` | 新执行按发行隔离、旧绑定保持；CI 固定修前源码，Linux 删旧树与 11 个原始进程退役经 Node 22/25 验证；安装产品及跨平台升级待验 | 执行编排域、项目状态域 / 宿主集成层、共享模型与编排层、适配与基础设施层 | 已选定 | 验证中 | `docs/product-specs/runtime-persistence-modes.md`、`docs/exec-plans/active/runtime-supervisor-release-isolation.md` | 2026-11-03 |
