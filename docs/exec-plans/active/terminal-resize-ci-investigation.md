@@ -123,11 +123,15 @@ Windows 已有 attempt 5 的同输入有效未复现回执：完整 `installed-p
 
 最终交付应明确区分已证实根因、支持证据的假设、仍未知事项；保留首次失败，不以重试成功宣告问题不存在。合并前需记录最新 head 上 Linux smoke、Windows installed-pair、source build 与正式验收 contract 的真实结果。
 
+2026-11-05 rebase 后本地验证：默认尺寸 `test:canvas-node-groups`、保留的 7 项 `test:terminal-fit-convergence`、adapter 109 cases、provider-channel 与 Windows provider core 7 cases 均通过；`npm run test:ci-gates` 212/212、`npm run typecheck`、`npm run build` 和 `git diff --check` 通过。此结果仅覆盖本地，不替代新 PR head 上固定 runner 的完整 CI 与 release contract。
+
 ## 幂等性与恢复
 
 窄场景测试会启动 VS Code、Supervisor 和 PTY。复跑前确认前一轮子进程已经结束并为每轮使用独立临时目录；不得对实际用户进程执行 kill。远端重跑只使用更新后的 PR head，确认当前 attempt 下载自身计划与工件，不覆盖既有 artifact。诊断期临时观测代码已撤销；永久修复不得通过测试日志或 driver 特例改变产品语义。
 
 ## 证据与备注
+
+2026-11-05 补充：PR #365 已合并，merge commit 与当前 `origin/main` 均为 `609fcd90c708b2710ddb7e6f26a3d6e25b324e50`。该 PR 已落地 Agent 工具等待态误判修复，并保留/加强了有界 terminal fit 收敛实现与 7 项受控回归。PR #362 已 rebase 到该主线；冲突处理保留主线实现与 7 项 fit 回归，同时合入本 PR 的 adapter 与 Windows provider 两项 CI 回归，因此完整任务数为 362。attempt 3 中 `agent-tui--tool-network-silence` 的唯一产品失败及其下游 `verify-result` / `Verify release contract` 红灯属于 rebase 前历史结果；尚未由 rebase 后 head 的完整 CI 证明修复有效。Windows unknown-write 仍按 `unconfirmed` fail-closed 契约单独验证；attempt 3 的 Windows 首败原始交互证据仍缺失，不作因果归因。
 
 Attempt 3 的初始证据位置与摘要见 Actions 工件：`gate-source-host-legacy-supervisor-upgrade-41692157078-3`、`installed-pair/win32-x64`。其 Windows driver 回执中的首败为 `Notification Terminal mounted first output timed out: " "`；同工件截图显示 owner 已以 `Invalid terminal interaction result` fault。Linux 本机三轮 trace 摘要与二次 fit 对照结果已写入本计划；此前诊断用临时观测改动已撤回。attempt 4 的 Windows job artifact/log 仍源于 attempt 3；attempt 4 新起的 Linux job 只在冻结计划缺失处失败。任何后续重跑都必须记录新 attempt 的 plan/candidate digest 与实际 task 回执，不把 attempt 3 证据拼进新回执。
 
@@ -139,6 +143,12 @@ Windows 依赖冻结 plan 中真实安装 pair、固定 VS Code `1.142.0`、Wind
 
 计划更新记录：2026-11-04 创建并补记 Linux 首次 fit 与 cell 宽度变化的 trace、二次 fit 单变量通过、assertion 必要性分析、attempt 4 无效重跑、Windows provider 回执契约候选、producer 侧 pipe-write reject 注入和 attempt 5 全部 CI 结果。随后进入修复阶段，添加有界 fit helper、未知 input 投递隔离、回归脚本与正式设计决策；本地 legacy smoke、adapter/provider/channel/fit 回归、typecheck/build 及定向 gate contracts 均通过。subagent review 中发现的一个确定前缀报告 blocker 已修复，复审确认解除。Windows attempt 3 的原始 request/result 仍缺失，不能写成已归因。
 
-本轮补充：subagent 首轮 review 发现未知后续 chunk 会连已确认输入前缀一起丢弃；现已修复并增加 3 个 chunk-prefix regression（provider unknown、timeout + 原回执迟到、transport loss），adapter 109 cases、provider channel 19 cases 及 Windows core 7 cases 通过；subagent 复审确认 P1 已解除。最初 `npm run test:ci-gates` 中两个 scope-count case 仍期望旧任务数 359；纳入三项回归后将期望更新为 362，`test-ci-scope` 与 `test-gate-contracts` 定向组合 130/130 通过。仍待将修复推到 PR #362 并取得固定 runner 的 Linux/Windows 及最终 Verify release contract 回执。
+截至 2026-11-04 旧 head `545036a3`：subagent 首轮 review 发现未知后续 chunk 会连已确认输入前缀一起丢弃；修复后增加 3 个 chunk-prefix regression（provider unknown、timeout + 原回执迟到、transport loss），adapter 109 cases、provider channel 19 cases 及 Windows core 7 cases 通过；subagent 复审确认 P1 已解除。最初 `npm run test:ci-gates` 中两个 scope-count case 仍期望旧任务数 359；纳入三项回归后将期望更新为 362，`test-ci-scope` 与 `test-gate-contracts` 定向组合 130/130 通过。该旧 head 当时仍待有效的固定 runner Linux/Windows 与最终 Verify release contract 回执；后续 rebase 与验收状态见 2026-11-05 记录。
 
 2026-11-04 补充：重新核对旧 head `8dcbbf0e` 的 attempt 5 验收日志，Windows installed-pair 已成功；最终 `verify-result` 报告唯一业务任务失败为 `legacy-supervisor-upgrade`（进程退出码 1，Host fixture cleanup 未确认），因此 `Verify release contract` 的 assertion 是下游拒绝验收，不是第二个独立产品失败。原始 Linux artifact/快照已将业务失败定位为 resize 后 xterm proposal 85 列而 PTY/session 为 84 列；本地安装包 smoke 在 VS Code 1.119.0 上通过，但仍需新 PR head 的固定 1.142.0 CI 回执验证。
+
+2026-11-04 补充：PR #362 当前 head `545036a38fa9468943bbde037a6d0e1a23536f99` 的 Actions run `41775499320` 已完成 attempt 2。表面上三个失败检查并非三个产品回归：source-host `surface-continuity--live-page-remount` 与 `verify-result` 都在 `Download frozen plan` 请求不存在的 `gate-transfer-plan-41775499320-2`；随后的 `gate-plan/gate-plan.json` ENOENT 只是连带错误。`Verify release contract` 同样在下载阶段找不到 `merge-control-41775499320-2`。根因是只重跑失败 jobs：resolve/plan producer 在 attempt 1 已成功且没有重跑，只保留 `merge-control-41775499320-1` 与 `gate-transfer-plan-41775499320-1`；attempt 2 的失败/依赖 jobs 则按新的 `github.run_attempt` 请求 `-2` 工件。由此 attempt 2 没有执行产品 smoke，也没有完成验收，不能算修复后的 CI 复核。attempt 1 确有一个独立的 `surface-continuity/live-page-remount` 产品 smoke 失败：Terminal shell 输出出现后，请求 execution snapshot 时 `waitForHostMessages()` 超时且最后消息为空；该失败发生在页面 remount 步骤之前，当前仍需有效完整重跑确认是否解决。建议后续使用完整 workflow rerun 让 resolver、plan、producer 与 verifier 都在同一 attempt 重建输入；当前未修改 workflow 实现。
+
+2026-11-04 补充：完整重跑 run `41775499320` 的 attempt 3 已完成，PR head 仍为 `545036a38fa9468943bbde037a6d0e1a23536f99`；attempt 3 的 resolver、plan producer 与 verifier 均使用同一 attempt 输入。总验收为 361 项通过、1 项失败、0 项未运行。唯一独立失败是 packaged-host `agent-tui--tool-network-silence`：`tests/vscode-smoke/agent-tui-tests.cjs:84` 期待 `running`，实际读到 `waiting-input`。artifact 同时显示 Codex 工具尚未返回、终端显示 `Calling tui.wait_for_release` / `Working`、Agent liveSession 仍为真，Terminal 几何为 `125×40`；因此这是工具等待期间的产品状态误判，不是尺寸断言失败。相同 packaged-host 场景在 attempt 1（同一 PR head）通过，说明现象具间歇性。source-host 的同场景、`legacy-supervisor-upgrade`、Windows `installed-pair/win32-x64` 和 source-build 均通过。
+
+attempt 3 的 gate 汇总 `verify-result` 只因上述唯一 producer 失败而失败，稳定检查 `Verify release contract` 随后按契约拒绝失败的 acceptance；它们是同一根因的下游红灯，并非另外两个独立产品故障。失败 artifact 另记录 `execution/inputRejected` / `owned-write-failed`，错误为 `Execution terminal interaction capacity exhausted`，时间 `14:06:52.188Z`，早于 `UserPromptSubmit` 约 3.36 秒。准入上限为 4 个 pending interaction 或 32768 输入字节；artifact 未记录触顶计数、交互类型或输入大小，故此拒绝是否导致后续状态误判仍未知。状态误判与既有静默启发式的 1600ms hard fallback 相符，但 CI artifact 未保存 transition reason，不能认定具体触发分支，也不能归因于本 PR 的 fit 或 Windows unknown-write 改动。下一步如继续修复，应补记状态转换原因与 interaction admission occupancy，并用真实工具静默至少 3 秒的回归复现；现阶段没有提交对应产品修复。尝试本机运行相同 smoke 在场景启动前因系统 Codex CLI 为 `0.166.0`、而测试要求固定 `0.157.1` 中止，不计为复现结果。
