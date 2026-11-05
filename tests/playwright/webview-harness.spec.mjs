@@ -12235,11 +12235,13 @@ test('workspace root watermark keeps overview-scale text when the title chrome i
     };
   });
 
-  expect(watermarkStyle.titleReadableScale).toBeLessThan(1);
-  expect(watermarkStyle.titleReadableScale).toBeLessThan(watermarkStyle.watermarkReadableScale / 3);
+  expect(watermarkStyle.titleReadableScale).toBeCloseTo(1, 5);
+  expect(watermarkStyle.titleFontSize).toBeCloseTo(12, 5);
+  expect(watermarkStyle.viewportZoom).toBeLessThan(1);
+  expect(watermarkStyle.titleReadableScale).toBeLessThan(watermarkStyle.watermarkReadableScale);
   expect(watermarkStyle.watermarkReadableScale).toBeCloseTo(1 / watermarkStyle.viewportZoom, 1);
   expect(watermarkStyle.watermarkFontSize).toBeCloseTo(12 / watermarkStyle.viewportZoom, 1);
-  expect(watermarkStyle.watermarkFontSize).toBeGreaterThan(watermarkStyle.titleFontSize * 3);
+  expect(watermarkStyle.watermarkFontSize).toBeGreaterThan(watermarkStyle.titleFontSize);
   expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.watermarkFontSize, 1);
   expect(watermarkStyle.maskImage).toContain('data:image/svg+xml');
   expect(watermarkStyle.maskImage).toContain('dsc-test-02');
@@ -13032,7 +13034,7 @@ test('workspace root group resize draft is replaced by repaired host geometry af
   await clearPostedMessages(page);
   await page.locator('[data-group-id="workspace-root-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
   await settleWebview(page, 2);
-  await rootFrame.locator('.canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await rootFrame.locator('.canvas-group-titlebar').click();
   await settleWebview(page, 3);
 
   expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual({

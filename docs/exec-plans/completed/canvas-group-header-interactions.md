@@ -102,3 +102,29 @@
 rebase 后 `npm run typecheck`、`npm run build -- --execution-profile=stock`、`npm run test:canvas-node-groups`、`npm run test:theme-color-tokens`、宿主删除矩阵 9/9 和原 78 项 Webview 回归再次通过。日志为 `/tmp/canvas5-pr-typecheck.log`、`/tmp/canvas5-pr-build.log`、`/tmp/canvas5-pr-browser.log`。文档检查及 diff check 通过；实际浏览器注册与合并后目录的 439 项 ID、文件和完整标题集合一致，smoke source hash 与 153 个实现映射通过。439 项仅为目录一致性，不代表全量执行。
 
 Schrodinger 针对 `56190a3e51a7f1d422e889c264163586ff68ab2c` 静态复审确认未发现新的确定性 blocker：上游创建锚点、视口尺寸、节点尺寸及递归删除准备/失败处理/replacement journal 路径保留，原双击和 Space 修复保留。本次不替代真实 VS Code 安装或正式跨平台门禁验收，也不包含合并授权。
+
+## PR #370 第二次 rebase 与 CI 失败跟进
+
+2026-11-06 用户要求再次 rebase 并检查 CI。以远端 PR head `942bfb300ee3fbb53d524ec830a3eed97acb942e` 为更新租约，将两个主题提交重放到 `origin/main@92736f3822a5cf8838553de4ba9255b861a39448`，纳入 PR #369 的 Tab 焦点导航修复。唯一冲突是浏览器目录相邻新增项，保留上游焦点导航和本任务分组首次拖动用例；源码自动合并。用户 OSC 研究及图片单独保存，不进入 PR。
+
+旧 head 的 [Release Preflight run 42080897345](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42080897345) 有两处原始失败：`webview-function/default` 与 `source-host/legacy-supervisor-upgrade`；`verify-result` 和最终 `Verify release contract` 是缺少成功验收后的连带拒绝。同 head 的 CI Stability Observations 成功，不能代替 required 门禁。
+
+浏览器旧 CI 为 435/436，唯一失败是 [水印标题限宽用例](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42080897345/job/127437282022)。旧断言要求标题比例小于 1，仍依赖按标题长度限宽的历史算法；正式方案已改为固定 180px 基础宽度，180px 夹具的比例应恰好为 1、字号 12px。原断言在 rebase 后本地同样失败，日志 `/tmp/pr370-watermark-red.log`。初次修正后继续发现历史三倍比例断言也已失效：夹具请求 zoom 0.25，但实际 viewport 被限制为 0.4，水印比例为 2.5，不能把请求值当实际值。
+
+本次只修正测试：精确验证标题比例 1、字号 12px，以及实际 viewport 缩小；水印仍须独立满足 `1 / viewportZoom` 与 `12 / viewportZoom`，且大于限宽后的标题。保留标签字号、遮罩内容、单行、省略和 tile 几何断言，不改变产品算法、不删除用例、不修改测试 ID 或放宽门禁。水印及上游焦点导航定向 11/11 通过，日志 `/tmp/pr370-rebase2-targeted-final.log`。
+
+独立子代理核对 [legacy-upgrade job](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42080897345/job/127441905185) 的原始日志和工件：实际输入为旧 base/head 的预合并 `7b3a465c`；夹具准备、旧代 attach、I/O/resize 与新代隔离通过，`old-generation-retirement` 在测试第 377 行等待 previous-generation-stream 路径的 `runtime/legacySupervisorClientRetired` 事件 20 秒超时。另一条 legacy 路径已产生该事件；两个旧 Terminal 已关闭、旧 Agent 已删除、当前代 Terminal 仍 live，场景没有分组。后续旧进程退出断言和 `current-after-old-exit` 未执行，不能宣称旧进程已退出。该失败不是任务总预算或 cleanup 超时；模拟 reload 的 disconnected 堆栈也不足以解释缺失事件。
+
+legacy 测试、Supervisor、Client 和 ReadRelay 在 base、旧 head 与 rebase 后内容相同，本任务宿主改动仅在分组删除确认，没有发现直接关联证据；但主线先前一次成功不覆盖本次失败，也不证明它是 flaky。原工件没有记录退役检查当时因绑定、重连、pending 请求或 reader 引用中的哪项而返回，根因仍未闭环。本轮不延长等待、删除断言或更改观察策略，已登记后续定向取证；新 head 的 required CI 仍需独立通过。原始日志 `/tmp/pr370-old-legacy-upgrade.log`，独立下载工件 `/tmp/pr370-legacy.mTT0d6/`。
+
+独立 review 同时确认水印断言修正符合正式方案，新增精确数值检查而非单纯放宽；legacy 失败则仍为未解决项，不把此次复审写成 required CI 已通过。
+
+完整功能回归另暴露 root resize 用例与上游焦点导航的新组合：几何修复断言已通过，选中 root B 后 viewport 平移到 x=-282，而 repaired root A 的画布 x=96；旧测试继续点击 A 标题栏左端 x=12，对应屏幕负坐标，被 `html` 拦截直至 30 秒超时。将重选 A 改为点击当前可见的标题栏中心，保留选择、修复几何、无额外 move/resize 消息的所有断言；不使用 force click、不回退上游焦点导航或允许原生滚动。首败 trace 保存在 `/tmp/pr370-root-resize-first-failure/`。
+
+本地完整功能首轮使用与 CI 相同的筛选（只排除三项视觉用例）执行，为 444/446（13.5m），日志 `/tmp/pr370-rebase2-functional.log`。水印已通过；除 root resize 屏外点击之外，还有终端硬折行链接 hover 首败：两个 overlay 片段曾生成，紧邻终端尺寸变化后消失，等待片段数 2 的八次采样均为 0。独立 reviewer 核对测试与链接源码没有直接改动，但未证明具体清除回调或根因；首败工件保存在 `/tmp/pr370-hover-first-failure/`，技术债保留后续取证。本次没有修改链接实现或等待预算，不能把复跑绿色代替完整首轮结果。
+
+root 重选修正后，水印与 root resize 各重复三次为 6/6 通过，日志 `/tmp/pr370-rebase2-reproductions.log`。最初组合 grep 对 hover 使用了行首锚点，没有匹配带文件前缀的完整标题，因此该 6/6 不包含 hover；hover 单独验证并另行记数。
+
+最终相邻集合 `group|pane gallery|editing node titles|pressing Enter in the title|canvas focus navigation|workspace root watermark` 为 89/89 通过（2.6m），日志 `/tmp/pr370-rebase2-adjacent.log`。类型检查、显式 stock 构建、宿主删除矩阵 9/9、分组几何与主题合同均通过；449 项浏览器注册集合及 smoke source hash/153 个实现映射一致，文档与 diff check 通过。本轮未重跑三项视觉测试，也没有完成最终修改后的全量 446 项复验，不将相邻集合绿色写成完整功能或新 head 的 CI 验收。
+
+最后单独运行 `--grep 'terminal styled hard-wrapped file hover underlines all fragments' --repeat-each=3 --workers=2`，3/3 通过，日志 `/tmp/pr370-hover-repeat.log`。测试及对应产品实现未修改；这只记录定向复跑结果，不能据此关闭尺寸变化期间 hover 消失的首败调查或将其定性为 flaky。
