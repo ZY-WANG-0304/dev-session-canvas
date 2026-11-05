@@ -96,6 +96,12 @@ CI 跟进记录：原用例在本地修改前同样失败；仅修正测试后�
 
 本地完整功能日志保留于 `.debug/pr369-ci/focus-followup-functional.log`；旧 CI run `42060940222` 的单个原始失败与两级连带拒绝保留，不重写为通过。
 
+2026-11-06 再次追赶主线：将 PR rebase 到 `origin/main` 的 `809f7512`，两个提交均无冲突重放。此前 head `2f38b971` 的 CI run `42072031193` 中，功能浏览器、视觉浏览器及三个 regression 分片均已通过；该轮失败不是标题双击回归。Windows ARM64 job `127408377070` 在 `actions/setup-node@v4` 解压 Node 25.6.0 时，PowerShell 7 报 `Internal CLR error (0x80131506)` 并以 `3221225477` 退出，尚未进入依赖安装或产品构建。`package-clean` 与 `source-build` 随后因缺少同轮 `native-load-win32-arm64` 回执失败，最终验收拒绝是连带结果。
+
+日志仅能确认 runner 的 PowerShell 进程崩溃，尚不能确认其是否稳定复现；不据此修改产品实现、跳过 ARM64 或放宽原样产物验真。先对 rebase 后输入复验并推送，让新 head 执行完整任务图；若需重跑，遵循同一 run/attempt 的完整重跑约束，不混用旧轮次 native 产物。远端结果以新 head 的运行记录为准。
+
+该次 rebase 后构建、类型检查通过；焦点导航、标题双击与右键创建相邻回归 19/19 通过，浏览器门禁合同定向检查 2/2 通过，433 项实际 Playwright 用例的 ID 和包含 describe 层级的标题与冻结目录一致。定向日志位于 `.debug/pr369-ci/rebased-focus.log`，不替代远端完整验收。
+
 ## 接口与依赖
 
 沿用 React / React Flow 和 focusin、requestAnimationFrame、getBoundingClientRect。`CanvasFocusNavigation({ onViewportCommit })` 用 useStore 获取实例 DOM，用 useReactFlow 的 getViewport / setViewport 导航，回调显式保存，不新增依赖或跨 Host 消息。
