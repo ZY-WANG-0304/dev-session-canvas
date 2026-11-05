@@ -76,7 +76,11 @@ function harness(options = {}) {
   const pipes = {
     acquired: { input: true, source: true }, ready: Promise.resolve(), closed: pipesClosed.promise,
     output(callback) { consume = callback; return source.promise; },
-    async write(bytes) { inputs.push(Buffer.from(bytes)); await options.inputGate?.promise; },
+    async write(bytes) {
+      inputs.push(Buffer.from(bytes));
+      await options.inputGate?.promise;
+      if (options.failInputWrite) throw new Error('controlled pipe write failure');
+    },
     closeInput() { inputClosed = true; settlePipes(); },
     cancel(reason) {
       events.push('cancel-output');
@@ -160,6 +164,23 @@ function harness(options = {}) {
 }
 
 {
+  const h = harness({ failInputWrite: true });
+  await h.begin();
+  h.command({ type: 'input', interactionId: 1, data: 'typed command' });
+  await flush();
+  const observation = h.messages.find(message => message.type === 'interactionObservation');
+  assert.deepEqual(observation.result, {
+    kind: 'unconfirmed', reason: 'Native terminal input delivery is unconfirmed.'
+  });
+  assert.equal('writtenBytes' in observation.result, false, 'a rejected pipe write has no proven byte count');
+  assert.equal(h.inputs.length, 1, 'the provider does not retry the rejected input');
+  h.end();
+  await h.exit();
+  const result = await h.result();
+  assert.equal(result.kind, 'closed');
+}
+
+{
   const inputGate = deferred(), resizeGate = deferred();
   const h = harness({ inputGate, resizeGate });
   await h.begin('interrupt-then-hangup');
@@ -232,4 +253,4 @@ function harness(options = {}) {
     && message.result.kind === 'unknown'));
 }
 
-console.log('Windows execution provider core: 6 controlled cases passed; no Windows native calls.');
+console.log('Windows execution provider core: 7 controlled cases passed; no Windows native calls.');

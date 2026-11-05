@@ -2490,7 +2490,7 @@ async function verifyCodexAgentBranchFromCurrentNode() {
           status: 'stopped',
           summary: '检测到可分叉的 Codex 会话。',
           position: { x: 120, y: 120 },
-          size: { width: 560, height: 420 },
+          size: { width: 760, height: 560 },
           metadata: {
             agent: {
               provider: 'codex',
@@ -2683,7 +2683,7 @@ async function verifyClaudeAgentBranchFromCurrentNode() {
           status: 'stopped',
           summary: '检测到可分叉的 Claude Code 会话。',
           position: { x: 120, y: 120 },
-          size: { width: 560, height: 420 },
+          size: { width: 760, height: 560 },
           metadata: {
             agent: {
               provider: 'claude',

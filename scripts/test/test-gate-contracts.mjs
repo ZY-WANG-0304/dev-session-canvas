@@ -1735,6 +1735,9 @@ test('default regression includes terminal fit convergence', async () => {
 
 test('default regression includes owner Stop failure and unknown-result responsibility', async () => {
   assert(regressionScripts.includes('test:execution-owner-lifecycle'));
+  assert(regressionScripts.includes('test:execution-session-adapter'));
+  assert(regressionScripts.includes('test:windows-execution-provider-core'));
+  assert(regressionScripts.includes('test:terminal-fit-convergence'));
   const manifest = JSON.parse(await fs.readFile(new URL('../../package.json', import.meta.url), 'utf8'));
   assert.equal(manifest.scripts['test:execution-owner-lifecycle'], 'node scripts/test/test-execution-owner-lifecycle.mjs');
 });

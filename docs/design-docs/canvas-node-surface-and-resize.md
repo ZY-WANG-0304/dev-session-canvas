@@ -1,7 +1,7 @@
 ---
 title: 节点窗口表面与通用尺寸设计
 decision_status: 已选定
-validation_status: 已验证
+validation_status: 验证中
 domains:
   - 画布交互域
   - 协作对象域
@@ -15,7 +15,7 @@ related_specs:
   - docs/design-docs/note-only-auxiliary-node-and-theme-alignment.md
 related_plans:
   - docs/exec-plans/completed/canvas-node-surface-and-resize-polish.md
-updated_at: 2026-05-24
+updated_at: 2026-11-04
 ---
 
 # 节点窗口表面与通用尺寸设计
@@ -106,7 +106,7 @@ updated_at: 2026-05-24
 - 风险：执行型节点高度缩小时，终端与浮层可能不可用。
   当前缓解：为不同节点类型设置最小宽高，并让正文区域按剩余空间滚动或裁切。
 
-## 7. 当前结论
+## 7. 正式方案
 
 当前收敛结论如下：
 
@@ -114,7 +114,9 @@ updated_at: 2026-05-24
 - 节点尺寸定义为宿主权威状态的一部分，字段为 `size.width` 与 `size.height`。
 - Webview 在 resize 过程中只维护本地草稿，结束后通过 `webview/resizeNode` 把最终位置与尺寸发回宿主；resize 左侧或上侧控制点时会同步改变节点 `position`。
 - 对 Agent / Terminal，Webview 本地 resize 草稿也不得逐帧改写 PTY 字符网格；手势期冻结现有 xterm `cols/rows`，结束后只提交最终稳定尺寸。普通布局抖动、纯位置拖动与本地 redraw 的详细边界见 `docs/design-docs/execution-terminal-resize-coalescing.md`。
+- `executionSessionNodes.tsx` 中 Agent 与 Terminal 的 `fitTerminal()` 在应用首轮 `FitAddon.fit()` 后重新测量一次 proposal；若 cell metric 重测使 proposal 与 xterm 实际几何仍不同，最多再补一次 fit。每次 proposal 都必须通过现有快照恢复 shrink guard；单次调用最多两次 fit，不做无界循环，向 Host 上报最终 xterm 实际 `cols/rows`。
 - 宿主在加载旧状态时补默认尺寸，在创建新节点和避碰时优先使用节点实际尺寸。
+- 新建 `Agent` 与 `Terminal` 的默认外框均为 `760 x 560`，由 `common/protocol.ts` 的 `estimatedCanvasNodeFootprint` 统一提供给创建、缺失尺寸回退和新节点避碰；已有显式尺寸及模板中显式保存的尺寸保持不变。该默认宽度为常见 80 列终端留出边距，高度则增加初始可见行数，减少 TUI 换行和底部信息被裁切。
 - `Task` / `Note` 继续保留节点内编辑，但改成窗口化内容面：
   - 头部继续使用窗口标题栏。
   - 标题输入作为主要标题区，而不是普通小表单字段。
@@ -125,10 +127,20 @@ updated_at: 2026-05-24
 
 ## 8. 验证结果
 
-本轮已完成以下验证，并据此将状态收口为“已验证”：
+以下历史 resize 变更已完成对应验证；2026-11-03 初始尺寸调整和 2026-11-04 CI resize 收敛修复的验证范围如下：
 
 1. 运行 `npm run test:webview`，浏览器 harness 已覆盖拖动 resize 手柄后节点外框变化与 `webview/resizeNode` 写路径，同时更新了窗口化 Task/Note 的截图基线。
 2. 运行 `npm run test:smoke`，真实 VS Code smoke 已覆盖四类节点的尺寸写回宿主、持久化和 reload 恢复。
 3. 运行 `npm run test:smoke`，确认 `Task` / `Note` 在新窗口化表面下仍可编辑标题、状态、负责人和正文，不回退成只读卡片。
 4. 运行 `npm run build` 与 `npm run typecheck`，并通过 `npm run test:smoke` 中已有的 `Agent` / `Terminal` 主路径验证，确认执行型节点在 resize 后不破坏现有会话链路。
 5. 2026-05-24 运行 `npm run typecheck`、`npm run build` 和 Webview resize 定向回归，确认自定义 8 向 resize 控制点仍发送 `webview/resizeNode`，且右下边缘 resize 会触发画布自动平移并持续增长尺寸。
+
+6. 新增 `npm run test:canvas-node-groups` 覆盖新建 Agent / Terminal 默认尺寸、旧状态缺失尺寸的回退、已有显式尺寸的保留，以及避碰使用完整默认外框；对应断言分别保护不同的状态路径，不合并成仅检查常量的单一断言。
+7. 更新 Webview 与 VS Code smoke 中代表当前默认场景的 Agent / Terminal 夹具及 canvas/minimap 截图基线，并为扩大后的节点调整布局坐标。硬换行链接场景继续使用显式窄尺寸，以保留其要测试的换行输入；与换行无关的低置信度链接用例使用默认尺寸。其他测试中的旧尺寸是显式持久化状态、旧版状态或几何算法合成输入，不代表默认值，不随本次变更机械替换。
+8. 已运行 `npm run test:canvas-node-groups`、`npm run test:canvas-node-placement`、`npm run typecheck`、5 项受影响 Webview 定向用例及完整 `npm run test:webview`（420 项）；全部通过。
+9. 已运行 `npm run test:ui-copy-locale-smoke`，以及限定 `session-history/codex-branch` 与 `session-history/claude-branch` 的 VS Code smoke；英文/简体中文本地化和两类 Agent 分支创建均通过。
+10. 更新 VS Code smoke 夹具后按门禁要求重新生成 `scripts/smoke/smoke-budget-inventory.json`；复核只有相关 smoke 源文件 hash 改变，各场景等待预算与循环界限均未变化。
+11. 运行 `node --test scripts/test/test-gate-contracts.mjs`，108 项通过，包含 smoke 源码摘要冻结检查。
+12. 2026-11-04 CI 调查确认 Terminal 的单次 fit 可在 `terminal.resize()` 后因 cell metric 重测而落后一列；`legacy-supervisor-upgrade` 中要求 PTY 与 xterm 几何相等的严格断言属于必要产品契约，不放宽。新增 helper 的四项受控测试覆盖补偿收敛、单次调用最多两轮、shrink guard 和无 proposal；同日 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke` 通过（Legacy Supervisor upgrade smoke，VS Code 1.119.0 本地 runner）。这不替代 PR CI 固定 VS Code 1.142.0 的正式任务。
+
+自动化测试验证模型默认尺寸、缺失尺寸回退、显式尺寸兼容、完整外框避碰、Webview 场景布局与现有交互回归；它们不等价于真实 VS Code 宿主中的可读性验收。仍需手动确认默认字体下长行换行减少、节点底部信息可见，再将验证状态更新为已验证。

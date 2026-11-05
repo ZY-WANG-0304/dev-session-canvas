@@ -1678,7 +1678,7 @@ function createScenarioRootSnapshot(definition, rootPath) {
     status: 'idle',
     summary: definition.kind === 'agent' ? 'Agent session is ready to start.' : 'Terminal is ready to start.',
     position: { x: 0, y: 0 },
-    size: { width: 560, height: 430 }
+    size: { width: 760, height: 560 }
   };
   const metadata = definition.kind === 'agent'
     ? {

@@ -204,8 +204,9 @@ export function runWindowsExecutionProvider(options: WindowsExecutionProviderOpt
             result = { kind: 'resized' };
           }
         } catch {
-          // A failed pipe write does not report an invented partial byte count.
-          result = { kind: 'failed', reason: 'Native terminal interaction failed.' };
+          result = command.type === 'input'
+            ? { kind: 'unconfirmed', reason: 'Native terminal input delivery is unconfirmed.' }
+            : { kind: 'failed', reason: 'Native terminal interaction failed.' };
         }
       }
       await send({ type: 'interactionObservation', identity, interactionId: command.interactionId, result });

@@ -2182,7 +2182,7 @@ try {
     await settle(h.scheduler);
     const input = interactionMessages(h)[0];
     h.scheduler.advanceTo(10);
-    assert.deepEqual(await observation.first, { kind: 'unconfirmed', reason: 'Interaction observation deadline reached', writtenBytes: 0 });
+    assert.deepEqual(await observation.first, { kind: 'unconfirmed', reason: 'Interaction observation deadline reached' });
     assert.equal((await queued.first).kind, 'cancelled');
     assert.equal(h.snapshot().interactions.pending, 1);
     answerInteraction(h, input, { kind: 'written', writtenBytes: Buffer.byteLength(input.data) });
@@ -2224,6 +2224,85 @@ try {
     assert.equal(h.snapshot().interactions.pending, 1);
     assert.equal(interactionMessages(h).length, 1);
     assert.throws(() => h.session.write('command', 5000), /admission/);
+  });
+
+  test('input delivery without a proven byte count quarantines admission without inventing zero or replaying', async () => {
+    const h = interactive();
+    await h.started();
+    const input = h.session.write('one-shot command', 5000);
+    const queued = h.session.write('must not be replayed', 5000);
+    await settle(h.scheduler);
+    const original = interactionMessages(h)[0];
+    answerInteraction(h, original, { kind: 'unconfirmed', reason: 'pipe delivery unknown' });
+    assert.deepEqual(await input.first, { kind: 'unconfirmed', reason: 'pipe delivery unknown' });
+    assert.equal('writtenBytes' in input.current, false, 'unknown progress must remain unknown');
+    assert.equal((await queued.first).kind, 'cancelled', 'unsent input is cancelled after quarantine');
+    assert.equal(h.authority.snapshot().blockedReason, 'pipe delivery unknown');
+    assert.equal(interactionMessages(h).length, 1, 'the original input is never resent');
+    assert.equal(h.snapshot().interactions.pending, 0, 'the provider finalizes the original result without retaining a hung interaction');
+    assert.throws(() => h.session.write('retry', 5000), /admission/);
+  });
+
+  test('unknown later input chunks preserve only the previously confirmed prefix', async () => {
+    const input = 'x'.repeat(9000);
+    const h = interactive();
+    await h.started();
+    const observation = h.session.write(input, 5000);
+    await settle(h.scheduler);
+    const firstChunk = interactionMessages(h)[0];
+    const confirmedPrefix = Buffer.byteLength(firstChunk.data);
+    assert.ok(confirmedPrefix > 0 && confirmedPrefix < Buffer.byteLength(input));
+    answerInteraction(h, firstChunk, { kind: 'written', writtenBytes: confirmedPrefix });
+    await settle(h.scheduler);
+    const unknownChunk = interactionMessages(h)[1];
+    answerInteraction(h, unknownChunk, { kind: 'unconfirmed', reason: 'later chunk delivery is unknown' });
+    assert.deepEqual(await observation.first, {
+      kind: 'unconfirmed', reason: 'later chunk delivery is unknown', writtenBytes: confirmedPrefix
+    });
+    assert.equal(observation.current.writtenBytes, confirmedPrefix,
+      'the result reports only the confirmed prefix, not an invented count for the unknown chunk');
+    assert.equal(h.snapshot().interactions.pending, 0);
+    assert.equal(interactionMessages(h).length, 2, 'the unknown chunk and original input are never replayed');
+  });
+
+  test('input timeout after a confirmed chunk preserves the prefix and accepts only the original late receipt', async () => {
+    const input = 'x'.repeat(5000);
+    const h = interactive();
+    await h.started();
+    const observation = h.session.write(input, 10);
+    await settle(h.scheduler);
+    const firstChunk = interactionMessages(h)[0];
+    const confirmedPrefix = Buffer.byteLength(firstChunk.data);
+    answerInteraction(h, firstChunk, { kind: 'written', writtenBytes: confirmedPrefix });
+    await settle(h.scheduler);
+    const original = interactionMessages(h)[1];
+    h.scheduler.advanceTo(10);
+    assert.deepEqual(await observation.first, {
+      kind: 'unconfirmed', reason: 'Interaction observation deadline reached', writtenBytes: confirmedPrefix
+    });
+    answerInteraction(h, original, { kind: 'written', writtenBytes: Buffer.byteLength(original.data) });
+    assert.equal(observation.current.kind, 'written');
+    assert.equal(observation.current.writtenBytes, Buffer.byteLength(input));
+    assert.equal(interactionMessages(h).length, 2, 'late evidence settles the original chunk without resending it');
+    assert.equal(h.snapshot().interactions.pending, 0);
+  });
+
+  test('transport loss after a confirmed chunk reports the known prefix but not unknown in-flight progress', async () => {
+    const input = 'x'.repeat(9000);
+    const h = interactive();
+    await h.started();
+    const observation = h.session.write(input, 5000);
+    await settle(h.scheduler);
+    const firstChunk = interactionMessages(h)[0];
+    const confirmedPrefix = Buffer.byteLength(firstChunk.data);
+    answerInteraction(h, firstChunk, { kind: 'written', writtenBytes: confirmedPrefix });
+    await settle(h.scheduler);
+    h.sink.disconnected('connection lost');
+    assert.deepEqual(await observation.first, {
+      kind: 'unconfirmed', reason: 'connection lost', writtenBytes: confirmedPrefix
+    });
+    assert.equal(observation.current.writtenBytes, confirmedPrefix);
+    assert.equal(interactionMessages(h).length, 2, 'transport loss does not replay a sent chunk');
   });
 
   test('queued input checks original deadline at dispatch even when deadline callbacks are late', async () => {

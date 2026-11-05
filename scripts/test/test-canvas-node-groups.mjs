@@ -309,6 +309,81 @@ try {
   assert.ok(rectContainsRectForTest(rectForTestGroup(expandedCreationTarget), rectForTestNode(manuallyCreatedMember)));
   assertMemberInsetsForTest(expandedCreationTarget, [manuallyCreatedMember]);
 
+  const defaultAgentNode = createNextState(state(), 'agent').nodes[0];
+  const defaultTerminalNode = createNextState(state(), 'terminal').nodes[0];
+  assert.deepStrictEqual(defaultAgentNode.size, { width: 760, height: 560 });
+  assert.deepStrictEqual(defaultTerminalNode.size, { width: 760, height: 560 });
+
+  const persistedAgentWithoutSize = agent('persisted-agent-without-size', { x: 0, y: 0 });
+  delete persistedAgentWithoutSize.size;
+  const persistedTerminalWithoutSize = {
+    id: 'persisted-terminal-without-size',
+    kind: 'terminal',
+    title: 'Persisted Terminal Without Size',
+    status: 'idle',
+    summary: '',
+    position: { x: 0, y: 160 },
+    metadata: { terminal: {} }
+  };
+  const persistedAgentWithLegacySize = agent('persisted-agent-with-legacy-size', { x: 0, y: 320 }, {
+    size: { width: 560, height: 430 }
+  });
+  const persistedTerminalWithLegacySize = {
+    ...persistedTerminalWithoutSize,
+    id: 'persisted-terminal-with-legacy-size',
+    title: 'Persisted Terminal With Legacy Size',
+    position: { x: 0, y: 480 },
+    size: { width: 540, height: 420 }
+  };
+  const normalizedExecutionSizes = normalizeState(state({
+    nodes: [
+      persistedAgentWithoutSize,
+      persistedTerminalWithoutSize,
+      persistedAgentWithLegacySize,
+      persistedTerminalWithLegacySize
+    ]
+  }));
+  assert.deepStrictEqual(
+    normalizedExecutionSizes.nodes.find((candidate) => candidate.id === persistedAgentWithoutSize.id).size,
+    { width: 760, height: 560 }
+  );
+  assert.deepStrictEqual(
+    normalizedExecutionSizes.nodes.find((candidate) => candidate.id === persistedTerminalWithoutSize.id).size,
+    { width: 760, height: 560 }
+  );
+  assert.deepStrictEqual(
+    normalizedExecutionSizes.nodes.find((candidate) => candidate.id === persistedAgentWithLegacySize.id).size,
+    { width: 560, height: 430 }
+  );
+  assert.deepStrictEqual(
+    normalizedExecutionSizes.nodes.find((candidate) => candidate.id === persistedTerminalWithLegacySize.id).size,
+    { width: 540, height: 420 }
+  );
+
+  for (const kind of ['agent', 'terminal']) {
+    const preferredPosition = { x: 0, y: 100 };
+    const createdAroundBlocker = createNextState(
+      state({
+        nodes: [note(`${kind}-size-blocker`, { x: 600, y: 100 }, {
+          size: { width: 120, height: 120 }
+        })]
+      }),
+      kind,
+      'codex',
+      'default',
+      undefined,
+      preferredPosition
+    );
+    const createdNode = createdAroundBlocker.nodes.find((candidate) => candidate.kind === kind);
+    const blocker = createdAroundBlocker.nodes.find((candidate) => candidate.id === `${kind}-size-blocker`);
+    assert.ok(createdNode);
+    assert.notDeepStrictEqual(createdNode.position, preferredPosition);
+    assert.ok(
+      !rectsOverlapForTest(rectForTestNode(createdNode), rectForTestNode(blocker)),
+      `Default-sized ${kind} nodes must avoid blockers using their full footprint.`
+    );
+  }
+
   const createdAcrossGroupBoundary = createNextState(
     state({
       nodes: [note('cross-group-blocker', { x: 130, y: 156 }, { groupId: 'another-group' })],
