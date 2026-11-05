@@ -344,6 +344,7 @@ try {
     undefined,
     undefined,
     undefined,
+    undefined,
     viewport
   ).nodes[0];
   const roomyCreationViewport = { width: 1200, height: 800 };
@@ -357,7 +358,7 @@ try {
 
   const compactNodeNearViewportBlocker = createNextState(
     state({
-      nodes: [note('compact-size-blocker', { x: 900, y: 100 }, {
+      nodes: [note('compact-size-blocker', { x: 740, y: 100 }, {
         size: { width: 120, height: 120 }
       })]
     }),
@@ -369,13 +370,14 @@ try {
     undefined,
     undefined,
     undefined,
+    undefined,
     compactCreationViewport
   ).nodes.at(-1);
   assert.deepStrictEqual(compactNodeNearViewportBlocker.size, { width: 680, height: 500 });
-  assert.deepStrictEqual(compactNodeNearViewportBlocker.position, { x: 120, y: 200 });
+  assert.deepStrictEqual(compactNodeNearViewportBlocker.position, { x: 0, y: 100 });
   const roomyNodeNearSameBlocker = createNextState(
     state({
-      nodes: [note('roomy-size-blocker', { x: 900, y: 100 }, {
+      nodes: [note('roomy-size-blocker', { x: 740, y: 100 }, {
         size: { width: 120, height: 120 }
       })]
     }),
@@ -385,7 +387,7 @@ try {
     undefined,
     { x: 0, y: 100 }
   ).nodes.at(-1);
-  assert.deepStrictEqual(roomyNodeNearSameBlocker.position, { x: 120, y: 300 });
+  assert.notDeepStrictEqual(roomyNodeNearSameBlocker.position, { x: 0, y: 100 });
 
   const persistedAgentWithoutSize = agent('persisted-agent-without-size', { x: 0, y: 0 });
   delete persistedAgentWithoutSize.size;

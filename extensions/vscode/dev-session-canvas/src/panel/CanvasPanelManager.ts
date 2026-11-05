@@ -15591,7 +15591,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
           requestId: parsedMessage.payload.requestId,
           creationAnchor: parsedMessage.payload.creationAnchor,
           creationViewport: parsedMessage.payload.creationViewport,
-          creationAnchor: parsedMessage.payload.creationAnchor,
           agentProvider: parsedMessage.payload.agentProvider,
           agentLaunchPreset: parsedMessage.payload.agentLaunchPreset,
           agentCustomLaunchCommand: parsedMessage.payload.agentCustomLaunchCommand,
