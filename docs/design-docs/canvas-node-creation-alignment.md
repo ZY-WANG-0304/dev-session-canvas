@@ -83,6 +83,12 @@ P 不属于任何区域（空画布、远处或斜角）时，仍以 P 为首选
 
 ## 验证记录
 
+2026-11-05 PR 准备：已 rebase 到 `origin/main` 的 `72275f0c`。保留主线默认执行节点尺寸，右键浏览器 fixture 的 P 随主线点击点同步为 `(1200, 650)`；当前完整门禁从主线 362 项增加六项 source/packaged 任务至 368 项。预算重新生成，136 个主线旧 suite 的预算及去除行号后的调用证据保持一致，423 个浏览器 ID 与目录完全匹配。
+
+Rebase 后几何、协议、分组、执行上下文、typecheck 与双扩展构建通过；17 项定向浏览器、三项新建源码 smoke 和 saved-size 同轮复验通过。`npm run test:ci-gates` 首轮 212/213：未改动的 `child-owned cleanup may finish inside its separate reserve` 时限断言失败；单独复跑 1/1 通过，首败保留在 `.debug/alignment-pr-ci-gates.log`。未放宽阈值，也未将原因定性为已确认的产品缺陷或环境问题。浏览器/Host 日志分别为 `.debug/alignment-pr-browser.log`、`.debug/alignment-pr-source.log`。
+
+完整第二轮仍为 212/213，本次失败的是同组的 `child-owned cleanup cannot hide late business`。两项一起定向复跑 2/2 通过，但本轮全量 CI 不能宣称全绿。第二轮与定向日志为 `.debug/alignment-pr-ci-gates-repeat.log`、`.debug/alignment-pr-cleanup-isolated.log`；待定位事项已登记到 [技术债追踪](../exec-plans/tech-debt-tracker.md#2026-11-05本地门禁回归-child-owned-cleanup-的计时失败)。不修改该测试或等待阈值，正式 required CI 仍须通过。
+
 2026-11-05 smoke 同步：`canvas-nodes/creation-alignment`、`canvas-nodes/creation-group`、`canvas-nodes/creation-root` 已同时进入 source/packaged 目录、设计 coverage-map、implementation-map 和生成的等待预算。正式任务数从 359 增至 365，映射中的有效目标从 150 增至 153；历史退役目标不变。136 个旧 suite 的等待预算和调用证据除源码行号外完全一致，不延长产品等待。实际 Playwright list 的 423 个 ID 与 browser-catalog 完全匹配，定向 `right-click|canvas group body context menu|manually created nodes` 共 17 项通过。
 
 源码真实 Host 验证在 Linux x64、Node v25.6.0、VSCode 1.137.0 下执行：当前源码重新构建，复用通过 owner/shared-owner/patch 哈希校验的本地 Linux 原生资产。最终同轮三项创建 smoke 加 `canvas-nodes/saved-size` 四项通过；此前定向 `create-quickpick`、`explorer-create`、`layout` 通过。`test:canvas-node-placement`、`test:protocol-webview-messages`、分组与执行上下文回归、runner 环境及 reset fixture 验证通过。日志位于本 worktree 的 `.debug/alignment-source-final.log`、`.debug/alignment-source-regression.log`、`.debug/alignment-root-product.log`、`.debug/alignment-browser-tests.log`。
