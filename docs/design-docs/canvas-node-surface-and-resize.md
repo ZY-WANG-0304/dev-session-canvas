@@ -144,5 +144,6 @@ updated_at: 2026-11-05
 11. 运行 `node --test scripts/test/test-gate-contracts.mjs`，108 项通过，包含 smoke 源码摘要冻结检查。
 12. 2026-11-04 CI 调查确认 Terminal 的单次 fit 可在 `terminal.resize()` 后因 cell metric 重测而落后一列；`legacy-supervisor-upgrade` 中要求 PTY 与 xterm 几何相等的严格断言属于必要产品契约，不放宽。新增 helper 的四项受控测试覆盖补偿收敛、单次调用最多两轮、shrink guard 和无 proposal；同日 `DEV_SESSION_CANVAS_SMOKE_SCENARIO_FILTER=legacy-supervisor-upgrade npm run test:smoke` 通过（Legacy Supervisor upgrade smoke，VS Code 1.119.0 本地 runner）。这不替代 PR CI 固定 VS Code 1.142.0 的正式任务。
 13. 2026-11-05 两档尺寸实现与后续尺寸依据收敛后，重新运行完整 `npm run test:webview`，422 项全部通过（12.5 分钟）。首轮运行中紧凑档 Terminal 用例的旧 `760 x 560` 位置预期已更新为 `680 x 500`；另两项 fit-view 与 pane-gallery 时序失败未能复现，首轮失败根因未确认。
+14. PR #367 首轮正式 CI 的 `webview-function` 阶段 419 项行为测试全部通过，但随后因两个重命名测试的 ID / 标题未同步到 reviewed `scripts/gates/browser-catalog.json` 而失败。已按 CI 实际执行报告更新 catalogue；修正后的 PR head 仍需等待完整门禁重验，不把首轮结果写作 CI 通过。
 
 自动化测试验证模型默认尺寸、缺失尺寸回退、显式尺寸兼容、完整外框避碰、Webview 场景布局与现有交互回归；它们不等价于真实 VS Code 宿主中的可读性验收。仍需手动确认默认字体下长行换行减少、节点底部信息可见，再将验证状态更新为已验证。

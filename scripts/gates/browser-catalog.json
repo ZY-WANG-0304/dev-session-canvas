@@ -273,9 +273,9 @@
       "title": "agent revalidates a hovered negative file link after live output resolves it"
     },
     {
-      "id": "a03daaf9564243b49609-1b426c30a1c6ce45b5e0",
+      "id": "a03daaf9564243b49609-53dba72efef94f17eaa9",
       "file": "webview-harness.spec.mjs",
-      "title": "host-triggered agent creation bypasses stale webview workspace trust gate"
+      "title": "host-triggered agent creation includes current canvas viewport and bypasses stale trust gate"
     },
     {
       "id": "a03daaf9564243b49609-1b99763ca25cc453ce70",
@@ -1513,9 +1513,9 @@
       "title": "agent hard-wrapped styled path boundary accepts 2 lines before closing-paren"
     },
     {
-      "id": "a03daaf9564243b49609-b69620aaf0282651e150",
+      "id": "a03daaf9564243b49609-f504eac52f3f31823ca1",
       "file": "webview-harness.spec.mjs",
-      "title": "manually created nodes can zoom to fit before recentering when the node overflows the viewport"
+      "title": "manually created compact terminals zoom to fit before recentering when the node overflows the viewport"
     },
     {
       "id": "a03daaf9564243b49609-b87be8da7c452b3b39d6",
