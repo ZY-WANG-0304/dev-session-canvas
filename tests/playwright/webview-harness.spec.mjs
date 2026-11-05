@@ -13003,6 +13003,215 @@ test('workspace root group selected title chrome keeps nodes inside body while z
   expect(Math.abs(afterResize.titlebarBottomOffsetFromFrame - afterResize.bodyTopOffsetFromFrame)).toBeLessThanOrEqual(2);
 });
 
+for (const zoom of [0.4, 1]) {
+  for (const axis of ['horizontal', 'vertical']) {
+    test(`canvas focus navigation keeps layers aligned with native Tab at ${zoom} ${axis}`, async ({ page }) => {
+      await page.setViewportSize({ width: 900, height: 620 });
+      await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom } } });
+      const state = createEmptyCanvasState();
+      state.nodes = [
+        createManualNoteNode('near-note', { x: 80 / zoom, y: 80 / zoom }),
+        createManualNoteNode('far-note', {
+          x: (axis === 'horizontal' ? 1100 : 80) / zoom,
+          y: (axis === 'vertical' ? 800 : 80) / zoom
+        })
+      ];
+      state.groups = [{
+        id: 'focus-group', title: 'Focus Group', position: { x: 20, y: 20 },
+        size: { width: 1600 / zoom, height: 1200 / zoom }
+      }];
+      await bootstrap(page, state, createRuntimeContext({ overviewMode: 'none' }));
+      await settleWebview(page, 3);
+      const farTitle = nodeById(page, 'far-note').locator('.window-title-edit-button');
+      const before = await readCanvasFocusGeometry(page);
+      await page.mouse.click(10, 10);
+      await tabToCanvasTarget(page, farTitle);
+      await expectCanvasFocusVisible(farTitle);
+      const after = await readCanvasFocusGeometry(page);
+      expect(after.scrollOffsets).toEqual(before.scrollOffsets.map(() => [0, 0]));
+      expect(after.layerOffset).toEqual(before.layerOffset);
+      expect(await readCanvasViewportScale(page)).toBeCloseTo(zoom, 3);
+      expect(after.transform).not.toBe(before.transform);
+      await expect.poll(async () => (await readPersistedUiState(page)).viewport).not.toEqual({ x: 0, y: 0, zoom });
+
+      await page.keyboard.press('Enter');
+      await expect(nodeById(page, 'far-note').locator('.window-title-input')).toBeFocused();
+      await expectCanvasFocusVisible(nodeById(page, 'far-note').locator('.window-title-input'));
+      await page.keyboard.press('Escape');
+      await tabToCanvasTarget(page, nodeById(page, 'near-note').locator('.window-title-edit-button'), 'Shift+Tab');
+      await expectCanvasFocusVisible(nodeById(page, 'near-note').locator('.window-title-edit-button'));
+      expect((await readCanvasFocusGeometry(page)).scrollOffsets).toEqual(before.scrollOffsets.map(() => [0, 0]));
+      expect((await readCanvasFocusGeometry(page)).layerOffset).toEqual(before.layerOffset);
+      expect(await readCanvasViewportScale(page)).toBeCloseTo(zoom, 3);
+      const geometryMessages = await page.evaluate(() => window.__devSessionCanvasHarness.getPostedMessages()
+        .filter((message) => ['webview/moveNode', 'webview/resizeNode', 'webview/moveGroup', 'webview/resizeGroup'].includes(message.type)));
+      expect(geometryMessages).toEqual([]);
+    });
+  }
+}
+
+test('canvas focus navigation reveals group chrome without moving geometry', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 620 });
+  await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+  const state = createGroupFocusCanvasState({
+    id: 'focus-group', title: 'Offscreen Group', position: { x: 1100, y: 800 },
+    size: { width: 600, height: 400 }
+  });
+  await bootstrap(page, state);
+  await settleWebview(page, 3);
+  const before = await readCanvasFocusGeometry(page);
+  const editButton = page.locator('[data-group-id="focus-group"] .window-title-edit-button');
+  await page.mouse.click(10, 10);
+  await tabToCanvasTarget(page, editButton);
+  await expectCanvasFocusVisible(editButton);
+  const after = await readCanvasFocusGeometry(page);
+  expect(after.layerOffset).toEqual(before.layerOffset);
+  expect(after.scrollOffsets).toEqual(before.scrollOffsets.map(() => [0, 0]));
+  expect(after.transform).not.toBe(before.transform);
+  await page.keyboard.press('Enter');
+  const titleInput = page.locator('[data-group-id="focus-group"] .window-title-input');
+  await expect(titleInput).toBeFocused();
+  await expectCanvasFocusVisible(titleInput);
+  await page.keyboard.press('Escape');
+  const visibleTransform = await readCanvasViewportTransform(page);
+  await editButton.focus();
+  await settleWebview(page, 2);
+  expect(await readCanvasViewportTransform(page)).toBe(visibleTransform);
+});
+
+test('canvas focus navigation keeps visible targets and fixed controls stationary', async ({ page }) => {
+  await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+  const state = createEmptyCanvasState();
+  state.nodes = [
+    createManualNoteNode('near-note', { x: 8, y: 8 }),
+    createManualNoteNode('far-note', { x: 2200, y: 1800 })
+  ];
+  await bootstrap(page, state);
+  await settleWebview(page, 3);
+  const before = await readCanvasViewportTransform(page);
+  const title = nodeById(page, 'near-note').locator('.window-title-edit-button');
+  await page.mouse.click(10, 10);
+  await tabToCanvasTarget(page, title);
+  await settleWebview(page, 2);
+  expect(await readCanvasViewportTransform(page)).toBe(before);
+  await page.locator('.react-flow__controls-fitview').focus();
+  await settleWebview(page, 2);
+  expect(await readCanvasViewportTransform(page)).toBe(before);
+  await nodeById(page, 'far-note').locator('.window-title-input[aria-hidden="true"]').focus();
+  await settleWebview(page, 2);
+  expect(await readCanvasViewportTransform(page)).toBe(before);
+  await page.evaluate(() => {
+    document.querySelector('[data-node-id="far-note"] .window-title-edit-button').focus();
+    document.querySelector('.react-flow__controls-fitview').focus();
+  });
+  await settleWebview(page, 2);
+  expect(await readCanvasViewportTransform(page)).toBe(before);
+});
+
+test('canvas focus navigation preserves note internal scrolling and indentation', async ({ page }) => {
+  await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+  const state = createNoteNodeState();
+  const content = Array.from({ length: 80 }, (_, index) => `Line ${index}`).join('\n');
+  state.nodes[0].metadata.note.content = content;
+  await bootstrap(page, state);
+  const note = nodeById(page, 'note-1');
+  await note.locator('.note-markdown-preview').dblclick();
+  const input = note.locator('textarea[data-probe-field="body"]');
+  await expect(input).toBeFocused();
+  await settleWebview(page, 2);
+  const before = await readCanvasViewportTransform(page);
+  await page.keyboard.press(`${PRIMARY_ACCELERATOR_KEY}+End`);
+  await expect.poll(() => input.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page.keyboard.press('Tab');
+  await expect(input).toHaveValue(`${content}  `);
+  await expect(input).toBeFocused();
+  expect(await readCanvasViewportTransform(page)).toBe(before);
+  const scrollOffsets = await page.locator('.react-flow, .react-flow__renderer, .react-flow__pane')
+    .evaluateAll((elements) => elements.map((element) => [element.scrollLeft, element.scrollTop]));
+  expect(scrollOffsets).toEqual([[0, 0], [0, 0], [0, 0]]);
+});
+
+for (const executionKind of ['agent', 'terminal']) {
+  test(`canvas focus navigation preserves ${executionKind} terminal Tab input`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    await openHarness(page);
+    await bootstrap(page, createLiveExecutionNodeState(executionKind));
+    await waitForExecutionTerminalReady(page, nodeId);
+    await focusExecutionTerminal(page, nodeId);
+    await settleWebview(page, 2);
+    await clearPostedMessages(page);
+    const before = await readCanvasViewportTransform(page);
+    await page.keyboard.press('Tab');
+    await expect(nodeById(page, nodeId).locator('.xterm-helper-textarea')).toBeFocused();
+    const message = await waitForPostedMessageByType(page, 'webview/executionInput');
+    expect(message.payload).toMatchObject({ nodeId, kind: executionKind, data: '\t' });
+    expect(await readCanvasViewportTransform(page)).toBe(before);
+  });
+}
+
+test('canvas focus navigation only pans and saves the owning gallery pane', async ({ page }) => {
+  const initialViewport = { x: 0, y: 0, zoom: 1 };
+  await openHarness(page, { persistedState: { paneGallery: {
+    layout: 'grid', activeRootGroupId: 'workspace-root-frontend',
+    overviewViewports: {
+      'workspace-root-frontend': initialViewport,
+      'workspace-root-backend': initialViewport
+    }
+  } } });
+  const state = createPaneGalleryCanvasState();
+  state.nodes = state.nodes.filter((node) => node.kind === 'note');
+  state.nodes[0].position = { x: 1600, y: 1000 };
+  await bootstrap(page, state, createRuntimeContext({ multiRootPresentationMode: 'paneGallery', overviewMode: 'none' }));
+  await settleWebview(page, 4);
+  const panes = page.locator('.pane-gallery-root-pane-tile');
+  await expect(panes).toHaveCount(2);
+  const otherPane = panes.filter({ has: page.locator('[data-node-id="workspace-root-backend-note"]') });
+  const otherTransform = await otherPane.locator('.react-flow__viewport').evaluate((element) => element.style.transform);
+  const target = nodeById(page, 'workspace-root-frontend-note').locator('.window-title-edit-button');
+  await tabToCanvasTarget(page, target);
+  await expectCanvasFocusVisible(target);
+  expect(await otherPane.locator('.react-flow__viewport').evaluate((element) => element.style.transform)).toBe(otherTransform);
+  const scrollOffsets = await panes.locator('.react-flow, .react-flow__renderer, .react-flow__pane')
+    .evaluateAll((elements) => elements.map((element) => [element.scrollLeft, element.scrollTop]));
+  expect(scrollOffsets).toEqual(scrollOffsets.map(() => [0, 0]));
+  const saved = (await readPersistedUiState(page)).paneGallery.overviewViewports;
+  expect(saved['workspace-root-frontend']).not.toEqual(initialViewport);
+  expect(saved['workspace-root-frontend'].zoom).toBe(1);
+  expect(saved['workspace-root-backend']).toEqual(initialViewport);
+});
+
+async function tabToCanvasTarget(page, target, key = 'Tab') {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    await page.keyboard.press(key);
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      return;
+    }
+  }
+  throw new Error(`Native ${key} did not reach the canvas target.`);
+}
+
+async function expectCanvasFocusVisible(target) {
+  await expect.poll(() => target.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const flow = element.closest('.react-flow').getBoundingClientRect();
+    return bounds.left >= flow.left - 1 && bounds.right <= flow.right + 1 &&
+      bounds.top >= flow.top - 1 && bounds.bottom <= flow.bottom + 1;
+  })).toBe(true);
+}
+
+async function readCanvasFocusGeometry(page) {
+  return page.evaluate(() => {
+    const frame = document.querySelector('[data-group-id="focus-group"]').getBoundingClientRect();
+    const background = document.querySelector('[data-group-background-id="focus-group"]').getBoundingClientRect();
+    return {
+      scrollOffsets: [...document.querySelectorAll('html, body, .react-flow, .react-flow__renderer, .react-flow__pane')]
+        .map((element) => [element.scrollLeft, element.scrollTop]),
+      layerOffset: [Math.round(frame.left - background.left), Math.round(frame.top - background.top)],
+      transform: document.querySelector('.react-flow__viewport').style.transform
+    };
+  });
+}
+
 test('canvas groups do not create document scrollbars when zoomed in', async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 520 });
   await openHarness(page, {
@@ -13059,9 +13268,9 @@ test('canvas groups do not create document scrollbars when zoomed in', async ({ 
   expect(overflowSnapshot.documentScrollHeight).toBe(overflowSnapshot.documentClientHeight);
   expect(overflowSnapshot.shellScrollWidth).toBe(overflowSnapshot.shellClientWidth);
   expect(overflowSnapshot.shellScrollHeight).toBe(overflowSnapshot.shellClientHeight);
-  expect(overflowSnapshot.reactFlowOverflow).toBe('hidden');
-  expect(overflowSnapshot.rendererOverflow).toBe('hidden');
-  expect(overflowSnapshot.paneOverflow).toBe('hidden');
+  expect(overflowSnapshot.reactFlowOverflow).toBe('clip');
+  expect(overflowSnapshot.rendererOverflow).toBe('clip');
+  expect(overflowSnapshot.paneOverflow).toBe('clip');
   expect(overflowSnapshot.frameSharesRendererWithPane).toBe(true);
 });
 

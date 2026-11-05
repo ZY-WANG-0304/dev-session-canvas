@@ -26,6 +26,7 @@ import { strongTerminalAttentionReminderShowsTitleBar } from '../common/protocol
 import { canvasStatusToneClass as statusToneClass } from '../common/canvasNodeStatusPresentation';
 import { stopCanvasEvent } from './canvasDomEvents';
 import { CanvasGroupsViewportLayer } from './canvasGroupLayers';
+import { CanvasFocusNavigation } from './canvasFocusNavigation';
 import { collectGroupSubtreeIdsForWebview, resolveContainingWorkspaceRootGroupIdForWebview } from './canvasGraphRules';
 import {
   CANVAS_MAX_ZOOM,
@@ -928,6 +929,11 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
           }
           proOptions={{ hideAttribution: true }}
         >
+          {interactive ? (
+            <CanvasFocusNavigation
+              onViewportCommit={(viewport) => props.onSavePaneViewport(rootGroupId, viewport, viewportRole)}
+            />
+          ) : null}
           <CanvasOverviewModeBridge
             mode={props.overviewMode}
             threshold={props.overviewZoomThreshold}

@@ -1139,6 +1139,8 @@ PR #352 已实现普通文档两控制 job、同 base 原完整验收复用、�
 
 ### 进程退出期限合同的错误类型不稳定（2026-11-01）
 
+关联但尚未归因的新观察（2026-11-05）：Tab 画布修复的额外完整 `node --test scripts/test/test-gate-contracts.mjs scripts/test/test-ci-scope.mjs` 在 Linux / Node v25.6.0 下为 131/132。`a successful parent with a residual process group still fails and retires its child` 的 `scripts/test/test-gate-contracts.mjs:1490` 断言 `assert(result.residualGroup)` 收到 false。当前仅确认合同反例未得到预期残留组观测，不能推断与本节旧错误同因或产品进程泄漏；该测试和执行器未被本次修改。后续需独立复现并核对子进程启动、父进程完成和原期限，不能通过弱化 residualGroup 断言收口。证据与修复边界见 [Tab 修复计划](completed/canvas-focus-navigation.md)。
+
 PR #352 本地完整合同在 head `d8d463c09d0b4f026161233119687208fdf8eb30`、Linux / Node v25.6.0 下为 202/203；`scripts/test/test-gate-contracts.mjs:116` 的原进程仍存活反例期望 `deadline exhausted|unconfirmed`，实际从 `host-evidence.mjs:17` 的带期限 `/proc/<pid>/stat` 读取收到 `AbortError: The operation was aborted`，cause 为 TimeoutError。该例此前完整合同通过；本次原失败保留，不以另一次绿色覆盖。当前证据证明拒绝错误文本与断言不一致，没有证明进程误判为已退出或产品数据丢失；具体触发时序与跨 Node 版本范围待定位。
 
 按用户决定登记为后续专门处理的非阻塞问题。负责人 repository-maintainers，复核日期 2026-11-15；后续任务是受控覆盖截止到达和 I/O 取消的两种拒绝路径，统一错误契约并保留原期限与实际进程存活/退出断言。完整本地日志 `/tmp/dsc-ci-scope-contracts-final.log`；原关键错误及远端结果随 [实施计划](completed/ci-validation-scope-implementation.md) 收口。本次不修改该测试或将整个回归分片设为可忽略。
