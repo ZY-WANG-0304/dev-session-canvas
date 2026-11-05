@@ -235,6 +235,7 @@ export interface CanvasContextMenuState {
   screenX: number;
   screenY: number;
   flowAnchor: CanvasNodePosition;
+  zoom: number;
   view: CanvasContextMenuView;
   targetGroupId?: string;
   selectedAgentProvider?: AgentProviderKind;

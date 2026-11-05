@@ -3466,7 +3466,8 @@ test('right-click create menu validates custom agent launch commands before crea
     },
     agentProvider: 'codex',
     agentLaunchPreset: 'custom',
-    agentCustomLaunchCommand: 'codex resume session-123'
+    agentCustomLaunchCommand: 'codex resume session-123',
+    creationAnchor: { position: { x: 1200, y: 650 }, zoom: 1 }
   });
 });
 
@@ -3573,7 +3574,8 @@ test('right-click custom agent launch input ignores IME Enter before composition
       y: 370
     },
     agentProvider: 'codex',
-    agentLaunchPreset: 'yolo'
+    agentLaunchPreset: 'yolo',
+    creationAnchor: { position: { x: 1200, y: 650 }, zoom: 1 }
   });
 });
 
@@ -11106,8 +11108,27 @@ test('right-clicking the empty pane opens a quick-create menu near the pointer',
     preferredPosition: {
       x: 1010,
       y: 450
-    }
+    },
+    creationAnchor: { position: { x: 1200, y: 650 }, zoom: 1 }
   });
+});
+
+test('right-click creation retains the original P and zoom when the menu shifts at the window edge', async ({ page }) => {
+  const viewport = { x: 100, y: 80, zoom: 0.5 };
+  await openHarness(page, { persistedState: { viewport } });
+  await bootstrap(page, createEmptyCanvasState());
+  await settleWebview(page, 2);
+  await clearPostedMessages(page);
+  const pointer = { x: 1560, y: 900 };
+  await page.mouse.click(pointer.x, pointer.y, { button: 'right' });
+  const menu = page.locator('[data-context-menu="true"]');
+  await expect(menu).toBeVisible();
+  const box = await menu.boundingBox();
+  expect(box.x).toBeLessThan(pointer.x);
+  expect(box.y).toBeLessThan(pointer.y);
+  await menu.locator('[data-context-menu-kind="note"]').click();
+  const payload = await waitForCreateDemoNodePayload(page);
+  expect(payload.creationAnchor).toEqual({ position: { x: 2920, y: 1640 }, zoom: 0.5 });
 });
 
 test('canvas context menu can request layout arrangement without a completion toast', async ({ page }) => {
@@ -13226,6 +13247,7 @@ test('canvas group body context menu creates objects inside the group', async ({
       x: 330,
       y: 300
     },
+    creationAnchor: { position: { x: 520, y: 500 }, zoom: 1 },
     targetGroupId: 'group-1'
   });
 
@@ -13268,6 +13290,7 @@ test('canvas group body context menu keeps target group after pan and zoom', asy
       x: 510,
       y: 225
     },
+    creationAnchor: { position: { x: 700, y: 425 }, zoom: 0.8 },
     targetGroupId: 'group-1'
   });
 });
@@ -14461,6 +14484,7 @@ test('right-click create menu can drill into agent launch modes and create claud
       x: 820,
       y: 370
     },
+    creationAnchor: { position: { x: 1200, y: 650 }, zoom: 1 },
     agentProvider: 'claude',
     agentLaunchPreset: 'yolo'
   });
@@ -14565,6 +14589,7 @@ test('right-click create menu creates the default agent without opening the prov
       x: 820,
       y: 370
     },
+    creationAnchor: { position: { x: 1200, y: 650 }, zoom: 1 },
     agentProvider: 'codex',
     agentLaunchPreset: 'default'
   });
@@ -14606,6 +14631,7 @@ test('right-click create menu refreshes its default agent label after runtime co
       x: 820,
       y: 370
     },
+    creationAnchor: { position: { x: 1200, y: 650 }, zoom: 1 },
     agentProvider: 'claude',
     agentLaunchPreset: 'default'
   });

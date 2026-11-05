@@ -4096,10 +4096,8 @@ function App(): JSX.Element {
     setContextMenu({
       screenX: event.clientX,
       screenY: event.clientY,
-      flowAnchor: {
-        x: Math.round(flowAnchor.x),
-        y: Math.round(flowAnchor.y)
-      },
+      flowAnchor,
+      zoom: reactFlowInstance.getZoom(),
       view: 'root',
       targetGroupId,
       selectedNodeIds,
@@ -4891,7 +4889,8 @@ function App(): JSX.Element {
               contextMenu.targetGroupId,
               agentProvider,
               agentLaunchPreset,
-              agentCustomLaunchCommand
+              agentCustomLaunchCommand,
+              { creationAnchor: { position: contextMenu.flowAnchor, zoom: contextMenu.zoom } }
             );
             closePaneContextMenu();
           }}
@@ -5071,6 +5070,7 @@ function App(): JSX.Element {
       skipWorkspaceTrustCheck?: boolean;
       cwd?: string;
       useDefaultPlacement?: boolean;
+      creationAnchor?: { position: CanvasNodePosition; zoom: number };
     }
   ): void {
     if (!options?.skipWorkspaceTrustCheck && !workspaceTrusted && (kind === 'agent' || kind === 'terminal')) {
@@ -5108,6 +5108,7 @@ function App(): JSX.Element {
         requestId,
         kind,
         preferredPosition: resolvedPreferredPosition,
+        ...(options?.creationAnchor ? { creationAnchor: options.creationAnchor } : {}),
         targetGroupId,
         cwd: options?.cwd,
         agentProvider,

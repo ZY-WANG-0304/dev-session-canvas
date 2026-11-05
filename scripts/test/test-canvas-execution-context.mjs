@@ -94,6 +94,7 @@ try {
                   }
                 },
                 ViewColumn: { One: 1, Beside: -2 },
+                ExtensionMode: { Production: 1, Development: 2, Test: 3 },
                 commands: { executeCommand: async () => undefined, registerCommand: () => new Disposable() },
                 env: { appName: 'VS Code Test', remoteName: undefined, shell: '/bin/bash' },
                 window: {
@@ -649,6 +650,59 @@ try {
     });
   }
   const originalWorkspaceTrusted = vscodeWorkspace.isTrusted;
+  {
+    const overlay = { version: 1, roots: [{ rootPath: rootA, position: { x: 1200, y: 900 } }] };
+    const host = makePreferenceHost([]);
+    host.context.extensionMode = 3;
+    host.multiRootOverlay = overlay;
+    host.activeSurface = 'editor';
+    host.flushDeferredCanvasStatePersist = async () => {};
+    host.waitForPendingWorkspaceStateUpdates = async () => {};
+    host.getPersistedCanvasSnapshotPath = () => path.join(tempDir, 'flush-snapshot.json');
+    let written;
+    host.queuePersistedCanvasSnapshotWrite = async snapshot => { written = snapshot; };
+    host.loadPersistedCanvasSnapshot = () => written;
+    const result = await host.flushPersistedCanvasStateForTest();
+    assert.deepEqual(written.multiRootOverlay, overlay,
+      'The smoke flush command must retain the multi-root overlay instead of erasing root positions.');
+    assert.deepEqual(result.snapshot.multiRootOverlay, overlay);
+    assert.equal(written.state, host.state);
+  }
+  {
+    const rootGroup = { id: 'root-placement', role: 'workspace-root', workspaceRootPath: rootA,
+      title: 'Root A', position: { x: 1200, y: 900 }, size: { width: 2400, height: 1600 } };
+    const original = { ...createNextState(emptyState, 'note').nodes[0],
+      id: namespaceCanvasObjectId(rootA, 'note-placement'), groupId: rootGroup.id,
+      position: { x: 1400, y: 1100 }, size: { width: 380, height: 400 } };
+    const otherRoot = { ...rootGroup, id: 'other-root-placement', workspaceRootPath: rootB,
+      title: 'Root B', position: { x: 5000, y: 900 } };
+    const foreignNode = { ...original, id: namespaceCanvasObjectId(rootB, 'note-foreign'),
+      groupId: otherRoot.id, position: { x: 5200, y: 1100 } };
+    const host = makePreferenceHost([original, foreignNode]);
+    host.state = { ...host.state, groups: [rootGroup, otherRoot] };
+    host.persistState = () => {};
+    host.postState = () => {};
+    setRootFolders([rootA, rootB]);
+    try {
+      host.handleActiveWebviewMessage('panel', {
+        type: 'webview/createDemoNode',
+        payload: {
+          kind: 'note', preferredPosition: { x: -9999, y: -9999 }, targetGroupId: rootGroup.id,
+          creationAnchor: { position: { x: 1810, y: 1180 }, zoom: 0.5 }
+        }
+      });
+      const created = host.state.nodes.find(node => node.id !== original.id && node.id !== foreignNode.id);
+      assert.ok(created, 'Multi-root Host must create a note using the explicit P.');
+      assert.deepEqual(created.position, { x: 1820, y: 1100 },
+        'P must be translated to root-local and the aligned result translated back exactly once.');
+      assert.equal(created.groupId, rootGroup.id);
+      assert.deepEqual(host.state.nodes.find(node => node.id === original.id).position, original.position);
+      assert.deepEqual(host.state.nodes.find(node => node.id === foreignNode.id), foreignNode,
+        'Creation in one root must not change another root’s node.');
+    } finally {
+      vscodeWorkspace.workspaceFolders = originalWorkspaceFolders;
+    }
+  }
   try {
     for (const kind of ['agent', 'terminal']) {
       setRootFolders([]);
