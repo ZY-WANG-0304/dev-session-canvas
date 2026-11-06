@@ -784,6 +784,266 @@ for (const kind of ['terminal', 'agent']) {
   });
 }
 
+for (const kind of ['terminal', 'agent']) {
+  test(`local snapshot attach after sent snapshot waits for a fresh response (${kind})`, async () => {
+    const fixture = localFixture({ outputCredit: true });
+    const { record, provider } = await fixture.started(kind);
+    const snapshots = () => fixture.posted.filter(entry => entry.message.type === 'host/executionSnapshot');
+    const acknowledge = entry => fixture.send('editor', 'webview/executionLocalOutputApplied', {
+      nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+      ...entry.message.payload.localOutputReceipt, outcome: 'applied'
+    }, entry.message.lifecycle);
+    try {
+      await until(fixture.clock, () => snapshots().length === 1, 'first snapshot sent without consumption');
+      const first = snapshots()[0];
+      assert.equal(record.localReaders.get('editor').initialPublished, false);
+      let secondCompleted = false;
+      const second = fixture.host.postLocalExecutionSnapshot(record, {
+        surface: 'editor', requestId: 'after-first-send'
+      }).then(() => { secondCompleted = true; });
+      await pump(fixture.clock);
+      assert.equal(snapshots().length, 1, 'second snapshot cannot bypass held output credit');
+      assert.equal(secondCompleted, false);
+      acknowledge(first);
+      await until(fixture.clock, () => snapshots().length === 2 || secondCompleted, 'second request response or completion');
+      assert.equal(snapshots().length, 2, 'second attach must not complete without a fresh snapshot');
+      assert.equal(snapshots()[1].message.payload.requestId, 'after-first-send');
+      assert.equal(secondCompleted, false, 'second request still waits for its own consumption');
+      acknowledge(first);
+      await pump(fixture.clock);
+      assert.equal(secondCompleted, false, 'first receipt cannot consume the second snapshot');
+      acknowledge(snapshots()[1]);
+      await completed(fixture.clock, second, 'second request consumption');
+    } finally {
+      fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+      provider.process(); provider.seal(0); provider.release();
+      await until(fixture.clock, () => record.execution.snapshot().settled, 'controlled execution cleanup');
+      record.tracker.dispose();
+    }
+  });
+}
+
+for (const kind of ['terminal', 'agent']) {
+  test(`local snapshot attach coalesces unsent requests without losing later batches (${kind})`, async () => {
+    const fixture = localFixture({ outputCredit: true });
+    const { record, provider } = await fixture.started(kind);
+    const snapshots = () => fixture.posted.filter(entry => entry.message.type === 'host/executionSnapshot');
+    const acknowledge = entry => fixture.send('editor', 'webview/executionLocalOutputApplied', {
+      nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+      ...entry.message.payload.localOutputReceipt, outcome: 'applied'
+    }, entry.message.lifecycle);
+    try {
+      await until(fixture.clock, () => snapshots().length === 1, 'held eager snapshot');
+      let completedCount = 0;
+      const request = requestId => fixture.host.postLocalExecutionSnapshot(record, {
+        surface: 'editor', requestId
+      }).then(() => { completedCount += 1; });
+      const burst = Array.from({ length: 32 }, () => request());
+      const identified = [request('first-id'), request('second-id'), request('first-id')];
+      const mixed = request();
+      assert.equal(record.localReaders.get('editor').pendingSnapshotAttaches.size, 3);
+      await pump(fixture.clock);
+      assert.equal(snapshots().length, 1);
+      assert.equal(completedCount, 0);
+      acknowledge(snapshots()[0]);
+      await until(fixture.clock, () => snapshots().length === 2, 'coalesced response');
+      assert.equal(completedCount, 0);
+      const later = request();
+      acknowledge(snapshots()[1]);
+      await until(fixture.clock, () => snapshots().length === 3, 'first identified response');
+      assert.equal(snapshots()[2].message.payload.requestId, 'first-id');
+      assert.equal(completedCount, 33);
+      acknowledge(snapshots()[2]);
+      await until(fixture.clock, () => snapshots().length === 4, 'second identified response');
+      assert.equal(snapshots()[3].message.payload.requestId, 'second-id');
+      acknowledge(snapshots()[3]);
+      await until(fixture.clock, () => snapshots().length === 5, 'request after second send still gets response');
+      assert.equal(snapshots()[4].message.payload.requestId, undefined);
+      acknowledge(snapshots()[4]);
+      await completed(fixture.clock, Promise.all([...burst, ...identified, mixed, later]), 'all batches consumed');
+      await pump(fixture.clock);
+      assert.equal(snapshots().length, 5, 'no redundant snapshots after drain');
+      assert.equal(completedCount, 37);
+      assert.equal(record.localReaders.get('editor').pendingSnapshotAttaches.size, 0);
+    } finally {
+      fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+      provider.process(); provider.seal(0); provider.release();
+      await until(fixture.clock, () => record.execution.snapshot().settled, 'controlled execution cleanup');
+      record.tracker.dispose();
+    }
+  });
+
+  for (const boundary of ['closed', 'replaced', 'webview-replaced']) {
+    test(`local snapshot attach cancels queued old-page work when ${boundary} (${kind})`, async () => {
+      const fixture = localFixture({ outputCredit: true });
+      const { record, provider } = await fixture.started(kind);
+      const snapshots = () => fixture.posted.filter(entry => entry.message.type === 'host/executionSnapshot');
+      const acknowledge = entry => fixture.send('editor', 'webview/executionLocalOutputApplied', {
+        nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+        ...entry.message.payload.localOutputReceipt, outcome: 'applied'
+      }, entry.message.lifecycle);
+      try {
+        await until(fixture.clock, () => snapshots().length === 1, 'old page initial snapshot');
+        const old = snapshots()[0];
+        const oldWebview = fixture.webviews.editor;
+        const pending = fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor', requestId: 'old-page' });
+        fixture.host.cancelLocalExecutionReaders('editor', 'lost', 'surface-webview-replaced');
+        fixture.host.surfaceLifecycle.editor.ready = false;
+        fixture.host.surfaceLifecycle.editor.bootstrapAck = false;
+        if (boundary !== 'closed') {
+          if (boundary === 'replaced') {
+            fixture.host.surfaceLifecycle.editor.generation += 1;
+            fixture.host.surfaceLifecycle.editor.frameId = 'editor-frame-2';
+          } else {
+            fixture.webviews.editor = { postMessage(message) {
+              fixture.posted.push({ surface: 'editor', message });
+              return Promise.resolve(true);
+            } };
+            fixture.host.renderedWebviewLifecycle.set(fixture.webviews.editor,
+              fixture.host.getSurfaceLifecycleIdentity('editor'));
+          }
+          fixture.ready();
+        }
+        await completed(fixture.clock, pending, 'old request cancelled');
+        assert.equal(snapshots().length, 1, 'old queued request must not publish into replacement');
+        if (boundary === 'closed') {
+          acknowledge(old);
+          await pump(fixture.clock);
+          assert.equal(snapshots().length, 1, 'late receipt cannot reopen closed page');
+        } else {
+          let currentCompleted = false;
+          const current = fixture.host.postLocalExecutionSnapshot(record, {
+            surface: 'editor', requestId: 'new-page'
+          }).then(() => { currentCompleted = true; });
+          await until(fixture.clock, () => snapshots().length === 2, 'new page snapshot');
+          fixture.host.handleWebviewMessage('editor', {
+            type: 'webview/executionLocalOutputApplied', lifecycle: old.message.lifecycle,
+            payload: { nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+              ...snapshots()[1].message.payload.localOutputReceipt, outcome: 'applied' }
+          }, oldWebview);
+          acknowledge(old);
+          await pump(fixture.clock);
+          assert.equal(currentCompleted, false, 'old page ACK cannot grant new page credit');
+          assert.equal(snapshots()[1].message.payload.requestId, 'new-page');
+          acknowledge(snapshots()[1]);
+          await completed(fixture.clock, current, 'new page consumes own snapshot');
+          const closing = fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor' });
+          await until(fixture.clock, () => snapshots().length === 3, 'second page pending snapshot');
+          const queued = fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor' });
+          fixture.host.surfaceLifecycle.editor.ready = false;
+          fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'surface-hidden');
+          await completed(fixture.clock, Promise.all([closing, queued]), 'second page close cancels both requests');
+          acknowledge(snapshots()[2]);
+          await pump(fixture.clock);
+          assert.equal(snapshots().length, 3, 'second close cannot resurrect its pending reader');
+        }
+      } finally {
+        fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+        provider.process(); provider.seal(0); provider.release();
+        await until(fixture.clock, () => record.execution.snapshot().settled, 'controlled execution cleanup');
+        record.tracker.dispose();
+      }
+    });
+  }
+
+  test(`local snapshot attach drains before final publication without reopening admission (${kind})`, async () => {
+    const fixture = localFixture({ outputCredit: true });
+    const { record, provider } = await fixture.started(kind);
+    const snapshots = () => fixture.posted.filter(entry => entry.message.type === 'host/executionSnapshot');
+    const acknowledge = entry => fixture.send('editor', 'webview/executionLocalOutputApplied', {
+      nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+      ...entry.message.payload.localOutputReceipt, outcome: 'applied'
+    }, entry.message.lifecycle);
+    try {
+      await until(fixture.clock, () => snapshots().length === 1, 'eager snapshot awaiting consumption');
+      const pending = fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor' });
+      provider.process(); provider.seal(0); provider.release();
+      acknowledge(snapshots()[0]);
+      await until(fixture.clock, () => snapshots().length === 2, 'queued attach before final');
+      acknowledge(snapshots()[1]);
+      await completed(fixture.clock, pending, 'queued attach consumed');
+      await until(fixture.clock, () => snapshots().length === 3, 'final snapshot after queued attach');
+      assert.equal(record.readerAdmissionClosed, true);
+      assert.equal(snapshots()[2].message.payload.liveSession, false);
+      const recovery = fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor', requestId: 'during-final' });
+      acknowledge(snapshots()[2]);
+      await until(fixture.clock, () => snapshots().length === 4, 'admitted reader recovery during final publication');
+      assert.equal(snapshots()[3].message.payload.requestId, 'during-final');
+      assert.equal(snapshots()[3].message.payload.liveSession, false);
+      acknowledge(snapshots()[3]);
+      await completed(fixture.clock, recovery, 'final recovery does not wait on itself');
+      await until(fixture.clock, () => fixture.completions().length === 1, 'final exit publication');
+      fixture.settle(kind, record, { kind: 'applied', finalOutputSequence: 0 });
+      await until(fixture.clock, () => record.execution.snapshot().retired, 'retire without chain cycle');
+      await completed(fixture.clock, fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor' }), 'late attach rejected');
+      assert.equal(snapshots().length, 4, 'finalized reader cannot be reopened');
+    } finally {
+      fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+      provider.process(); provider.seal(0); provider.release();
+      await until(fixture.clock, () => record.execution.snapshot().settled, 'controlled execution cleanup');
+      record.tracker.dispose();
+    }
+  });
+
+  for (const behavior of ['false', 'throw']) {
+    test(`local snapshot attach does not retry its own failed publication (${kind}, ${behavior})`, async () => {
+      let rejectPublication = false;
+      const fixture = localFixture({ outputCredit: true, send() {
+        if (!rejectPublication) return Promise.resolve(true);
+        if (behavior === 'throw') throw new Error('controlled publication failure');
+        return Promise.resolve(false);
+      } });
+      const { record, provider } = await fixture.started(kind);
+      const snapshots = () => fixture.posted.filter(entry => entry.message.type === 'host/executionSnapshot');
+      try {
+        await until(fixture.clock, () => snapshots().length === 1, 'held initial snapshot');
+        const requests = ['request-one', 'request-two'].map(requestId =>
+          fixture.host.postLocalExecutionSnapshot(record, { surface: 'editor', requestId }));
+        rejectPublication = true;
+        fixture.send('editor', 'webview/executionLocalOutputApplied', {
+          nodeId: `${kind}-1`, kind, executionSessionId: record.execution.identity.executionId,
+          ...snapshots()[0].message.payload.localOutputReceipt, outcome: 'applied'
+        }, snapshots()[0].message.lifecycle);
+        await completed(fixture.clock, Promise.all(requests), 'failed publications terminate both requests');
+        await pump(fixture.clock);
+        assert.deepEqual(snapshots().map(entry => entry.message.payload.requestId), [undefined, 'request-one', 'request-two']);
+        assert.equal(record.localReaders.get('editor').outcome.kind, 'lost');
+        assert.equal(record.localReaders.get('editor').pendingSnapshotAttaches.size, 0);
+        assert.equal(record.localReaders.get('editor').attachPromise, undefined);
+      } finally {
+        fixture.host.surfaceLifecycle.editor.ready = false;
+        fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+        provider.process(); provider.seal(0); provider.release();
+        await until(fixture.clock, () => record.execution.snapshot().settled, 'controlled execution cleanup');
+        record.tracker.dispose();
+      }
+    });
+  }
+
+  test(`local snapshot attach clears an unsent batch when its predecessor rejects (${kind})`, async () => {
+    const fixture = localFixture({ outputCredit: true });
+    const { record, provider } = await fixture.started(kind);
+    const snapshots = () => fixture.posted.filter(entry => entry.message.type === 'host/executionSnapshot');
+    try {
+      await until(fixture.clock, () => snapshots().length === 1, 'held initial snapshot');
+      record.terminalChain = Promise.reject(new Error('controlled predecessor failure'));
+      await completed(fixture.clock, fixture.host.postLocalExecutionSnapshot(record, {
+        surface: 'editor', requestId: 'failed-predecessor'
+      }), 'failed predecessor releases request');
+      const reader = record.localReaders.get('editor');
+      assert.equal(reader.outcome.kind, 'lost');
+      assert.equal(reader.pendingSnapshotAttaches.size, 0);
+      assert.equal(reader.attachPromise, undefined);
+      assert.equal(snapshots().length, 1, 'chain failure must not silently retry');
+    } finally {
+      fixture.host.cancelLocalExecutionReaders('editor', 'cancelled', 'test-cleanup');
+      provider.process(); provider.seal(0); provider.release();
+      await until(fixture.clock, () => record.execution.snapshot().settled, 'controlled execution cleanup');
+      record.tracker.dispose();
+    }
+  });
+}
+
 test('local mount racing a cancelled eager snapshot retries with a new reader instead of deadlocking', async () => {
   const f = localFixture({ outputCredit: true });
   const { record, provider } = await f.started('terminal');
@@ -4060,8 +4320,47 @@ for (const mode of [0o775, 0o770, 0o755]) {
   });
 }
 
+function holdRootStartupIO(directory, boundary) {
+  const entered = deferred();
+  const release = deferred();
+  const fsPromises = createRequire(import.meta.url)('node:fs/promises');
+  const originalMkdir = fsPromises.mkdir;
+  const originalOpen = fsPromises.open;
+  let held = false;
+  const hold = async () => {
+    if (held) return;
+    held = true;
+    entered.resolve();
+    await release.promise;
+  };
+  if (boundary === 'storage') {
+    fsPromises.mkdir = async (target, ...args) => {
+      const result = await originalMkdir(target, ...args);
+      if (target === directory) await hold();
+      return result;
+    };
+  } else if (boundary === 'journal') {
+    fsPromises.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args);
+      if (String(target).startsWith(path.join(directory, 'runtime-replacements-v1') + path.sep)) {
+        const sync = handle.sync.bind(handle);
+        handle.sync = async () => { await sync(); await hold(); };
+      }
+      return handle;
+    };
+  }
+  return { entered: entered.promise, release: release.resolve, restore() {
+    release.resolve();
+    fsPromises.mkdir = originalMkdir;
+    fsPromises.open = originalOpen;
+  } };
+}
+
 for (const kind of ['terminal', 'agent']) {
-  for (const launchMode of kind === 'agent' ? ['start', 'resume'] : ['start']) test(`root ${kind} ${launchMode} routes the current release through preparation client metadata and subscription`, async () => {
+  const launchModes = kind === 'agent' ? ['start', 'resume'] : ['start'];
+  for (const [launchMode, boundary] of launchModes.flatMap(launchMode =>
+    ['immediate', 'storage', 'journal'].map(boundary => [launchMode, boundary]))) test(
+    `root ${kind} ${launchMode} routes the current release through preparation client metadata and subscription (${boundary})`, async () => {
     if (process.platform !== 'linux') return;
     await withRootCandidateRuntimeFixture(async f => {
       const preparations = [];
@@ -4077,10 +4376,28 @@ for (const kind of ['terminal', 'agent']) {
         assert.equal(request.executionProfile, EXECUTION_CANDIDATE_PROFILE);
         return { kind: 'ready', backend: 'legacy-detached' };
       };
+      const io = holdRootStartupIO(f.globalStoragePath, boundary);
       try {
         await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
           const starting = launchMode === 'resume' ? f.host.startAgentSession('agent-1', 80, 24, undefined, true) : f.start(kind);
-          await completed(f.clock, starting, `${kind} root owner creation`);
+          let startupCompleted = false;
+          const observed = starting.then(() => { startupCompleted = true; });
+          const held = boundary === 'immediate' ? Promise.resolve() : (async () => {
+            try {
+              await Promise.race([io.entered, observed.then(() => assert.fail('startup must cross the held I/O boundary'))]);
+              await pump(f.clock);
+              assert.equal(startupCompleted, false, 'scheduler turns cannot complete external I/O');
+              assert.equal(creates.length, 0, 'unconfirmed storage must not submit creation');
+              assert.equal(f.subscriptions.length, 0, 'unconfirmed storage must not acquire a reader');
+            } finally { io.release(); }
+          })();
+          try {
+            await Promise.all([observed, held]);
+          } finally {
+            io.release();
+            await Promise.allSettled([observed, held]);
+          }
+          assert.equal(startupCompleted, true);
           assert.deepEqual(f.errors, []);
           assert.equal(preparations.length, 1);
           assert.equal(connections.length, 1);
@@ -4102,6 +4419,7 @@ for (const kind of ['terminal', 'agent']) {
           assert.deepEqual(f.subscriptions[0][2], f.owner);
         });
       } finally {
+        io.restore();
         testRootRuntimePreparation.run = async () => { throw new Error('Unexpected root runtime preparation'); };
       }
     });
@@ -4123,8 +4441,12 @@ for (const kind of ['terminal', 'agent']) {
         liveSession: false, attachmentState: 'history-restored', lifecycle: kind === 'agent' ? 'stopped' : 'closed' });
       f.host.bindRuntimeSession(node.id, kind, previous.sessionId, previous.runtimeStoragePath, previous.backendKind, oldOwner);
       const cleanup = deferred();
+      const cleanupEntered = deferred();
       let outcome;
-      const strict = candidateStrictDeletes(f, () => ({ first: cleanup.promise, current: () => outcome, submitted: true }));
+      const strict = candidateStrictDeletes(f, () => {
+        cleanupEntered.resolve();
+        return { first: cleanup.promise, current: () => outcome, submitted: true };
+      });
       const resolveTarget = f.host.resolveRuntimeCreationTarget.bind(f.host);
       const preferred = f.host.getPreferredRuntimeSupervisorClient;
       const order = [];
@@ -4138,7 +4460,7 @@ for (const kind of ['terminal', 'agent']) {
         return preferred(target);
       };
       const starting = f.start(kind);
-      await pump(f.clock, () => strict.calls.length === 1);
+      await Promise.race([cleanupEntered.promise, starting.then(() => assert.fail('startup must wait for original cleanup'))]);
       assert.equal(strict.calls.length, 1, JSON.stringify({ errors: f.errors, posted: f.posted, connections: strict.connections }));
       assert.equal(strict.calls[0].backend.runtimeStoragePath, previous.runtimeStoragePath);
       assert.equal(strict.calls[0].params.sessionId, previous.sessionId);
@@ -4147,7 +4469,7 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(f.creates.length, 0);
       outcome = { kind: 'legacy-acknowledged' };
       cleanup.resolve(outcome);
-      await completed(f.clock, starting, `${kind} replacement after original cleanup`);
+      await starting;
       assert.deepEqual(f.errors, []);
       assert.deepEqual(order, ['target', 'owner']);
       assert.equal(f.creates.length, 1);
@@ -4171,7 +4493,7 @@ for (const kind of ['terminal', 'agent']) {
       };
       try {
         await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
-          await completed(fixture.clock, fixture.start(kind), `${kind} release preparation rejection`);
+          await fixture.start(kind);
           assert.equal(preparations.length, 1);
           assert.deepEqual(preparations[0].owner, fixture.owner);
           assert.deepEqual(connections, []);
@@ -4209,10 +4531,10 @@ for (const kind of ['terminal', 'agent']) {
         };
         const starting = f.start(kind);
         try {
-          await completed(f.clock, entered.promise, `${kind} pending root ${waitingAt}`);
+          await Promise.race([entered.promise, starting.then(() => assert.fail(`startup must cross ${waitingAt}`))]);
           f.roots[0] = { path: '/controlled/different-root', name: 'different-root' };
           resume.resolve();
-          await completed(f.clock, starting, `${kind} changed runtime root`);
+          await starting;
           assert.equal(f.creates.length, 0);
           assert.equal(f.host.runtimeSessionBindings.size, 0);
           assert.equal(f.host.candidateRuntimeStarts.size, 0);
