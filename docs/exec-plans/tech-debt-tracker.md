@@ -2,6 +2,14 @@
 
 本文件用于记录复杂任务中的未收口问题及阶段性交付后的遗留风险。登记不代表一律不阻塞后续交付；已纳入明确验收门槛的条目按对应计划收口。技术债登记、拆解和修复规则见 `docs/workflows/TECH_DEBT.md`。
 
+## 2026-11-06：本地快照竞态的正式验收与 Host 既存测试失败
+
+独立快照修复在 main `92736f38` 和分组 `0a180b26` 的同一可控测试上确认共享吞请求路径；修复后的相关 Host38、adapter/channel109+6+7、类型、生产资产构建及 Linux source remount 通过。但原 PR370 packaged CI 没有完整 attach 分支轨迹，不能追认唯一触发时序，也不能代替修复 PR 的正式 packaged/跨平台 CI。不同 requestId 的响应不能被静默合并，当前只保证无 ID 的待执行合并槽有界，未新增任意不同 ID 的协议准入限制；未来出现实际高基数请求压力时由 repository-maintainers 连同显式拒绝语义另行设计。
+
+全量 Host 最终复跑在252条通过后，`detached restored agent restart uses target evidence after an unsubmitted failure: /controlled/runtime-supervisor-generations/terminal-stream-v1` 报旧 generation 清理顺序 `1 !== 2`，外层创建数 `0 !== 1`；未修改 main 的同名单测一致失败。宽过滤另遇 `shared Canvas deletion detaches local projection` 的 `appliedStartupConfiguration` 未初始化 TypeError，未修改 main 也一致复现。本轮不修改这些无关路径，也不删除断言/排除正式任务；repository-maintainers 需独立核查旧历史恢复顺序及 shared fixture，并保持 required CI。
+
+一次与 smoke 并行的全量运行还在 `agent completed Runtime actual root write failure retains its original binding and managed session` 超出原3000ms；随后全量通过该用例，main 定向1/1通过。原因未确认，不能直接定性环境误报；后续复现时保留持久化时序与资源负载证据，不增加等待阈值。详细命令、日志与 review 见[独立修复计划](active/terminal-remount-snapshot-race.md)和[设计](../design-docs/terminal-remount-snapshot-race.md)。这些记录不豁免CI、不授权合并；PR370仅在独立修复获准合并后更新。
+
 ## 2026-11-05：本地门禁回归 child-owned cleanup 的计时失败
 
 `canvas-node-creation-alignment` rebase 到 `72275f0c` 后，两次 `npm run test:ci-gates` 均为 212/213，分别在 `scripts/test/test-gate-contracts.mjs` 的 `child-owned cleanup may finish inside its separate reserve`、`child-owned cleanup cannot hide late business` 失败，断言为外层 action 应通过但实际 failed。两个用例及其等待阈值与 main 一致；首个用例单独运行通过，随后两项一起定向运行 2/2 通过。尚未确认全量运行与单独运行差异的根因，不把它定性为已修复、环境误报或确定的产品缺陷。

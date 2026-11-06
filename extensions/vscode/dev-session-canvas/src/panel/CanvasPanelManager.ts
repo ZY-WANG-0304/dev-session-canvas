@@ -671,6 +671,7 @@ interface LocalExecutionReader {
   pendingPublications: Set<() => void>;
   outcome?: LocalTerminalOutcome | { kind: 'lost'; reason: string };
   attachPromise?: Promise<void>;
+  pendingSnapshotAttaches?: Map<string | undefined, Promise<void>>;
   initialPublished: boolean;
   finalPublication?: Promise<boolean>;
   finalPublishedSequence?: number;
@@ -23702,11 +23703,6 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       this.settleLocalExecutionReader(record, reader, { kind: 'lost', reason: 'surface-replaced' });
       reader = undefined;
     }
-    if (reader?.attachPromise) {
-      await reader.attachPromise;
-      // An eager snapshot may precede mount. A mounted attach must not inherit its cancelled result.
-      if (!reader.outcome) return;
-    }
     if (reader?.outcome) {
       if (!reader.outputCredit || record.readerAdmissionClosed) return;
       if (!this.sameLocalExecutionLifecycle(lifecycle, this.getSurfaceLifecycleIdentity(surface)) ||
@@ -23723,8 +23719,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
       record.localReaders.set(surface, reader);
     }
     const admitted = reader;
+    const pending = admitted.pendingSnapshotAttaches ??= new Map();
+    const existing = pending.get(options.requestId);
+    if (existing) return existing;
+    const previousAttach = admitted.attachPromise;
+    let skippedCancelledReader = false;
     const attach = record.terminalChain.then(async () => {
-      if (admitted.outcome) return;
+      pending.delete(options.requestId);
+      if (admitted.outcome) {
+        skippedCancelledReader = true;
+        return;
+      }
       const terminal = record.finalTerminal ?? await record.tracker.flush();
       const published = await this.postLocalExecutionReaderMessage(record, admitted,
         this.localExecutionSnapshotMessage(record, terminal, record.finalRevision === undefined, options.requestId));
@@ -23734,8 +23739,17 @@ export class CanvasPanelManager implements vscode.WebviewPanelSerializer, vscode
     });
     record.terminalChain = attach;
     admitted.attachPromise = attach;
-    await attach;
-    if (admitted.attachPromise === attach) admitted.attachPromise = undefined;
+    const completion = attach.then(async () => {
+      if (pending.get(options.requestId) === completion) pending.delete(options.requestId);
+      if (admitted.attachPromise === attach) admitted.attachPromise = undefined;
+      if (previousAttach && skippedCancelledReader && !record.readerAdmissionClosed &&
+          this.sameLocalExecutionLifecycle(lifecycle, this.getSurfaceLifecycleIdentity(surface)) &&
+          webview === this.getSurfaceMessageWebview(surface) && this.isInteractiveSurface(surface)) {
+        await this.postLocalExecutionSnapshot(record, { ...options, surface });
+      }
+    });
+    pending.set(options.requestId, completion);
+    await completion;
   }
 
   private async publishLocalExecutionFinal(record: NonNativeHostExecution, reader: LocalExecutionReader): Promise<boolean> {
