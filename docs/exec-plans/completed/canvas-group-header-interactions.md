@@ -128,3 +128,20 @@ root 重选修正后，水印与 root resize 各重复三次为 6/6 通过，日
 最终相邻集合 `group|pane gallery|editing node titles|pressing Enter in the title|canvas focus navigation|workspace root watermark` 为 89/89 通过（2.6m），日志 `/tmp/pr370-rebase2-adjacent.log`。类型检查、显式 stock 构建、宿主删除矩阵 9/9、分组几何与主题合同均通过；449 项浏览器注册集合及 smoke source hash/153 个实现映射一致，文档与 diff check 通过。本轮未重跑三项视觉测试，也没有完成最终修改后的全量 446 项复验，不将相邻集合绿色写成完整功能或新 head 的 CI 验收。
 
 最后单独运行 `--grep 'terminal styled hard-wrapped file hover underlines all fragments' --repeat-each=3 --workers=2`，3/3 通过，日志 `/tmp/pr370-hover-repeat.log`。测试及对应产品实现未修改；这只记录定向复跑结果，不能据此关闭尺寸变化期间 hover 消失的首败调查或将其定性为 flaky。
+
+## PR #371 合入后的主线同步
+
+2026-11-06 用户确认独立修复已合并并要求回到 #370。GitHub API 确认 #371 合并提交为 `569ddafe684617db0da9e58007b40e90ddb8c3f6`；其最终 head `13c55368` 的 Release Preflight [42173866859](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42173866859) 和 CI Stability Observations [42173866877](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42173866877) 均成功。这是独立修复的验收，不替代 #370 新 head 的正式 CI。
+
+将当前分组分支的三个提交从 `92736f38` rebase 到最新 `origin/main@569ddafe`，以原远端 #370 head `0a180b2629858a4e625fd80abea9af9d5374358f` 为推送租约。唯一冲突为技术债相邻追加，保留独立快照和分组历史首败记录；`range-diff` 确认源码及测试补丁不变。快照竞态和 root-owner 测试同步修复由主线继承，不混入分组 PR 差异。用户 OSC 索引条目已恢复，四个未跟踪研究/媒体文件的 SHA-256 均与操作前一致，不暂存这些文件。
+
+在 Node 22.23.3 上重新执行：
+
+- `npm run typecheck`、`npm run test:canvas-node-groups`、`npm run test:theme-color-tokens` 通过。
+- `npm run build -- --execution-assets-set=/home/users/ziyang01.wang-al/projects/dev-session-canvas/generated/execution-assets` 通过；本轮使用已有真实执行资产，不是此前 stock 回退，亦不冒充发行包验收。
+- Host `--name-pattern '^group deletion modal'` 为 9/9；`--name-pattern '^(local |(terminal|agent) local |actual local Host)'` 为 38/38；完整 `npm run test:runtime-root-ownership` 通过，其中 Host 启动回归 25/25。
+- `node scripts/test/run-playwright-webview.mjs --grep 'group|pane gallery|editing node titles|pressing Enter in the title|canvas focus navigation|workspace root watermark'` 为 89/89（2.2m）。
+- 使用本工作区 `.vscode-test` 缓存执行 `node scripts/smoke/run-vscode-smoke.mjs --diagnostic --scenario surface-continuity/live-page-remount`，Linux 真实宿主活动执行下页面重建通过，退出码 0。
+- 浏览器注册 449 项 ID/文件/完整标题集合一致，smoke source hash 与 153 个实现映射检查通过，文档和 diff 检查通过；注册与映射不代表全量执行。
+
+日志为 `/tmp/pr370-post371-{typecheck,build,groups,theme,delete,snapshot,root,browser,remount}.log`，仅作为本机诊断证据。本轮未重跑完整 446 项浏览器功能集、三项视觉基线或真实宿主分组 modal/递归删除；历史 hover 和 legacy 退役首败调查继续保留，不因相邻回归通过而关闭。最终独立复审和新 head CI 跟随原 PR #370 评论；本轮仅更新现有 PR，不创建重复 PR、不执行合并，仍需用户明确授权。
