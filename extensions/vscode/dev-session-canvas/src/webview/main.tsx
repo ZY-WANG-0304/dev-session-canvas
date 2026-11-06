@@ -3776,32 +3776,7 @@ function App(): JSX.Element {
     });
   };
 
-  const handleUngroup = (groupId: string): void => {
-    setLocalUiState((current) =>
-      current.selectedGroupId === groupId
-        ? {
-            ...current,
-            selectedGroupId: undefined,
-            selectedGroupIds: undefined
-          }
-        : current
-    );
-    postMessage({
-      type: 'webview/ungroup',
-      payload: { groupId }
-    });
-  };
-
   const handleDeleteGroup = (groupId: string): void => {
-    setLocalUiState((current) =>
-      current.selectedGroupId === groupId
-        ? {
-            ...current,
-            selectedGroupId: undefined,
-            selectedGroupIds: undefined
-          }
-        : current
-    );
     postMessage({
       type: 'webview/deleteGroup',
       payload: { groupId }
@@ -4726,7 +4701,6 @@ function App(): JSX.Element {
             onMoveGroup={handleMoveGroup}
             onResizeGroup={handleResizeGroup}
             onUpdateGroupTitle={handleUpdateGroupTitle}
-            onUngroup={handleUngroup}
             onDeleteGroup={handleDeleteGroup}
             onDragPointerMove={handleGroupDragPointerMove}
             onDragEnd={handleGroupDragEnd}
@@ -4810,7 +4784,6 @@ function App(): JSX.Element {
             onMoveGroup={handleMoveGroup}
             onResizeGroup={handleResizeGroup}
             onUpdateGroupTitle={handleUpdateGroupTitle}
-            onUngroup={handleUngroup}
             onDeleteGroup={handleDeleteGroup}
             onDragPointerMove={handleGroupDragPointerMove}
             onDragEnd={handleGroupDragEnd}

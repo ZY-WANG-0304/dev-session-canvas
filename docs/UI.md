@@ -123,7 +123,7 @@ components:
   canvas-group:
     backgroundColor: "var(--vscode-panel-background)"
     borderColor: "var(--vscode-panel-border)"
-    title: "straight-edged panel tab shape, not a pill"
+    title: "full-width straight-edged panel header, not a pill"
   sidebar-section:
     hostSurface: "host-native sidebar surface by default"
     density: "compact workbench section"
@@ -310,10 +310,11 @@ Sidebar 的 design-system 规则只定义表面语言，不定义具体 section 
 
 分组是画布空间组织对象，视觉上应更接近 VSCode Panel，而不是节点卡片或白板贴纸：
 
-- 外框、body、标题 tab 和分组 toolbar 的背景统一使用 `--vscode-panel-background`，不使用混色或其他 surface fallback；普通态也要让用户能识别区域边界。body 背景应绘制在普通节点下方，避免 Panel 面层压住成员节点内容。
-- 边框使用 `--vscode-panel-border`，tab 和 body 都采用直角边界，body 上边界也必须有边框，且画布缩放时保持屏幕可见线宽不变；标题贴在分组左上角，采用类似 Panel 顶部 active tab 的标题区域；标题 tab 之外的顶部横向区域应保持挖空透明，不绘制 header 背景条，不使用外浮胶囊、强阴影或高饱和标签。
-- 选中态通过与节点 resize 一致的四边选中线、四角圆形控制点、标题文字前景和贴在 tab 右侧的轻量双段按钮表达；标题 tab 与双段按钮只在画板缩小时做反向缩放以保持可读；画板放大时不反向缩小，视觉上跟随画板一起放大；默认按内容自然宽度显示，只有自然宽度达到分组宽度上限时才停止继续变宽，整体不得超出分组框；tab 区域不额外显示 active 下划线，也不通过自定义分组颜色表达。
-- 分组 body 不应遮挡内部节点、连线或运行时内容的主交互；成员对象距离 body 左、上、右、下边界的视觉预留应保持一致，并使用 `24px` 的空间组织预留；因为标题 tab 占据顶部，宿主几何中的 top inset 应为 `24px + title height`。标题、不可见 header 拖动区、边框、resize 控制点和未被节点覆盖的 body 空白区都可用于选中分组，其中 body 空白区右键仍打开画布上下文菜单，菜单内新增 / 创建类操作归属于该 body 所在分组。
+- 标题栏基础高度为 `36px`，删除按钮保持 `24px` 并垂直居中，上下各留约 `6px`（含边框）；正文上沿仍保持画布坐标 `28px`，增加的标题高度向外扩展，不改变成员几何。
+- 外框、body 和等宽标题栏使用 `--vscode-panel-background`；body 背景绘制在普通节点下方，不遮盖成员内容。标题栏不再采用按标题长度伸缩的 tab。
+- 边框使用 `--vscode-panel-border`，标题栏和 body 都采用直角，body 上沿保留分隔线，画布缩放时保持屏幕可见线宽。标题栏覆盖分组全宽，不使用外浮胶囊、强阴影或高饱和标签。
+- 选中态保留四边线、四角圆形控制点与标题前景；普通组右侧只显示一个删除按钮，复用节点危险按钮的背景、边框、圆角及 focus 样式，workspace-root 不显示删除。标题与按钮仅缩小时反向缩放，以固定最小可用宽度限制比例，文字省略且按钮留位；重命名与选中不改变比例。
+- body 四周成员预留仍为 `24px`，宿主 top inset 仍为 `24px + 28px`；标题缩小时向外增长，不改变成员几何。标题栏非控件区域和边框可首次拖动，正文空白仍可选中、拖动画布和打开带分组归属的上下文菜单。删除方式由原生 modal 选择，详见 [分组等宽标题栏与统一操作](design-docs/canvas-group-header-interactions.md)。
 
 ### Node Title And Subtitle
 

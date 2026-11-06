@@ -245,7 +245,6 @@ export const enWebviewMessages = {
   'edge.toolbar.delete': 'Delete edge',
   'edge.label.placeholder': 'Add relation label',
   'group.title.placeholder': 'Group title',
-  'group.action.ungroup': 'Ungroup',
   'group.action.delete': 'Delete Group',
   'standby.heading': 'The main canvas is currently running in {surface}',
   'standby.description':
@@ -502,7 +501,6 @@ const zhCnWebviewMessages = {
   'edge.toolbar.delete': '删除连线',
   'edge.label.placeholder': '添加关系标签',
   'group.title.placeholder': '分组标题',
-  'group.action.ungroup': '取消分组',
   'group.action.delete': '删除分组',
   'standby.heading': '当前主画布正在{surface}中运行',
   'standby.description':

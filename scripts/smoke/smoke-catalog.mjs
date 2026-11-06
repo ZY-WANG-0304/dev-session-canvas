@@ -263,7 +263,7 @@ const trustedSmokeCases = [
   ['canvas-nodes/create-selected-mode', 'QuickPick 保留用户所选模式', 'prepareIndependentEmpty', 'verifyCreateNodeCommandQuickPickKeepsSelectedModeUntilUserEdits'],
   ['canvas-nodes/create-preset-intent', '显式 preset 意图保留', 'prepareIndependentEmpty', 'verifyCreateNodeCommandQuickPickPreservesExplicitPresetIntent'],
   ['canvas-nodes/legacy-filter', '旧 Task 节点过滤', 'prepareIndependentEmpty', 'verifyPersistedStateFiltersLegacyTaskNodes'],
-  ['canvas-nodes/empty-group-delete', '空组删除免确认', 'prepareIndependentEmpty', 'verifyEmptyGroupDeletionSkipsConfirmation'],
+  ['canvas-nodes/empty-group-delete', '空组删除确认选择', 'prepareIndependentEmpty', 'verifyEmptyGroupDeletionConfirmsChoice'],
   ['canvas-nodes/nested-group-delete', '嵌套组递归删除范围确认', 'prepareIndependentEmpty', 'verifyNestedGroupDeletionConfirmationDisclosesRecursiveScope'],
   ['canvas-nodes/layout', '布局安排和持久化', 'prepareIndependentEmpty', 'verifyCanvasLayoutArrangementPersists'],
   ['canvas-nodes/creation-alignment', '三类创建对齐、避障与自由位置保存', 'prepareIndependentEmpty', 'runIndependentCreationAlignment'],

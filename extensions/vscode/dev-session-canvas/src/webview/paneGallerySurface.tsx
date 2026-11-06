@@ -277,7 +277,6 @@ export interface PaneGalleryProps {
   onMoveGroup: (groupId: string, position: CanvasNodePosition, pointerPosition: CanvasNodePosition) => void;
   onResizeGroup: (groupId: string, position: CanvasNodePosition, size: CanvasNodeFootprint) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
-  onUngroup: (groupId: string) => void;
   onDeleteGroup: (groupId: string) => void;
   onDragPointerMove: (
     event: Pick<PointerEvent | React.PointerEvent, 'clientX' | 'clientY'>,
@@ -967,7 +966,6 @@ function PaneGalleryRootPane(props: PaneGalleryProps & {
             onMoveGroup={props.onMoveGroup}
             onResizeGroup={props.onResizeGroup}
             onUpdateGroupTitle={props.onUpdateGroupTitle}
-            onUngroup={props.onUngroup}
             onDeleteGroup={props.onDeleteGroup}
             onDragPointerMove={props.onDragPointerMove}
             onDragEnd={props.onDragEnd}

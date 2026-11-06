@@ -12,6 +12,18 @@ PR371首轮正式运行42164361993的source remount已通过，观察运行42164
 
 一次与 smoke 并行的全量运行还在 `agent completed Runtime actual root write failure retains its original binding and managed session` 超出原3000ms；随后全量通过该用例，main 定向1/1通过。原因未确认，不能直接定性环境误报；后续复现时保留持久化时序与资源负载证据，不增加等待阈值。详细命令、日志与 review 见[独立修复计划](active/terminal-remount-snapshot-race.md)和[设计](../design-docs/terminal-remount-snapshot-race.md)。这些记录不豁免CI、不授权合并；PR370仅在独立修复获准合并后更新。
 
+## 2026-11-06：PR370 旧代 client 退役事件缺失
+
+[CI run 42080897345 的 source-host/legacy-supervisor-upgrade](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42080897345/job/127441905185) 在停止旧 Terminal、删除旧 Agent 后，等待 previous-generation-stream 路径的 `runtime/legacySupervisorClientRetired` 事件 20 秒超时。另一条旧路径已产生退役事件，旧代 attach、I/O/resize 与新代隔离通过；后续进程退出和当前代继续执行断言未执行。任务清理成功不等于产品退役完成。没有分组参与该场景，也未发现 PR 分组确认改动的直接关联；原日志不足以确认根因或归类为偶发失败。
+
+负责人 repository-maintainers。后续在旧代升级专项或新 CI 再现时，优先记录 `CanvasPanelManager` 退役检查的拒绝条件、pending RPC/输出批次、reader active/releasing 引用及关闭结果，区分未释放引用与时序边界；不要先延长超时或删断言。本次只修复独立的水印回归断言，不修改运行时或将此 case 降级为非阻塞观察。此登记不豁免 required CI，复跑通过也不消除历史失败调查。证据及边界见 [分组交互 CI 跟进](completed/canvas-group-header-interactions.md#pr-370-第二次-rebase-与-ci-失败跟进)。
+
+## 2026-11-06：PR370 本地终端 hover 与尺寸收敛首败
+
+第二次 rebase 后完整功能回归中，`terminal styled hard-wrapped file hover underlines all fragments` 在 `tests/playwright/webview-harness.spec.mjs` 等待两个 hover 片段，连续八次采样为 0，5000ms 超时。首败 trace 中两个片段曾生成，约 11ms 后 terminal screen 从 900×392 变为 705×448，片段消失；hover 响应后还有 `resizeExecutionSession(94, 32)` 消息。`executionTerminalNativeInteractions.ts` 的 resize 回调会清除 overlay，轨迹支持优先调查尺寸收敛与 hover 时序，但没有具体清除回调日志，尚不能排除其他清除路径。
+
+负责人 repository-maintainers。相同测试块和 native-interactions 文件在旧 base、PR head、最新主线和当前分支内容一致，场景无分组；未发现本任务的直接关联，不等于已证明是历史缺陷或偶发误报。后续在终端链接/尺寸收敛专项保留原始 trace，补齐 resize、scroll、leave 与 hover 清除原因取证后再决定修复方向；不通过放宽等待或删除断言掩盖。本轮首败工件已另存 `/tmp/pr370-hover-first-failure/`，复跑结果另记于 [实施记录](completed/canvas-group-header-interactions.md)，不能覆盖首败。
+
 ## 2026-11-05：本地门禁回归 child-owned cleanup 的计时失败
 
 `canvas-node-creation-alignment` rebase 到 `72275f0c` 后，两次 `npm run test:ci-gates` 均为 212/213，分别在 `scripts/test/test-gate-contracts.mjs` 的 `child-owned cleanup may finish inside its separate reserve`、`child-owned cleanup cannot hide late business` 失败，断言为外层 action 应通过但实际 failed。两个用例及其等待阈值与 main 一致；首个用例单独运行通过，随后两项一起定向运行 2/2 通过。尚未确认全量运行与单独运行差异的根因，不把它定性为已修复、环境误报或确定的产品缺陷。
@@ -48,6 +60,10 @@ PR1/PR2/PR3 已在 `runtime-resume-unreachable-replacement` 工作树实现：st
 新批次替换 compact manifest 时，GitHub Releases API 需要先删除旧 asset 再上传新内容。`scripts/release/release-github.mjs` 的 `replaceReleaseAsset` 已对上传失败做旧字节回滚，但旧 asset 的 DELETE 请求仍在回滚 `try` 块外；如果远端删除成功而响应丢失，调用会直接失败，manifest 可能暂时缺失。该情况依赖特定传输故障，目前不是已复现的确定性 blocker。
 
 后续应将删除异常也纳入协调恢复：重新读取 Release assets，确认旧字节仍在、已缺失或出现未知内容，再决定安全恢复或明确失败；新增 DELETE 响应丢失故障注入测试，验证始终不留下错误 manifest 或重复 asset。关联 [Release assets 精简执行计划](completed/release-assets-streamline.md) 与 `scripts/test/test-release-delivery.mjs`。当前发布重试可从同批 Actions producer evidence 重验状态后重新写入 manifest；在该边界修复前不宣称删除操作具备端到端原子性。
+
+## 2026-11-06：分组等宽标题栏的真实宿主验收
+
+等宽标题栏、首次拖动和统一删除入口已实现，补齐双击误触和键盘回归后 Webview 78/78、宿主 mock 删除矩阵 9/9、分组几何与主题回归通过。当前机器缺少默认 execution assets，因此构建使用显式 stock 配置；未运行真实 VS Code 的原生 modal、运行会话递归删除、远程或高对比主题。后续在准备原生资产后的隔离 VS Code 验证空组/非空组取消与保留、停止真实组内会话、系统 root 保护及高对比 focus；不得用此次 mock/浏览器结果代替安装验收。范围与命令见 [实施记录](completed/canvas-group-header-interactions.md)。
 
 ## 2026-11-03：Supervisor 发行隔离的安装级验收与历史 Host 测试
 

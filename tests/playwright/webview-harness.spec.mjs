@@ -11738,7 +11738,6 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
     probeFrame.style.top = '-10000px';
     probeFrame.style.width = '70.5px';
     probeFrame.style.height = '80px';
-    probeFrame.style.setProperty('--canvas-group-title-tab-width', 'min(112px, 100%)');
     const probeTitlebar = document.createElement('div');
     probeTitlebar.className = 'canvas-group-titlebar';
     probeFrame.append(probeTitlebar);
@@ -11782,9 +11781,7 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       backgroundAfterBorderTopWidth: backgroundAfterStyles.borderTopWidth,
       backgroundAfterBorderBottomWidth: backgroundAfterStyles.borderBottomWidth,
       backgroundAfterBorderBottomLeftRadius: backgroundAfterStyles.borderBottomLeftRadius,
-      backgroundTopRightCornerColor: document.elementFromPoint(Math.floor(backgroundRect.right - 2), Math.floor(backgroundRect.top + 2)) === background
-        ? backgroundStyles.backgroundColor
-        : 'transparent',
+      backgroundTitleCoversWidth: Math.abs(Number.parseFloat(backgroundBeforeStyles.width) - background.offsetWidth) < 1,
       backgroundBodyTopCss: Math.round(
         Number.parseFloat(backgroundStyles.getPropertyValue('--canvas-group-body-top'))
       ),
@@ -11834,7 +11831,7 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
   expect(groupPanelStyles.backgroundAfterBorderBottomWidth).toBe('1px');
   expect(Number.parseFloat(groupPanelStyles.backgroundBeforeBorderTopLeftRadius)).toBe(0);
   expect(Number.parseFloat(groupPanelStyles.backgroundAfterBorderBottomLeftRadius)).toBe(0);
-  expect(groupPanelStyles.backgroundTopRightCornerColor).toBe('transparent');
+  expect(groupPanelStyles.backgroundTitleCoversWidth).toBe(true);
   expect(groupPanelStyles.backgroundBoxShadow).toBe('none');
   expect(groupPanelStyles.backgroundLayerZIndex).toBe('-1');
   expect(groupPanelStyles.backgroundSharesViewportWithNodes).toBe(true);
@@ -11894,22 +11891,19 @@ test('canvas groups render, rename, and post group actions', async ({ page }) =>
       titlebarTop: Math.round(titlebarRect.top - frameRect.top)
     };
   });
-  expect(groupToolbarLayout.toolbarLeft).toBe(groupToolbarLayout.titlebarRight);
-  expect(groupToolbarLayout.toolbarTop).toBe(groupToolbarLayout.titlebarTop);
+  expect(groupToolbarLayout.titlebarRight).toBe(groupToolbarLayout.frameWidth);
+  expect(groupToolbarLayout.toolbarLeft).toBeLessThan(groupToolbarLayout.titlebarRight);
+  expect(groupToolbarLayout.toolbarTop).toBeGreaterThanOrEqual(groupToolbarLayout.titlebarTop);
   expect(groupToolbarLayout.toolbarRight).toBeLessThanOrEqual(groupToolbarLayout.frameWidth);
   expect(groupToolbarLayout.toolbarWidth).toBeLessThan(280);
-  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveText('取消分组');
-  await expect(groupFrame.locator('.canvas-group-split-danger')).toHaveText('删除分组');
-  await groupFrame.locator('.canvas-group-split-danger').click();
+  await expect(groupFrame.locator('.canvas-group-toolbar button')).toHaveCount(1);
+  await expect(groupFrame.locator('.canvas-group-toolbar .action-button.danger')).toHaveText('删除分组');
+  await groupFrame.locator('.canvas-group-toolbar button').click();
   const deleteGroupMessage = await waitForPostedMessageByType(page, 'webview/deleteGroup');
   expect(deleteGroupMessage.payload).toEqual({ groupId: 'group-1' });
-  await clearPostedMessages(page);
-
-  await groupFrame.locator('.canvas-group-titlebar').click();
-  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
-  await groupFrame.locator('.canvas-group-split-primary').click();
-  const ungroupMessage = await waitForPostedMessageByType(page, 'webview/ungroup');
-  expect(ungroupMessage.payload).toEqual({ groupId: 'group-1' });
+  expect((await readPersistedUiState(page)).selectedGroupId).toBe('group-1');
+  expect(await readPostedMessagesByType(page, 'webview/ungroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
 });
 
 test('canvas group title exposes the full title when truncated like node titles', async ({ page }) => {
@@ -12241,11 +12235,13 @@ test('workspace root watermark keeps overview-scale text when the title chrome i
     };
   });
 
-  expect(watermarkStyle.titleReadableScale).toBeLessThan(1);
-  expect(watermarkStyle.titleReadableScale).toBeLessThan(watermarkStyle.watermarkReadableScale / 3);
+  expect(watermarkStyle.titleReadableScale).toBeCloseTo(1, 5);
+  expect(watermarkStyle.titleFontSize).toBeCloseTo(12, 5);
+  expect(watermarkStyle.viewportZoom).toBeLessThan(1);
+  expect(watermarkStyle.titleReadableScale).toBeLessThan(watermarkStyle.watermarkReadableScale);
   expect(watermarkStyle.watermarkReadableScale).toBeCloseTo(1 / watermarkStyle.viewportZoom, 1);
   expect(watermarkStyle.watermarkFontSize).toBeCloseTo(12 / watermarkStyle.viewportZoom, 1);
-  expect(watermarkStyle.watermarkFontSize).toBeGreaterThan(watermarkStyle.titleFontSize * 3);
+  expect(watermarkStyle.watermarkFontSize).toBeGreaterThan(watermarkStyle.titleFontSize);
   expect(watermarkStyle.labelFontSize).toBeCloseTo(watermarkStyle.watermarkFontSize, 1);
   expect(watermarkStyle.maskImage).toContain('data:image/svg+xml');
   expect(watermarkStyle.maskImage).toContain('dsc-test-02');
@@ -12370,8 +12366,7 @@ test('workspace root group title reuses regular group title chrome without renam
   await expect
     .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
     .toBe('workspace-root-a');
-  await expect(rootFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
-  await expect(rootFrame.locator('.canvas-group-split-danger')).toHaveCount(0);
+  await expect(rootFrame.locator('.canvas-group-toolbar button')).toHaveCount(0);
 
   await clearPostedMessages(page);
   await rootTitle.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
@@ -12465,6 +12460,79 @@ for (const groupFixture of [
   });
 }
 
+for (const zoom of [0.4, 0.5, 1, 1.8]) {
+  test(`double-clicking newly selected group right header space focuses without deleting at zoom ${zoom}`, async ({ page }) => {
+    await openHarness(page, { persistedState: { viewport: { x: 30, y: 60, zoom } } });
+    const group = {
+      id: 'group-right-header-focus', title: 'X',
+      position: { x: 200, y: 200 }, size: { width: 620, height: 420 }
+    };
+    await bootstrap(page, createGroupFocusCanvasState(group));
+    const frame = page.locator(`[data-group-id="${group.id}"]`);
+    await expect(frame.locator('.canvas-group-toolbar')).toHaveCount(0);
+    const beforeGeometry = await readGroupCanvasGeometry(page, group.id);
+    const beforeViewport = await readCanvasViewport(page);
+    const headerBox = await frame.locator('.canvas-group-titlebar').boundingBox();
+    await clearPostedMessages(page);
+    await page.mouse.dblclick(headerBox.x + headerBox.width - 20, headerBox.y + headerBox.height / 2);
+    await waitForNodeFocusAnimation(page);
+    expect(await readPostedMessagesByType(page, 'webview/deleteGroup')).toEqual([]);
+    expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+    expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+    expect(await readCanvasViewport(page)).not.toEqual(beforeViewport);
+    expect(await readGroupCanvasGeometry(page, group.id)).toEqual(beforeGeometry);
+    await expectGroupCenteredInViewport(page, group.id);
+    await clearPostedMessages(page);
+    await frame.locator('.canvas-group-toolbar button').click();
+    expect((await waitForPostedMessageByType(page, 'webview/deleteGroup')).payload.groupId).toBe(group.id);
+  });
+}
+
+test('right header second press drags across the newly mounted delete button without deleting', async ({ page }) => {
+  await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+  const group = {
+    id: 'group-right-header-drag', title: 'X',
+    position: { x: 200, y: 200 }, size: { width: 620, height: 420 }
+  };
+  await bootstrap(page, createGroupFocusCanvasState(group));
+  const frame = page.locator(`[data-group-id="${group.id}"]`);
+  const headerBox = await frame.locator('.canvas-group-titlebar').boundingBox();
+  const pointer = { x: headerBox.x + headerBox.width - 20, y: headerBox.y + headerBox.height / 2 };
+  await clearPostedMessages(page);
+  await page.mouse.click(pointer.x, pointer.y);
+  await expect(frame.locator('.canvas-group-toolbar button')).toBeVisible();
+  const beforeViewport = await readCanvasViewport(page);
+  await page.mouse.down();
+  await page.mouse.move(pointer.x + 90, pointer.y + 60, { steps: 5 });
+  await page.mouse.up();
+  expect((await waitForPostedMessageByType(page, 'webview/moveGroup')).payload.position).toEqual({ x: 290, y: 260 });
+  expect(await readPostedMessagesByType(page, 'webview/deleteGroup')).toEqual([]);
+  expect(await readCanvasViewport(page)).toEqual(beforeViewport);
+});
+
+for (const key of ['Enter', 'Space']) {
+  test(`newly mounted group delete button keeps ${key} activation after a header click`, async ({ page }) => {
+    await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+    const group = {
+      id: 'group-right-header-keyboard', title: 'X',
+      position: { x: 200, y: 200 }, size: { width: 620, height: 420 }
+    };
+    await bootstrap(page, createGroupFocusCanvasState(group));
+    const frame = page.locator(`[data-group-id="${group.id}"]`);
+    const headerBox = await frame.locator('.canvas-group-titlebar').boundingBox();
+    const beforeViewport = await readCanvasViewport(page);
+    await clearPostedMessages(page);
+    await page.mouse.click(headerBox.x + headerBox.width - 20, headerBox.y + headerBox.height / 2);
+    const button = frame.locator('.canvas-group-toolbar button');
+    await button.focus();
+    await button.press(key);
+    expect((await waitForPostedMessageByType(page, 'webview/deleteGroup')).payload.groupId).toBe(group.id);
+    expect(await readPostedMessagesByType(page, 'webview/deleteGroup')).toHaveLength(1);
+    expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+    expect(await readCanvasViewport(page)).toEqual(beforeViewport);
+  });
+}
+
 test('double-clicking group body blank area focuses the existing group', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 620 });
   await openHarness(page, {
@@ -12507,6 +12575,113 @@ test('double-clicking group body blank area focuses the existing group', async (
   expect(await readPostedMessagesByType(page, 'webview/createEmptyGroup')).toEqual([]);
   await expectGroupCenteredInViewport(page, group.id);
 });
+
+for (const zoom of [0.4, 0.5, 1, 1.8]) {
+  test(`group header stays full width after selection and rename at zoom ${zoom}`, async ({ page }) => {
+    await openHarness(page, { persistedState: { viewport: { x: 50, y: 80, zoom } } });
+    await applyWorkbenchTheme(page, zoom < 1 ? 'light' : 'dark');
+    const state = createEmptyCanvasState();
+    state.groups = [{ id: 'group-header', title: 'Short', position: { x: 120, y: 140 }, size: { width: 360, height: 260 } }];
+    await bootstrap(page, state);
+    const frame = page.locator('[data-group-id="group-header"]');
+    const header = frame.locator('.canvas-group-titlebar');
+    const initial = await header.boundingBox();
+    expect(initial.width).toBeCloseTo((await frame.boundingBox()).width, 1);
+    await header.click();
+    expectBoxEdgesClose(await header.boundingBox(), initial);
+    const button = frame.locator('.canvas-group-toolbar .action-button');
+    await expect(button).toBeVisible();
+    await button.focus();
+    await expect(button).toBeFocused();
+    await clearPostedMessages(page);
+    await button.press('Enter');
+    expect((await waitForPostedMessageByType(page, 'webview/deleteGroup')).payload.groupId).toBe('group-header');
+    expect((await readPersistedUiState(page)).selectedGroupId).toBe('group-header');
+    state.groups[0].title = 'A very long group title '.repeat(15).trim();
+    await page.evaluate((nextState) => {
+      window.__devSessionCanvasHarness.dispatchHostMessage({ type: 'host/stateUpdated', payload: nextState });
+    }, { state, runtime: createRuntimeContext() });
+    await expect(frame.locator('.window-title-text')).toHaveText(state.groups[0].title);
+    expectBoxEdgesClose(await header.boundingBox(), initial);
+    const buttonBox = await button.boundingBox();
+    const textBox = await frame.locator('.window-title-text').boundingBox();
+    const buttonTopGap = buttonBox.y - initial.y;
+    const buttonBottomGap = initial.y + initial.height - buttonBox.y - buttonBox.height;
+    expect(buttonTopGap).toBeGreaterThan(initial.height / 10);
+    expect(buttonBottomGap).toBeGreaterThan(initial.height / 10);
+    expect(buttonTopGap).toBeCloseTo(buttonBottomGap, 1);
+    expect(textBox.x + textBox.width).toBeLessThanOrEqual(buttonBox.x);
+    expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(initial.x + initial.width);
+    expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  });
+}
+
+for (const dragTarget of ['text', 'blank', 'workspace-root']) {
+  test(`first press on group header ${dragTarget} moves the group and its members`, async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+    const state = createEmptyCanvasState();
+    state.groups = [{ id: 'group-first-drag', title: 'First Drag', position: { x: 120, y: 150 }, size: { width: 640, height: 440 } }];
+    if (dragTarget === 'workspace-root') {
+      state.groups[0].role = 'workspace-root';
+      state.groups[0].workspaceRootPath = '/repo/root';
+    }
+    state.nodes = [{ ...createManualNoteNode('note-first-drag', { x: 150, y: 220 }), size: { width: 240, height: 180 }, groupId: 'group-first-drag' }];
+    await bootstrap(page, state);
+    const frame = page.locator('[data-group-id="group-first-drag"]');
+    const surface = frame.locator(dragTarget === 'text' ? '.window-title-text' : '.canvas-group-titlebar');
+    const surfaceBox = await surface.boundingBox();
+    const beforeFrame = await frame.boundingBox();
+    const beforeNode = await nodeById(page, 'note-first-drag').boundingBox();
+    const beforeViewport = await readCanvasViewport(page);
+    const pointer = { x: surfaceBox.x + (dragTarget === 'workspace-root' ? 8 : surfaceBox.width / 2), y: surfaceBox.y + surfaceBox.height / 2 };
+    await clearPostedMessages(page);
+    await page.mouse.move(pointer.x, pointer.y);
+    await page.mouse.down();
+    await page.mouse.move(pointer.x + 90, pointer.y + 60, { steps: 5 });
+    await settleWebview(page, 2);
+    const draftFrame = await frame.boundingBox();
+    const draftNode = await nodeById(page, 'note-first-drag').boundingBox();
+    expect(draftFrame.x - beforeFrame.x).toBeCloseTo(90, 0);
+    expect(draftFrame.y - beforeFrame.y).toBeCloseTo(60, 0);
+    expect(draftNode.x - beforeNode.x).toBeCloseTo(90, 0);
+    expect(draftNode.y - beforeNode.y).toBeCloseTo(60, 0);
+    await page.mouse.up();
+    expect((await waitForPostedMessageByType(page, 'webview/moveGroup')).payload.position).toEqual({ x: 210, y: 210 });
+    expect(await readCanvasViewport(page)).toEqual(beforeViewport);
+    expect(await readPostedMessagesByType(page, 'webview/resizeGroup')).toEqual([]);
+  });
+}
+
+for (const cancellation of ['blur', 'pointercancel']) {
+  test(`group header first drag rolls back on ${cancellation}`, async ({ page }) => {
+    await openHarness(page, { persistedState: { viewport: { x: 0, y: 0, zoom: 1 } } });
+    const state = createEmptyCanvasState();
+    state.groups = [{ id: 'group-cancel', title: 'Cancel Drag', position: { x: 150, y: 180 }, size: { width: 500, height: 400 } }];
+    await bootstrap(page, state);
+    const frame = page.locator('[data-group-id="group-cancel"]');
+    const before = await frame.boundingBox();
+    const beforeViewport = await readCanvasViewport(page);
+    const headerBox = await frame.locator('.canvas-group-titlebar').boundingBox();
+    await clearPostedMessages(page);
+    await page.mouse.move(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(headerBox.x + headerBox.width / 2 + 80, headerBox.y + headerBox.height / 2 + 50, { steps: 4 });
+    await expect.poll(async () => (await frame.boundingBox()).x).toBeCloseTo(before.x + 80, 0);
+    await frame.evaluate((element, eventType) => {
+      if (eventType === 'blur') {
+        window.dispatchEvent(new Event('blur'));
+      } else {
+        element.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
+      }
+    }, cancellation);
+    await page.mouse.up();
+    await expect.poll(async () => (await frame.boundingBox()).x).toBeCloseTo(before.x, 0);
+    expectBoxEdgesClose(await frame.boundingBox(), before);
+    expect(await readCanvasViewport(page)).toEqual(beforeViewport);
+    expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  });
+}
 
 test('quick drag after selecting a group moves it and suppresses the following title double-click focus', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 620 });
@@ -12682,10 +12857,8 @@ test('workspace root group title counter-scales like regular group titles below 
   expect(titleChrome.rootTitlebarHeight).toBeGreaterThanOrEqual(24);
   expect(titleChrome.rootFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
   expect(titleChrome.regularFontSize * titleChrome.zoom).toBeCloseTo(12, 1);
-  // "Frontend" stays at the 112px minimum for a root. The regular tab
-  // reserves another 28px for editing, putting its natural width at 116px.
-  expect(titleChrome.rootTitlebarWidth).toBeCloseTo(112, 1);
-  expect(titleChrome.regularTitlebarWidth).toBeCloseTo(116, 1);
+  expect(titleChrome.rootTitlebarWidth).toBeCloseTo(2800 * titleChrome.zoom, 1);
+  expect(titleChrome.regularTitlebarWidth).toBeCloseTo(2800 * titleChrome.zoom, 1);
 });
 
 test('workspace root group resize commit survives host refresh and follow-up selection without geometry drift', async ({ page }) => {
@@ -12861,7 +13034,7 @@ test('workspace root group resize draft is replaced by repaired host geometry af
   await clearPostedMessages(page);
   await page.locator('[data-group-id="workspace-root-b"] .canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
   await settleWebview(page, 2);
-  await rootFrame.locator('.canvas-group-titlebar').click({ position: { x: 12, y: 14 } });
+  await rootFrame.locator('.canvas-group-titlebar').click();
   await settleWebview(page, 3);
 
   expect(await readGroupCanvasGeometry(page, 'workspace-root-a')).toEqual({
@@ -13427,10 +13600,10 @@ test('canvas group body blank area selects the group and preserves right-click m
   await bootstrap(page, state, createRuntimeContext());
 
   const groupFrame = page.locator('[data-group-id="group-1"]');
-  await expect(groupFrame.locator('.canvas-group-split-primary')).toHaveCount(0);
+  await expect(groupFrame.locator('.canvas-group-toolbar button')).toHaveCount(0);
 
   await page.mouse.click(690, 580);
-  await expect(groupFrame.locator('.canvas-group-split-primary')).toBeVisible();
+  await expect(groupFrame.locator('.canvas-group-toolbar button')).toBeVisible();
   await expect
     .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
     .toBe('group-1');
@@ -13872,7 +14045,7 @@ test('canvas group border stroke stays screen-stable across zoom levels', async 
   expect(zoomedChrome.viewportTransform).toContain('scale(0.5)');
   expect(Number.parseFloat(zoomedChrome.backgroundBeforeBorderTopWidth)).toBeCloseTo(2, 1);
   expect(Number.parseFloat(zoomedChrome.backgroundAfterBorderBottomWidth)).toBeCloseTo(2, 1);
-  expect(Number.parseFloat(zoomedChrome.frameBorderTopWidth)).toBeCloseTo(2, 1);
+  expect(Number.parseFloat(zoomedChrome.frameBorderTopWidth)).toBe(0);
   expect(Number.parseFloat(zoomedChrome.selectedLineBorderTopWidth)).toBeCloseTo(4, 1);
 });
 
@@ -13916,8 +14089,7 @@ test('canvas group title and action buttons only counter-scale while zooming out
       const titlebar = frame.querySelector('.canvas-group-titlebar');
       const titleInput = frame.querySelector('.canvas-group-title .window-title-input');
       const toolbar = frame.querySelector('.canvas-group-toolbar');
-      const primaryButton = frame.querySelector('.canvas-group-split-primary');
-      const dangerButton = frame.querySelector('.canvas-group-split-danger');
+      const dangerButton = frame.querySelector('.canvas-group-toolbar .action-button.danger');
       const editButton = frame.querySelector('.window-title-edit-button');
       const titleText = frame.querySelector('.window-title-text');
       if (
@@ -13925,7 +14097,6 @@ test('canvas group title and action buttons only counter-scale while zooming out
         !(titlebar instanceof HTMLElement) ||
         !(titleInput instanceof HTMLElement) ||
         !(toolbar instanceof HTMLElement) ||
-        !(primaryButton instanceof HTMLElement) ||
         !(dangerButton instanceof HTMLElement) ||
         !(editButton instanceof HTMLElement) ||
         !(titleText instanceof HTMLElement)
@@ -13936,13 +14107,12 @@ test('canvas group title and action buttons only counter-scale while zooming out
       const titlebarRect = titlebar.getBoundingClientRect();
       const titleInputRect = titleInput.getBoundingClientRect();
       const toolbarRect = toolbar.getBoundingClientRect();
-      const primaryRect = primaryButton.getBoundingClientRect();
       const dangerRect = dangerButton.getBoundingClientRect();
       const editRect = editButton.getBoundingClientRect();
       const textRect = titleText.getBoundingClientRect();
       const titleStyles = getComputedStyle(titlebar);
       const inputStyles = getComputedStyle(titlebar.querySelector('.window-title-input'));
-      const buttonStyles = getComputedStyle(primaryButton);
+      const buttonStyles = getComputedStyle(dangerButton);
       return {
         frameWidth: frameRect.width,
         bodyTopOffset: Number.parseFloat(getComputedStyle(background).getPropertyValue('--canvas-group-body-top')) * (frameRect.height / frame.offsetHeight),
@@ -13959,7 +14129,6 @@ test('canvas group title and action buttons only counter-scale while zooming out
         buttonFontSize: Number.parseFloat(buttonStyles.fontSize),
         titlePaddingLeft: Number.parseFloat(titleStyles.paddingLeft),
         buttonPaddingLeft: Number.parseFloat(buttonStyles.paddingLeft),
-        primaryButtonWidth: primaryRect.width,
         dangerButtonWidth: dangerRect.width,
         editButtonLocalWidth: editButton.offsetWidth,
         editButtonLocalHeight: editButton.offsetHeight,
@@ -13983,32 +14152,28 @@ test('canvas group title and action buttons only counter-scale while zooming out
   };
 
   const narrowLayout = await readGroupChromeLayout('group-1');
-  // The 235px title budget (including edit) and 138px toolbar share a
-  // 180px screen width at zoom 0.5: the 28px title renders at about 13.51px.
-  expect(narrowLayout.titlebarHeight).toBeCloseTo(13.51, 1);
-  expect(narrowLayout.titlebarHeight).toBeLessThan(28);
+  expect(narrowLayout.titlebarHeight).toBeCloseTo(36, 1);
   expect(narrowLayout.titlebarTop + narrowLayout.titlebarHeight).toBeCloseTo(narrowLayout.bodyTopOffset, -1);
   expect(narrowLayout.toolbarHeight).toBeLessThanOrEqual(narrowLayout.titlebarHeight + 2);
-  expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.toolbarLeft, 1);
+  expect(narrowLayout.titlebarRight).toBeCloseTo(narrowLayout.frameWidth, 1);
   expect(narrowLayout.toolbarRight).toBeLessThanOrEqual(narrowLayout.frameWidth + 1);
-  // Allow the one-pixel frame border plus subpixel layout rounding.
-  expect(narrowLayout.titlebarWidth + narrowLayout.toolbarWidth).toBeGreaterThanOrEqual(narrowLayout.frameWidth - 1.1);
-  expect(narrowLayout.primaryButtonWidth).toBeGreaterThan(0);
+  expect(narrowLayout.titlebarWidth).toBeCloseTo(narrowLayout.frameWidth, 1);
   expect(narrowLayout.dangerButtonWidth).toBeGreaterThan(0);
 
   const wideLayout = await readGroupChromeLayout('group-2');
-  expect(wideLayout.titlebarHeight).toBeCloseTo(28, 1);
+  expect(wideLayout.titlebarHeight).toBeCloseTo(36, 1);
   expect(wideLayout.titlebarTop).toBeLessThan(0);
   expect(wideLayout.titlebarTop + wideLayout.titlebarHeight).toBeCloseTo(wideLayout.bodyTopOffset, -1);
   expect(wideLayout.titleFontSize * 0.5).toBeCloseTo(12, 1);
   expect(wideLayout.buttonFontSize * 0.5).toBeCloseTo(11, 1);
   expect(wideLayout.titlePaddingLeft * 0.5).toBeCloseTo(12, 1);
   expect(wideLayout.buttonPaddingLeft * 0.5).toBeCloseTo(8, 1);
-  expect(wideLayout.titlebarRight).toBeCloseTo(wideLayout.toolbarLeft, 1);
-  expect(wideLayout.toolbarRight).toBeLessThan(wideLayout.frameWidth - 200);
-  expect(wideLayout.toolbarWidth).toBeGreaterThan(130);
-  expect(wideLayout.toolbarWidth).toBeLessThan(300);
-  expect(wideLayout.titlebarWidth + wideLayout.toolbarWidth).toBeLessThan(wideLayout.frameWidth);
+  expect(wideLayout.titlebarRight).toBeCloseTo(wideLayout.frameWidth, 1);
+  expect(wideLayout.toolbarRight).toBeLessThanOrEqual(wideLayout.frameWidth);
+  expect(wideLayout.frameWidth - wideLayout.toolbarRight).toBeLessThan(14);
+  expect(wideLayout.toolbarWidth).toBeGreaterThan(24);
+  expect(wideLayout.toolbarWidth).toBeLessThan(100);
+  expect(wideLayout.titlebarWidth).toBeCloseTo(wideLayout.frameWidth, 1);
   expect(wideLayout.titleInputWidth).toBeGreaterThan(70);
 
   for (const layout of [narrowLayout, wideLayout]) {
@@ -14029,13 +14194,13 @@ test('canvas group title and action buttons only counter-scale while zooming out
     frame.style.top = '-10000px';
     frame.style.width = '1000px';
     frame.style.height = '180px';
-    frame.style.setProperty('--canvas-group-title-height', '28px');
+    frame.style.setProperty('--canvas-group-title-height', '36px');
     document.body.append(frame);
     const titlebar = document.createElement('div');
     titlebar.className = 'canvas-group-titlebar';
     titlebar.style.transform = 'scale(1.5)';
     frame.append(titlebar);
-    const result = titlebar.getBoundingClientRect().height / 28;
+    const result = titlebar.getBoundingClientRect().height / 36;
     frame.remove();
     return result;
   });

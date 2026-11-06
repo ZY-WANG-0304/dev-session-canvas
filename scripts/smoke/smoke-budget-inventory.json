@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "sourceHashes": {
-    "tests/vscode-smoke/extension-tests.cjs": "3610dfdf82807c9a6b36cc19eeb3588dd8e9443f99fe3d1d19cf2ccc24a7741e",
+    "tests/vscode-smoke/extension-tests.cjs": "3af73aa2f3e65cd4a8851e1169f865bce7e353613770b3e55627ac4c7507a064",
     "tests/vscode-smoke/real-reopen-tests.cjs": "20b3a73c947f9031b7ac1cd4c0829fb8d9546b3caabd22f50fd27fcf20ce9856",
     "tests/vscode-smoke/two-window-shared-runtime-tests.cjs": "7bfa53d9714beacc83ead94e2bd594e782317051059ab251fe30d7b6ecfba28e",
     "tests/vscode-smoke/legacy-supervisor-upgrade-tests.cjs": "abf93735a6bcc1ce666df1ee8e9c00e89a88880b4bb37dc1a83b77d9d66dad5d",
@@ -11,7 +11,7 @@
     "tests/vscode-smoke/ui-copy-locale-tests.cjs": "8106f350704731baf054a327584675d41800569eae95756feae5acc06e1cecdb",
     "tests/vscode-smoke/template-marketplace-tests.cjs": "83f0737b37ca684a1cbc4d23a63ebe8ba7b164b3aa396ec2ee39d19fe4ff17d4",
     "tests/vscode-smoke/template-marketplace-preview-tests.cjs": "e94eea6c93dfbd3a583dad0701234f193c47eb612ef6c5b0ff065ada175c7919",
-    "scripts/smoke/smoke-catalog.mjs": "cfaf81c8132f8527151ae2aa6c495b5937d3619ef98ebc13f8b1ebe8ffd01419",
+    "scripts/smoke/smoke-catalog.mjs": "1285bd16132f18b5cd236986b4b3c786465dc449f6492ef2c548ae2ef9991233",
     "tests/vscode-smoke/test-helpers.cjs": "9748043331b8480a8a003d9c3796d2b57a9a316f589147882fa6166e645a66b0",
     "tests/vscode-smoke/runtime-retirement.cjs": "c384a029f345e14751d452bd81710532b84bba3ada45742ac50f11ded49ac718",
     "tests/vscode-smoke/canvas-runtime-update.cjs": "e80b12ea41b34f37cdaaaa136bf6d7d20f850c70e43fbb430e248850105de00f",
@@ -19965,7 +19965,7 @@
         },
         {
           "timeoutMs": 20000,
-          "entry": "verifyEmptyGroupDeletionSkipsConfirmation",
+          "entry": "verifyEmptyGroupDeletionConfirmsChoice",
           "file": "tests/vscode-smoke/extension-tests.cjs",
           "times": 1,
           "method": "Conservative call-site sum; original product waits unchanged",
@@ -19994,7 +19994,7 @@
             },
             {
               "file": "tests/vscode-smoke/extension-tests.cjs",
-              "line": 1497,
+              "line": 1496,
               "kind": "original-wait",
               "timeoutMs": 10000,
               "multiplier": 1,

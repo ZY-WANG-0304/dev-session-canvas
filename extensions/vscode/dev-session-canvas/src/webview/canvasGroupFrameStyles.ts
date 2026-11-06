@@ -4,15 +4,10 @@ import type { CanvasGroupSummary } from '../common/protocol';
 
 type CanvasGroupRole = CanvasGroupSummary['role'];
 
-const CANVAS_GROUP_TITLE_BASE_HEIGHT = 28;
-export const CANVAS_GROUP_BODY_TOP_OFFSET = CANVAS_GROUP_TITLE_BASE_HEIGHT;
+const CANVAS_GROUP_TITLE_BASE_HEIGHT = 36;
+export const CANVAS_GROUP_BODY_TOP_OFFSET = 28;
 const CANVAS_GROUP_TITLE_BASE_FONT_SIZE = 12;
-const CANVAS_GROUP_TITLE_BASE_MIN_WIDTH = 112;
-const CANVAS_GROUP_TITLE_HORIZONTAL_PADDING = 32;
-const CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR = 7;
-const CANVAS_GROUP_ACTION_PRIMARY_WIDTH = 76;
-const CANVAS_GROUP_ACTION_DANGER_WIDTH = 62;
-const CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP = 0;
+const CANVAS_GROUP_HEADER_BASE_MIN_WIDTH = 180;
 const CANVAS_ROOT_WATERMARK_BASE_MIN_TILE_WIDTH = 160;
 const CANVAS_ROOT_WATERMARK_BASE_MAX_TILE_WIDTH = 360;
 const CANVAS_ROOT_WATERMARK_BASE_TILE_HEIGHT = 88;
@@ -23,6 +18,7 @@ const CANVAS_ROOT_WATERMARK_BASE_VERTICAL_PADDING = 50;
 const CANVAS_ROOT_WATERMARK_BASE_TILE_GAP_X = 52;
 const CANVAS_ROOT_WATERMARK_BASE_TILE_GAP_Y = 24;
 const CANVAS_ROOT_WATERMARK_MAX_LINES = 2;
+const CANVAS_ROOT_WATERMARK_TEXT_WIDTH_PER_CHAR = 7;
 
 export function isWorkspaceRootCanvasGroupRole(role: CanvasGroupRole | undefined): boolean {
   return role === 'workspace-root';
@@ -64,35 +60,10 @@ function createCanvasGroupChromeStyle(zoom: number, readableScale: number): CSSP
 export function createCanvasGroupFrameStyle(
   group: Pick<CanvasGroupSummary, 'position' | 'size' | 'title' | 'role'>,
   zoom: number,
-  selected = false,
   workspaceRootWatermarksEnabled = true
 ): CSSProperties {
   const isWorkspaceRootGroup = isWorkspaceRootCanvasGroupRole(group.role);
-  const titleEditActionWidth = isWorkspaceRootGroup ? 0 : 28;
-  const titleBaseWidth = Math.max(
-    CANVAS_GROUP_TITLE_BASE_MIN_WIDTH,
-    group.title.length * CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR +
-      CANVAS_GROUP_TITLE_HORIZONTAL_PADDING +
-      titleEditActionWidth
-  );
-  const toolbarScaleBaseWidth = selected
-    ? CANVAS_GROUP_ACTION_PRIMARY_WIDTH + CANVAS_GROUP_ACTION_DANGER_WIDTH
-    : 0;
-  const toolbarRenderBaseWidth = selected && !isWorkspaceRootGroup ? toolbarScaleBaseWidth : 0;
-  const toolbarGap = toolbarRenderBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0;
-  const widthBase = Math.max(
-    1,
-    titleBaseWidth + toolbarScaleBaseWidth + (toolbarScaleBaseWidth > 0 ? CANVAS_GROUP_SELECTED_TITLE_ACTION_GAP : 0)
-  );
-  const readableScale = groupReadableChromeScaleForZoom(zoom, group.size.width / widthBase);
-  const desiredTitleTabWidth = titleBaseWidth * readableScale;
-  const desiredToolbarWidth = toolbarRenderBaseWidth * readableScale;
-  const titleTabWidth = Math.min(desiredTitleTabWidth, group.size.width);
-  const bodyAlignedTitleTabWidth = `min(${titleTabWidth}px, 100%)`;
-  const availableToolbarWidth = Math.max(0, group.size.width - titleTabWidth - toolbarGap);
-  const toolbarWidth = selected && toolbarRenderBaseWidth > 0 && availableToolbarWidth >= 1
-    ? Math.max(1, Math.min(desiredToolbarWidth, availableToolbarWidth))
-    : 0;
+  const readableScale = groupReadableChromeScaleForZoom(zoom, group.size.width / CANVAS_GROUP_HEADER_BASE_MIN_WIDTH);
   const watermarkReadableScale = isWorkspaceRootGroup && workspaceRootWatermarksEnabled
     ? groupReadableChromeScaleForZoom(zoom, Number.POSITIVE_INFINITY)
     : readableScale;
@@ -102,8 +73,6 @@ export function createCanvasGroupFrameStyle(
     : undefined;
   return {
     ...createCanvasGroupChromeStyle(zoom, readableScale),
-    '--canvas-group-title-tab-width': bodyAlignedTitleTabWidth,
-    '--canvas-group-toolbar-width': `${toolbarWidth}px`,
     ...(rootWatermarkPattern
       ? {
           '--canvas-root-watermark-pattern': rootWatermarkPattern.pattern,
@@ -287,7 +256,7 @@ function estimateCanvasRootWatermarkTextWidth(value: string): number {
     } else if (/[ilI1|]/u.test(char)) {
       width += 4;
     } else {
-      width += CANVAS_GROUP_TITLE_TEXT_WIDTH_PER_CHAR;
+      width += CANVAS_ROOT_WATERMARK_TEXT_WIDTH_PER_CHAR;
     }
   }
 

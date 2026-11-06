@@ -223,6 +223,11 @@
       "title": "canvas focus navigation keeps layers aligned with native Tab at 1 vertical"
     },
     {
+      "id": "a03daaf9564243b49609-141b14ca7391988259b1",
+      "file": "webview-harness.spec.mjs",
+      "title": "first press on group header workspace-root moves the group and its members"
+    },
+    {
       "id": "a03daaf9564243b49609-144c13cfecb892db65a3",
       "file": "webview-harness.spec.mjs",
       "title": "pane gallery thumbnail rail follows workspace root order after switching active root"
@@ -246,6 +251,11 @@
       "id": "a03daaf9564243b49609-15ae88f624f748fecc35",
       "file": "webview-harness.spec.mjs",
       "title": "right-click create menu creates the default agent without opening the provider list"
+    },
+    {
+      "id": "a03daaf9564243b49609-15f87cefaf2e2b872a84",
+      "file": "webview-harness.spec.mjs",
+      "title": "group header first drag rolls back on pointercancel"
     },
     {
       "id": "a03daaf9564243b49609-16078b8962adc735118a",
@@ -348,6 +358,16 @@
       "title": "agent mixed hard-wrapped styled paths respect line-limit"
     },
     {
+      "id": "a03daaf9564243b49609-2209d599b8205a921c4c",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking newly selected group right header space focuses without deleting at zoom 0.4"
+    },
+    {
+      "id": "a03daaf9564243b49609-2317a585574ef48298ec",
+      "file": "webview-harness.spec.mjs",
+      "title": "group header first drag rolls back on blur"
+    },
+    {
       "id": "a03daaf9564243b49609-237210e3a63c5b58a4fa",
       "file": "webview-harness.spec.mjs",
       "title": "terminal does not promote trimmed wrapper or punctuation candidates into file links"
@@ -396,6 +416,11 @@
       "id": "a03daaf9564243b49609-2765032ab4bba2510b77",
       "file": "webview-harness.spec.mjs",
       "title": "suspended Claude Agent legacy state no longer exposes restore actions"
+    },
+    {
+      "id": "a03daaf9564243b49609-286334d12dc15fc770bc",
+      "file": "webview-harness.spec.mjs",
+      "title": "first press on group header text moves the group and its members"
     },
     {
       "id": "a03daaf9564243b49609-299228ee2eb384693e0a",
@@ -733,6 +758,16 @@
       "title": "double-clicking note preview blank space falls back to the paragraph markdown source end"
     },
     {
+      "id": "a03daaf9564243b49609-5570df7762e04759192a",
+      "file": "webview-harness.spec.mjs",
+      "title": "group header stays full width after selection and rename at zoom 0.5"
+    },
+    {
+      "id": "a03daaf9564243b49609-56a9a1b0113d9e437990",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking newly selected group right header space focuses without deleting at zoom 1"
+    },
+    {
       "id": "a03daaf9564243b49609-56f3b16d91c66da5964d",
       "file": "webview-harness.spec.mjs",
       "title": "terminal batches thousands of contiguous journal events without losing the tail"
@@ -808,6 +843,11 @@
       "title": "terminal revalidates a hovered hard-wrapped negative file link continuation"
     },
     {
+      "id": "a03daaf9564243b49609-6152946ed01b415dcd19",
+      "file": "webview-harness.spec.mjs",
+      "title": "newly mounted group delete button keeps Space activation after a header click"
+    },
+    {
       "id": "a03daaf9564243b49609-616bd19e6227459cfd42",
       "file": "webview-harness.spec.mjs",
       "title": "agent drag scroll waits for the visual edge under zoomed React Flow"
@@ -828,6 +868,11 @@
       "title": "Claude Agent Ctrl-Z is blocked before execution input reaches the host"
     },
     {
+      "id": "a03daaf9564243b49609-63bc09c6c3306e511c5d",
+      "file": "webview-harness.spec.mjs",
+      "title": "group header stays full width after selection and rename at zoom 1.8"
+    },
+    {
       "id": "a03daaf9564243b49609-6469657e42cef62d9088",
       "file": "webview-harness.spec.mjs",
       "title": "fit view includes empty workspace root sections in multi-root canvases"
@@ -841,6 +886,11 @@
       "id": "a03daaf9564243b49609-65bce97c9919d521753e",
       "file": "webview-harness.spec.mjs",
       "title": "terminal snapshot restore prefers serialized terminal state after rebuild"
+    },
+    {
+      "id": "a03daaf9564243b49609-65cb86702b6a32d3d103",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking newly selected group right header space focuses without deleting at zoom 0.5"
     },
     {
       "id": "a03daaf9564243b49609-66f8b3806edfec460004",
@@ -961,6 +1011,11 @@
       "id": "a03daaf9564243b49609-744cde90f6bf7fb0e57a",
       "file": "webview-harness.spec.mjs",
       "title": "canvas groups render, rename, and post group actions"
+    },
+    {
+      "id": "a03daaf9564243b49609-74996be51cd6d25b675a",
+      "file": "webview-harness.spec.mjs",
+      "title": "group header stays full width after selection and rename at zoom 1"
     },
     {
       "id": "a03daaf9564243b49609-74e6376ee55f30c22559",
@@ -1578,6 +1633,11 @@
       "title": "agent hard-wrapped styled path boundary accepts 2 lines before no-suffix"
     },
     {
+      "id": "a03daaf9564243b49609-bd59b3fe62e125677e8a",
+      "file": "webview-harness.spec.mjs",
+      "title": "first press on group header blank moves the group and its members"
+    },
+    {
       "id": "a03daaf9564243b49609-bdecaccbc246ba762844",
       "file": "webview-harness.spec.mjs",
       "title": "canvas group body context menu creates objects inside the group"
@@ -1738,9 +1798,19 @@
       "title": "unrelated host errors do not cancel pending manual node centering"
     },
     {
+      "id": "a03daaf9564243b49609-cc8eacb9c67c24cdba85",
+      "file": "webview-harness.spec.mjs",
+      "title": "double-clicking newly selected group right header space focuses without deleting at zoom 1.8"
+    },
+    {
       "id": "a03daaf9564243b49609-ccfdfb6c1885c5ff615a",
       "file": "webview-harness.spec.mjs",
       "title": "terminal local sequence probe waits for the original projection and rejects a stale session or expired deadline"
+    },
+    {
+      "id": "a03daaf9564243b49609-cd4c555d330d0adf1248",
+      "file": "webview-harness.spec.mjs",
+      "title": "right header second press drags across the newly mounted delete button without deleting"
     },
     {
       "id": "a03daaf9564243b49609-cd55c3819bf8a1aabf90",
@@ -1876,6 +1946,11 @@
       "id": "a03daaf9564243b49609-db325828504eb940b5bf",
       "file": "webview-harness.spec.mjs",
       "title": "multi-root rootGroups arrange menu defaults to current root and offers workspace scope"
+    },
+    {
+      "id": "a03daaf9564243b49609-db5d598c9dd71d0ce9c5",
+      "file": "webview-harness.spec.mjs",
+      "title": "group header stays full width after selection and rename at zoom 0.4"
     },
     {
       "id": "a03daaf9564243b49609-db7218ff9945a3a902b2",
@@ -2166,6 +2241,11 @@
       "id": "a03daaf9564243b49609-ff6adf9ca60d3321fc18",
       "file": "webview-harness.spec.mjs",
       "title": "agent delays coalesced negative file link refreshes after live output"
+    },
+    {
+      "id": "a03daaf9564243b49609-ff9dbf0cb1943d63e38c",
+      "file": "webview-harness.spec.mjs",
+      "title": "newly mounted group delete button keeps Enter activation after a header click"
     }
   ]
 }

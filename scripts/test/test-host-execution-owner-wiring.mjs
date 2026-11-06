@@ -9873,6 +9873,79 @@ for (const kind of ['agent', 'terminal']) {
   });
 }
 
+for (const contents of ['empty', 'nested', 'root']) {
+  for (const choice of ['cancel', 'keep', 'delete']) {
+    test(`group deletion modal ${contents} ${choice} preserves its explicit scope`, async () => {
+      const context = fixture();
+      const host = context.host;
+      const group = { id: 'group-parent', title: 'Parent', position: { x: 100, y: 100 }, size: { width: 900, height: 700 } };
+      const child = { id: 'group-child', title: 'Child', parentGroupId: group.id, position: { x: 150, y: 200 }, size: { width: 500, height: 400 },
+        ...(contents === 'root' ? { role: 'workspace-root', workspaceRootPath: '/controlled/root' } : {}) };
+      const member = { id: 'agent-member', kind: 'agent', title: 'Member', status: 'idle', summary: '', groupId: child.id,
+        position: { x: 180, y: 260 }, size: { width: 300, height: 240 }, metadata: {} };
+      host.state = { version: 1, updatedAt: '2026-11-06T00:00:00.000Z', nodes: contents === 'empty' ? [] : [member],
+        groups: contents === 'empty' ? [group] : [group, child], edges: [] };
+      const before = structuredClone(host.state);
+      const terminated = [];
+      const messages = [];
+      host.terminateExecutionNodeForDeletion = async node => { terminated.push(node.id); };
+      host.beginNodeDeletionFeedback = () => 'group-test';
+      host.endNodeDeletionFeedback = () => {};
+      host.postMessage = message => messages.push(message);
+      const previousWarning = testWindow.showWarningMessage;
+      let confirmations = 0;
+      testWindow.showWarningMessage = async (message, options, ...items) => {
+        confirmations += 1;
+        assert.equal(options.modal, true);
+        assert.equal(message, 'Delete group "{title}"?');
+        if (contents === 'root') {
+          assert.equal(items.length, 1);
+          assert.equal(items[0].title, 'Delete Outer Group Only and Keep Root Sections');
+        } else {
+          assert.equal(items.length, 2);
+          assert.equal(items[0].title, 'Delete Group Frame Only and Keep Contents');
+          assert.match(items[1].title, /Delete all contained nodes and subgroups/);
+        }
+        return choice === 'cancel' ? undefined : choice === 'keep' ? items[0] : items[1];
+      };
+      try {
+        await host.deleteGroup(group.id);
+        assert.equal(confirmations, 1);
+        assert.deepEqual(messages, []);
+        if (choice === 'cancel' || (contents === 'root' && choice === 'delete')) {
+          assert.deepEqual(host.state, before);
+          assert.equal(context.persisted.length, 0);
+          assert.deepEqual(terminated, []);
+        } else if (choice === 'keep') {
+          assert(!host.state.groups.some(candidate => candidate.id === group.id));
+          assert.deepEqual(host.state.nodes, before.nodes);
+          if (contents !== 'empty') {
+            assert.equal(host.state.groups[0].parentGroupId, undefined);
+            assert.equal(host.state.groups[0].role, child.role);
+            if (contents === 'nested') {
+              assert.deepEqual(host.state.groups[0].position, child.position);
+            }
+          }
+          assert.deepEqual(terminated, []);
+          assert.equal(context.persisted.length, 1);
+        } else {
+          assert.deepEqual(host.state.nodes, []);
+          assert.deepEqual(host.state.groups, []);
+          assert.deepEqual(terminated, contents === 'empty' ? [] : [member.id]);
+          assert.equal(context.persisted.length, 1);
+        }
+        if (contents === 'root') {
+          await host.deleteGroup(child.id);
+          assert.equal(confirmations, 1);
+          assert.equal(messages.at(-1).type, 'host/error');
+        }
+      } finally {
+        testWindow.showWarningMessage = previousWarning;
+      }
+    });
+  }
+}
+
 const { values: testOptions } = parseArgs({ options: { 'name-pattern': { type: 'string' } } });
 const testNameFilter = testOptions['name-pattern'] ?? process.env.DEV_SESSION_CANVAS_HOST_TEST_FILTER;
 const testNamePattern = testNameFilter ? new RegExp(testNameFilter) : undefined;
