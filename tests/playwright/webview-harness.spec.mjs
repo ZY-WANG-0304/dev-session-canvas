@@ -11976,9 +11976,8 @@ test('workspace root group keeps the root path tooltip when its display title is
   await bootstrap(page, state, createRuntimeContext());
   await settleWebview(page, 2);
 
-  const rootTitle = page.locator('[data-group-id="workspace-root-long-title"] input[data-probe-field="title"]');
-  await expect(rootTitle).toHaveValue(displayTitle);
-  await expect(rootTitle).toHaveAttribute('readonly', '');
+  const rootTitle = page.locator('[data-group-id="workspace-root-long-title"] .window-title-text');
+  await expect(rootTitle).toHaveText(displayTitle);
   await expect
     .poll(async () =>
       rootTitle.evaluate((title) => title.scrollWidth > title.clientWidth + 1)
@@ -12320,10 +12319,15 @@ test('workspace root group title reuses regular group title chrome without renam
 
   const rootFrame = page.locator('[data-group-id="workspace-root-a"]');
   const regularFrame = page.locator('[data-group-id="group-regular"]');
-  const rootTitle = rootFrame.locator('input[data-probe-field="title"]');
+  const rootTitle = rootFrame.locator('.window-title-text');
+  const rootInput = rootFrame.locator('input[data-probe-field="title"]');
   const regularTitle = regularFrame.locator('.window-title-text');
-  await expect(rootTitle).toHaveValue('Frontend');
-  await expect(rootTitle).toHaveAttribute('readonly', '');
+  await expect(rootTitle).toHaveText('Frontend');
+  await expect(rootTitle).toHaveCSS('user-select', 'none');
+  await expect(rootInput).toHaveAttribute('readonly', '');
+  await expect(rootInput).toHaveAttribute('aria-hidden', 'true');
+  await expect(rootInput).toHaveAttribute('tabindex', '-1');
+  await expect(rootInput).toHaveCSS('pointer-events', 'none');
   await expect(rootTitle).toHaveAttribute('title', '/repo/frontend');
   await expect(regularTitle).toHaveText('Frontend');
   await expect(rootFrame.locator('.window-title-edit-button')).toHaveCount(0);
@@ -12331,13 +12335,13 @@ test('workspace root group title reuses regular group title chrome without renam
 
   const titleChrome = await rootFrame.evaluate((frame) => {
     const regularFrame = document.querySelector('[data-group-id="group-regular"]');
-    const rootInput = frame.querySelector('[data-probe-field="title"]');
-    const regularInput = regularFrame?.querySelector('[data-probe-field="title"]');
+    const rootInput = frame.querySelector('.window-title-text');
+    const regularInput = regularFrame?.querySelector('.window-title-text');
     const rootTitlebar = frame.querySelector('.canvas-group-titlebar');
     const regularTitlebar = regularFrame?.querySelector('.canvas-group-titlebar');
     if (
-      !(rootInput instanceof HTMLInputElement) ||
-      !(regularInput instanceof HTMLInputElement) ||
+      !(rootInput instanceof HTMLElement) ||
+      !(regularInput instanceof HTMLElement) ||
       !(rootTitlebar instanceof HTMLElement) ||
       !(regularTitlebar instanceof HTMLElement)
     ) {
@@ -12359,7 +12363,7 @@ test('workspace root group title reuses regular group title chrome without renam
     };
   });
   expect(titleChrome.rootTagName).toBe(titleChrome.regularTagName);
-  expect(titleChrome.rootDataInteractive).toBe('true');
+  expect(titleChrome.rootDataInteractive).toBeUndefined();
   expect(titleChrome.regularDataInteractive).toBeUndefined();
   expect(titleChrome.rootFontSize).toBeCloseTo(titleChrome.regularFontSize, 1);
   expect(titleChrome.rootFontWeight).toBe(titleChrome.regularFontWeight);
@@ -12371,13 +12375,16 @@ test('workspace root group title reuses regular group title chrome without renam
     .poll(async () => (await readPersistedUiState(page)).selectedGroupId)
     .toBe('workspace-root-a');
   await expect(rootFrame.locator('.canvas-group-toolbar button')).toHaveCount(0);
+  await expect(rootInput).not.toBeFocused();
+  await expect(rootTitle).not.toBeFocused();
+  await expect(rootFrame.locator('.window-title')).toHaveAttribute('data-title-editing', 'false');
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
 
   await clearPostedMessages(page);
-  await rootTitle.press(`${PRIMARY_ACCELERATOR_KEY}+KeyA`);
-  await rootTitle.pressSequentially('Renamed Root');
-  await rootTitle.press('Enter');
+  await page.keyboard.type('Renamed Root');
+  await page.keyboard.press('Enter');
   await settleWebview(page, 1);
-  await expect(rootTitle).toHaveValue('Frontend');
+  await expect(rootTitle).toHaveText('Frontend');
   await expect
     .poll(async () => (await readPostedMessagesByType(page, 'webview/updateGroupTitle')).length)
     .toBe(0);
@@ -12389,14 +12396,29 @@ test('workspace root group title reuses regular group title chrome without renam
   await page.mouse.move(rootTitleBox.x + 8, rootTitleBox.y + rootTitleBox.height / 2);
   await page.mouse.down();
   await page.mouse.move(rootTitleBox.x + 88, rootTitleBox.y + rootTitleBox.height / 2, { steps: 4 });
+  await settleWebview(page, 1);
+  const rootFrameBoxDuringTitleDrag = await rootFrame.boundingBox();
+  expect(rootFrameBoxDuringTitleDrag).not.toBeNull();
+  expectBoxEdgesClose(rootFrameBoxDuringTitleDrag, { ...rootFrameBox, x: rootFrameBox.x + 80 });
   await page.mouse.up();
   await settleWebview(page, 1);
   await expect
     .poll(async () => (await readPostedMessagesByType(page, 'webview/moveGroup')).length)
-    .toBe(0);
-  const rootFrameBoxAfterTitleDrag = await rootFrame.boundingBox();
-  expect(rootFrameBoxAfterTitleDrag).not.toBeNull();
-  expectBoxEdgesClose(rootFrameBoxAfterTitleDrag, rootFrameBox);
+    .toBe(1);
+  expect((await readPostedMessagesByType(page, 'webview/moveGroup'))[0].payload).toMatchObject({
+    groupId: 'workspace-root-a',
+    position: { x: 280, y: 120 }
+  });
+  await expect(rootInput).not.toBeFocused();
+  await expect(rootTitle).not.toBeFocused();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
+
+  await clearPostedMessages(page);
+  await rootTitle.dblclick();
+  await waitForNodeFocusAnimation(page);
+  await expectGroupCenteredInViewport(page, 'workspace-root-a');
+  expect(await readPostedMessagesByType(page, 'webview/moveGroup')).toEqual([]);
+  expect(await readPostedMessagesByType(page, 'webview/updateGroupTitle')).toEqual([]);
 });
 
 for (const groupFixture of [
@@ -12633,7 +12655,7 @@ for (const dragTarget of ['text', 'blank', 'workspace-root']) {
     state.nodes = [{ ...createManualNoteNode('note-first-drag', { x: 150, y: 220 }), size: { width: 240, height: 180 }, groupId: 'group-first-drag' }];
     await bootstrap(page, state);
     const frame = page.locator('[data-group-id="group-first-drag"]');
-    const surface = frame.locator(dragTarget === 'text' ? '.window-title-text' : '.canvas-group-titlebar');
+    const surface = frame.locator(dragTarget === 'text' ? '.window-title-text' : dragTarget === 'workspace-root' ? '.window-title-main-row' : '.canvas-group-titlebar');
     const surfaceBox = await surface.boundingBox();
     const beforeFrame = await frame.boundingBox();
     const beforeNode = await nodeById(page, 'note-first-drag').boundingBox();
@@ -13234,18 +13256,18 @@ for (const key of ['Tab', 'Shift+Tab']) {
       '[data-node-id="tab-note"] .note-markdown-preview a[href]',
       '[data-node-id="tab-note"] .task-list-item-checkbox',
       '.react-flow__edge[data-testid="rf__edge-tab-edge"]',
-      '[data-group-id="tab-root"] .window-title-input[readonly]'
+      '[data-group-id="tab-root"] .window-title-text[tabindex="0"]'
     ];
     const visited = new Set();
     let nodeHandlesSeen = false;
-    await page.locator('[data-group-id="tab-root"] .window-title-input').focus();
+    await page.locator('[data-group-id="tab-root"] .window-title-text').focus();
     for (let attempt = 0; attempt < 60 && visited.size < requiredSelectors.length; attempt += 1) {
       await page.keyboard.press(key);
       const focused = await page.evaluate((selectors) => {
         const active = document.activeElement;
         const handles = Array.from(document.querySelectorAll('[data-node-id="tab-note"] [data-node-resize-direction]'));
         return {
-          excluded: active.matches('[data-node-resize-direction], [data-group-resize-direction], .note-markdown-preview'),
+          excluded: active.matches('[data-node-resize-direction], [data-group-resize-direction], .note-markdown-preview, .window-title-input[aria-hidden="true"]'),
           matches: selectors.filter((selector) => active.matches(selector)),
           nodeHandleTabIndexes: handles.map((element) => element.tabIndex)
         };

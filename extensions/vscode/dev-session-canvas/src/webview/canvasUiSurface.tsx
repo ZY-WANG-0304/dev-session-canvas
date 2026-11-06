@@ -172,6 +172,7 @@ export function ChromeTitleEditor(props: {
 
   const displayTitle = draft || props.placeholder;
   const titleReadOnly = props.readOnly === true;
+  const showTitleInput = isEditing || (titleReadOnly && !props.groupTitleDragHandle);
   const overflowTitle = useOverflowAwareElementTitle(
     titleElementRef,
     displayTitle,
@@ -230,15 +231,15 @@ export function ChromeTitleEditor(props: {
           <input
             ref={(element) => {
               inputRef.current = element;
-              if (isEditing || titleReadOnly) {
+              if (showTitleInput) {
                 titleElementRef.current = element;
               }
             }}
-            className={`window-title-input nodrag nopan${isEditing || titleReadOnly ? '' : ' is-title-display-measure'}`}
-            data-node-interactive={isEditing || titleReadOnly ? 'true' : undefined}
+            className={`window-title-input nodrag nopan${showTitleInput ? '' : ' is-title-display-measure'}`}
+            data-node-interactive={showTitleInput ? 'true' : undefined}
             data-probe-field="title"
-            aria-hidden={!isEditing && !titleReadOnly ? true : undefined}
-            tabIndex={isEditing || (titleReadOnly && !overviewInteractionsDisabled) ? undefined : -1}
+            aria-hidden={!showTitleInput ? true : undefined}
+            tabIndex={showTitleInput && !overviewInteractionsDisabled ? undefined : -1}
             value={draft}
             title={overflowTitle ?? props.tooltip}
             readOnly={!isEditing || editingDisabled}
@@ -302,14 +303,15 @@ export function ChromeTitleEditor(props: {
             }}
             placeholder={props.placeholder}
           />
-          {!isEditing && !titleReadOnly ? (
+          {!showTitleInput ? (
             <div className="window-title-display-row">
               <span
                 ref={(element) => {
                   titleElementRef.current = element;
                 }}
                 className={titleTextClassName}
-                data-node-interactive={titleReadOnly ? 'true' : undefined}
+                tabIndex={titleReadOnly && !overviewInteractionsDisabled ? 0 : undefined}
+                onFocus={props.onSelectNode}
                 title={overflowTitle ?? props.tooltip}
               >
                 {displayTitle}
