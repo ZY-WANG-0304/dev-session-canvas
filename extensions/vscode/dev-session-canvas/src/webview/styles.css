@@ -3160,10 +3160,16 @@ body {
 
 .canvas-group-title .window-title-text {
   cursor: grab;
+  user-select: none;
 }
 
 .canvas-group-title .window-title-text:active {
   cursor: grabbing;
+}
+
+.canvas-group-title .window-title-text:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
 }
 
 .canvas-group-border {
