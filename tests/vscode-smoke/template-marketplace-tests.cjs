@@ -46,15 +46,7 @@ async function run() {
 async function verifyMarketplacePanelOperations(fixture) {
   await vscode.commands.executeCommand(COMMAND_IDS.openTemplateMarketplace);
 
-  const listProbe = await waitForMarketplaceProbe((probe) =>
-    probe.view === 'list' &&
-    probe.apiOrigin === fixture.origin &&
-    probe.marketplaceSourceUrl === fixture.sourceUrl &&
-    probe.visibleTemplateNames.includes('Panel Review Loop') &&
-    probe.visibleTemplateNames.includes('Panel Release Checklist') &&
-    probe.installTargetLabels.length > 0 &&
-    probe.buttonTexts.some((text) => /^(?:Install(?: v\d+)?|Update to v\d+|Installed v\d+)$/u.test(text))
-  );
+  const listProbe = await waitForMarketplaceProbe((probe) => isMarketplaceListReady(probe, fixture));
   assert.ok(listProbe.installTargetLabels.length > 0, 'Expected plugin marketplace to expose install targets.');
   assert.ok(listProbe.publisherTexts.some((text) => /Codex Tester/u.test(text)), 'Expected list rows to expose publisher information.');
   assert.ok(
@@ -67,6 +59,7 @@ async function verifyMarketplacePanelOperations(fixture) {
   );
   assert.ok(!listProbe.buttonTexts.some((text) => /Download JSON/u.test(text)), 'Expected VS Code marketplace to omit JSON download actions.');
   assert.match(listProbe.statusText, /^2 templates$/);
+  await verifyMarketplaceListRefreshReadiness(fixture);
 
   const searchProbe = await performMarketplaceAction({ kind: 'search', value: 'review' }, 10000);
   assert.deepStrictEqual(searchProbe.visibleTemplateNames, ['Panel Review Loop']);
@@ -340,6 +333,36 @@ async function verifyMarketplacePanelPublishVersion(fixture) {
     detailProbe.versionMenuItems.some((text) => /Update to v3/u.test(text)),
     `Expected version menu to mention v3. Items: ${JSON.stringify(detailProbe.versionMenuItems)}`
   );
+}
+
+function isMarketplaceListReady(probe, fixture) {
+  return probe.view === 'list' &&
+    probe.apiOrigin === fixture.origin &&
+    probe.marketplaceSourceUrl === fixture.sourceUrl &&
+    probe.visibleTemplateNames.includes('Panel Review Loop') &&
+    probe.visibleTemplateNames.includes('Panel Release Checklist') &&
+    probe.installTargetLabels.length > 0 &&
+    probe.buttonTexts.some((text) => /^(?:Install(?: v\d+)?|Update to v\d+|Installed v\d+)$/u.test(text)) &&
+    /^2 templates$/u.test(probe.statusText);
+}
+
+async function verifyMarketplaceListRefreshReadiness(fixture) {
+  let releaseResponse;
+  fixture.listResponseGate = new Promise((resolve) => { releaseResponse = resolve; });
+  try {
+    await vscode.commands.executeCommand(COMMAND_IDS.openTemplateMarketplace);
+    const loadingProbe = await waitForMarketplaceProbe((probe) =>
+      probe.statusText === 'Loading...' &&
+      isMarketplaceListReady({ ...probe, statusText: '2 templates' }, fixture)
+    );
+    assert.strictEqual(isMarketplaceListReady(loadingProbe, fixture), false,
+      'Visible cached cards must not satisfy list readiness while a refresh is pending.');
+  } finally {
+    releaseResponse();
+    delete fixture.listResponseGate;
+  }
+  const readyProbe = await waitForMarketplaceProbe((probe) => isMarketplaceListReady(probe, fixture));
+  assert.match(readyProbe.statusText, /^2 templates$/);
 }
 
 async function saveCanvasTemplateForTest(name) {
