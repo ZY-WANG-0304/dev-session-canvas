@@ -1148,6 +1148,7 @@ function CanvasGroupFrame(props: {
               key={direction}
               type="button"
               className={`canvas-group-resize-control canvas-group-resize-${direction} nodrag nopan`}
+              tabIndex={-1}
               data-group-resize-direction={direction}
               data-resize-direction={direction}
               aria-label={props.t('canvas.resizeGroup', { direction, title: props.group.title })}

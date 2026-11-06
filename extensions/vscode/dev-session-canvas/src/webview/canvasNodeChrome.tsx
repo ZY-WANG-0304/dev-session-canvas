@@ -404,6 +404,7 @@ export function createCanvasNodeChrome(deps: CanvasNodeChromeDependencies): Canv
             key={direction}
             type="button"
             className={`canvas-node-resize-control canvas-node-resize-${direction} nodrag nopan`}
+            tabIndex={-1}
             data-node-resize-direction={direction}
             aria-label={t('canvas.resizeNode', { direction, title: data.title })}
             style={{ cursor: canvasNodeResizeCursorForDirection(direction) }}

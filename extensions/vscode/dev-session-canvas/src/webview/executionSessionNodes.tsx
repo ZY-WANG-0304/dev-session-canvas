@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, type ComponentType } from 'react';
+import React, { useEffect, useId, useRef, type ComponentType } from 'react';
 import { createExecutionMouseDiagnostics } from './executionMouseDiagnostics';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
@@ -26,7 +26,7 @@ import {
   type ExecutionTerminalResolvedFileLink
 } from '../common/executionTerminalLinks';
 import { canvasOverviewInertProps, CanvasNodeInteractionBoundary, ChromeTitleEditor } from './canvasUiSurface';
-import { stopCanvasEvent } from './canvasDomEvents';
+import { isImeComposingKeyboardEvent, stopCanvasEvent } from './canvasDomEvents';
 import { preserveExecutionLinkOnSelectionRedraw } from './executionTerminalSelectionLinkRendering';
 import { fitTerminalWithCorrection } from './terminalFitConvergence';
 import {
@@ -214,6 +214,33 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     return input.includes('\u001a');
   }
 
+  function TerminalEntryHint({ id }: { id: string }): JSX.Element {
+    return (
+      <div id={id} className="terminal-entry-hint">
+        <span className="terminal-entry-hint-action">
+          <kbd>Enter</kbd>{' '}{deps.t('execution.inputEntryEnter')}
+        </span>
+        {' · '}
+        <span className="terminal-entry-hint-action">
+          <kbd>Tab</kbd>{' '}{deps.t('execution.inputEntryTab')}
+        </span>
+      </div>
+    );
+  }
+
+  function handleTerminalEntryKeyDown(event: React.KeyboardEvent<HTMLDivElement>, nodeId: string): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    stopCanvasEvent(event);
+    if (event.key !== 'Enter' || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+      isImeComposingKeyboardEvent(event)) {
+      return;
+    }
+    event.preventDefault();
+    deps.executionTerminalRegistry.get(nodeId)?.terminal.focus();
+  }
+
   function AgentSessionNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): JSX.Element {
     const { zoom } = useViewport();
     const agentMetadata = data.metadata?.agent;
@@ -256,6 +283,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     const cwdTooltip = formatExecutionCwdTooltip(agentMetadata.cwd, cwdLabel);
     const contextLabel = data.terminalTitle ? `${data.terminalTitle} · ${cwdLabel}` : cwdLabel;
     const contextTooltip = data.terminalTitle ? `${data.terminalTitle} · ${cwdTooltip}` : cwdTooltip;
+    const terminalEntryHintId = useId();
     const frameRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const resizeFrameRef = useRef<number | undefined>(undefined);
@@ -412,6 +440,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       terminal.loadAddon(fitAddon);
       terminal.open(container);
+      if (terminal.textarea) {
+        terminal.textarea.tabIndex = -1;
+      }
       const disposeSelectionLinkRendering = preserveExecutionLinkOnSelectionRedraw(terminal);
       deps.executionTerminalRegistry.set(id, {
         terminal,
@@ -902,6 +933,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             className={`terminal-frame nowheel nodrag nopan ${agentMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyInteractive ? 'is-legacy-interactive' : ''}`}
             data-terminal-projection-mode={agentMetadata.terminalProjectionMode}
             data-node-interactive="true"
+            tabIndex={overviewInteractionsDisabled ? -1 : 0}
+            role="group"
+            aria-label={deps.t('execution.inputEntry')}
+            aria-describedby={terminalEntryHintId}
+            onFocus={(event) => {
+              if (event.target === event.currentTarget) {
+                data.onSelectNode?.(id);
+              }
+            }}
+            onKeyDown={(event) => handleTerminalEntryKeyDown(event, id)}
             {...canvasOverviewInertProps(overviewInteractionsDisabled)}
             onMouseDown={(event) => {
               stopCanvasEvent(event);
@@ -915,6 +956,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             onWheel={stopCanvasEvent}
           >
             <div ref={viewportRef} className="terminal-viewport" />
+            <TerminalEntryHint id={terminalEntryHintId} />
             <deps.NodeOverviewTitle title={data.title} status={displayStatus} />
             {legacyInteractive ? (
               <div className="terminal-legacy-compatibility-notice" role="status">
@@ -995,6 +1037,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
     ]
       .filter(Boolean)
       .join(' ');
+    const terminalEntryHintId = useId();
     const frameRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const autoLaunchRef = useRef<string | null>(null);
@@ -1142,6 +1185,9 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
       });
       terminal.loadAddon(fitAddon);
       terminal.open(container);
+      if (terminal.textarea) {
+        terminal.textarea.tabIndex = -1;
+      }
       const disposeSelectionLinkRendering = preserveExecutionLinkOnSelectionRedraw(terminal);
       deps.executionTerminalRegistry.set(id, {
         terminal,
@@ -1540,6 +1586,16 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             className={`terminal-frame nowheel nodrag nopan ${terminalMetadata.liveSession ? 'is-live' : 'is-idle'} ${legacyInteractive ? 'is-legacy-interactive' : ''}`}
             data-terminal-projection-mode={terminalMetadata.terminalProjectionMode}
             data-node-interactive="true"
+            tabIndex={overviewInteractionsDisabled ? -1 : 0}
+            role="group"
+            aria-label={deps.t('execution.inputEntry')}
+            aria-describedby={terminalEntryHintId}
+            onFocus={(event) => {
+              if (event.target === event.currentTarget) {
+                data.onSelectNode?.(id);
+              }
+            }}
+            onKeyDown={(event) => handleTerminalEntryKeyDown(event, id)}
             {...canvasOverviewInertProps(overviewInteractionsDisabled)}
             onMouseDown={(event) => {
               stopCanvasEvent(event);
@@ -1553,6 +1609,7 @@ export function createExecutionSessionNodeTypes(deps: ExecutionSessionNodeDepend
             onWheel={stopCanvasEvent}
           >
             <div ref={viewportRef} className="terminal-viewport" />
+            <TerminalEntryHint id={terminalEntryHintId} />
             <deps.NodeOverviewTitle title={data.title} status={displayStatus} />
             {legacyInteractive ? (
               <div className="terminal-legacy-compatibility-notice" role="status">

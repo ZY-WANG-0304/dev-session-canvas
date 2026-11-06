@@ -1343,7 +1343,7 @@ function NoteEditableNode({ id, data, xPos, yPos }: NodeProps<CanvasNodeData>): 
               data-node-interactive="true"
               data-probe-field="body"
               data-probe-value={content}
-              tabIndex={overviewInteractionsDisabled ? -1 : 0}
+              tabIndex={-1}
               aria-hidden={overviewInteractionsDisabled ? true : undefined}
               aria-label={t('note.preview.ariaLabel')}
               onFocus={(event) => {

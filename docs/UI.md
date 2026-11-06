@@ -272,6 +272,9 @@ components:
 - widget 使用 VSCode token、1px border、小圆角和轻阴影。
 - 常驻 widget 只能服务导航、定位或当前状态理解。
 - 画布外层不可因焦点发生 DOM 隐式滚动；屏外对象焦点由所属 React Flow 实例平移至可见，不改变 zoom 或对象几何。终端和正文保留内部滚动与键盘语义，边界见 `docs/design-docs/canvas-focus-navigation.md`。
+- Tab / Shift+Tab 逐项经过节点整体、内部控件、连线与只读标题；节点和分组的八个缩放手柄、Note 预览容器不占停靠点。预览内链接和复选框继续参与，鼠标缩放与预览交互保持不变。
+- Agent / Terminal 的 Tab 停靠点是终端入口，而非 xterm 输入框；入口聚焦时在终端正文中央以紧凑浮层显示“Enter 进入终端 · Tab 继续导航”，不挤占正文布局、不拦截鼠标。Enter 只转入输入，不下发此次按键；鼠标点击正文直接进入。进入后隐藏提示并保留终端按键语义，暂不提供新增键盘退出机制。
+- 终端入口提示采用 13px 字号和 8px / 12px 内边距；Enter / Tab 为带底边层次的 `kbd` 键帽，不是按钮，不新增 Tab 停靠点。窄节点允许按键与说明成组换行。
 - 菜单、toolbar、tooltip 和编辑浮层应短生命周期、小面积、低装饰。
 
 ### Feature-Specific Surfaces
