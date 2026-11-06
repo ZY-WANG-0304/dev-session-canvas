@@ -8317,6 +8317,10 @@ test('overview mode keeps hidden node controls out of the keyboard focus path', 
   await clearPostedMessages(page);
 
   const hiddenFocusSnapshots = [];
+  const terminalEntries = page.locator('.terminal-frame');
+  expect(await terminalEntries.count()).toBeGreaterThan(0);
+  expect(await terminalEntries.evaluateAll((elements) => elements.every((element) =>
+    element.tabIndex === -1 && element.hasAttribute('inert')))).toBe(true);
   for (let index = 0; index < 24; index += 1) {
     await page.keyboard.press('Tab');
     const snapshot = await readActiveElementOverviewFocusSnapshot(page);
@@ -13194,6 +13198,74 @@ test('workspace root group selected title chrome keeps nodes inside body while z
   expect(Math.abs(afterResize.titlebarBottomOffsetFromFrame - afterResize.bodyTopOffsetFromFrame)).toBeLessThanOrEqual(2);
 });
 
+for (const key of ['Tab', 'Shift+Tab']) {
+  test(`canvas focus navigation excludes resize handles and note preview with ${key}`, async ({ page }) => {
+    await openHarness(page, {
+      persistedState: {
+        selectedGroupId: 'tab-root',
+        selectedGroupIds: ['tab-root'],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      }
+    });
+    const state = createGroupFocusCanvasState({
+      id: 'tab-root', title: 'Tab Root', role: 'workspace-root', workspaceRootPath: '/repo/frontend',
+      position: { x: 80, y: 100 }, size: { width: 1100, height: 700 }
+    });
+    state.nodes = [
+      { ...createManualNoteNode('tab-note', { x: 180, y: 220 }), groupId: 'tab-root' },
+      { ...createManualNoteNode('tab-other', { x: 700, y: 220 }), groupId: 'tab-root' }
+    ];
+    state.nodes[0].metadata.note.content = '[Documentation](https://example.com)\n\n- [ ] Task';
+    state.edges = [{
+      id: 'tab-edge', sourceNodeId: 'tab-note', targetNodeId: 'tab-other',
+      sourceAnchor: 'right', targetAnchor: 'left', owner: 'user'
+    }];
+    await bootstrap(page, state);
+    const groupHandles = page.locator('[data-group-id="tab-root"] [data-group-resize-direction]');
+    await expect(groupHandles).toHaveCount(8);
+    expect(await groupHandles.evaluateAll((elements) => elements.map((element) => element.tabIndex)))
+      .toEqual(Array(8).fill(-1));
+    const preview = nodeById(page, 'tab-note').locator('.note-markdown-preview');
+    await expect(preview).toHaveAttribute('tabindex', '-1');
+    const requiredSelectors = [
+      '.react-flow__node[data-id="tab-note"]',
+      '[data-node-id="tab-note"] .window-title-edit-button',
+      '[data-node-id="tab-note"] [data-node-action-id="delete"]',
+      '[data-node-id="tab-note"] .note-markdown-preview a[href]',
+      '[data-node-id="tab-note"] .task-list-item-checkbox',
+      '.react-flow__edge[data-testid="rf__edge-tab-edge"]',
+      '[data-group-id="tab-root"] .window-title-input[readonly]'
+    ];
+    const visited = new Set();
+    let nodeHandlesSeen = false;
+    await page.locator('[data-group-id="tab-root"] .window-title-input').focus();
+    for (let attempt = 0; attempt < 60 && visited.size < requiredSelectors.length; attempt += 1) {
+      await page.keyboard.press(key);
+      const focused = await page.evaluate((selectors) => {
+        const active = document.activeElement;
+        const handles = Array.from(document.querySelectorAll('[data-node-id="tab-note"] [data-node-resize-direction]'));
+        return {
+          excluded: active.matches('[data-node-resize-direction], [data-group-resize-direction], .note-markdown-preview'),
+          matches: selectors.filter((selector) => active.matches(selector)),
+          nodeHandleTabIndexes: handles.map((element) => element.tabIndex)
+        };
+      }, requiredSelectors);
+      expect(focused.excluded).toBe(false);
+      for (const selector of focused.matches) {
+        visited.add(selector);
+      }
+      if (focused.nodeHandleTabIndexes.length > 0) {
+        expect(focused.nodeHandleTabIndexes).toEqual(Array(8).fill(-1));
+        nodeHandlesSeen = true;
+      }
+    }
+    expect([...visited].sort()).toEqual([...requiredSelectors].sort());
+    expect(nodeHandlesSeen).toBe(true);
+    await preview.dblclick({ position: { x: 150, y: 120 } });
+    await expect(nodeById(page, 'tab-note').locator('textarea[data-probe-field="body"]')).toBeFocused();
+  });
+}
+
 for (const zoom of [0.4, 1]) {
   for (const axis of ['horizontal', 'vertical']) {
     test(`canvas focus navigation keeps layers aligned with native Tab at ${zoom} ${axis}`, async ({ page }) => {
@@ -13323,12 +13395,96 @@ test('canvas focus navigation preserves note internal scrolling and indentation'
 });
 
 for (const executionKind of ['agent', 'terminal']) {
+  test(`canvas focus navigation requires Enter at the ${executionKind} terminal entry`, async ({ page }) => {
+    const nodeId = `${executionKind}-zoom`;
+    await openHarness(page);
+    await applyWorkbenchTheme(page, 'dark');
+    const state = createLiveExecutionNodeState(executionKind);
+    state.nodes.push(createManualNoteNode('after-terminal', { x: 1000, y: 140 }));
+    await bootstrap(page, state);
+    await waitForExecutionTerminalReady(page, nodeId);
+    const node = nodeById(page, nodeId);
+    const entry = node.locator('.terminal-frame');
+    const hint = node.locator('.terminal-entry-hint');
+    const input = node.locator('.xterm-helper-textarea');
+    await expect(input).toHaveAttribute('tabindex', '-1');
+    await expect(hint).toBeHidden();
+    await page.locator(`.react-flow__node[data-id="${nodeId}"]`).focus();
+    await clearPostedMessages(page);
+    await tabToCanvasTarget(page, entry);
+    await expect(entry).toHaveAccessibleName('终端输入入口');
+    await expect(entry).toHaveAccessibleDescription('Enter 进入终端 · Tab 继续导航');
+    await expect(hint).toBeVisible();
+    await expect(hint).toHaveCSS('font-size', '13px');
+    await expect(hint.locator('kbd')).toHaveText(['Enter', 'Tab']);
+    await expect(hint.locator('kbd').first()).toHaveCSS('border-bottom-width', '2px');
+    await expect(hint.locator('button, [tabindex]')).toHaveCount(0);
+    const hintPosition = await hint.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const frame = element.closest('.terminal-frame').getBoundingClientRect();
+      return {
+        horizontalOffset: bounds.left + bounds.width / 2 - (frame.left + frame.width / 2),
+        verticalOffset: bounds.top + bounds.height / 2 - (frame.top + frame.height / 2),
+        width: bounds.width,
+        frameWidth: frame.width,
+        pointerEvents: getComputedStyle(element).pointerEvents
+      };
+    });
+    expect(Math.abs(hintPosition.horizontalOffset)).toBeLessThan(1);
+    expect(Math.abs(hintPosition.verticalOffset)).toBeLessThan(1);
+    expect(hintPosition.width).toBeLessThan(hintPosition.frameWidth - 16);
+    expect(hintPosition.pointerEvents).toBe('none');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('.react-flow__node[data-id="after-terminal"]')).toBeFocused();
+    await expect(hint).toBeHidden();
+    await page.keyboard.press('Shift+Tab');
+    await expect(entry).toBeFocused();
+    await expect(hint).toBeVisible();
+    await page.keyboard.press('Shift+Tab');
+    await expect(entry).not.toBeFocused();
+    await expect(input).not.toBeFocused();
+    await expect(hint).toBeHidden();
+    await page.keyboard.press('Tab');
+    await expect(entry).toBeFocused();
+    await page.keyboard.press('a');
+    await page.keyboard.press('Shift+Enter');
+    await expect(entry).toBeFocused();
+    await entry.dispatchEvent('keydown', { key: 'Enter', code: 'Enter', isComposing: true });
+    await expect(entry).toBeFocused();
+    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toEqual([]);
+    await page.keyboard.press('Enter');
+    await expect(input).toBeFocused();
+    await expect(hint).toBeHidden();
+    await settleWebview(page, 2);
+    expect(await readPostedMessagesByType(page, 'webview/executionInput')).toEqual([]);
+    for (const key of ['Tab', 'Shift+Tab', 'Escape', 'Enter']) {
+      await page.keyboard.press(key);
+      await expect(input).toBeFocused();
+    }
+    await expect.poll(async () => (await readPostedMessagesByType(page, 'webview/executionInput'))
+      .map((message) => message.payload.data).join('')).toBe('\t\x1b[Z\x1b\r');
+    await page.locator('.react-flow__controls-fitview').click();
+    await tabToCanvasTarget(page, entry);
+    await expect(hint).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(input).not.toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(entry).toBeFocused();
+    const hintBounds = await hint.boundingBox();
+    expect(hintBounds).not.toBeNull();
+    await page.mouse.click(hintBounds.x + hintBounds.width / 2, hintBounds.y + hintBounds.height / 2);
+    await expect(input).toBeFocused();
+    await expect(hint).toBeHidden();
+  });
+
   test(`canvas focus navigation preserves ${executionKind} terminal Tab input`, async ({ page }) => {
     const nodeId = `${executionKind}-zoom`;
     await openHarness(page);
     await bootstrap(page, createLiveExecutionNodeState(executionKind));
     await waitForExecutionTerminalReady(page, nodeId);
-    await focusExecutionTerminal(page, nodeId);
+    await nodeById(page, nodeId).locator('.xterm-screen').click({ position: { x: 16, y: 16 } });
+    await expect(nodeById(page, nodeId).locator('.xterm-helper-textarea')).toBeFocused();
+    await expect(nodeById(page, nodeId).locator('.terminal-entry-hint')).toBeHidden();
     await settleWebview(page, 2);
     await clearPostedMessages(page);
     const before = await readCanvasViewportTransform(page);

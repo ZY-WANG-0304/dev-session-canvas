@@ -1398,6 +1398,11 @@
       "title": "fit view keeps a workspace root section visible when it is larger than its nodes"
     },
     {
+      "id": "a03daaf9564243b49609-a1d3e9526e3459330561",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation excludes resize handles and note preview with Shift+Tab"
+    },
+    {
       "id": "a03daaf9564243b49609-a22d1e4d38e7f1ad8ec3",
       "file": "webview-harness.spec.mjs",
       "title": "agent keeps hovered links active while live output continues"
@@ -1406,6 +1411,11 @@
       "id": "a03daaf9564243b49609-a2318998c2613414d7a5",
       "file": "webview-harness.spec.mjs",
       "title": "terminal hard-wrapped styled path boundary accepts 2 lines before no-suffix"
+    },
+    {
+      "id": "a03daaf9564243b49609-a26541e1940c68c05682",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation requires Enter at the agent terminal entry"
     },
     {
       "id": "a03daaf9564243b49609-a2c3cc35b3ad1182a700",
@@ -1948,6 +1958,11 @@
       "title": "multi-root rootGroups arrange menu defaults to current root and offers workspace scope"
     },
     {
+      "id": "a03daaf9564243b49609-db3c1616c8c7ca30cd95",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation requires Enter at the terminal terminal entry"
+    },
+    {
       "id": "a03daaf9564243b49609-db5d598c9dd71d0ce9c5",
       "file": "webview-harness.spec.mjs",
       "title": "group header stays full width after selection and rename at zoom 0.4"
@@ -1961,6 +1976,11 @@
       "id": "a03daaf9564243b49609-db979a9603ff0ed95da4",
       "file": "webview-harness.spec.mjs",
       "title": "note markdown preview text remains selectable in read mode"
+    },
+    {
+      "id": "a03daaf9564243b49609-dbcc6a528deef6cf7a64",
+      "file": "webview-harness.spec.mjs",
+      "title": "canvas focus navigation excludes resize handles and note preview with Tab"
     },
     {
       "id": "a03daaf9564243b49609-dbe50a501fe11eb3fa47",

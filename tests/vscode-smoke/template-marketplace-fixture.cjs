@@ -188,6 +188,7 @@ async function handleMarketplaceRequest(request, response, fixture) {
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/v1/templates') {
+      await fixture.listResponseGate;
       const query = (url.searchParams.get('q') || '').toLowerCase();
       const items = fixture.templates
         .filter((template) => {

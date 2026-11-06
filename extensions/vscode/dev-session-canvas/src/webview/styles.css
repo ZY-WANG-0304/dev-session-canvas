@@ -1806,6 +1806,54 @@ body {
     inset 0 0 0 9999px color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent 90%);
 }
 
+.terminal-frame:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.terminal-entry-hint {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  text-align: center;
+  z-index: 4;
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-focusBorder);
+  border-radius: var(--canvas-node-radius-inner);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.terminal-entry-hint-action {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.terminal-entry-hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-keybindingLabel-border, var(--vscode-focusBorder));
+  border-bottom: 2px solid var(--vscode-keybindingLabel-bottomBorder, var(--vscode-focusBorder));
+  border-radius: 4px;
+  background: var(--vscode-keybindingLabel-background, var(--vscode-button-secondaryBackground, #3a3d41));
+  color: var(--vscode-keybindingLabel-foreground, var(--vscode-editor-foreground));
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.terminal-frame:focus > .terminal-entry-hint {
+  display: block;
+}
+
 .terminal-viewport {
   flex: 1;
   min-height: 0;

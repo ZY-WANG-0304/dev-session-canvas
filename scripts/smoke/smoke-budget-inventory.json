@@ -9,7 +9,7 @@
     "tests/vscode-smoke/notifier-companion-tests.cjs": "d20c054c2649a2b4c5fcb85422ac0fc47e3618304043b8d8e04e4a5984f8536e",
     "tests/vscode-smoke/notifier-locale-tests.cjs": "47babc910cf8069d7c4c8e3dcc97edbff615618b2d3a2ce27f1b327676ffbe87",
     "tests/vscode-smoke/ui-copy-locale-tests.cjs": "8106f350704731baf054a327584675d41800569eae95756feae5acc06e1cecdb",
-    "tests/vscode-smoke/template-marketplace-tests.cjs": "83f0737b37ca684a1cbc4d23a63ebe8ba7b164b3aa396ec2ee39d19fe4ff17d4",
+    "tests/vscode-smoke/template-marketplace-tests.cjs": "fb15f6fcebbee60d526b99292ea17273a73eac3ef50ef04fa13e9735c61467ca",
     "tests/vscode-smoke/template-marketplace-preview-tests.cjs": "e94eea6c93dfbd3a583dad0701234f193c47eb612ef6c5b0ff065ada175c7919",
     "scripts/smoke/smoke-catalog.mjs": "1285bd16132f18b5cd236986b4b3c786465dc449f6492ef2c548ae2ef9991233",
     "tests/vscode-smoke/test-helpers.cjs": "9748043331b8480a8a003d9c3796d2b57a9a316f589147882fa6166e645a66b0",
@@ -65719,7 +65719,7 @@
       ]
     },
     "marketplace-host": {
-      "timeoutMs": 630000,
+      "timeoutMs": 675000,
       "entry": "run",
       "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
       "times": 1,
@@ -65795,310 +65795,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 76,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 95,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 111,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForTemplateCatalogEntry",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 123,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForSidebarTemplateItem",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 134,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForTemplateCatalogEntry",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 139,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 149,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 153,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForTemplateCatalogEntry",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 161,
-          "kind": "original-wait",
-          "timeoutMs": 10000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForCondition",
-            "expression": "10000",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 168,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.openCanvasInEditor",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 169,
-          "kind": "original-canvas-ready",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {}
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 170,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testResetState",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 171,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testCreateNode",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 346,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testSaveCanvasAsTemplate",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 174,
+          "line": 353,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66110,28 +65807,6 @@
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
           "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 186,
           "kind": "original-wait",
           "timeoutMs": 20000,
           "multiplier": 1,
@@ -66143,99 +65818,270 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 208,
+          "line": 364,
           "kind": "original-wait",
           "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 69,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 88,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 104,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForTemplateCatalogEntry",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 116,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForSidebarTemplateItem",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 127,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForTemplateCatalogEntry",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 132,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 142,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 146,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForTemplateCatalogEntry",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 154,
+          "kind": "original-wait",
+          "timeoutMs": 10000,
           "multiplier": 1,
           "detail": {
             "callee": "waitForCondition",
-            "expression": "20000",
+            "expression": "10000",
             "defaultMs": 20000
           }
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 240,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 248,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
-          "kind": "command-infrastructure-reserve",
-          "timeoutMs": 5000,
-          "multiplier": 1,
-          "detail": {
-            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
-            "reason": "A command returning no timeout is bounded by the original outer case deadline"
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 256,
-          "kind": "original-wait",
-          "timeoutMs": 20000,
-          "multiplier": 1,
-          "detail": {
-            "callee": "waitForMarketplaceProbe",
-            "expression": "default",
-            "defaultMs": 20000
-          }
-        },
-        {
-          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 269,
+          "line": 161,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66246,7 +66092,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 270,
+          "line": 162,
           "kind": "original-canvas-ready",
           "timeoutMs": 20000,
           "multiplier": 1,
@@ -66254,7 +66100,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 271,
+          "line": 163,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66265,7 +66111,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 272,
+          "line": 164,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66276,7 +66122,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 346,
+          "line": 369,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66287,7 +66133,18 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
+          "line": 167,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.openTemplateMarketplace",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66298,7 +66155,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
+          "line": 377,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66309,7 +66166,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 281,
+          "line": 179,
           "kind": "original-wait",
           "timeoutMs": 20000,
           "multiplier": 1,
@@ -66321,7 +66178,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
+          "line": 377,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66332,7 +66189,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
+          "line": 377,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66343,7 +66200,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 301,
+          "line": 201,
           "kind": "original-wait",
           "timeoutMs": 20000,
           "multiplier": 1,
@@ -66355,7 +66212,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 324,
+          "line": 233,
           "kind": "original-wait",
           "timeoutMs": 20000,
           "multiplier": 1,
@@ -66367,7 +66224,7 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
+          "line": 377,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66378,7 +66235,19 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 354,
+          "line": 241,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
           "kind": "command-infrastructure-reserve",
           "timeoutMs": 5000,
           "multiplier": 1,
@@ -66389,7 +66258,173 @@
         },
         {
           "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
-          "line": 334,
+          "line": 249,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 262,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.openCanvasInEditor",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 263,
+          "kind": "original-canvas-ready",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {}
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 264,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testResetState",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 265,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testCreateNode",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 369,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testSaveCanvasAsTemplate",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 274,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 294,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForCondition",
+            "expression": "20000",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 317,
+          "kind": "original-wait",
+          "timeoutMs": 20000,
+          "multiplier": 1,
+          "detail": {
+            "callee": "waitForMarketplaceProbe",
+            "expression": "default",
+            "defaultMs": 20000
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 377,
+          "kind": "command-infrastructure-reserve",
+          "timeoutMs": 5000,
+          "multiplier": 1,
+          "detail": {
+            "command": "COMMAND_IDS.testPerformTemplateMarketplaceAction",
+            "reason": "A command returning no timeout is bounded by the original outer case deadline"
+          }
+        },
+        {
+          "file": "tests/vscode-smoke/template-marketplace-tests.cjs",
+          "line": 327,
           "kind": "original-wait",
           "timeoutMs": 20000,
           "multiplier": 1,

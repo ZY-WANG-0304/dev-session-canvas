@@ -6,6 +6,8 @@ Linux 的 Webview Playwright 测试统一消费仓库内 `cjk-regular.woff`，�
 
 `load.mjs` 核对 WOFF 和字符清单 SHA256、生成时登记的字符映射，以及当前源文件中的 CJK 字符覆盖。新增未覆盖字符会明确失败，不默默依赖 runner 字体。此子集不等于完整中文字体，不为真实 VSCode Host 或模板市场页面注入字体。
 
+2026-11-06 终端入口新增“Enter 进入终端 · Tab 继续导航”提示，补齐“导”“航”字形。按当前源文件重新生成后为459个字符（旧源码已移除的字随生成器退出子集）；来源、字形身份和生成工具不变，不更新 PNG 基线。
+
 ## 来源与维护
 
 `cjk-regular.woff` 从 Debian/Ubuntu `fonts-noto-cjk 1:20220127+repack1-1` 的 `NotoSansCJK-Regular.ttc` 第2个字体生成。上游版本为2.004，原文件与子集 SHA256 见 `provenance.json`，许可见 `OFL.txt`。保留原派生字体名称 `DSC Screenshot CJK`，避免无必要地更换截图字体身份。
