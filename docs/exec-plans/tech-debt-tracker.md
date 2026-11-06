@@ -4,6 +4,8 @@
 
 ## 2026-11-06：本地快照竞态的正式验收与 Host 既存测试失败
 
+PR371首轮正式运行42164361993的source remount已通过，观察运行42164361990的packaged remount也通过。新首败为root-owner启动测试的100轮等待，与下述detached/shared既存失败不是同一项。Node22可控外部I/O闭锁证明无scheduler任务时也会耗尽100轮，释放后原启动正常完成；已将root测试改为原始Promise/阶段事件同步并补6条闭锁回归，原3000ms watchdog、业务断言、真实fsync和门禁保持。完整root任务及25项三次重复、原snapshot相关38项本地通过。原CI无pending I/O轨迹，不将具体文件操作定为唯一根因；新head正式CI仍待通过，不以观察绿色覆盖required失败。证据及复审跟随同一[修复计划](active/terminal-remount-snapshot-race.md)。
+
 独立快照修复在 main `92736f38` 和分组 `0a180b26` 的同一可控测试上确认共享吞请求路径；修复后的相关 Host38、adapter/channel109+6+7、类型、生产资产构建及 Linux source remount 通过。但原 PR370 packaged CI 没有完整 attach 分支轨迹，不能追认唯一触发时序，也不能代替修复 PR 的正式 packaged/跨平台 CI。不同 requestId 的响应不能被静默合并，当前只保证无 ID 的待执行合并槽有界，未新增任意不同 ID 的协议准入限制；未来出现实际高基数请求压力时由 repository-maintainers 连同显式拒绝语义另行设计。
 
 全量 Host 最终复跑在252条通过后，`detached restored agent restart uses target evidence after an unsubmitted failure: /controlled/runtime-supervisor-generations/terminal-stream-v1` 报旧 generation 清理顺序 `1 !== 2`，外层创建数 `0 !== 1`；未修改 main 的同名单测一致失败。宽过滤另遇 `shared Canvas deletion detaches local projection` 的 `appliedStartupConfiguration` 未初始化 TypeError，未修改 main 也一致复现。本轮不修改这些无关路径，也不删除断言/排除正式任务；repository-maintainers 需独立核查旧历史恢复顺序及 shared fixture，并保持 required CI。

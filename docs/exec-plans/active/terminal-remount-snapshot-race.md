@@ -15,8 +15,17 @@
 - [x] 2026-11-06：本地相关 Host 38/38、类型、生产资产构建、adapter/channel 109+6+7 和真实 source remount 通过；独立审查提出的无界失败重试 P2 已修复并复审无新 blocker。
 - [x] 2026-11-06：实现提交 `5677aabb` 已独立复审并创建 [PR #371](https://github.com/ZY-WANG-0304/dev-session-canvas/pull/371)，目标 main；本轮交付完成，不合并。正式 CI 和 required review 以远端最新 head 为准。
 - [ ] 独立 PR 的正式 CI 通过后等待用户授权；合并后才另行接续 PR370 rebase，本轮不执行。
+- [x] 跟进 PR371 run42164361993 的 root-owner 回归首败：Node22可控I/O闭锁复现100次空tick误判；root用例改为原始Promise/阶段事件同步，保留原3000ms watchdog、业务断言、真实I/O及门禁，新增6条闭锁回归。
 
 ## 意外与发现
+
+PR371 head `0f49018e` 的 Release Preflight run [42164361993](https://github.com/ZY-WANG-0304/dev-session-canvas/actions/runs/42164361993) 已完成但失败。唯一原始失败任务是 regression/shard-1 的 `test:runtime-root-ownership`：`root terminal start routes the current release through preparation client metadata and subscription` 在 `completed` 辅助函数报 `terminal root owner creation did not complete within 100 scheduler turns`。同一 producer 的其他结果因 producer 失败不能被正式采信，verify-result 和 Verify release contract 继续失败，不能将这三个 job 或聚合29项失败当作29个独立产品根因。source live-page-remount 成功；独立观察 run42164361990 的 packaged live-page-remount 也成功。
+
+正常本地对照：原始 main `92736f38` 和 PR371 的 root ownership 任务在 Node25 均19/19通过，PR371用CI相同Node22.23.3亦19/19通过。CI日志没有 pending I/O 栈，因此尚不能确认原运行卡在具体哪个文件操作，也不把正常重跑通过当作修复。后续用可控I/O闭锁验证测试同步边界。
+
+独立实验扣住真实mkdir、journal首个sync返回时，原completed均在100轮报同一错误，实际scheduler task=0、虚拟时钟=0；释放后不再tick即可通过原断言。新增storage/journal矩阵覆盖Terminal start、Agent start/resume，已替换为原始启动Promise与明确阶段事件同步。Node22.23.3的完整 `npm run test:runtime-root-ownership` 通过（Host25/25），相同25项另连续复跑三次通过；原快照信用/页面生命周期回归38/38通过。日志 `/tmp/pr371-root-fixed-node22.log`、`/tmp/pr371-root-fixed-repeat-{1,2,3}.log`、`/tmp/pr371-followup-snapshot-node22.log`。未修改生产快照实现、全局pump、超时阈值或CI任务集合；新head正式CI仍需重新完成。
+
+独立review将新6项闭锁用例在内存中仅回退到原completed等待：6/6出现预期100轮失败；修复版6/6通过。review还发现断言失败时原启动未结束、fixture清理可能用ENOTEMPTY覆盖原始错误；已补finally中先释放并等待两条任务结束，再还原stub和删除目录。allSettled只做收尾，前方Promise.all仍传播失败；最终完整root任务再次25/25通过，日志 `/tmp/pr371-root-fixed-final.log`。
 
 输入证据是 PR370 run 42129264704 的 packaged `surface-continuity/live-page-remount` 失败：重挂载后等待 host/executionSnapshot 8 秒，消息列表为空。下载工件位于 `/tmp/pr370-remount-evidence/`。工件显示新页面 ready、bootstrapAck 及一次初始快照恢复；没有 attach 合并分支的直接记录，因此尚不能将这次 CI 的唯一根因写成已确认。
 

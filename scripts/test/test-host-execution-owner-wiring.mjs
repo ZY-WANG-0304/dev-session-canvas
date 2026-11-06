@@ -4320,8 +4320,47 @@ for (const mode of [0o775, 0o770, 0o755]) {
   });
 }
 
+function holdRootStartupIO(directory, boundary) {
+  const entered = deferred();
+  const release = deferred();
+  const fsPromises = createRequire(import.meta.url)('node:fs/promises');
+  const originalMkdir = fsPromises.mkdir;
+  const originalOpen = fsPromises.open;
+  let held = false;
+  const hold = async () => {
+    if (held) return;
+    held = true;
+    entered.resolve();
+    await release.promise;
+  };
+  if (boundary === 'storage') {
+    fsPromises.mkdir = async (target, ...args) => {
+      const result = await originalMkdir(target, ...args);
+      if (target === directory) await hold();
+      return result;
+    };
+  } else if (boundary === 'journal') {
+    fsPromises.open = async (target, ...args) => {
+      const handle = await originalOpen(target, ...args);
+      if (String(target).startsWith(path.join(directory, 'runtime-replacements-v1') + path.sep)) {
+        const sync = handle.sync.bind(handle);
+        handle.sync = async () => { await sync(); await hold(); };
+      }
+      return handle;
+    };
+  }
+  return { entered: entered.promise, release: release.resolve, restore() {
+    release.resolve();
+    fsPromises.mkdir = originalMkdir;
+    fsPromises.open = originalOpen;
+  } };
+}
+
 for (const kind of ['terminal', 'agent']) {
-  for (const launchMode of kind === 'agent' ? ['start', 'resume'] : ['start']) test(`root ${kind} ${launchMode} routes the current release through preparation client metadata and subscription`, async () => {
+  const launchModes = kind === 'agent' ? ['start', 'resume'] : ['start'];
+  for (const [launchMode, boundary] of launchModes.flatMap(launchMode =>
+    ['immediate', 'storage', 'journal'].map(boundary => [launchMode, boundary]))) test(
+    `root ${kind} ${launchMode} routes the current release through preparation client metadata and subscription (${boundary})`, async () => {
     if (process.platform !== 'linux') return;
     await withRootCandidateRuntimeFixture(async f => {
       const preparations = [];
@@ -4337,10 +4376,28 @@ for (const kind of ['terminal', 'agent']) {
         assert.equal(request.executionProfile, EXECUTION_CANDIDATE_PROFILE);
         return { kind: 'ready', backend: 'legacy-detached' };
       };
+      const io = holdRootStartupIO(f.globalStoragePath, boundary);
       try {
         await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
           const starting = launchMode === 'resume' ? f.host.startAgentSession('agent-1', 80, 24, undefined, true) : f.start(kind);
-          await completed(f.clock, starting, `${kind} root owner creation`);
+          let startupCompleted = false;
+          const observed = starting.then(() => { startupCompleted = true; });
+          const held = boundary === 'immediate' ? Promise.resolve() : (async () => {
+            try {
+              await Promise.race([io.entered, observed.then(() => assert.fail('startup must cross the held I/O boundary'))]);
+              await pump(f.clock);
+              assert.equal(startupCompleted, false, 'scheduler turns cannot complete external I/O');
+              assert.equal(creates.length, 0, 'unconfirmed storage must not submit creation');
+              assert.equal(f.subscriptions.length, 0, 'unconfirmed storage must not acquire a reader');
+            } finally { io.release(); }
+          })();
+          try {
+            await Promise.all([observed, held]);
+          } finally {
+            io.release();
+            await Promise.allSettled([observed, held]);
+          }
+          assert.equal(startupCompleted, true);
           assert.deepEqual(f.errors, []);
           assert.equal(preparations.length, 1);
           assert.equal(connections.length, 1);
@@ -4362,6 +4419,7 @@ for (const kind of ['terminal', 'agent']) {
           assert.deepEqual(f.subscriptions[0][2], f.owner);
         });
       } finally {
+        io.restore();
         testRootRuntimePreparation.run = async () => { throw new Error('Unexpected root runtime preparation'); };
       }
     });
@@ -4383,8 +4441,12 @@ for (const kind of ['terminal', 'agent']) {
         liveSession: false, attachmentState: 'history-restored', lifecycle: kind === 'agent' ? 'stopped' : 'closed' });
       f.host.bindRuntimeSession(node.id, kind, previous.sessionId, previous.runtimeStoragePath, previous.backendKind, oldOwner);
       const cleanup = deferred();
+      const cleanupEntered = deferred();
       let outcome;
-      const strict = candidateStrictDeletes(f, () => ({ first: cleanup.promise, current: () => outcome, submitted: true }));
+      const strict = candidateStrictDeletes(f, () => {
+        cleanupEntered.resolve();
+        return { first: cleanup.promise, current: () => outcome, submitted: true };
+      });
       const resolveTarget = f.host.resolveRuntimeCreationTarget.bind(f.host);
       const preferred = f.host.getPreferredRuntimeSupervisorClient;
       const order = [];
@@ -4398,7 +4460,7 @@ for (const kind of ['terminal', 'agent']) {
         return preferred(target);
       };
       const starting = f.start(kind);
-      await pump(f.clock, () => strict.calls.length === 1);
+      await Promise.race([cleanupEntered.promise, starting.then(() => assert.fail('startup must wait for original cleanup'))]);
       assert.equal(strict.calls.length, 1, JSON.stringify({ errors: f.errors, posted: f.posted, connections: strict.connections }));
       assert.equal(strict.calls[0].backend.runtimeStoragePath, previous.runtimeStoragePath);
       assert.equal(strict.calls[0].params.sessionId, previous.sessionId);
@@ -4407,7 +4469,7 @@ for (const kind of ['terminal', 'agent']) {
       assert.equal(f.creates.length, 0);
       outcome = { kind: 'legacy-acknowledged' };
       cleanup.resolve(outcome);
-      await completed(f.clock, starting, `${kind} replacement after original cleanup`);
+      await starting;
       assert.deepEqual(f.errors, []);
       assert.deepEqual(order, ['target', 'owner']);
       assert.equal(f.creates.length, 1);
@@ -4431,7 +4493,7 @@ for (const kind of ['terminal', 'agent']) {
       };
       try {
         await withRuntimeConnectionBoundary(async ({ connections, creates }) => {
-          await completed(fixture.clock, fixture.start(kind), `${kind} release preparation rejection`);
+          await fixture.start(kind);
           assert.equal(preparations.length, 1);
           assert.deepEqual(preparations[0].owner, fixture.owner);
           assert.deepEqual(connections, []);
@@ -4469,10 +4531,10 @@ for (const kind of ['terminal', 'agent']) {
         };
         const starting = f.start(kind);
         try {
-          await completed(f.clock, entered.promise, `${kind} pending root ${waitingAt}`);
+          await Promise.race([entered.promise, starting.then(() => assert.fail(`startup must cross ${waitingAt}`))]);
           f.roots[0] = { path: '/controlled/different-root', name: 'different-root' };
           resume.resolve();
-          await completed(f.clock, starting, `${kind} changed runtime root`);
+          await starting;
           assert.equal(f.creates.length, 0);
           assert.equal(f.host.runtimeSessionBindings.size, 0);
           assert.equal(f.host.candidateRuntimeStarts.size, 0);

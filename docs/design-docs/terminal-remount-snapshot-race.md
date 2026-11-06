@@ -39,6 +39,14 @@ PR370 CI 的 packaged live-page-remount 在第二次页面打开后等待快照�
 
 ## 验证证据与局限
 
+### PR371 首轮 CI 的外部 I/O 同步
+
+run42164361993 的 snapshot 重挂载 source 场景通过，独立观察 run42164361990 的 packaged 场景也通过；新的首败是 `test:runtime-root-ownership` 的100轮 scheduler 等待。root fixture 的创建会执行真实目录检查与 journal 写入/锁/fsync；这些不由虚拟 scheduler 驱动。Node22.23.3 的可控实验分别扣住真实 mkdir 与首次 journal sync 的返回，100次 tick 均未执行任何 task，却触发相同完成断言；释放后不再 tick 即完成，原 owner/create/metadata/subscription 断言通过。原CI没有pending I/O轨迹，不将具体mkdir或fsync断言为原运行唯一卡点。
+
+该门禁卡点在本独立PR内继续收口，不触碰#370或生产快照实现。root ownership 的外部异步任务改为等待原始操作Promise，阶段检查等待对应的entered事件；保留每例原3000ms watchdog、所有业务断言、真实文件操作与fsync，不全局更改用于纯生命周期测试的100轮pump。新增storage/journal闭锁矩阵：扣住外部完成交付、走满原100轮，断言尚未创建/订阅或完成；释放后按原合同完成。同步修复不是增加等待阈值、mock掉持久化或删除验收条件。
+
+异常收尾先释放闭锁并等原始启动和检查任务结束，再恢复连接stub、清理目录，避免未结束的journal写入与删除竞态覆盖原断言。失败由Promise.all传播，finally中的allSettled只负责收尾。独立review的内存回退6/6红、修复6/6绿；Node22完整root任务25/25及snapshot相关38/38通过，仍不替代新head的正式CI。
+
 `scripts/test/test-host-execution-owner-wiring.mjs` 使用实际 Host 类和可控回执。新增测试覆盖 Terminal/Agent 的第二次 attach、32 个无 ID 合并请求、混合及不同 ID、后续批次、再次关闭、generation/frame 与实际 webview 对象替换、旧 ACK、最终发布、发送失败及前驱异常。保留 eager 取消恢复与原信用/结算测试。
 
 修前对照：main `92736f3822a5cf8838553de4ba9255b861a39448`、group `0a180b2629858a4e625fd80abea9af9d5374358f` 分别运行 `node scripts/test/test-host-execution-owner-wiring.mjs --name-pattern 'local snapshot attach.*terminal'` 和 agent 变体，均在 `second attach must not complete without a fresh snapshot` 得到 `1 !== 2`。原始日志在 `/tmp/snapshot-race-main-red.log`、`/tmp/snapshot-race-main-agent-red.log`、`/tmp/snapshot-race-group-terminal-red.log`、`/tmp/snapshot-race-group-agent-red.log`；SHA 与测试名用于重建证据，不依赖临时日志永久保存。
