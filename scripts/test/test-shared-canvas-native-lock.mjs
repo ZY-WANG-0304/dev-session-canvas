@@ -112,8 +112,11 @@ async function buildAndTest() {
   let runner;
   let done;
   try {
+    const runtimeHeaders = path.resolve(path.dirname(process.execPath), '..', 'include', 'node');
+    const cachedHeaders = path.join(os.homedir(), '.cache', 'node-gyp', process.versions.node, 'include', 'node');
     const { binary } = buildSharedCanvasLock({
-      output: directory, headers: values.headers ?? path.join(os.homedir(), '.cache', 'node-gyp', process.versions.node, 'include', 'node'),
+      output: directory, headers: values.headers ?? (fs.existsSync(path.join(cachedHeaders, 'node_api.h'))
+        ? cachedHeaders : runtimeHeaders),
       compiler: values.compiler, nodeLib: values['node-lib'], delayLoadHook: values['delay-load-hook']
     });
     runner = spawn(process.execPath, [...process.execArgv, script, '--binary', binary], { stdio: 'inherit' });

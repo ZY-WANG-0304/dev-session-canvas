@@ -50,7 +50,7 @@ export const regressionScripts = Object.freeze([
   'test:release-preflight-workflow', 'test:vscode-smoke-runner-env', 'test:runtime-root-ownership',
   'test:runtime-root-preparation', 'test:runtime-supervisor-startup-profile',
   'test:runtime-supervisor-namespace', 'test:execution-owner-lifecycle', 'test:execution-native-assets', 'test:ci-gates',
-  'test:shared-canvas-lock', 'test:shared-canvas-root-preparation'
+  'test:shared-canvas-lock', 'test:shared-canvas-root-preparation', 'test:shared-canvas-native-lock'
 ]);
 
 export const jobDependencies = Object.freeze({
