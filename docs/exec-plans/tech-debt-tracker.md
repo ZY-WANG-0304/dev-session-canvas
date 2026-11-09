@@ -23,6 +23,21 @@ PR371首轮正式运行42164361993的source remount已通过，观察运行42164
 第二次 rebase 后完整功能回归中，`terminal styled hard-wrapped file hover underlines all fragments` 在 `tests/playwright/webview-harness.spec.mjs` 等待两个 hover 片段，连续八次采样为 0，5000ms 超时。首败 trace 中两个片段曾生成，约 11ms 后 terminal screen 从 900×392 变为 705×448，片段消失；hover 响应后还有 `resizeExecutionSession(94, 32)` 消息。`executionTerminalNativeInteractions.ts` 的 resize 回调会清除 overlay，轨迹支持优先调查尺寸收敛与 hover 时序，但没有具体清除回调日志，尚不能排除其他清除路径。
 
 负责人 repository-maintainers。相同测试块和 native-interactions 文件在旧 base、PR head、最新主线和当前分支内容一致，场景无分组；未发现本任务的直接关联，不等于已证明是历史缺陷或偶发误报。后续在终端链接/尺寸收敛专项保留原始 trace，补齐 resize、scroll、leave 与 hover 清除原因取证后再决定修复方向；不通过放宽等待或删除断言掩盖。本轮首败工件已另存 `/tmp/pr370-hover-first-failure/`，复跑结果另记于 [实施记录](completed/canvas-group-header-interactions.md)，不能覆盖首败。
+## 2026-11-06：共享画布 TCP 锁与客户端临时端口冲突
+
+2026-11-07 后续实现新增独立 root 准备组件与 19 项测试，包括取消、代次、排空、自等待及真实旧 store 组合；尚无生产调用，不能标记空 map 缺口已修复。冷停机审核收紧为：禁止 v1 自动转换及仅确认转换，外部持续禁旧 Host、退出与在途操作结算未验证前不开放。空目录不能证明从未被旧 Host 使用，故不提供空目录豁免。组件两个调用方自等待 P2 已补检测，最终复审证据随活跃计划记录。
+
+2026-11-07 主线程补充真实方法隔离反例：Node 25 固定旧版/当前工作树各 9/9、Node 22 固定旧版 9/9。已观察 ready 拒绝后 UI attach 仍到达被替代的 RPC 边界，以及空 map 的 mutation/restore/模式切换分流；对照组能阻断。未执行真实 RPC/停止，未运行 Electron，两个 P1 仍未修复，详见生命周期合同的独立反例验证。
+
+后续设计已选定受控停写迁移、原路径外层 snapshot v2 拒绝旧 store、独立 Node-API 锁，见 [生命周期合同](../design-docs/shared-canvas-lock-contract.md)。固定 v0.28.0 store 的转换夹具证明版本拒绝与旧锁序列边界，不代表已实现迁移器。真实旧 Host 的初始化/历史恢复/模式切换、迟到登记及副作用、新 native 三平台装载、首次转换仍可能受旧 TCP bootstrap 占用影响，均为实施门禁；不自动降级或清空失败 store。长期双锁桥接不采纳，其排序风险不再进入正常新协议，但不能据此把整个兼容风险标为已解决。
+
+2026-11-06 已启动 [基础实现](active/shared-canvas-file-lock-implementation.md)，当前没有生产调用。冷迁移复审新增两个生产接通 P1：旧 Host 延迟登记后即使 store.ready 失败，UI attach 独立分支仍未检查该状态；新版异步准备若仅延迟创建 store，则 map 为空时 start/delete、restore、模式切换会绕过共享保护。前者需真正可控的旧 Host 停机/禁止重入边界及真实旧包交错验收，后者需独立于 map 的 root 准备状态机；不得把这两项记作“已修复”。具体函数、源码证据与局限见生命周期合同“实施前冷迁移复审”。原生资产分发、Windows/macOS、fork 失败路径及 VSIX/Remote 仍需具名验证。
+
+两位 subagent 独立设计审核均支持内核文件锁方向，但未批准实施发布方案。必须先确定旧写者暂停恢复、迟到启动及降级重入的边界；若采用双锁桥接，须保留旧 TCP admission 的跨 root 排序及碰撞去重，同时逐 root 获取新文件锁，否则会自锁或循环等待。补充验收包括 fork/exec 继承引用、同上下文并行调用不误重入、已经缓存提交失败的 store 如何安全恢复。详情和分级见调研设计“独立设计审核”，不把待实施风险写成当前文件锁实现已有故障。
+
+0.28.0 现场删除节点时固定节点锁 40730 报 EADDRINUSE；当前机器临时端口范围 32768–60999，现场该端口为到 2222 的已建立连接。隔离 Linux 实验确认普通客户端端口即可阻止监听，节点锁整段落在临时范围内；不是必须有另一个 Canvas 正在操作才发生。原诊断未保存历史连接归属，不把当前连接身份写成报错当时的已证事实。
+
+负责人 repository-maintainers。研究推荐稳定旁路文件上的 OS 独占锁，生产实现未改；原 TCP 提交、节点、准入锁仍可能受外部占用影响。后续需选定并验证三平台原生绑定、同进程/跨进程生命周期和混合版本迁移；不能超时偷取、删除重建锁文件、改随机锁端口或在旧 TCP 写者仍运行时直接切换文件锁。验收必须包括实际 Host/store、崩溃/暂停与模式切换交错、三平台 VSIX/Remote 和升级边界；本次 Linux 原语实验不代替产品修复。见 [调研设计](../design-docs/shared-canvas-lock-research.md) 与 [研究计划](completed/shared-canvas-lock-research.md)。
 
 ## 2026-11-05：本地门禁回归 child-owned cleanup 的计时失败
 
